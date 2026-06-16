@@ -1,0 +1,99 @@
+# Dracon System Guard Policy
+# Path: ~/.dracon/utilities/system/dracon-system.toml
+#
+# Controls disk monitoring, process protection, and auto-cleanup.
+
+[guard]
+# Enable the guard daemon
+enabled = true
+
+# Seconds between guard check cycles
+# interval_secs = 30
+
+# Disk mount point to monitor (default: /nix on NixOS, / otherwise)
+# disk_mount_path = "/nix"
+
+# Disk usage thresholds (percent)
+# Lower values = more aggressive early cleaning
+disk_early_warn_percent = 65
+disk_warn_percent = 75
+disk_action_percent = 85
+disk_critical_percent = 92
+
+# Freeze dracon-sync when disk hits action level
+freeze_sync_at_action = true
+
+# Unfreeze sync when disk drops below this level (set to ~warn_percent)
+unfreeze_below_percent = 70
+
+# Process monitoring thresholds
+process_cpu_percent = 50.0      # Alert if CPU > 50%
+process_rss_mb = 4096           # Alert if RSS > 4GB
+process_sustain_secs = 30       # Alert after 30s sustained
+
+# Processes to exclude from monitoring (comma-separated)
+process_exempt_names = "systemd,dbus-daemon,Xorg,kwin_wayland,plasmashell,dracon-code"
+
+# Auto-renice heavy processes (graduated: higher CPU/memory = higher nice value)
+# CPU tiers: >=180% → nice 5, >=300% → nice 10, >=500% → nice 15
+# Memory tiers: >=4GB → nice 5, >=8GB → nice 10
+# renice_value is the fallback nice when no CPU/memory tier threshold is met
+auto_renice = true
+renice_value = 5
+release_after_secs = 120     # Un-renice after 2 min of being non-heavy
+
+# Notifications
+# notify_command must be an absolute path (e.g. /usr/bin/notify-send).
+# For security, shell commands like "sh -c ..." are not allowed.
+notify = true
+notify_command = "/usr/bin/notify-send"
+notify_cooldown_secs = 300
+
+# Persistent logging of heavy processes
+guard_log_file = "~/.local/state/dracon/dracon-system-guard.log"
+guard_log_max_mb = 1
+
+# Auto-cleanup Rust target directories when disk is full
+# ⚠️ auto_cleanup_apply must be true for the daemon to actually delete files.
+# When false (default), the daemon only logs what it would clean.
+auto_cleanup_rust = true
+auto_cleanup_apply = false
+cleanup_min_size_mb = 256
+rust_search_roots = "~/Dev"
+
+# Auto-cleanup old node_modules
+node_modules_search_roots = "~/Dev"
+node_modules_max_age_days = 30
+
+# Additional protected paths (besides system defaults)
+# protected_paths = ["/mnt/data", "/opt/important"]
+
+# Monitor inode usage
+monitor_inodes = true
+inode_warn_percent = 85
+
+# Monitor zombie processes
+monitor_zombies = true
+zombie_threshold = 20
+
+# Monitor large log files
+monitor_logs = true
+log_size_mb = 100
+log_dirs = "/var/log,~/.local/share/opencode/log"
+auto_truncate_logs = false
+log_max_truncate_mb = 50
+log_preserve_header_lines = 0   # Lines to preserve when truncating logs
+
+# Docker cleanup
+docker_prune = true
+docker_prune_volumes = false
+
+# Package cache cleanup
+clean_package_caches = true
+clean_trash = true
+clean_nix_garbage = true
+nix_keep_generations = 5
+
+# Disk trend prediction
+track_trends = true
+trend_warn_hours = 24
