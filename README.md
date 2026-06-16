@@ -1,6 +1,6 @@
 # Dracon System
 
-Disk, zram, process, service, guard — local machine diagnostics and watchdog for Dracon workspaces.
+Disk, process, guard, doctor — local machine diagnostics and watchdog for Dracon workspaces.
 
 This repository is a feature façade for `dracon-system`. It does **not**
 duplicate the implementation code. The canonical source of truth remains the
@@ -55,7 +55,7 @@ regenerate this façade with:
 cd /path/to/dracon-utilities
 ./scripts/scaffold_feature_repos.py --apply --repo dracon-system
 ./scripts/scaffold_feature_repos.py --push-all-remotes --repo dracon-system \
-    --ssh-target /path/to/dracon-system-disk-zram-process-service-guard
+    --ssh-target /path/to/dracon-system-disk-process-guard-doctor
 ```
 
 Do not paste implementation code into this façade repo. Keep it as a stable
