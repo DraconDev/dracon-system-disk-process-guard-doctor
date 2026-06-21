@@ -2,6 +2,20 @@
 
 **Proactive disk space monitoring and automatic cleanup.** Prevents "disk full" emergencies on development machines and servers.
 
+## Install
+
+```bash
+cargo install dracon-system
+```
+
+The binary will be at `~/.cargo/bin/dracon-system`. Or install from the long-name façade repo:
+
+```bash
+git clone https://github.com/DraconDev/dracon-system-disk-process-guard-doctor.git
+cd dracon-system-disk-process-guard-doctor
+cargo build --release
+```
+
 ## Features
 
 ### Disk Space Monitoring

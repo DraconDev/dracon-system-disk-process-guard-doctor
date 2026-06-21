@@ -1,13 +1,16 @@
 [package]
 name = "dracon-system"
-version = "0.2.2"
+version = "0.112.12"
 edition = "2021"
 license = "AGPL-3.0-only"
 description = "Disk, process, storage, and service diagnostics for local development machines"
 readme = "README.md"
 repository = "https://github.com/DraconDev/dracon-system-disk-process-guard-doctor"
 homepage = "https://github.com/DraconDev/dracon-system-disk-process-guard-doctor"
-documentation = "https://docs.rs/dracon-system/0.2.0"
+documentation = "https://docs.rs/dracon-system"
+keywords = ["disk", "process", "service", "diagnostics", "doctor"]
+categories = ["command-line-utilities"]
+exclude = [".github/", "docs/", "*.md", "!README.md", "Cargo.lock", "target/"]
 
 [dependencies]
 anyhow = "1.0"
