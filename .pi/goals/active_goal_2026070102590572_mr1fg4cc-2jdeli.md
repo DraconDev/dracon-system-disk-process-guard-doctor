@@ -5,12 +5,12 @@
   "status": "active",
   "autoContinue": true,
   "usage": {
-    "tokensUsed": 559591,
-    "activeSeconds": 28183
+    "tokensUsed": 567052,
+    "activeSeconds": 28217
   },
   "sisyphus": false,
   "createdAt": "2026-07-01T01:59:05.724Z",
-  "updatedAt": "2026-07-01T10:02:01.713Z",
+  "updatedAt": "2026-07-01T10:02:39.502Z",
   "activePath": ".pi/goals/active_goal_2026070102590572_mr1fg4cc-2jdeli.md"
 }
 
@@ -23,5 +23,5 @@ Extension "/home/dracon/.pi/agent/npm/node_modules/pi-goal-x/extensions/goal.ts"
 - Status: running
 - Auto-continue: on
 - Sisyphus mode: no
-- Time spent: 7h49m43s
-- Tokens used: 560K (559,591) tokens
+- Time spent: 7h50m17s
+- Tokens used: 567K (567,052) tokens
