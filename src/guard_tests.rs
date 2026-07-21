@@ -19,7 +19,7 @@ fn guard_runtime_state_default_is_empty() {
 #[test]
 fn guard_runtime_state_insert_and_retrieve_heavy_process() {
     let mut state = crate::GuardRuntimeState::default();
-    state.heavy_since.insert(1234, Instant::now());
+    state.heavy_since.insert(1234, (Instant::now(), 0));
     assert!(state.heavy_since.contains_key(&1234));
     state.heavy_since.remove(&1234);
     assert!(!state.heavy_since.contains_key(&1234));
