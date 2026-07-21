@@ -931,11 +931,13 @@ async fn proactive_cleanup_rust_targets(
     let mut protected_project_dirs: Vec<PathBuf> = Vec::new();
     for pid in &active_builds {
         if let Some(cwd) = get_process_cwd(*pid).await {
+            // CHANGED 2026-07-21 (v0.112.33, audit M33/F4.7): walk
+            // ALL ancestors collecting EVERY dir with a Cargo.toml
+            // (workspace-member case — see the proactive path above).
             let mut dir = cwd.clone();
             while let Some(parent) = dir.parent() {
                 if dir.join("Cargo.toml").exists() {
-                    protected_project_dirs.push(dir);
-                    break;
+                    protected_project_dirs.push(dir.clone());
                 }
                 dir = parent.to_path_buf();
             }
@@ -961,9 +963,14 @@ async fn proactive_cleanup_rust_targets(
         }
 
         let target_project = target.path.parent().unwrap_or(&target.path);
-        let has_active_build = protected_project_dirs
-            .iter()
-            .any(|proj| target_project == proj);
+        // CHANGED 2026-07-21 (v0.112.33, audit M33/F4.7):
+        // ancestor-aware protection (workspace-member case — see the
+        // proactive path above).
+        let has_active_build = protected_project_dirs.iter().any(|proj| {
+            proj == target_project
+                || proj.starts_with(target_project)
+                || target_project.starts_with(proj)
+        });
 
         if has_active_build {
             result.protected_paths.push(format!(
