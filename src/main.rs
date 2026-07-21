@@ -2439,12 +2439,16 @@ pub(crate) fn load_system_policy() -> Result<(Option<PathBuf>, SystemPolicy)> {
     let Some(path) = resolve_system_policy_path() else {
         return Ok((None, SystemPolicy::default()));
     };
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_e) => {
-            return Ok((Some(path), SystemPolicy::default()));
-        }
-    };
+    // FIXED 2026-07-21 (v0.112.33, audit F4.12): read errors are now
+    // PROPAGATED like parse errors — the pre-fix code conflated
+    // "policy exists but is unreadable" (permissions, I/O) with "no
+    // policy" and silently ran the guard on defaults, with the
+    // error DISCARDED (`Err(_e)`). An operator who chmods the
+    // policy file would have the guard silently run on defaults
+    // (thresholds, marker paths diverging from what they believe is
+    // active).
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| anyhow::anyhow!("failed to read {}: {}", path.display(), e))?;
     let parsed: SystemPolicy = toml::from_str(&content)
         .map_err(|e| anyhow::anyhow!("failed to parse {}: {}", path.display(), e))?;
     Ok((Some(path), parsed))
