@@ -790,12 +790,18 @@ async fn auto_cleanup_rust_targets(
     let mut protected_project_dirs: Vec<PathBuf> = Vec::new();
     for pid in &active_builds {
         if let Some(cwd) = get_process_cwd(*pid).await {
-            // Find the project root (where Cargo.toml is)
+            // CHANGED 2026-07-21 (v0.112.33, audit M33/F4.7): walk
+            // ALL ancestors collecting EVERY dir with a Cargo.toml,
+            // not just the FIRST. In a cargo workspace, running
+            // `cargo build` from a member crate (`ws/crates/foo`)
+            // stops at the member's Cargo.toml, but the shared
+            // target dir lives at the WORKSPACE root (`ws/target`) —
+            // the pre-fix exact-equality check then failed and
+            // `ws/target` was deleted mid-build.
             let mut dir = cwd.clone();
             while let Some(parent) = dir.parent() {
                 if dir.join("Cargo.toml").exists() {
-                    protected_project_dirs.push(dir);
-                    break;
+                    protected_project_dirs.push(dir.clone());
                 }
                 dir = parent.to_path_buf();
             }
@@ -815,14 +821,40 @@ async fn auto_cleanup_rust_targets(
 
         // Only skip if there's an ACTIVELY RUNNING cargo/rustc in this project
         let target_project = target.path.parent().unwrap_or(&target.path);
-        let has_active_build = protected_project_dirs
-            .iter()
-            .any(|proj| target_project == proj);
+        // CHANGED 2026-07-21 (v0.112.33, audit M33/F4.7):
+        // ancestor-aware protection — a target dir is protected when
+        // a protected project is EQUAL to its project dir, is an
+        // ANCESTOR of it (workspace root building a nested member),
+        // or is a DESCENDANT of it (member crate building into the
+        // workspace-root target). The pre-fix exact-equality check
+        // missed the workspace-member case entirely.
+        let has_active_build = protected_project_dirs.iter().any(|proj| {
+            proj == target_project
+                || proj.starts_with(target_project)
+                || target_project.starts_with(proj)
+        });
 
-        if has_active_build {
+        // ADDED 2026-07-21 (v0.112.33, audit M33/F4.7): cheap mtime
+        // backstop — a target dir modified in the last 60s is almost
+        // certainly being written by a build RIGHT NOW (builds touch
+        // it constantly), regardless of process detection (which
+        // misses `cargo build --manifest-path ...` run from an
+        // unrelated CWD).
+        let recently_active = std::fs::metadata(&target.path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age.as_secs() < 60);
+
+        if has_active_build || recently_active {
             result.protected_paths.push(format!(
-                "{} (active cargo/rustc process)",
-                target.path.display()
+                "{} ({})",
+                target.path.display(),
+                if has_active_build {
+                    "active cargo/rustc process"
+                } else {
+                    "modified <60s ago (active build)"
+                }
             ));
             continue;
         }
@@ -2419,10 +2451,22 @@ async fn is_git_tracked_dir(path: &Path) -> Result<bool> {
         ));
     }
 
+    // FIXED 2026-07-21 (v0.112.33, audit F4.10): the pre-fix code
+    // passed only the BASENAME to `ls-files` at the repo ROOT — a
+    // nested tracked dir (`repo/web/node_modules`) only matched if
+    // the root itself tracked a same-named entry, so nested tracked
+    // dirs were misdetected as untracked and `storage --cleanup
+    // --apply` deleted them without `--allow-tracked`. Compute the
+    // path RELATIVE to the resolved toplevel and query that.
+    let rel_path = path
+        .strip_prefix(&repo_root)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| name.clone());
+
     let ls_out = Command::new("git")
         .arg("-C")
         .arg(&repo_root)
-        .args(["ls-files", "--", &name])
+        .args(["ls-files", "--", &rel_path])
         .output()
         .await;
     let ls_out = match ls_out {
@@ -2430,7 +2474,7 @@ async fn is_git_tracked_dir(path: &Path) -> Result<bool> {
         _ => {
             return Err(anyhow::anyhow!(
                 "git ls-files failed for {} in {}",
-                name,
+                rel_path,
                 repo_root
             ))
         }
