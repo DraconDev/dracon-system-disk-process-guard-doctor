@@ -361,7 +361,13 @@ pub(crate) struct ProcSample {
 
 #[derive(Default, Debug)]
 pub(crate) struct GuardRuntimeState {
-    pub(crate) heavy_since: HashMap<i32, Instant>,
+    /// CHANGED 2026-07-21 (v0.112.33, audit M34/F4.8): value is now
+    /// `(first_seen, proc_starttime)` — the /proc/<pid>/stat
+    /// starttime is recorded at first sight and re-verified before
+    /// any renice, closing the PID-reuse window (a PID recycled
+    /// during the sustain window gets a DIFFERENT starttime and is
+    /// skipped).
+    pub(crate) heavy_since: HashMap<i32, (Instant, u64)>,
     pub(crate) notify_cooldowns: HashMap<String, Instant>,
     pub(crate) last_disk_state: String,
     pub(crate) disk_history: Vec<(Instant, u8)>,
@@ -490,7 +496,44 @@ async fn process_samples() -> Result<Vec<ProcSample>> {
             String::from_utf8_lossy(&out.stderr)
         ));
     }
-    Ok(parse_ps_output(&String::from_utf8_lossy(&out.stdout)))
+    let parsed = parse_ps_output(&String::from_utf8_lossy(&out.stdout));
+    // ADDED 2026-07-21 (v0.112.33, audit M34/F4.8): verify each
+    // sample's pid/comm pair out-of-band via /proc/<pid>/comm. A
+    // process can embed `\n` in its argv, and `ps -eo ... args`
+    // prints argv raw — `parse_ps_output` then treats the injected
+    // text as additional rows, letting a local process FABRICATE a
+    // heavy-process sample for an arbitrary victim PID (which the
+    // guard would then renice). The injected row's pid/comm pair
+    // doesn't match a real process, so this filter kills it. Rows
+    // for just-exited PIDs are dropped the same way.
+    Ok(parsed
+        .into_iter()
+        .filter(|p| {
+            proc_identity(p.pid)
+                .map(|(comm, _)| comm == p.command)
+                .unwrap_or(false)
+        })
+        .collect())
+}
+
+/// ADDED 2026-07-21 (v0.112.33, audit M34/F4.8): read a process's
+/// identity out-of-band: `/proc/<pid>/comm` (name, 15-char-truncated
+/// like ps's comm column) and `/proc/<pid>/stat` field 22
+/// (starttime, for the PID-reuse check). Returns None when the pid
+/// is gone.
+pub(crate) fn proc_identity(pid: i32) -> Option<(String, u64)> {
+    let comm = std::fs::read_to_string(format!("/proc/{}/comm", pid))
+        .ok()
+        .map(|s| s.trim().to_string())?;
+    let stat = std::fs::read_to_string(format!("/proc/{}/stat", pid)).ok()?;
+    // /proc/<pid>/stat field 22 is starttime. The comm field (2) can
+    // contain spaces/parens, so split after the LAST ')'.
+    let after_comm = stat.rsplit_once(')')?.1;
+    let starttime = after_comm
+        .split_whitespace()
+        .nth(19) // field 22 - field 3 (0-indexed after comm)
+        .and_then(|s| s.parse::<u64>().ok())?;
+    Some((comm, starttime))
 }
 
 pub(crate) fn disk_state(used: u8, guard: &GuardPolicy) -> &'static str {
@@ -1903,8 +1946,22 @@ async fn check_heavy_processes(
         }
         current_heavy.insert(p.pid);
         let now = Instant::now();
-        let since = state.heavy_since.entry(p.pid).or_insert(now);
-        let sustained = now.duration_since(*since).as_secs();
+        // ADDED 2026-07-21 (v0.112.33, audit M34/F4.8): record the
+        // /proc starttime at first sight and detect PID reuse — a
+        // recycled PID gets a different starttime, so its (forged
+        // or stale) sustain window resets instead of letting the
+        // guard renice an innocent process.
+        let live_start = proc_identity(p.pid).map(|(_, s)| s).unwrap_or(0);
+        let entry = state
+            .heavy_since
+            .entry(p.pid)
+            .or_insert((now, live_start));
+        if live_start != 0 && entry.1 != 0 && entry.1 != live_start {
+            *entry = (now, live_start);
+        }
+        let since_instant = entry.0;
+        let recorded_start = entry.1;
+        let sustained = now.duration_since(since_instant).as_secs();
         let is_sustained = sustained >= guard.process_sustain_secs;
 
         log_guard_event(
@@ -1928,6 +1985,34 @@ async fn check_heavy_processes(
         let mut nice_applied = 0;
 
         if guard.auto_renice {
+            // ADDED 2026-07-21 (v0.112.33, audit M34/F4.8): final
+            // identity check before touching the process — the comm
+            // must still match AND the starttime must equal the
+            // first-sighting value (PID-reuse window).
+            let identity_ok = proc_identity(p.pid)
+                .map(|(comm, start)| {
+                    comm == p.command
+                        && (start == 0 || recorded_start == 0 || start == recorded_start)
+                })
+                .unwrap_or(false);
+            if !identity_ok {
+                eprintln!(
+                    "⚠️ skipping renice for pid={} cmd={} (identity changed — PID reused?)",
+                    p.pid, p.command
+                );
+                alerts.push(GuardProcessAlert {
+                    pid: p.pid,
+                    ppid: p.ppid,
+                    command: p.command,
+                    args: p.args,
+                    cpu_percent: p.cpu_percent,
+                    rss_mb: p.rss_mb,
+                    sustained_secs: sustained,
+                    action,
+                    nice_value: nice_applied,
+                });
+                continue;
+            }
             let already_niced = state.reniced_pids.get(&p.pid).map(|(n, _)| *n);
             let nice_val = graduated_nice_value(p.cpu_percent, p.rss_mb, guard.renice_value);
             if already_niced != Some(nice_val) {
