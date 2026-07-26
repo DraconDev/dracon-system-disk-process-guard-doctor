@@ -3151,7 +3151,6 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
         guard.interval_secs
     );
     let mut interval = guard.interval_secs;
-    let mut elapsed = 0u64;
     let mut runtime = GuardRuntimeState::default();
     while !shutdown.load(Ordering::SeqCst) {
         if reload_sighup.load(Ordering::SeqCst) {
@@ -3227,6 +3226,12 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
                 format!("pass failed: {e}"),
             ));
         }
+        // FIXED 2026-07-26 (audit H-12): `elapsed` must reset EVERY pass.
+        // Previously declared once before the outer loop, so after the
+        // first interval the inner sleep loop never ran again — the daemon
+        // busy-looped guard passes back-to-back forever (continuous
+        // df/ps/du + walkdir scans).
+        let mut elapsed = 0u64;
         while !shutdown.load(Ordering::SeqCst) && elapsed < interval {
             sleep(Duration::from_secs(1)).await;
             elapsed += 1;

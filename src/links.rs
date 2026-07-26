@@ -116,7 +116,7 @@ fn backup_path_for(link: &Path) -> PathBuf {
 }
 
 /// Apply link policy: create or fix symlinks according to the configuration.
-fn apply_link_policy(policy: &SystemPolicy, force_replace: bool) -> Result<LinkStatusReport> {
+pub(crate) fn apply_link_policy(policy: &SystemPolicy, force_replace: bool) -> Result<LinkStatusReport> {
     for entry in &policy.links.entries {
         let link = expand_tilde(&entry.link);
         let target = expand_tilde(&entry.target);
@@ -132,8 +132,18 @@ fn apply_link_policy(policy: &SystemPolicy, force_replace: bool) -> Result<LinkS
         let meta = fs::symlink_metadata(&link).ok();
         if let Some(meta) = meta {
             if meta.file_type().is_symlink() {
-                let safe_link = check_safe_to_delete(&link, &[])?;
-                fs::remove_file(&safe_link)?;
+                // FIXED 2026-07-26 (audit H-13): the pre-fix code routed
+                // existing symlinks through check_safe_to_delete, which
+                // ALWAYS refuses symlinks — so `link apply` errored on
+                // every existing symlink, including the drifted ones it
+                // exists to fix (and even in-sync ones, since there was
+                // no short-circuit). Removing a symlink never touches its
+                // target, so remove it directly; skip entries already in
+                // sync.
+                if evaluate_link(entry).in_sync {
+                    continue;
+                }
+                fs::remove_file(&link)?;
             } else if force_replace {
                 let safe_link = check_safe_to_delete(&link, &[])?;
                 let backup = backup_path_for(&link);

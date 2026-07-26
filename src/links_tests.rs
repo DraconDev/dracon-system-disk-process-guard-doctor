@@ -72,3 +72,82 @@ fn link_status_report_debug() {
     assert!(debug.contains("total"));
     assert!(debug.contains("0"));
 }
+
+// ADDED 2026-07-26 (audit H-13): regression tests for the apply path,
+// which previously routed existing symlinks through check_safe_to_delete
+// (always refuses symlinks) and therefore could never succeed.
+
+#[cfg(unix)]
+fn link_test_dir(name: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!(
+        "dracon_link_test_{}_{}_{}",
+        name,
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ))
+}
+
+#[cfg(unix)]
+#[test]
+fn apply_link_policy_fixes_drifted_symlink_and_is_idempotent() {
+    let base = link_test_dir("drift");
+    std::fs::create_dir_all(&base).unwrap();
+    let target = base.join("target.txt");
+    let wrong = base.join("wrong.txt");
+    std::fs::write(&target, "x").unwrap();
+    std::fs::write(&wrong, "y").unwrap();
+    let link = base.join("the-link");
+    std::os::unix::fs::symlink(&wrong, &link).unwrap();
+
+    let policy = SystemPolicy {
+        links: LinkPolicy {
+            entries: vec![LinkEntry {
+                link: link.display().to_string(),
+                target: target.display().to_string(),
+            }],
+        },
+        ..SystemPolicy::default()
+    };
+
+    // Pre-fix: this errored with "refusing to delete symlink".
+    let report = crate::apply_link_policy(&policy, false).expect("apply must fix drifted symlink");
+    assert_eq!(report.healthy, 1, "link should be in sync after apply");
+    let actual = std::fs::read_link(&link).unwrap();
+    assert_eq!(actual, target);
+
+    // In-sync short-circuit: a second apply is a no-op success.
+    let report2 = crate::apply_link_policy(&policy, false).expect("re-apply must be a no-op");
+    assert_eq!(report2.healthy, 1);
+    assert_eq!(std::fs::read_link(&link).unwrap(), target);
+
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[cfg(unix)]
+#[test]
+fn apply_link_policy_creates_missing_link() {
+    let base = link_test_dir("create");
+    std::fs::create_dir_all(&base).unwrap();
+    let target = base.join("target.txt");
+    std::fs::write(&target, "x").unwrap();
+    let link = base.join("new-link");
+
+    let policy = SystemPolicy {
+        links: LinkPolicy {
+            entries: vec![LinkEntry {
+                link: link.display().to_string(),
+                target: target.display().to_string(),
+            }],
+        },
+        ..SystemPolicy::default()
+    };
+
+    let report = crate::apply_link_policy(&policy, false).expect("apply must create missing link");
+    assert_eq!(report.healthy, 1);
+    assert_eq!(std::fs::read_link(&link).unwrap(), target);
+
+    let _ = std::fs::remove_dir_all(&base);
+}
