@@ -14,6 +14,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### v0.112.34 — 2026-07-26 — full-audit remediation batch 4 (2 HIGH fixes)
+
+From `AUDIT_FULL_2026-07-26.md`:
+
+- **SYS-H1 — guard daemon busy-looped forever after the first
+  interval**: `elapsed` was declared once before the outer daemon
+  loop, so after the first full interval the inner 1-second sleep
+  loop never ran again — `run_guard_once` executed back-to-back
+  continuously (df/ps/du + walkdir scans every pass). `elapsed` is
+  now reset inside the outer loop, every pass.
+- **SYS-H2 — `link apply` could never fix a drifted symlink**:
+  existing symlinks were routed through `check_safe_to_delete`,
+  which ALWAYS refuses symlinks — so `apply` errored on every
+  existing symlink, including the drifted ones it exists to repair
+  (and even in-sync ones, since there was no short-circuit). Now
+  in-sync entries are skipped and drifted symlinks are unlinked
+  directly (unlinking a symlink never touches its target) before
+  re-creation. Regression tests added (`links_tests.rs`).
+
 ## [0.112.12] - 2026-06-21
 
 ### Changed
