@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### v0.112.34 — 2026-07-26 — full-audit remediation batch 4 (2 HIGH fixes)
+## [0.112.34] — 2026-07-26 — full-audit remediation batch 4 (2 HIGH fixes)
 
 From `AUDIT_FULL_2026-07-26.md`:
 
