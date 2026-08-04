@@ -2605,7 +2605,7 @@ async fn cmd_status(json: bool) -> Result<()> {
         // ---- Summary row (one-liner for quick scanning) ----
         let summary = format!(
             "{} · sync service {}",
-            &report.system_root,
+            report.system_root,
             if report.sync_service_active {
                 "active"
             } else {
