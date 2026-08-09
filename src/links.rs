@@ -102,17 +102,38 @@ pub(crate) fn build_link_report(policy: &SystemPolicy) -> LinkStatusReport {
     }
 }
 
-fn backup_path_for(link: &Path) -> PathBuf {
+pub(crate) fn backup_path_for(link: &Path) -> PathBuf {
+    // FIXED 2026-08-10 (audit LOW): the pre-fix timestamp was
+    // second-resolution (`as_secs()`), so two force_replace backups of
+    // the same basename in one directory within the same second (same
+    // link listed twice in one run, or a daemon pulse plus a manual
+    // `link apply` in the same second) produced the SAME backup path
+    // and `fs::rename` silently overwrote the earlier backup. Nanosecond
+    // resolution plus a collision-avoidance suffix makes every backup
+    // name unique.
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
+        .map(|d| d.as_nanos())
         .unwrap_or(0);
     let name = link
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "link".to_string());
-    let backup_name = format!("{name}.dracon-system-backup-{ts}");
-    link.with_file_name(backup_name)
+    let base = format!("{name}.dracon-system-backup-{ts}");
+    unique_backup_path(link.parent().unwrap_or_else(|| Path::new(".")), &base)
+}
+
+/// First free `<base>`, `<base>-1`, `<base>-2`, … path under `dir`.
+/// Uses `symlink_metadata` (not `exists`) so a leftover BROKEN symlink
+/// at a candidate name also counts as occupied and is skipped.
+pub(crate) fn unique_backup_path(dir: &Path, base: &str) -> PathBuf {
+    let mut candidate = dir.join(base);
+    let mut n = 1u32;
+    while fs::symlink_metadata(&candidate).is_ok() {
+        candidate = dir.join(format!("{base}-{n}"));
+        n += 1;
+    }
+    candidate
 }
 
 /// Apply link policy: create or fix symlinks according to the configuration.

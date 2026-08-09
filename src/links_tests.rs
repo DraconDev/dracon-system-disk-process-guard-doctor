@@ -150,4 +150,99 @@ fn apply_link_policy_creates_missing_link() {
     assert_eq!(std::fs::read_link(&link).unwrap(), target);
 
     let _ = std::fs::remove_dir_all(&base);
+
+#[cfg(unix)]
+#[test]
+fn unique_backup_path_bumps_suffix_until_free() {
+    let base = link_test_dir("backup-suffix");
+    std::fs::create_dir_all(&base).unwrap();
+    let name = "cfg.dracon-system-backup-123";
+    std::fs::write(base.join(name), "one").unwrap();
+    std::fs::write(base.join(format!("{name}-1")), "two").unwrap();
+    // A BROKEN symlink at -2 must also count as occupied and be skipped.
+    std::os::unix::fs::symlink("/nonexistent", base.join(format!("{name}-2"))).unwrap();
+
+    let p = crate::unique_backup_path(&base, name);
+    assert_eq!(
+        p,
+        base.join(format!("{name}-3")),
+        "occupied names (incl. broken symlinks) must be skipped"
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[test]
+fn backup_path_for_never_reuses_an_occupied_backup_name() {
+    let base = link_test_dir("backup-unique");
+    std::fs::create_dir_all(&base).unwrap();
+    let link = base.join("config");
+
+    // Occupied name — what a second-resolution implementation would
+    // produce for this second (or a leftover from an earlier run).
+    let occupied = base.join("config.dracon-system-backup-0");
+    std::fs::write(&occupied, "old backup").unwrap();
+
+    let backup = crate::backup_path_for(&link);
+    assert_ne!(backup, occupied, "must not reuse an occupied backup name");
+    let backup_name = backup.file_name().unwrap().to_string_lossy().to_string();
+    assert!(
+        backup_name.starts_with("config.dracon-system-backup-"),
+        "new backup must follow the naming pattern: {}",
+        backup_name
+    );
+    assert!(!backup.exists(), "returned name must be free");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[cfg(unix)]
+#[test]
+fn force_replace_preserves_two_same_second_backups() {
+    // The audit scenario (LOW, 2026-08-10): two force_replace backups of
+    // the same basename in one directory within one second must BOTH
+    // survive. A file is pre-placed at the exact name a second-resolution
+    // implementation would generate for this second — the new backup must
+    // not silently overwrite it.
+    let base = link_test_dir("backup-two");
+    std::fs::create_dir_all(&base).unwrap();
+    let target = base.join("target.txt");
+    std::fs::write(&target, "x").unwrap();
+    let link = base.join("config");
+    std::fs::write(&link, "old file").unwrap();
+
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let probe = base.join(format!("config.dracon-system-backup-{secs}"));
+    std::fs::write(&probe, "earlier backup").unwrap();
+
+    let policy = SystemPolicy {
+        links: LinkPolicy {
+            entries: vec![LinkEntry {
+                link: link.display().to_string(),
+                target: target.display().to_string(),
+            }],
+        },
+        ..SystemPolicy::default()
+    };
+    let report = crate::apply_link_policy(&policy, true).expect("force replace must succeed");
+    assert_eq!(report.healthy, 1);
+
+    assert_eq!(
+        std::fs::read_to_string(&probe).unwrap(),
+        "earlier backup",
+        "the earlier backup must not be overwritten"
+    );
+    let backups: Vec<_> = std::fs::read_dir(&base)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with("config.dracon-system-backup-")
+        })
+        .collect();
+    assert_eq!(backups.len(), 2, "probe + new backup must both survive");
+    let _ = std::fs::remove_dir_all(&base);
+}
 }
