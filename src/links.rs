@@ -307,7 +307,7 @@ pub(crate) struct BrokenSymlinkReport {
 }
 
 /// Recursively scan a directory for broken symlinks.
-fn scan_broken_symlinks(root: &Path, max_depth: usize) -> (usize, Vec<BrokenSymlink>) {
+pub(crate) fn scan_broken_symlinks(root: &Path, max_depth: usize) -> (usize, Vec<BrokenSymlink>) {
     let mut count = 0usize;
     let mut broken = Vec::new();
 
@@ -325,7 +325,14 @@ fn scan_broken_symlinks(root: &Path, max_depth: usize) -> (usize, Vec<BrokenSyml
 
         if meta.file_type().is_symlink() {
             count += 1;
-            // For symlinks, check if the target exists using stat (not following the link)
+            // CORRECTED 2026-08-10 (audit LOW): the pre-fix comments
+            // claimed `fs::metadata` "doesn't follow symlinks" — it
+            // DOES (that is `symlink_metadata`). The call itself is
+            // right: metadata resolves the WHOLE chain, so a chain
+            // (L → T → missing) fails and L is reported broken. Do
+            // NOT "fix" this to `symlink_metadata` — it would report
+            // the intermediate link as existing and chain-following
+            // detection would silently break.
             let target = match fs::read_link(&path) {
                 Ok(t) => t,
                 Err(_) => continue,
@@ -338,7 +345,7 @@ fn scan_broken_symlinks(root: &Path, max_depth: usize) -> (usize, Vec<BrokenSyml
                     .map(|p| p.join(&target))
                     .unwrap_or(target.clone())
             };
-            // Use stat to check existence (doesn't follow symlinks)
+            // fs::metadata follows the full chain; Err = broken.
             let target_exists = fs::metadata(&resolved).is_ok();
             if !target_exists {
                 broken.push(BrokenSymlink {

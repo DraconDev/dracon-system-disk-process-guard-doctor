@@ -247,3 +247,40 @@ fn force_replace_preserves_two_same_second_backups() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+#[cfg(unix)]
+#[test]
+fn scan_broken_symlinks_detects_broken_chains() {
+    // Chain detection pin (audit LOW, 2026-08-10): leaf -> mid ->
+    // (missing). `fs::metadata` FOLLOWS symlinks, so both leaf and mid
+    // are reported broken. The old comment claimed metadata "doesn't
+    // follow symlinks"; a future "fix" to `symlink_metadata` would
+    // report mid as existing and leaf as fine — this test fails then.
+    let base = link_test_dir("chain");
+    std::fs::create_dir_all(&base).unwrap();
+    std::os::unix::fs::symlink(base.join("missing"), base.join("mid")).unwrap();
+    std::os::unix::fs::symlink(base.join("mid"), base.join("leaf")).unwrap();
+
+    let (count, broken) = crate::scan_broken_symlinks(&base, 3);
+    assert_eq!(count, 2, "both symlinks are scanned");
+    assert_eq!(
+        broken.len(),
+        2,
+        "leaf and mid must BOTH be reported broken (chain followed): {:#?}",
+        broken
+    );
+    let names: Vec<String> = broken
+        .iter()
+        .map(|b| std::path::Path::new(&b.path).file_name().unwrap().to_string_lossy().to_string())
+        .collect();
+    assert!(names.contains(&"mid".to_string()) && names.contains(&"leaf".to_string()));
+
+    // A chain ending in a REAL file is not broken.
+    std::fs::write(base.join("real"), "x").unwrap();
+    std::os::unix::fs::symlink(base.join("real"), base.join("ok-mid")).unwrap();
+    std::os::unix::fs::symlink(base.join("ok-mid"), base.join("ok-leaf")).unwrap();
+    let (count, broken) = crate::scan_broken_symlinks(&base, 3);
+    assert_eq!(count, 4);
+    assert_eq!(broken.len(), 2, "healthy chain must not be reported broken");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
