@@ -16,6 +16,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`evaluate_link` accepts equivalent non-canonicalized targets**
+  (audit LOW, 2026-08-10): `normalize_path` fell back to RAW path
+  strings when `canonicalize` failed, so a link whose actual target is
+  written `~/a/../b` (with the intermediate `a` missing/broken) was
+  reported `link_target_mismatch` against a configured `~/b` even
+  though it points at the same file. The fallback is now
+  `lexical_normalize`, which collapses `.`/`..` components without
+  touching the filesystem (never dropping a leading `..` and never
+  climbing above the root). Tests: lexical collapse cases (incl.
+  `..`-above-root preserved and `a/b/../../c` → `c`) plus an
+  `evaluate_link` regression test with a real `..`-form symlink whose
+  intermediate is missing — now in-sync, while a genuinely different
+  target still reports mismatch.
+
 - **`scan_broken_symlinks` comment corrected** (audit LOW, 2026-08-10):
   the note claimed `fs::metadata` "doesn't follow symlinks" — it does
   (that is `symlink_metadata`). The call itself is correct: metadata
