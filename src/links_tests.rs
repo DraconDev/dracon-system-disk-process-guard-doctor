@@ -278,9 +278,72 @@ fn scan_broken_symlinks_detects_broken_chains() {
     std::fs::write(base.join("real"), "x").unwrap();
     std::os::unix::fs::symlink(base.join("real"), base.join("ok-mid")).unwrap();
     std::os::unix::fs::symlink(base.join("ok-mid"), base.join("ok-leaf")).unwrap();
-    let (count, broken) = crate::scan_broken_symlinks(&base, 3);
+     let (count, broken) = crate::scan_broken_symlinks(&base, 3);
     assert_eq!(count, 4);
     assert_eq!(broken.len(), 2, "healthy chain must not be reported broken");
     let _ = std::fs::remove_dir_all(&base);
 }
 
+#[test]
+fn lexical_normalize_collapses_dot_components() {
+    use std::path::Path;
+    use std::path::PathBuf;
+    assert_eq!(
+        crate::lexical_normalize(Path::new("/a/./b")),
+        PathBuf::from("/a/b")
+    );
+    assert_eq!(crate::lexical_normalize(Path::new("/a/../b")), PathBuf::from("/b"));
+    // `..` cannot climb above the root.
+    assert_eq!(
+        crate::lexical_normalize(Path::new("/../b")),
+        PathBuf::from("/../b")
+    );
+    assert_eq!(
+        crate::lexical_normalize(Path::new("a/b/../../c")),
+        PathBuf::from("c")
+    );
+    assert_eq!(crate::lexical_normalize(Path::new("a/../b")), PathBuf::from("b"));
+    assert_eq!(crate::lexical_normalize(Path::new("/")), PathBuf::from("/"));
+}
+
+#[cfg(unix)]
+#[test]
+fn evaluate_link_accepts_equivalent_noncanonical_target() {
+    // audit LOW, 2026-08-10: the actual link target is written as
+    // `<base>/a/../b` while the configured target is `<base>/b`, and
+    // the intermediate `a` does NOT exist — canonicalize fails, so the
+    // old code compared RAW strings and reported link_target_mismatch
+    // for an in-sync link. The lexical fallback must equate them.
+    let base = link_test_dir("equiv");
+    std::fs::create_dir_all(&base).unwrap();
+    std::fs::write(base.join("b"), "x").unwrap();
+    // NOTE: base/a is deliberately NOT created.
+    let link = base.join("l");
+    std::os::unix::fs::symlink(base.join("a/../b"), &link).unwrap();
+
+    // One side ..-form (actual), other canonical form.
+    let entry = LinkEntry {
+        link: link.display().to_string(),
+        target: base.join("b").display().to_string(),
+    };
+    let status = crate::evaluate_link(&entry);
+    assert!(
+        status.in_sync,
+        "equivalent ..-form target must be in sync, issue: {:?}",
+        status.issue
+    );
+    assert_eq!(status.issue, "ok");
+
+    // BOTH sides in ..-form (both fail canonicalize).
+    let entry2 = LinkEntry {
+        link: link.display().to_string(),
+        target: base.join("a/../b").display().to_string(),
+    };
+    let status2 = crate::evaluate_link(&entry2);
+    assert!(
+        status2.in_sync,
+        "both-..-form must be in sync, issue: {:?}",
+        status2.issue
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}

@@ -64,7 +64,34 @@ pub(crate) fn evaluate_link(entry: &LinkEntry) -> LinkEntryStatus {
 }
 
 fn normalize_path(path: &Path) -> PathBuf {
-    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+    path.canonicalize()
+        .unwrap_or_else(|_| lexical_normalize(path))
+}
+
+/// Lexical normalization for paths `canonicalize()` cannot resolve (a
+/// missing/broken intermediate component, e.g. a link target written
+/// as `~/a/../b` where `a` no longer exists): collapses `.` and `..`
+/// components without touching the filesystem. ADDED 2026-08-10 (audit
+/// LOW): the old fallback compared RAW strings, so equivalent forms
+/// like `~/a/../b` vs `~/b` reported `link_target_mismatch` for an
+/// in-sync link whenever canonicalize failed on either side.
+pub(crate) fn lexical_normalize(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out: Vec<Component> = Vec::new();
+    for comp in path.components() {
+        match comp {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                // Pop the last normal component; never pop the root
+                // (or a Windows prefix) — `..` cannot go above it.
+                if matches!(out.last(), Some(Component::Normal(_))) {
+                    out.pop();
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out.iter().collect()
 }
 
 /// Build a full link status report from policy.
