@@ -150,6 +150,7 @@ fn apply_link_policy_creates_missing_link() {
     assert_eq!(std::fs::read_link(&link).unwrap(), target);
 
     let _ = std::fs::remove_dir_all(&base);
+}
 
 #[cfg(unix)]
 #[test]
@@ -245,4 +246,4 @@ fn force_replace_preserves_two_same_second_backups() {
     assert_eq!(backups.len(), 2, "probe + new backup must both survive");
     let _ = std::fs::remove_dir_all(&base);
 }
-}
+

@@ -14,6 +14,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **force_replace backups can no longer collide within the same second**
+  (audit LOW, 2026-08-10): `backup_path_for` used a second-resolution
+  timestamp (`as_secs()`), so two backups of the same basename in one
+  directory within the same second (same link listed twice, or a daemon
+  pulse plus a manual `link apply`) produced the SAME backup path and
+  `fs::rename` silently overwrote the earlier backup. The timestamp is
+  now nanosecond-resolution and a new `unique_backup_path` helper bumps
+  a `-1`, `-2`, … suffix until the name is free (`symlink_metadata`,
+  so leftover broken symlinks count as occupied too). Tests:
+  suffix-bump helper (incl. broken-symlink occupancy), never-reuse of
+  an occupied backup name, and a force_replace behavioral test that
+  pre-places a file at the exact second-resolution name and asserts both
+  backups survive.
+
 ## [0.112.34] — 2026-07-26 — full-audit remediation batch 4 (2 HIGH fixes)
 
 From `AUDIT_FULL_2026-07-26.md`:
