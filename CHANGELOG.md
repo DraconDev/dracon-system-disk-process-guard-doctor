@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`scan_broken_symlinks` comment corrected** (audit LOW, 2026-08-10):
+  the note claimed `fs::metadata` "doesn't follow symlinks" — it does
+  (that is `symlink_metadata`). The call itself is correct: metadata
+  resolves the whole chain, so a chain (L → T → missing) fails and L
+  is reported broken. The corrected comment documents why a future
+  "simplification" to `symlink_metadata` must NOT happen (it would
+  break chain-following detection), and a new test pins the behavior:
+  a broken chain (leaf → mid → missing) reports BOTH as broken, while
+  a healthy chain (→ real file) is not.
+
 - **force_replace backups can no longer collide within the same second**
   (audit LOW, 2026-08-10): `backup_path_for` used a second-resolution
   timestamp (`as_secs()`), so two backups of the same basename in one
