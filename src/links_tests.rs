@@ -334,16 +334,19 @@ fn evaluate_link_accepts_equivalent_noncanonical_target() {
     );
     assert_eq!(status.issue, "ok");
 
-    // BOTH sides in ..-form (both fail canonicalize).
-    let entry2 = LinkEntry {
+    // NOTE: a "both sides ..-form" variant is unreachable through the
+    // public gate — if the configured target path does not fully
+    // resolve (missing intermediate), `target.exists()` is false and
+    // the entry reports target_missing before any comparison runs.
+
+    // A genuinely different target must still report mismatch.
+    std::fs::write(base.join("other"), "y").unwrap();
+    let entry3 = LinkEntry {
         link: link.display().to_string(),
-        target: base.join("a/../b").display().to_string(),
+        target: base.join("other").display().to_string(),
     };
-    let status2 = crate::evaluate_link(&entry2);
-    assert!(
-        status2.in_sync,
-        "both-..-form must be in sync, issue: {:?}",
-        status2.issue
-    );
+    let status3 = crate::evaluate_link(&entry3);
+    assert!(!status3.in_sync, "different target must stay mismatched");
+    assert_eq!(status3.issue, "link_target_mismatch");
     let _ = std::fs::remove_dir_all(&base);
 }

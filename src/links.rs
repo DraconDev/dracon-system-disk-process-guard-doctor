@@ -82,10 +82,13 @@ pub(crate) fn lexical_normalize(path: &Path) -> PathBuf {
         match comp {
             Component::CurDir => {}
             Component::ParentDir => {
-                // Pop the last normal component; never pop the root
-                // (or a Windows prefix) — `..` cannot go above it.
+                // Pop the last normal component; if there is none (root,
+                // prefix, or leading `..`), keep the `..` so paths like
+                // `../../x` survive unchanged — never drop it silently.
                 if matches!(out.last(), Some(Component::Normal(_))) {
                     out.pop();
+                } else {
+                    out.push(comp);
                 }
             }
             other => out.push(other),
