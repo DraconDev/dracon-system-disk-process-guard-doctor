@@ -949,6 +949,7 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
         .args([
             "--user",
             "--scope",
+            "--no-block",
             "-p",
             &format!("CPUQuota={percent}%"),
             "--",
@@ -959,18 +960,17 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
         .await
         .map_err(|e| format!("systemd-run: {e}"))?;
     let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
     if !out.status.success() {
-        return Err(format!(
-            "systemd-run: {} {}",
-            out.status,
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
+        return Err(format!("systemd-run: {} {}", out.status, stderr.trim()));
     }
+    // systemd-run prints "Running as unit: X" on STDERR.
     let scope = stdout
         .lines()
+        .chain(stderr.lines())
         .find_map(|l| l.strip_prefix("Running as unit: "))
         .map(|s| s.trim().to_string())
-        .ok_or_else(|| format!("could not parse scope name from: {stdout}"))?;
+        .ok_or_else(|| format!("could not parse scope name from: {stdout} {stderr}"))?;
 
     // Find the scope's cgroup and move the target pid into it.
     let cg = Command::new("systemctl")
