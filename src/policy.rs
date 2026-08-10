@@ -128,6 +128,19 @@ pub(crate) struct GuardPolicy {
     pub(crate) swap_used_warn_percent: u8,
     #[serde(default = "default_mem_psi_full_warn")]
     pub(crate) mem_psi_full_warn: f64,
+    // ADDED 2026-08-10 (v0.112.36): during memory pressure, deprioritize
+    // the top RSS offenders (graduated nice, reversible when pressure
+    // drops). Whitelist via process_exempt_names. Never a cap.
+    #[serde(default = "default_true")]
+    pub(crate) auto_renice_on_memory: bool,
+    // ADDED 2026-08-10 (v0.112.36): during CRITICAL memory pressure,
+    // raise oom_score_adj on the top offenders so the kernel's
+    // last-resort OOM kill picks them instead of an innocent process.
+    // Writing oom_score_adj never triggers a kill — it only steers
+    // the victim choice IF the kernel kills anyway. Restored on
+    // recovery. Whitelist via process_exempt_names.
+    #[serde(default = "default_true")]
+    pub(crate) bias_oom_on_pressure: bool,
     // ADDED 2026-08-10 (v0.112.35): sustained-heavy escalation —
     // a process still heavy after this many seconds is reported as
     // a "stuck candidate" (e.g. the 4 svelte-check at 285% CPU
@@ -221,6 +234,8 @@ impl Default for GuardPolicy {
             mem_available_warn_percent: default_mem_available_warn_percent(),
             swap_used_warn_percent: default_swap_used_warn_percent(),
             mem_psi_full_warn: default_mem_psi_full_warn(),
+            auto_renice_on_memory: default_true(),
+            bias_oom_on_pressure: default_true(),
             process_stuck_after_secs: default_process_stuck_after_secs(),
             disk_rapid_fill_gbph: default_disk_rapid_fill_gbph(),
             trash_credential_guard: default_true(),

@@ -416,6 +416,15 @@ pub(crate) struct GuardRuntimeState {
     /// ADDED 2026-08-10 (v0.112.35): last pswpin/pswpout counters
     /// for the swap-thrash fallback when PSI is unavailable.
     pub(crate) prev_swap_counters: Option<(Instant, u64, u64)>,
+    /// ADDED 2026-08-10 (v0.112.36): pids reniced by the memory-
+    /// pressure limiter (nice, orig_cmd), and their release timers.
+    pub(crate) memory_reniced_pids: HashMap<i32, (i32, String)>,
+    pub(crate) memory_cooled_since: HashMap<i32, Instant>,
+    /// ADDED 2026-08-10 (v0.112.36): pids whose oom_score_adj was
+    /// raised under critical pressure (orig_adj, orig_cmd), and
+    /// their restore timers.
+    pub(crate) oom_biased_pids: HashMap<i32, (i32, String)>,
+    pub(crate) oom_cooled_since: HashMap<i32, Instant>,
     pub(crate) active_build_pids: HashSet<i32>,
     pub(crate) reniced_pids: HashMap<i32, (i32, String)>,
     pub(crate) cooled_since: HashMap<i32, Instant>,
