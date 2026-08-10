@@ -347,9 +347,44 @@ pub(crate) struct GuardReport {
     disk_state: String,
     sync_frozen: bool,
     alerts: Vec<GuardProcessAlert>,
+    /// ADDED 2026-08-10 (v0.112.35): memory/swap pressure snapshot.
+    memory: Option<MemoryReport>,
+    /// ADDED 2026-08-10 (v0.112.35): zombie detail (pid/ppid/age/parent).
+    zombies: Vec<ZombieInfo>,
+    /// ADDED 2026-08-10 (v0.112.35): sustained disk fill rate (GiB/hour).
+    disk_fill_gbph: Option<f64>,
 }
 
-#[derive(Debug, Clone)]
+/// Memory/swap pressure snapshot for the guard report (JSON + table).
+#[derive(Debug, Serialize)]
+pub(crate) struct MemoryReport {
+    pub(crate) mem_available_percent: u8,
+    pub(crate) swap_used_percent: u8,
+    /// PSI `full avg10` — the share of the last 10s that the system
+    /// was completely stalled on memory (swap thrash detector).
+    pub(crate) psi_full_avg10: Option<f64>,
+    /// Swap-in rate (pages/s) — fallback thrash signal when PSI is off.
+    pub(crate) pswpin_rate: Option<f64>,
+    /// "ok" | "warn" | "critical"
+    pub(crate) pressure: String,
+    /// Top RSS offenders (for "what do I kill" notifications).
+    pub(crate) top_rss: Vec<ProcSample>,
+}
+
+/// A zombie (defunct) process with context useful for diagnosis.
+#[derive(Debug, Serialize)]
+pub(crate) struct ZombieInfo {
+    pub(crate) pid: i32,
+    pub(crate) ppid: i32,
+    pub(crate) comm: String,
+    pub(crate) parent_comm: String,
+    /// Seconds since first seen in Z state by this guard process.
+    pub(crate) age_secs: u64,
+    /// Whether the parent is still alive (dead parent => init reaps).
+    pub(crate) parent_alive: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct ProcSample {
     pub(crate) pid: i32,
     pub(crate) ppid: i32,
@@ -371,6 +406,16 @@ pub(crate) struct GuardRuntimeState {
     pub(crate) notify_cooldowns: HashMap<String, Instant>,
     pub(crate) last_disk_state: String,
     pub(crate) disk_history: Vec<(Instant, u8)>,
+    /// ADDED 2026-08-10 (v0.112.35): byte-precise df history for
+    /// rapid-fill rate detection (percent deltas are too coarse on
+    /// large disks: 1% of 907 GiB is ~9 GiB).
+    pub(crate) disk_bytes_history: Vec<(Instant, u64)>,
+    /// ADDED 2026-08-10 (v0.112.35): first-sight timestamps for
+    /// zombie processes so alerts can report zombie age.
+    pub(crate) zombies_since: HashMap<i32, Instant>,
+    /// ADDED 2026-08-10 (v0.112.35): last pswpin/pswpout counters
+    /// for the swap-thrash fallback when PSI is unavailable.
+    pub(crate) prev_swap_counters: Option<(Instant, u64, u64)>,
     pub(crate) active_build_pids: HashSet<i32>,
     pub(crate) reniced_pids: HashMap<i32, (i32, String)>,
     pub(crate) cooled_since: HashMap<i32, Instant>,
@@ -2502,6 +2547,13 @@ pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) {
     policy.process_cpu_percent = policy.process_cpu_percent.max(1.0);
     policy.process_rss_mb = policy.process_rss_mb.max(64);
     policy.process_sustain_secs = policy.process_sustain_secs.max(5);
+    policy.process_stuck_after_secs = policy
+        .process_stuck_after_secs
+        .max(policy.process_sustain_secs);
+    policy.mem_available_warn_percent = policy.mem_available_warn_percent.clamp(1, 100);
+    policy.swap_used_warn_percent = policy.swap_used_warn_percent.clamp(1, 100);
+    policy.mem_psi_full_warn = policy.mem_psi_full_warn.max(0.0);
+    policy.disk_rapid_fill_gbph = policy.disk_rapid_fill_gbph.max(0.5);
     policy.notify_cooldown_secs = policy.notify_cooldown_secs.max(5);
     policy.rust_target_max_age_days = policy.rust_target_max_age_days.max(1);
     policy.proactive_cleanup_interval_cycles = policy.proactive_cleanup_interval_cycles.max(1);

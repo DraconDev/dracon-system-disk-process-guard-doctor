@@ -116,6 +116,35 @@ pub(crate) struct GuardPolicy {
     pub(crate) monitor_zombies: bool,
     #[serde(default = "default_zombie_threshold")]
     pub(crate) zombie_threshold: u64,
+    // ADDED 2026-08-10 (v0.112.35): memory/swap pressure guard —
+    // the 2026-08-09/10 incidents (swap thrash, kswapd 86% CPU,
+    // everything crawling on 19 GiB used zram swap) had NO guard:
+    // the daemon only watched disk and per-process CPU/RSS.
+    #[serde(default = "default_true")]
+    pub(crate) monitor_memory: bool,
+    #[serde(default = "default_mem_available_warn_percent")]
+    pub(crate) mem_available_warn_percent: u8,
+    #[serde(default = "default_swap_used_warn_percent")]
+    pub(crate) swap_used_warn_percent: u8,
+    #[serde(default = "default_mem_psi_full_warn")]
+    pub(crate) mem_psi_full_warn: f64,
+    // ADDED 2026-08-10 (v0.112.35): sustained-heavy escalation —
+    // a process still heavy after this many seconds is reported as
+    // a "stuck candidate" (e.g. the 4 svelte-check at 285% CPU
+    // holding 6 GiB that never finished during the incident).
+    #[serde(default = "default_process_stuck_after_secs")]
+    pub(crate) process_stuck_after_secs: u64,
+    // ADDED 2026-08-10 (v0.112.35): rapid disk-fill alert in
+    // GiB/hour, computed from df byte deltas (percent deltas are
+    // too coarse on large disks).
+    #[serde(default = "default_disk_rapid_fill_gbph")]
+    pub(crate) disk_rapid_fill_gbph: f64,
+    // ADDED 2026-08-10 (v0.112.35): refuse to empty the trash
+    // when top-level entries carry credential signals (the
+    // 2026-08-10 Trash scan found 665 credential-pattern matches;
+    // see docs/design/disk-full-credentials-2026-08-10.md).
+    #[serde(default = "default_true")]
+    pub(crate) trash_credential_guard: bool,
     #[serde(default = "default_true")]
     pub(crate) monitor_logs: bool,
     #[serde(default = "default_log_size_mb")]
@@ -188,6 +217,13 @@ impl Default for GuardPolicy {
             inode_warn_percent: default_inode_warn_percent(),
             monitor_zombies: default_true(),
             zombie_threshold: default_zombie_threshold(),
+            monitor_memory: default_true(),
+            mem_available_warn_percent: default_mem_available_warn_percent(),
+            swap_used_warn_percent: default_swap_used_warn_percent(),
+            mem_psi_full_warn: default_mem_psi_full_warn(),
+            process_stuck_after_secs: default_process_stuck_after_secs(),
+            disk_rapid_fill_gbph: default_disk_rapid_fill_gbph(),
+            trash_credential_guard: default_true(),
             monitor_logs: default_true(),
             log_size_mb: default_log_size_mb(),
             log_dirs: default_log_dirs(),
@@ -361,6 +397,26 @@ fn default_inode_warn_percent() -> u8 {
 
 fn default_zombie_threshold() -> u64 {
     20
+}
+
+fn default_mem_available_warn_percent() -> u8 {
+    10
+}
+
+fn default_swap_used_warn_percent() -> u8 {
+    50
+}
+
+fn default_mem_psi_full_warn() -> f64 {
+    10.0
+}
+
+fn default_process_stuck_after_secs() -> u64 {
+    600
+}
+
+fn default_disk_rapid_fill_gbph() -> f64 {
+    20.0
 }
 
 fn default_log_size_mb() -> u64 {
