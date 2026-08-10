@@ -470,3 +470,64 @@ fn disk_fill_rate_gbph_returns_none_when_disk_shrinks() {
     ];
     assert!(crate::disk_fill_rate_gbph(&history).is_none());
 }
+
+// ── OOM-bias steering (v0.112.36) ────────────────────────────────────────
+
+#[test]
+fn oom_bias_target_raises_neutral_values_to_250() {
+    assert_eq!(crate::oom_bias_target(0), Some(250));
+    assert_eq!(crate::oom_bias_target(100), Some(250));
+    assert_eq!(crate::oom_bias_target(-100), Some(250));
+    assert_eq!(crate::oom_bias_target(-300), Some(250));
+}
+
+#[test]
+fn oom_bias_target_never_raises_already_biased_or_protected() {
+    // Already at/above the target: leave alone.
+    assert_eq!(crate::oom_bias_target(250), None);
+    assert_eq!(crate::oom_bias_target(500), None);
+    assert_eq!(crate::oom_bias_target(1000), None);
+    // Deliberately protected (unkillable or strongly shielded): never touch.
+    assert_eq!(crate::oom_bias_target(-500), None);
+    assert_eq!(crate::oom_bias_target(-800), None);
+    assert_eq!(crate::oom_bias_target(-1000), None);
+}
+
+#[test]
+fn oom_bias_target_boundaries() {
+    assert_eq!(crate::oom_bias_target(249), Some(250));
+    assert_eq!(crate::oom_bias_target(250), None);
+    assert_eq!(crate::oom_bias_target(-499), Some(250));
+    assert_eq!(crate::oom_bias_target(-500), None);
+}
+
+// ── Memory-limiter policy defaults (v0.112.36) ──────────────────────────
+
+#[test]
+fn memory_limiter_policy_defaults_are_safe() {
+    let p = crate::GuardPolicy::default();
+    assert!(p.auto_renice_on_memory, "renice-on-memory default on");
+    assert!(p.bias_oom_on_pressure, "oom-bias default on");
+    assert_eq!(
+        p.cap_offenders_cpu_percent, 0,
+        "CPUQuota offender caps default OFF (opt-in)"
+    );
+}
+
+#[test]
+fn policy_load_roundtrip_memory_limiter_knobs() {
+    // TOML parse → defaults preserved when keys absent.
+    let policy: crate::GuardPolicy =
+        toml::from_str("").expect("empty policy parses with defaults");
+    assert!(policy.auto_renice_on_memory);
+    assert!(policy.bias_oom_on_pressure);
+    assert_eq!(policy.cap_offenders_cpu_percent, 0);
+    // Explicit values round-trip.
+    let policy: crate::GuardPolicy = toml::from_str(
+        "auto_renice_on_memory = false\nbias_oom_on_pressure = false\ncap_offenders_cpu_percent = 50\n",
+    )
+    .expect("explicit knobs parse");
+    assert!(!policy.auto_renice_on_memory);
+    assert!(!policy.bias_oom_on_pressure);
+    assert_eq!(policy.cap_offenders_cpu_percent, 50);
+}
