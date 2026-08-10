@@ -14,6 +14,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (2026-08-10, v0.112.35)
+
+- **Memory/swap pressure guard** (`monitor_memory`): reads
+  `/proc/meminfo` + PSI (`/proc/pressure/memory`) every guard pass;
+  warns when free memory is low, swap usage is high, or the system is
+  swap-thrashing (PSI `full avg10`). Notifications include the top-5
+  RSS offenders so the operator knows what to kill. Never kills
+  anything itself. Knobs: `mem_available_warn_percent` (default 10),
+  `swap_used_warn_percent` (default 50), `mem_psi_full_warn`
+  (default 10.0). Falls back to a pswpin-rate check when PSI is
+  unavailable. This is the failure mode from the 2026-08-09/10
+  incidents (RAM exhausted, kswapd thrashing at 86% CPU, 19 GiB swap
+  used) that previously had NO guard at all.
+- **Sustained-heavy "stuck candidate" escalation**
+  (`process_stuck_after_secs`, default 600): a process still heavy
+  after the sustain window plus this many seconds is reported as
+  "POSSIBLY STUCK" (e.g. the 4 svelte-check processes at ~285% CPU
+  holding 6 GiB that never finished). Notification only; no auto-kill.
+- **Zombie process detail** (`zombie_details`): zombies are now
+  enumerated per-pid with comm, ppid, parent command, whether the
+  parent is still alive, and time since first seen in Z state; the
+  report and notification include the oldest offenders instead of a
+  bare count. Zombies are still not killable — this is diagnostic.
+- **Rapid disk-fill alert** (`disk_rapid_fill_gbph`, default 20):
+  byte-precise df history (percent deltas are too coarse on large
+  disks) alerts "disk filling at X GiB/h" when the sustained fill
+  rate crosses the threshold, long before the percent thresholds.
+- **Trash credential guard** (`trash_credential_guard`, default
+  true): before emptying the trash, a recursive scan checks for
+  credential-signal filenames (chrome/credential/password/secret/
+  token/*.env/*.pem/*.key/*.age/etc., per
+  docs/design/disk-full-credentials-2026-08-10.md). Any match aborts
+  the deletion — the 2026-08-10 scan found 665 credential-pattern
+  matches in a 56 GiB trash.
+- `guard once` report now includes Memory Pressure, Zombies, and
+  Disk Fill Rate rows (and the same fields in `--json`).
+
+
 ### Fixed
 
 - **`evaluate_link` accepts equivalent non-canonicalized targets**
