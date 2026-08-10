@@ -964,12 +964,13 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
     if !out.status.success() {
         return Err(format!("systemd-run: {} {}", out.status, stderr.trim()));
     }
-    // systemd-run prints "Running as unit: X" on STDERR.
+    // systemd-run prints "Running as unit: X; invocation ID: ..."
+    // on STDERR — take the unit name up to the ';'.
     let scope = stdout
         .lines()
         .chain(stderr.lines())
         .find_map(|l| l.strip_prefix("Running as unit: "))
-        .map(|s| s.trim().to_string())
+        .map(|s| s.trim().split(';').next().unwrap_or("").trim().to_string())
         .ok_or_else(|| format!("could not parse scope name from: {stdout} {stderr}"))?;
 
     // Find the scope's cgroup and move the target pid into it.
