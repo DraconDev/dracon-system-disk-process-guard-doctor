@@ -13,7 +13,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > is the canonical record.
 
 ## [Unreleased]
-## [0.112.35] - 2026-08-10
+
+## [0.112.36] - 2026-08-10
+
+### Added
+
+- **Memory-pressure limiter** (`auto_renice_on_memory`, default `true`): when
+  memory pressure is warn/critical, the top RSS offenders are **reniced**
+  (graduated: 4 GiB → nice 5, 8 GiB → nice 10) so interactive apps win CPU
+  back during a choke. Reversible: restored to nice 0 after `release_after_secs`
+  of recovered pressure. Fixes the "system unresponsive" symptom without
+  killing anything. Whitelist via `process_exempt_names`.
+- **OOM-killer bias** (`bias_oom_on_pressure`, default `true`): during CRITICAL
+  pressure, top offenders get `oom_score_adj` raised to 250 so the kernel's
+  last-resort OOM kill picks THEM instead of an innocent process. Writing
+  `oom_score_adj` never triggers a kill — it only steers the victim choice IF
+  the kernel kills anyway. Restored on recovery. Deliberately protected
+  processes (adj ≤ -500, e.g. -1000 unkillable) are never touched.
+- **Optional CPUQuota offender caps** (`cap_offenders_cpu_percent`, default
+  `0` = off): during CRITICAL pressure, top offenders are moved into a
+  transient user systemd unit with `CPUQuota=N%` — hard-throttles a stuck
+  busy-loop that nice 19 still lets burn a core. CPU throttling never kills;
+  the process is moved back and the unit stopped on recovery. Off by default
+  because it needs a user systemd manager and moves processes between
+  cgroups; verified live (100% → ~51% at `CPUQuota=50%`).
+
+### Security
+
+- Memory limiter and OOM bias both skip kernel threads and
+  `process_exempt_names` entries; OOM bias additionally skips processes with
+  `oom_score_adj <= -500` (deliberate unkillable/protected).
+
+### Fixed
+
+- None (behavioral additions only).
+
+## [0.112.35] - 2026-08-10## [0.112.35] - 2026-08-10
 
 ### Added (2026-08-10, v0.112.35)
 
