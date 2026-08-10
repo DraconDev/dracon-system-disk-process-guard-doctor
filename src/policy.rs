@@ -141,6 +141,15 @@ pub(crate) struct GuardPolicy {
     // recovery. Whitelist via process_exempt_names.
     #[serde(default = "default_true")]
     pub(crate) bias_oom_on_pressure: bool,
+    // ADDED 2026-08-10 (v0.112.36): during CRITICAL pressure, hard-
+    // throttle top offenders to N% CPU via a transient systemd scope
+    // (CPUQuota). Unlike memory caps, CPU throttling never kills and
+    // never frees-then-crashes: it only limits scheduling. Tames a
+    // stuck busy-loop that nice 19 still lets burn a core. 0 = off.
+    // Requires a user systemd manager (the guard already runs under
+    // one). Whitelist via process_exempt_names.
+    #[serde(default)]
+    pub(crate) cap_offenders_cpu_percent: u32,
     // ADDED 2026-08-10 (v0.112.35): sustained-heavy escalation —
     // a process still heavy after this many seconds is reported as
     // a "stuck candidate" (e.g. the 4 svelte-check at 285% CPU
@@ -236,6 +245,7 @@ impl Default for GuardPolicy {
             mem_psi_full_warn: default_mem_psi_full_warn(),
             auto_renice_on_memory: default_true(),
             bias_oom_on_pressure: default_true(),
+            cap_offenders_cpu_percent: 0,
             process_stuck_after_secs: default_process_stuck_after_secs(),
             disk_rapid_fill_gbph: default_disk_rapid_fill_gbph(),
             trash_credential_guard: default_true(),

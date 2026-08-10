@@ -428,6 +428,10 @@ pub(crate) struct GuardRuntimeState {
     /// their restore timers.
     pub(crate) oom_biased_pids: HashMap<i32, (i32, String)>,
     pub(crate) oom_cooled_since: HashMap<i32, Instant>,
+    /// ADDED 2026-08-10 (v0.112.36): pids inside a transient
+    /// CPUQuota scope (scope_name, label), and their release timers.
+    pub(crate) capped_pids: HashMap<i32, (String, String)>,
+    pub(crate) cap_cooled_since: HashMap<i32, Instant>,
     pub(crate) active_build_pids: HashSet<i32>,
     pub(crate) reniced_pids: HashMap<i32, (i32, String)>,
     pub(crate) cooled_since: HashMap<i32, Instant>,
@@ -2307,6 +2311,8 @@ async fn check_memory_pressure(
         .capped_pids
         .retain(|pid, _| Path::new(&format!("/proc/{pid}")).exists());
 
+    if pressure != "ok" {
+        let key = "memory-pressure".to_string();
         if should_notify(state, &key, guard.notify_cooldown_secs.max(600)) {
             let offenders: String = top_rss
                 .iter()
@@ -2361,6 +2367,7 @@ async fn check_memory_pressure(
         pswpin_rate,
         pressure: pressure.to_string(),
         top_rss,
+        limited,
     })
 }
 
