@@ -905,6 +905,126 @@ async fn renice_process(pid: i32, value: i32) -> Result<()> {
     renice_process_with_bin(Path::new("renice"), pid, value).await
 }
 
+/// OOM-killer steering target (v0.112.36). Higher oom_score_adj =
+/// more likely to be picked when the kernel's last-resort OOM killer
+/// fires. Writing it NEVER triggers a kill — it only steers the
+/// victim choice IF the kernel kills anyway. Returns the target to
+/// write, or None when the process should be left alone (already at/
+/// above the bias, or deliberately protected with adj <= -500).
+pub(crate) const OOM_BIAS_TARGET: i32 = 250;
+pub(crate) const OOM_PROTECTED_ADJ: i32 = -500;
+
+pub(crate) fn oom_bias_target(current: i32) -> Option<i32> {
+    if current >= OOM_BIAS_TARGET || current <= OOM_PROTECTED_ADJ {
+        None
+    } else {
+        Some(OOM_BIAS_TARGET)
+    }
+}
+
+/// Cap a process's CPU to `percent`% via a transient user systemd
+/// scope (CPUQuota). Returns (scope_name, orig_cgroup_rel_path). The
+/// process is MOVED into the scope's cgroup — moving between cgroups
+/// never kills. On release, `uncap_cpu_process` moves it back and
+/// stops the now-empty scope. Fails cleanly (Err) when systemd-run
+/// is unavailable or the move is denied. The placeholder sleep lives
+/// 3600s, bounding a guard crash: the pid stays capped at most an
+/// hour, then the scope dies with no members.
+async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), String> {
+    if percent == 0 || percent > 100 {
+        return Err(format!("invalid CPUQuota percent {percent}"));
+    }
+    // Current cgroup BEFORE moving (the path we restore to later).
+    let orig = std::fs::read_to_string(format!("/proc/{pid}/cgroup"))
+        .map_err(|e| format!("read /proc/{pid}/cgroup: {e}"))?;
+    let orig_rel = orig
+        .lines()
+        .next()
+        .and_then(|l| l.split_once("::").map(|(_, p)| p.trim_start_matches('/')))
+        .filter(|p| !p.is_empty())
+        .ok_or_else(|| format!("unparseable cgroup line: {}", orig.trim()))?
+        .to_string();
+
+    let out = Command::new("systemd-run")
+        .args([
+            "--user",
+            "--scope",
+            "-p",
+            &format!("CPUQuota={percent}%"),
+            "--",
+            "sleep",
+            "3600",
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("systemd-run: {e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    if !out.status.success() {
+        return Err(format!(
+            "systemd-run: {} {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    let scope = stdout
+        .lines()
+        .find_map(|l| l.strip_prefix("Running as unit: "))
+        .map(|s| s.trim().to_string())
+        .ok_or_else(|| format!("could not parse scope name from: {stdout}"))?;
+
+    // Find the scope's cgroup and move the target pid into it.
+    let cg = Command::new("systemctl")
+        .args(["--user", "show", &scope, "-p", "ControlGroup", "--value"])
+        .output()
+        .await
+        .map_err(|e| format!("systemctl show: {e}"))?;
+    let cg = String::from_utf8_lossy(&cg.stdout).trim().to_string();
+    if cg.is_empty() {
+        let _ = Command::new("systemctl")
+            .args(["--user", "stop", &scope])
+            .status()
+            .await;
+        return Err(format!("scope {scope} has no control group"));
+    }
+    let procs_file = format!("/sys/fs/cgroup/{cg}/cgroup.procs");
+    if let Err(e) = std::fs::write(&procs_file, format!("{pid}\n")) {
+        let _ = Command::new("systemctl")
+            .args(["--user", "stop", &scope])
+            .status()
+            .await;
+        return Err(format!("move pid {pid} into {procs_file}: {e}"));
+    }
+    Ok((scope, orig_rel))
+}
+
+/// Lift a CPUQuota cap: move the pid back to its original cgroup and
+/// stop the now-empty transient scope. Moving back never kills; the
+/// scope stop only kills the placeholder sleep.
+async fn uncap_cpu_process(pid: i32, scope: &str, orig_cgroup: &str) -> Result<(), String> {
+    // Only move back if the pid is still alive AND still inside the scope.
+    if let Ok(cg_line) = std::fs::read_to_string(format!("/proc/{pid}/cgroup")) {
+        let rel = cg_line
+            .lines()
+            .next()
+            .and_then(|l| l.split_once("::").map(|(_, p)| p.trim_start_matches('/')))
+            .unwrap_or_default();
+        if rel.contains(scope) {
+            let procs_file = format!("/sys/fs/cgroup/{orig_cgroup}/cgroup.procs");
+            std::fs::write(&procs_file, format!("{pid}\n"))
+                .map_err(|e| format!("move pid {pid} back to {procs_file}: {e}"))?;
+        }
+    }
+    let _ = Command::new("systemctl")
+        .args(["--user", "stop", scope])
+        .status()
+        .await;
+    let _ = Command::new("systemctl")
+        .args(["--user", "reset-failed", scope])
+        .status()
+        .await;
+    Ok(())
+}
+
 /// Detect active cargo/rustc processes and return their PIDs and working directories
 async fn detect_active_rust_builds() -> Result<HashSet<i32>> {
     let out = Command::new("ps")
@@ -2198,12 +2318,11 @@ async fn check_memory_pressure(
             if !identity_ok {
                 continue;
             }
-            match cap_cpu_process(p.pid, &p.command, guard.cap_offenders_cpu_percent).await {
-                Ok(scope) => {
-                    state.capped_pids.insert(
-                        p.pid,
-                        (scope.clone(), format!("cap {}={}%", p.command, guard.cap_offenders_cpu_percent)),
-                    );
+            match cap_cpu_process(p.pid, guard.cap_offenders_cpu_percent).await {
+                Ok((scope, orig_cgroup)) => {
+                    state
+                        .capped_pids
+                        .insert(p.pid, (scope.clone(), orig_cgroup));
                     eprintln!(
                         "🛡️ cpu-cap pid={} cmd={} -> CPUQuota={}% (scope {})",
                         p.pid, p.command, guard.cap_offenders_cpu_percent, scope
@@ -2287,7 +2406,11 @@ async fn check_memory_pressure(
             }
         }
         for pid in to_uncap {
-            let _ = uncap_cpu_process(pid).await;
+            if let Some((scope, orig_cgroup)) = state.capped_pids.get(&pid).cloned() {
+                if uncap_cpu_process(pid, &scope, &orig_cgroup).await.is_err() {
+                    continue;
+                }
+            }
             state.capped_pids.remove(&pid);
             state.cap_cooled_since.remove(&pid);
         }
@@ -3781,13 +3904,18 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
             Cell::new(icon),
             Cell::new("Memory Pressure"),
             Cell::new(format!(
-                "{}: avail {}% swap {}%{}",
+                "{}: avail {}% swap {}%{} limited: {}",
                 m.pressure,
                 m.mem_available_percent,
                 m.swap_used_percent,
                 m.psi_full_avg10
                     .map(|v| format!(" PSI-full {:.1}%", v))
-                    .unwrap_or_default()
+                    .unwrap_or_default(),
+                if m.limited.is_empty() {
+                    "-".to_string()
+                } else {
+                    m.limited.join(", ")
+                }
             )),
         ]);
     }
