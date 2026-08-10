@@ -2287,7 +2287,7 @@ async fn run_auto_cleanup(
     }
 
     if guard.clean_trash {
-        match empty_trash(apply, &guard.protected_paths).await {
+        match empty_trash(apply, &guard.protected_paths, guard.trash_credential_guard).await {
             Ok((bytes, cleaned)) => {
                 total_reclaimed += bytes;
                 all_cleaned.extend(cleaned.iter().map(|s| format!("Trash: {}", s)));
@@ -2677,9 +2677,9 @@ async fn check_inode_usage(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
     }
 }
 
-async fn check_zombie_processes(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
+async fn check_zombie_processes(guard: &GuardPolicy, state: &mut GuardRuntimeState) -> Vec<ZombieInfo> {
     if !guard.monitor_zombies {
-        return;
+        return Vec::new();
     }
     let zombies = zombie_details(state);
     if zombies.len() as u64 > guard.zombie_threshold {
@@ -2727,6 +2727,7 @@ async fn check_zombie_processes(guard: &GuardPolicy, state: &mut GuardRuntimeSta
             ),
         ));
     }
+    zombies
 }
 
 async fn check_large_logs(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
@@ -2885,13 +2886,15 @@ pub(crate) async fn run_guard_once(
     guard: &GuardPolicy,
     state: &mut GuardRuntimeState,
 ) -> Result<GuardReport> {
-    let used = disk_use_percent_for(&guard.disk_mount_path).await?;
+    let details = disk_details_for(&guard.disk_mount_path).await?;
+    let used = details.use_percent;
     let dstate = disk_state(used, guard).to_string();
     let marker = sync_freeze_marker_path(guard);
     let mut sync_frozen = marker.exists();
 
     check_disk_trends(guard, state, used).await;
     check_disk_early_warning(guard, state, used).await;
+    let fill_gbph = check_rapid_disk_fill(guard, state, details.used_bytes, used).await;
     manage_sync_freeze(guard, used, &dstate, &mut sync_frozen);
 
     if dstate == "action" || dstate == "critical" {
@@ -2915,8 +2918,9 @@ pub(crate) async fn run_guard_once(
     cleanup_stale_cooldowns(state, guard.notify_cooldown_secs);
 
     check_inode_usage(guard, state).await;
-    check_zombie_processes(guard, state).await;
+    let zombies = check_zombie_processes(guard, state).await;
     check_large_logs(guard, state).await;
+    let memory = check_memory_pressure(guard, state).await;
 
     Ok(GuardReport {
         enabled: guard.enabled,
@@ -2924,6 +2928,9 @@ pub(crate) async fn run_guard_once(
         disk_state: dstate,
         sync_frozen,
         alerts,
+        memory,
+        zombies,
+        disk_fill_gbph: fill_gbph,
     })
 }
 
@@ -3933,7 +3940,9 @@ async fn cmd_guard_clean(
     }
 
     if do_trash {
-        match empty_trash(apply, &guard_clone.protected_paths).await {
+        match empty_trash(apply, &guard_clone.protected_paths, guard_clone.trash_credential_guard)
+            .await
+        {
             Ok((bytes, cleaned)) => {
                 total_reclaimed += bytes;
                 for c in cleaned {
