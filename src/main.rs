@@ -2381,7 +2381,7 @@ async fn check_memory_pressure(
         for pid in to_unbias {
             if let Some((orig, ref orig_cmd)) = state.oom_biased_pids.get(&pid).cloned() {
                 let identity_ok = proc_identity(pid)
-                    .map(|(comm, _)| comm == orig_cmd)
+                    .map(|(comm, _)| comm == *orig_cmd)
                     .unwrap_or(false);                if !identity_ok {
                     state.oom_biased_pids.remove(&pid);
                     state.oom_cooled_since.remove(&pid);
