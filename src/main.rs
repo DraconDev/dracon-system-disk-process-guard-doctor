@@ -2379,18 +2379,17 @@ async fn check_memory_pressure(
             }
         }
         for pid in to_unbias {
-            if let Some((orig, ref orig_cmd)) = state.oom_biased_pids.get(&pid) {
+            if let Some((orig, ref orig_cmd)) = state.oom_biased_pids.get(&pid).cloned() {
                 let identity_ok = proc_identity(pid)
-                    .map(|(comm, _)| comm == *orig_cmd)
-                    .unwrap_or(false);
-                if !identity_ok {
+                    .map(|(comm, _)| comm == orig_cmd)
+                    .unwrap_or(false);                if !identity_ok {
                     state.oom_biased_pids.remove(&pid);
                     state.oom_cooled_since.remove(&pid);
                     continue;
                 }
+                let _ = fs::write(format!("/proc/{pid}/oom_score_adj"), format!("{orig}\n"));
+                eprintln!("🛡️ oom-restore pid={} adj -> {} (pressure released)", pid, orig);
             }
-            let _ = fs::write(format!("/proc/{pid}/oom_score_adj"), format!("{orig}\n"));
-            eprintln!("🛡️ oom-restore pid={} adj -> {} (pressure released)", pid, orig);
             state.oom_biased_pids.remove(&pid);
             state.oom_cooled_since.remove(&pid);
         }
