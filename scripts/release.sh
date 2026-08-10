@@ -56,7 +56,11 @@ cd "$REPO_ROOT"
 # ----- defaults ------------------------------------------------------------
 DRY_RUN=0
 ABORT=0
-REMOTE=github
+# CHANGED 2026-08-10 (v0.112.35): default was `github`, but this repo
+# names its GitHub remote `origin` — release.sh 0.112.35 step 6 failed
+# with "fatal: 'github' does not appear to be a git repository". The
+# push was completed manually to origin/codeberg/gitlab.
+REMOTE=origin
 ASSUME_YES=0
 VERSION=""
 CRATE_NAME="dracon-system"
