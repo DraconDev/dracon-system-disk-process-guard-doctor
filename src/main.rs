@@ -923,13 +923,20 @@ pub(crate) fn oom_bias_target(current: i32) -> Option<i32> {
 }
 
 /// Cap a process's CPU to `percent`% via a transient user systemd
-/// scope (CPUQuota). Returns (scope_name, orig_cgroup_rel_path). The
-/// process is MOVED into the scope's cgroup — moving between cgroups
+/// unit (CPUQuota). Returns (unit_name, orig_cgroup_rel_path). The
+/// process is MOVED into the unit's cgroup — moving between cgroups
 /// never kills. On release, `uncap_cpu_process` moves it back and
-/// stops the now-empty scope. Fails cleanly (Err) when systemd-run
+/// stops the now-empty unit. Fails cleanly (Err) when systemd-run
 /// is unavailable or the move is denied. The placeholder sleep lives
 /// 3600s, bounding a guard crash: the pid stays capped at most an
-/// hour, then the scope dies with no members.
+/// hour, then the unit dies with no members.
+///
+/// WHY a transient SERVICE, not --scope (2026-08-10, verified live):
+/// `systemd-run --scope` runs the command in the foreground and
+/// blocks until it exits; `--scope --no-block` creates the scope but
+/// it is torn down the moment systemd-run exits. A plain transient
+/// service with `--no-block` returns instantly and persists under
+/// the manager — the cgroup survives for the pid move.
 async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), String> {
     if percent == 0 || percent > 100 {
         return Err(format!("invalid CPUQuota percent {percent}"));
@@ -948,7 +955,6 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
     let out = Command::new("systemd-run")
         .args([
             "--user",
-            "--scope",
             "--no-block",
             "-p",
             &format!("CPUQuota={percent}%"),
@@ -966,36 +972,43 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
     }
     // systemd-run prints "Running as unit: X; invocation ID: ..."
     // on STDERR — take the unit name up to the ';'.
-    let scope = stdout
+    let unit = stdout
         .lines()
         .chain(stderr.lines())
         .find_map(|l| l.strip_prefix("Running as unit: "))
         .map(|s| s.trim().split(';').next().unwrap_or("").trim().to_string())
-        .ok_or_else(|| format!("could not parse scope name from: {stdout} {stderr}"))?;
+        .ok_or_else(|| format!("could not parse unit name from: {stdout} {stderr}"))?;
 
-    // Find the scope's cgroup and move the target pid into it.
-    let cg = Command::new("systemctl")
-        .args(["--user", "show", &scope, "-p", "ControlGroup", "--value"])
-        .output()
-        .await
-        .map_err(|e| format!("systemctl show: {e}"))?;
-    let cg = String::from_utf8_lossy(&cg.stdout).trim().to_string();
+    // --no-block returns before the unit's cgroup exists: poll for it.
+    let mut cg = String::new();
+    for _ in 0..10 {
+        let out = Command::new("systemctl")
+            .args(["--user", "show", &unit, "-p", "ControlGroup", "--value"])
+            .output()
+            .await
+            .map_err(|e| format!("systemctl show: {e}"))?;
+        cg = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !cg.is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
     if cg.is_empty() {
         let _ = Command::new("systemctl")
-            .args(["--user", "stop", &scope])
+            .args(["--user", "stop", &unit])
             .status()
             .await;
-        return Err(format!("scope {scope} has no control group"));
+        return Err(format!("unit {unit} has no control group"));
     }
     let procs_file = format!("/sys/fs/cgroup/{cg}/cgroup.procs");
     if let Err(e) = std::fs::write(&procs_file, format!("{pid}\n")) {
         let _ = Command::new("systemctl")
-            .args(["--user", "stop", &scope])
+            .args(["--user", "stop", &unit])
             .status()
             .await;
         return Err(format!("move pid {pid} into {procs_file}: {e}"));
     }
-    Ok((scope, orig_rel))
+    Ok((unit, orig_rel))
 }
 
 /// Lift a CPUQuota cap: move the pid back to its original cgroup and
