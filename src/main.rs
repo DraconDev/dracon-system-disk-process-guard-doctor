@@ -1479,7 +1479,7 @@ async fn empty_trash(
             if size > 0 {
                 if apply && credential_guard {
                     let mut matches = Vec::new();
-                    for entry in WalkDir::new(&trash_files).max_depth(8) {
+                    for entry in walkdir::WalkDir::new(&trash_files).max_depth(8) {
                         match entry {
                             Ok(e) if e.file_type().is_file() => {
                                 if let Some(name) = e.file_name().to_str() {
@@ -2000,9 +2000,7 @@ async fn check_rapid_disk_fill(
         let excess = state.disk_bytes_history.len() - 200;
         state.disk_bytes_history.drain(0..excess);
     }
-    let Some(rate) = disk_fill_rate_gbph(&state.disk_bytes_history) else {
-        return None;
-    };
+    let rate = disk_fill_rate_gbph(&state.disk_bytes_history)?;
     if rate >= guard.disk_rapid_fill_gbph {
         let key = "disk-rapid-fill".to_string();
         if should_notify(state, &key, guard.notify_cooldown_secs.max(1800)) {
@@ -2091,7 +2089,7 @@ async fn check_memory_pressure(
         .fold(Vec::new(), |mut acc, p| {
             if acc.len() < 5 || p.rss_mb > acc.last().map(|x: &ProcSample| x.rss_mb).unwrap_or(0) {
                 acc.push(p);
-                acc.sort_by(|a, b| b.rss_mb.cmp(&a.rss_mb));
+                acc.sort_by_key(|b| std::cmp::Reverse(b.rss_mb));
                 acc.truncate(5);
             }
             acc
@@ -2126,7 +2124,7 @@ async fn check_memory_pressure(
         emit_event(&DraconEvent::new(
             "system",
             if pressure == "critical" {
-                EventSeverity::Critical
+                EventSeverity::Error
             } else {
                 EventSeverity::Warn
             },
@@ -2193,7 +2191,7 @@ fn zombie_details(state: &mut GuardRuntimeState) -> Vec<ZombieInfo> {
     state.zombies_since.retain(|pid, _| {
         zombies.iter().any(|z| z.pid == *pid)
     });
-    zombies.sort_by(|a, b| b.age_secs.cmp(&a.age_secs));
+    zombies.sort_by_key(|b| std::cmp::Reverse(b.age_secs));
     zombies
 }
 

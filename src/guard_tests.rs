@@ -63,6 +63,9 @@ fn guard_report_can_be_created_with_alerts() {
             action: "reniced".to_string(),
             nice_value: 5,
         }],
+        memory: None,
+        zombies: Vec::new(),
+        disk_fill_gbph: None,
     };
     assert!(report.enabled);
     assert_eq!(report.disk_use_percent, 72);
@@ -310,4 +313,160 @@ fn auto_cleanup_result_default() {
     assert_eq!(result.reclaimed_bytes, 0);
     assert!(result.cleaned_paths.is_empty());
     assert!(result.protected_paths.is_empty());
+}
+
+// ---------------------------------------------------------------------------
+// Memory pressure (ADDED 2026-08-10, v0.112.35)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn parse_meminfo_reads_all_four_fields() {
+    let sample = r#"MemTotal:       32754688 kB
+MemFree:         1098776 kB
+MemAvailable:    9010908 kB
+SwapTotal:      32680964 kB
+SwapFree:       11556016 kB
+"#;
+    let m = crate::parse_meminfo(sample).expect("meminfo should parse");
+    assert_eq!(m.mem_total_kb, 32754688);
+    assert_eq!(m.mem_available_kb, 9010908);
+    assert_eq!(m.swap_total_kb, 32680964);
+    assert_eq!(m.swap_free_kb, 11556016);
+    // 9010908 / 32754688 ≈ 27%
+    assert_eq!(m.mem_available_percent(), 27);
+    // (32680964 - 11556016) / 32680964 ≈ 64.6%
+    assert_eq!(m.swap_used_percent(), 64);
+}
+
+#[test]
+fn parse_meminfo_missing_swap_reports_zero_used() {
+    let sample = "MemTotal:       1048576 kB\nMemAvailable:     65536 kB\n";
+    let m = crate::parse_meminfo(sample).expect("meminfo should parse");
+    assert_eq!(m.mem_available_percent(), 6);
+    assert_eq!(m.swap_used_percent(), 0);
+}
+
+#[test]
+fn parse_meminfo_garbage_returns_none() {
+    assert!(crate::parse_meminfo("not meminfo at all").is_none());
+    assert!(crate::parse_meminfo("").is_none());
+}
+
+#[test]
+fn parse_pressure_memory_extracts_full_and_some() {
+    let psi = r#"some avg10=1.23 avg60=2.00 avg300=0.66 total=3743158654
+full avg10=4.56 avg60=0.30 avg300=0.65 total=3579061268
+"#;
+    let (full, some) = crate::parse_pressure_memory(psi).expect("psi should parse");
+    assert!((full - 4.56).abs() < 1e-9);
+    assert!((some - 1.23).abs() < 1e-9);
+}
+
+#[test]
+fn parse_pressure_memory_no_full_line_returns_none() {
+    assert!(crate::parse_pressure_memory("some avg10=1.00 avg60=1.00 avg300=1.00 total=1").is_none());
+}
+
+#[test]
+fn parse_vmstat_swap_reads_counters() {
+    let vmstat = "pswpin 1022648496\npswpout 1187700919\nnr_free_pages 12345\n";
+    let (pin, pout) = crate::parse_vmstat_swap(vmstat).expect("vmstat should parse");
+    assert_eq!(pin, 1022648496);
+    assert_eq!(pout, 1187700919);
+}
+
+// ---------------------------------------------------------------------------
+// Zombie parsing (ADDED 2026-08-10, v0.112.35)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn parse_proc_stat_zombie_detects_z_state() {
+    // pid=1234, comm contains a space (valid), state=Z, ppid=567,
+    // starttime=999 (field 22, index 19 after pid+comm).
+    let line = "1234 (chrome --type=renderer) Z 567 1 567 0 -1 4194304 42 0 0 0 0 0 0 0 20 0 1 0 999 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0";
+    let (pid, comm, ppid, starttime) =
+        crate::parse_proc_stat_zombie(line).expect("zombie stat should parse");
+    assert_eq!(pid, 1234);
+    assert_eq!(comm, "chrome --type=renderer");
+    assert_eq!(ppid, 567);
+    assert_eq!(starttime, 999);
+}
+
+#[test]
+fn parse_proc_stat_zombie_ignores_non_zombies() {
+    let line = "42 (bash) S 1 42 42 0 -1 4194304 100 0 0 0 0 0 0 0 20 0 1 0 123 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0";
+    assert!(crate::parse_proc_stat_zombie(line).is_none());
+}
+
+// ---------------------------------------------------------------------------
+// Trash credential guard (ADDED 2026-08-10, v0.112.35)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn looks_credential_like_matches_known_patterns() {
+    assert!(crate::looks_credential_like("Login Data"));
+    assert!(crate::looks_credential_like("CREDENTIALS.md"));
+    assert!(crate::looks_credential_like("secrets.rs"));
+    assert!(crate::looks_credential_like(".env"));
+    assert!(crate::looks_credential_like("github.env"));
+    assert!(crate::looks_credential_like("id_ed25519.key"));
+    assert!(crate::looks_credential_like("backup.age"));
+    assert!(crate::looks_credential_like(".git-credentials"));
+    assert!(crate::looks_credential_like(".npmrc"));
+    assert!(crate::looks_credential_like("hosts.yml"));
+    assert!(crate::looks_credential_like("password-store"));
+    assert!(crate::looks_credential_like("wallet-token-cache"));
+}
+
+#[test]
+fn looks_credential_like_ignores_benign_names() {
+    assert!(!crate::looks_credential_like("target"));
+    assert!(!crate::looks_credential_like("node_modules"));
+    assert!(!crate::looks_credential_like("ai-vid-editor"));
+    assert!(!crate::looks_credential_like("nixpkgs"));
+    assert!(!crate::looks_credential_like("go"));
+    assert!(!crate::looks_credential_like("saved_stuff"));
+    assert!(!crate::looks_credential_like("references"));
+}
+
+// ---------------------------------------------------------------------------
+// Disk fill rate (ADDED 2026-08-10, v0.112.35)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn disk_fill_rate_gbph_computes_sustained_rate() {
+    let now = Instant::now();
+    // 10 GiB per hour for 2 hours = 20 GiB growth.
+    let history: Vec<(Instant, u64)> = vec![
+        (now - Duration::from_secs(7200), 500u64 * 1024 * 1024 * 1024),
+        (now - Duration::from_secs(3600), 510u64 * 1024 * 1024 * 1024),
+        (now, 520u64 * 1024 * 1024 * 1024),
+    ];
+    let rate = crate::disk_fill_rate_gbph(&history).expect("rate should compute");
+    assert!((rate - 10.0).abs() < 0.5, "expected ~10 GiB/h, got {rate}");
+}
+
+#[test]
+fn disk_fill_rate_gbph_requires_minimum_samples_and_span() {
+    let now = Instant::now();
+    assert!(crate::disk_fill_rate_gbph(&[]).is_none());
+    assert!(crate::disk_fill_rate_gbph(&[(now, 100), (now, 200)]).is_none());
+    // Span too short (10s < 60s).
+    let short: Vec<(Instant, u64)> = vec![
+        (now - Duration::from_secs(10), 100),
+        (now - Duration::from_secs(5), 200),
+        (now, 300),
+    ];
+    assert!(crate::disk_fill_rate_gbph(&short).is_none());
+}
+
+#[test]
+fn disk_fill_rate_gbph_returns_none_when_disk_shrinks() {
+    let now = Instant::now();
+    let history: Vec<(Instant, u64)> = vec![
+        (now - Duration::from_secs(7200), 600u64 * 1024 * 1024 * 1024),
+        (now - Duration::from_secs(3600), 550u64 * 1024 * 1024 * 1024),
+        (now, 500u64 * 1024 * 1024 * 1024),
+    ];
+    assert!(crate::disk_fill_rate_gbph(&history).is_none());
 }
