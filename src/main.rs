@@ -514,6 +514,187 @@ pub(crate) fn parse_ps_output(output: &str) -> Vec<ProcSample> {
         .collect()
 }
 
+/// Parsed /proc/meminfo values (all in kB).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct MemorySample {
+    pub(crate) mem_total_kb: u64,
+    pub(crate) mem_available_kb: u64,
+    pub(crate) swap_total_kb: u64,
+    pub(crate) swap_free_kb: u64,
+}
+
+impl MemorySample {
+    pub(crate) fn mem_available_percent(&self) -> u8 {
+        if self.mem_total_kb == 0 {
+            return 0;
+        }
+        (self.mem_available_kb.saturating_mul(100) / self.mem_total_kb)
+            .min(100) as u8
+    }
+
+    pub(crate) fn swap_used_percent(&self) -> u8 {
+        if self.swap_total_kb == 0 {
+            return 0;
+        }
+        (self
+            .swap_total_kb
+            .saturating_sub(self.swap_free_kb)
+            .saturating_mul(100)
+            / self.swap_total_kb)
+        .min(100) as u8
+    }
+}
+
+/// Parse /proc/meminfo into a MemorySample.
+pub(crate) fn parse_meminfo(output: &str) -> Option<MemorySample> {
+    let mut mem_total_kb = 0u64;
+    let mut mem_available_kb = 0u64;
+    let mut swap_total_kb = 0u64;
+    let mut swap_free_kb = 0u64;
+    for line in output.lines() {
+        let mut parts = line.split_whitespace();
+        let key = parts.next()?;
+        let value: u64 = parts.next()?.parse().ok()?;
+        match key {
+            "MemTotal:" => mem_total_kb = value,
+            "MemAvailable:" => mem_available_kb = value,
+            "SwapTotal:" => swap_total_kb = value,
+            "SwapFree:" => swap_free_kb = value,
+            _ => {}
+        }
+    }
+    if mem_total_kb == 0 {
+        return None;
+    }
+    Some(MemorySample {
+        mem_total_kb,
+        mem_available_kb,
+        swap_total_kb,
+        swap_free_kb,
+    })
+}
+
+async fn memory_sample() -> Option<MemorySample> {
+    let content = tokio::fs::read_to_string("/proc/meminfo").await.ok()?;
+    parse_meminfo(&content)
+}
+
+/// Parse /proc/pressure/memory. Returns Some((full_avg10, some_avg10)).
+pub(crate) fn parse_pressure_memory(output: &str) -> Option<(f64, f64)> {
+    let mut full = None;
+    let mut some = None;
+    for line in output.lines() {
+        if line.starts_with("full") && full.is_none() {
+            full = line
+                .split_whitespace()
+                .find_map(|t| t.strip_prefix("avg10="))
+                .and_then(|v| v.parse::<f64>().ok());
+        } else if line.starts_with("some") && some.is_none() {
+            some = line
+                .split_whitespace()
+                .find_map(|t| t.strip_prefix("avg10="))
+                .and_then(|v| v.parse::<f64>().ok());
+        }
+    }
+    Some((full?, some?))
+}
+
+/// PSI `full avg10` — 0..=100 (percent of the last 10s fully stalled).
+async fn psi_full_avg10() -> Option<f64> {
+    let content = tokio::fs::read_to_string("/proc/pressure/memory").await.ok()?;
+    parse_pressure_memory(&content).map(|(full, _)| full)
+}
+
+/// Read pswpin/pswpout counters from /proc/vmstat.
+pub(crate) fn parse_vmstat_swap(output: &str) -> Option<(u64, u64)> {
+    let mut pin = None;
+    let mut pout = None;
+    for line in output.lines() {
+        let mut parts = line.split_whitespace();
+        let key = parts.next()?;
+        let value: u64 = parts.next()?.parse().ok()?;
+        match key {
+            "pswpin" => pin = Some(value),
+            "pswpout" => pout = Some(value),
+            _ => {}
+        }
+    }
+    Some((pin?, pout?))
+}
+
+async fn vmstat_swap_counters() -> Option<(u64, u64)> {
+    let content = tokio::fs::read_to_string("/proc/vmstat").await.ok()?;
+    parse_vmstat_swap(&content)
+}
+
+/// Parse one /proc/<pid>/stat line for zombie detection.
+/// Returns (pid, comm, ppid, starttime) when state == 'Z'.
+pub(crate) fn parse_proc_stat_zombie(line: &str) -> Option<(i32, String, i32, u64)> {
+    let open = line.find('(')?;
+    let close = line.rfind(')')?;
+    if close <= open {
+        return None;
+    }
+    let pid = line[..open].trim().parse::<i32>().ok()?;
+    let comm = line[open + 1..close].to_string();
+    let rest: Vec<&str> = line[close + 2..].split_whitespace().collect();
+    if *rest.first()? != "Z" {
+        return None;
+    }
+    let ppid = rest.get(1)?.parse::<i32>().ok()?;
+    // starttime is field 22 overall; after stripping pid+comm the
+    // remaining list starts at field 3 (state), so index 19.
+    let starttime = rest.get(19)?.parse::<u64>().ok()?;
+    Some((pid, comm, ppid, starttime))
+}
+
+/// Credential-signal filename check for the trash guard (and any
+/// future bulk-delete protection). Mirrors the pattern list in
+/// docs/design/disk-full-credentials-2026-08-10.md section 5.
+pub(crate) fn looks_credential_like(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    const SUBSTR: &[&str] = &[
+        "chrome", "chromium", "credential", "password", "secret", "token", "keyring",
+        "login data", "hosts.yml", ".git-credentials", ".npmrc", ".netrc", "cookie",
+    ];
+    const SUFFIX: &[&str] = &[".env", ".pem", ".key", ".age", ".p12", ".pfx"];
+    SUBSTR.iter().any(|s| lower.contains(s))
+        || SUFFIX.iter().any(|s| lower.ends_with(s))
+}
+
+/// Sustained disk fill rate in GiB/hour from a byte-precise df
+/// history. Returns None until at least 3 samples spanning 60s of
+/// wall time exist, or when the disk is not filling.
+pub(crate) fn disk_fill_rate_gbph(history: &[(Instant, u64)]) -> Option<f64> {
+    let n = history.len().min(30);
+    if n < 3 {
+        return None;
+    }
+    let recent = &history[history.len() - n..];
+    let t0 = recent[0].0;
+    let b0 = recent[0].1 as f64;
+    let span = recent.last()?.0.duration_since(t0).as_secs_f64();
+    if span < 60.0 {
+        return None;
+    }
+    let mut s_xy = 0.0;
+    let mut s_xx = 0.0;
+    for &(t, b) in recent {
+        let x = t.duration_since(t0).as_secs_f64();
+        let y = b as f64 - b0;
+        s_xy += x * y;
+        s_xx += x * x;
+    }
+    if s_xx <= 0.0 {
+        return None;
+    }
+    let slope_bps = s_xy / s_xx;
+    if slope_bps <= 0.0 {
+        return None;
+    }
+    Some(slope_bps * 3600.0 / (1024.0 * 1024.0 * 1024.0))
+}
+
 async fn disk_use_percent_for(path: &str) -> Result<u8> {
     let out = Command::new("df").args(["-P", path]).output().await?;
     if !out.status.success() {
@@ -1300,8 +1481,17 @@ async fn clean_package_caches(
     Ok((reclaimed, cleaned))
 }
 
-/// Empty trash
-async fn empty_trash(apply: bool, protected_paths: &[String]) -> Result<(u64, Vec<String>)> {
+/// Empty trash. When `credential_guard` is set, the trash is first
+/// scanned for credential-signal filenames (see
+/// looks_credential_like and docs/design/disk-full-credentials-
+/// 2026-08-10.md); a single match aborts the deletion — the
+/// 2026-08-10 scan found 665 credential-pattern matches in the
+/// 56 GiB trash, so blind emptying is unsafe by default.
+async fn empty_trash(
+    apply: bool,
+    protected_paths: &[String],
+    credential_guard: bool,
+) -> Result<(u64, Vec<String>)> {
     let mut reclaimed = 0u64;
     let mut cleaned = Vec::new();
 
@@ -1312,6 +1502,47 @@ async fn empty_trash(apply: bool, protected_paths: &[String]) -> Result<(u64, Ve
         if trash_files.exists() {
             let size = get_dir_size(&trash_files).await.unwrap_or(0);
             if size > 0 {
+                if apply && credential_guard {
+                    let mut matches = Vec::new();
+                    for entry in WalkDir::new(&trash_files).max_depth(8) {
+                        match entry {
+                            Ok(e) if e.file_type().is_file() => {
+                                if let Some(name) = e.file_name().to_str() {
+                                    if looks_credential_like(name) {
+                                        matches.push(e.path().display().to_string());
+                                        if matches.len() >= 20 {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    if !matches.is_empty() {
+                        eprintln!(
+                            "🛡️ trash NOT emptied: {} credential-like entr{} (e.g. {})",
+                            matches.len(),
+                            if matches.len() == 1 { "y" } else { "ies" },
+                            matches
+                                .iter()
+                                .take(3)
+                                .map(|m| m.to_string())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
+                        emit_event(&DraconEvent::new(
+                            "system",
+                            EventSeverity::Warn,
+                            "trash/credential-guard",
+                            format!(
+                                "trash emptying blocked: {} credential-like entries",
+                                matches.len()
+                            ),
+                        ));
+                        return Ok((0, Vec::new()));
+                    }
+                }
                 let mut succeeded = true;
                 if apply {
                     match check_safe_to_delete_guard(&trash_files, protected_paths) {
@@ -1778,6 +2009,219 @@ async fn check_disk_early_warning(guard: &GuardPolicy, state: &mut GuardRuntimeS
     }
 }
 
+/// Byte-precise rapid disk-fill detection (ADDED 2026-08-10,
+/// v0.112.35). The percent-based trend check is too coarse on large
+/// disks — 1% of a 907 GiB disk is ~9 GiB — so this tracks df used
+/// bytes and alerts on a sustained fill rate in GiB/hour.
+async fn check_rapid_disk_fill(
+    guard: &GuardPolicy,
+    state: &mut GuardRuntimeState,
+    used_bytes: u64,
+    used_pct: u8,
+) -> Option<f64> {
+    let now = Instant::now();
+    state.disk_bytes_history.push((now, used_bytes));
+    if state.disk_bytes_history.len() > 200 {
+        let excess = state.disk_bytes_history.len() - 200;
+        state.disk_bytes_history.drain(0..excess);
+    }
+    let Some(rate) = disk_fill_rate_gbph(&state.disk_bytes_history) else {
+        return None;
+    };
+    if rate >= guard.disk_rapid_fill_gbph {
+        let key = "disk-rapid-fill".to_string();
+        if should_notify(state, &key, guard.notify_cooldown_secs.max(1800)) {
+            send_notification(
+                guard,
+                "Dracon System Guard - Disk Filling Rapidly",
+                &format!(
+                    "Disk growing at {:.1} GiB/h (currently {}% used) — check recent writes",
+                    rate, used_pct
+                ),
+            )
+            .await;
+        }
+        emit_event(&DraconEvent::new(
+            "system",
+            EventSeverity::Warn,
+            "disk/rapid-fill",
+            format!("growing at {:.1} GiB/h ({}% used)", rate, used_pct),
+        ));
+    }
+    Some(rate)
+}
+
+/// Memory/swap pressure guard (ADDED 2026-08-10, v0.112.35).
+/// Detects the 2026-08-09/10 failure mode: RAM exhausted, swap
+/// thrashing (PSI full avg10 high), everything crawling while
+/// kswapd spins. Reports the top RSS offenders so the operator
+/// knows what to kill; never kills anything itself.
+async fn check_memory_pressure(
+    guard: &GuardPolicy,
+    state: &mut GuardRuntimeState,
+) -> Option<MemoryReport> {
+    if !guard.monitor_memory {
+        return None;
+    }
+    let sample = memory_sample().await?;
+    let mem_available_percent = sample.mem_available_percent();
+    let swap_used_percent = sample.swap_used_percent();
+    let psi_full_avg10 = psi_full_avg10().await;
+
+    // Swap-in rate fallback (pages/s) when PSI is unavailable.
+    let mut pswpin_rate = None;
+    if psi_full_avg10.is_none() {
+        if let Some((pin, _)) = vmstat_swap_counters().await {
+            if let Some((prev_at, prev_pin, _)) = state.prev_swap_counters {
+                let dt = prev_at.elapsed().as_secs_f64();
+                if dt > 0.0 {
+                    pswpin_rate = Some(pin.saturating_sub(prev_pin) as f64 / dt);
+                }
+            }
+            state.prev_swap_counters = Some((Instant::now(), pin, 0));
+        }
+    } else {
+        state.prev_swap_counters = None;
+    }
+
+    let mem_low = mem_available_percent <= guard.mem_available_warn_percent;
+    let swap_high = swap_used_percent >= guard.swap_used_warn_percent;
+    let psi_thrash = psi_full_avg10
+        .is_some_and(|v| v >= guard.mem_psi_full_warn)
+        || pswpin_rate.is_some_and(|r| r >= 1000.0);
+
+    let pressure = if mem_low && (swap_high || psi_thrash) {
+        "critical"
+    } else if mem_low || swap_high || psi_thrash {
+        "warn"
+    } else {
+        "ok"
+    };
+
+    // Top RSS offenders (skipping kernel threads and exempt names).
+    let exempt = parse_kinds(&guard.process_exempt_names);
+    let kernel_prefixes = [
+        "kworker", "ksoftirqd", "kthreadd", "kswapd", "kcompactd", "rcu_", "kdevtmpfs",
+        "kblockd", "khugepaged", "ksmd", "kernfs", "kauditd", "kstrp", "mm_percpu",
+        "oom_reaper", "kvm", "ktrain", "kthrotld", "scsi_", "nvme", "irq/", "watchdog",
+    ];
+    let top_rss: Vec<ProcSample> = process_samples()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|p| {
+            !exempt.contains(&p.command)
+                && !kernel_prefixes.iter().any(|k| p.command.starts_with(k))
+        })
+        .fold(Vec::new(), |mut acc, p| {
+            if acc.len() < 5 || p.rss_mb > acc.last().map(|x: &ProcSample| x.rss_mb).unwrap_or(0) {
+                acc.push(p);
+                acc.sort_by(|a, b| b.rss_mb.cmp(&a.rss_mb));
+                acc.truncate(5);
+            }
+            acc
+        });
+
+    if pressure != "ok" {
+        let key = "memory-pressure".to_string();
+        if should_notify(state, &key, guard.notify_cooldown_secs.max(600)) {
+            let offenders: String = top_rss
+                .iter()
+                .map(|p| format!("{} pid={} {}MiB", p.command, p.pid, p.rss_mb))
+                .collect::<Vec<_>>()
+                .join(", ");
+            send_notification(
+                guard,
+                "Dracon System Guard - Memory Pressure",
+                &format!(
+                    "[{}] mem available {}%, swap used {}%{} top: {}",
+                    pressure,
+                    mem_available_percent,
+                    swap_used_percent,
+                    psi_full_avg10.map(|v| format!(", PSI full {:.1}%", v)).unwrap_or_default(),
+                    if offenders.is_empty() {
+                        "(none)".to_string()
+                    } else {
+                        offenders
+                    }
+                ),
+            )
+            .await;
+        }
+        emit_event(&DraconEvent::new(
+            "system",
+            if pressure == "critical" {
+                EventSeverity::Critical
+            } else {
+                EventSeverity::Warn
+            },
+            "memory/pressure",
+            format!(
+                "{}: mem available {}%, swap used {}%, PSI full {:?}, top rss: {}",
+                pressure,
+                mem_available_percent,
+                swap_used_percent,
+                psi_full_avg10,
+                top_rss
+                    .iter()
+                    .map(|p| format!("{}={}MiB", p.command, p.rss_mb))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+        ));
+    }
+
+    Some(MemoryReport {
+        mem_available_percent,
+        swap_used_percent,
+        psi_full_avg10,
+        pswpin_rate,
+        pressure: pressure.to_string(),
+        top_rss,
+    })
+}
+
+/// Enumerate zombies with parent/age context (ADDED 2026-08-10,
+/// v0.112.35). Zombies can't be killed; the diagnostic value is the
+/// count, their parents (a live parent that never wait()s), and how
+/// long they have lingered.
+fn zombie_details(state: &mut GuardRuntimeState) -> Vec<ZombieInfo> {
+    let now = Instant::now();
+    let mut zombies = Vec::new();
+    if let Ok(entries) = fs::read_dir("/proc") {
+        for entry in entries.flatten() {
+            let pid_str = entry.file_name();
+            let Ok(pid) = pid_str.to_string_lossy().parse::<i32>() else {
+                continue;
+            };
+            let Ok(stat) = fs::read_to_string(format!("/proc/{pid}/stat")) else {
+                continue;
+            };
+            let Some((_, comm, ppid, _)) = parse_proc_stat_zombie(&stat) else {
+                continue;
+            };
+            let first_seen = *state.zombies_since.entry(pid).or_insert(now);
+            let parent_comm = fs::read_to_string(format!("/proc/{ppid}/comm"))
+                .map(|c| c.trim().to_string())
+                .unwrap_or_else(|_| "(unknown)".to_string());
+            let parent_alive = Path::new(&format!("/proc/{ppid}")).exists();
+            zombies.push(ZombieInfo {
+                pid,
+                ppid,
+                comm,
+                parent_comm,
+                age_secs: now.duration_since(first_seen).as_secs(),
+                parent_alive,
+            });
+        }
+    }
+    state.zombies_since.retain(|pid, _| {
+        zombies.iter().any(|z| z.pid == *pid)
+    });
+    zombies.sort_by(|a, b| b.age_secs.cmp(&a.age_secs));
+    zombies
+}
+
 fn manage_sync_freeze(guard: &GuardPolicy, used: u8, dstate: &str, sync_frozen: &mut bool) {
     let marker = sync_freeze_marker_path(guard);
     if guard.freeze_sync_at_action && (dstate == "action" || dstate == "critical") {
@@ -2028,6 +2472,12 @@ async fn check_heavy_processes(
 
         let mut action = "notify".to_string();
         let mut nice_applied = 0;
+        // ADDED 2026-08-10 (v0.112.35): sustained-heavy escalation.
+        // After process_stuck_after_secs the alert is labelled a
+        // "stuck candidate" — e.g. the 4 svelte-check processes at
+        // ~285% CPU holding 6 GiB that never finished during the
+        // 2026-08-09 incident. Notification only; no auto-kill.
+        let stuck = sustained >= guard.process_stuck_after_secs;
 
         if guard.auto_renice {
             // ADDED 2026-07-21 (v0.112.33, audit M34/F4.8): final
@@ -2091,7 +2541,7 @@ async fn check_heavy_processes(
                 guard,
                 "Dracon System Guard",
                 &format!(
-                    "Heavy process {} (pid={} cpu={:.1}% rss={}MiB) sustained {}s{}",
+                    "Heavy process {} (pid={} cpu={:.1}% rss={}MiB) sustained {}s{}{}",
                     p.command,
                     p.pid,
                     p.cpu_percent,
@@ -2101,10 +2551,18 @@ async fn check_heavy_processes(
                         format!(" reniced={}", nice_applied)
                     } else {
                         String::new()
+                    },
+                    if stuck {
+                        " — POSSIBLY STUCK (still heavy after {}s)".to_string()
+                    } else {
+                        String::new()
                     }
                 ),
             )
             .await;
+        }
+        if stuck {
+            action = format!("{} stuck-candidate", action);
         }
 
         alerts.push(GuardProcessAlert {
@@ -2223,21 +2681,51 @@ async fn check_zombie_processes(guard: &GuardPolicy, state: &mut GuardRuntimeSta
     if !guard.monitor_zombies {
         return;
     }
-    if let Ok(zombie_count) = count_zombie_processes().await {
-        if zombie_count > guard.zombie_threshold {
-            let key = "zombie-warning".to_string();
-            if should_notify(state, &key, guard.notify_cooldown_secs.max(3600)) {
-                send_notification(
-                    guard,
-                    "Dracon System Guard - Zombie Processes",
-                    &format!(
-                        "Detected {} zombie processes (threshold: {})",
-                        zombie_count, guard.zombie_threshold
-                    ),
-                )
-                .await;
-            }
+    let zombies = zombie_details(state);
+    if zombies.len() as u64 > guard.zombie_threshold {
+        let key = "zombie-warning".to_string();
+        if should_notify(state, &key, guard.notify_cooldown_secs.max(3600)) {
+            let top: Vec<String> = zombies
+                .iter()
+                .take(3)
+                .map(|z| {
+                    format!(
+                        "pid={} comm={} parent={}{} ({}s)",
+                        z.pid,
+                        z.comm,
+                        z.parent_comm,
+                        if z.parent_alive { "" } else { ", parent dead" },
+                        z.age_secs
+                    )
+                })
+                .collect();
+            send_notification(
+                guard,
+                "Dracon System Guard - Zombie Processes",
+                &format!(
+                    "Detected {} zombie processes (threshold: {}). Oldest: {}",
+                    zombies.len(),
+                    guard.zombie_threshold,
+                    top.join(" | ")
+                ),
+            )
+            .await;
         }
+        emit_event(&DraconEvent::new(
+            "system",
+            EventSeverity::Warn,
+            "process/zombies",
+            format!(
+                "{} zombies: {}",
+                zombies.len(),
+                zombies
+                    .iter()
+                    .take(5)
+                    .map(|z| format!("{}={}", z.comm, z.age_secs))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+        ));
     }
 }
 
