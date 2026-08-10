@@ -1299,31 +1299,6 @@ async fn inode_use_percent() -> Result<u8> {
         .ok_or_else(|| anyhow::anyhow!("failed parsing df -i output"))
 }
 
-/// Count zombie processes
-async fn count_zombie_processes() -> Result<u64> {
-    let out = Command::new("ps").args(["-eo", "stat="]).output().await?;
-
-    if !out.status.success() {
-        return Err(anyhow::anyhow!(
-            "ps stat failed (exit {}): {}",
-            out.status.code().unwrap_or(-1),
-            String::from_utf8_lossy(&out.stderr)
-        ));
-    }
-
-    let text = String::from_utf8_lossy(&out.stdout);
-    let count = text
-        .lines()
-        .filter(|line| {
-            let stat = line.trim();
-            // Zombie processes have 'Z' in their stat
-            stat.contains('Z') || stat.starts_with('Z')
-        })
-        .count();
-
-    Ok(count as u64)
-}
-
 /// Get inode info for root filesystem
 async fn get_inode_info() -> Result<(u64, u64, u64)> {
     let out = Command::new("df").args(["-Pi", "/"]).output().await?;
@@ -3579,6 +3554,53 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
             Cell::new(format!("{} active", report.alerts.len())),
         ]);
     }
+
+    // ADDED 2026-08-10 (v0.112.35): memory/swap pressure row.
+    if let Some(ref m) = report.memory {
+        let icon = match m.pressure.as_str() {
+            "critical" => "🔴",
+            "warn" => "⚠️",
+            _ => "✅",
+        };
+        table.add_row(vec![
+            Cell::new(icon),
+            Cell::new("Memory Pressure"),
+            Cell::new(format!(
+                "{}: avail {}% swap {}%{}",
+                m.pressure,
+                m.mem_available_percent,
+                m.swap_used_percent,
+                m.psi_full_avg10
+                    .map(|v| format!(" PSI-full {:.1}%", v))
+                    .unwrap_or_default()
+            )),
+        ]);
+    }
+
+    // ADDED 2026-08-10 (v0.112.35): zombie + fill-rate rows.
+    table.add_row(vec![
+        Cell::new(if report.zombies.is_empty() { "✅" } else { "⚠️" }),
+        Cell::new("Zombies"),
+        Cell::new(if report.zombies.is_empty() {
+            "none".to_string()
+        } else {
+            format!(
+                "{} (oldest {}s, e.g. pid={} {})",
+                report.zombies.len(),
+                report.zombies[0].age_secs,
+                report.zombies[0].pid,
+                report.zombies[0].comm
+            )
+        }),
+    ]);
+    table.add_row(vec![
+        Cell::new(""),
+        Cell::new("Disk Fill Rate"),
+        Cell::new(report
+            .disk_fill_gbph
+            .map(|r| format!("{:.1} GiB/h", r))
+            .unwrap_or_else(|| "< 0.1 GiB/h or settling".to_string())),
+    ]);
 
     println!("{table}");
 
