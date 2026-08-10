@@ -369,6 +369,9 @@ pub(crate) struct MemoryReport {
     pub(crate) pressure: String,
     /// Top RSS offenders (for "what do I kill" notifications).
     pub(crate) top_rss: Vec<ProcSample>,
+    /// ADDED 2026-08-10 (v0.112.36): actions taken this pass, e.g.
+    /// "renice svelte-check=10", "oom-bias node=250".
+    pub(crate) limited: Vec<String>,
 }
 
 /// A zombie (defunct) process with context useful for diagnosis.
@@ -2104,8 +2107,206 @@ async fn check_memory_pressure(
             acc
         });
 
-    if pressure != "ok" {
-        let key = "memory-pressure".to_string();
+    // ── Limiting (ADDED 2026-08-10, v0.112.36) ──────────────────
+    // Deprioritize (never kill) the offenders while pressure lasts;
+    // restore when it drops. All mechanisms are per-process,
+    // reversible, and skip whitelisted/kernel pids. Memory is NOT
+    // capped: a memory cap frees nothing and only kills (MemoryMax)
+    // or freezes (MemoryHigh) the offender — renice fixes the
+    // responsiveness symptom, oom_score_adj steers the kill the
+    // kernel would do anyway, and CPUQuota throttles a stuck busy-
+    // loop that renice can't tame. See the user discussion
+    // 2026-08-10 in AGENTS.md.
+    let mut limited: Vec<String> = Vec::new();
+    if pressure != "ok" && guard.auto_renice_on_memory {
+        for p in &top_rss {
+            let identity_ok = proc_identity(p.pid)
+                .map(|(comm, _)| comm == p.command)
+                .unwrap_or(false);
+            if !identity_ok {
+                continue;
+            }
+            let nice_val = graduated_nice_value(p.cpu_percent, p.rss_mb, guard.renice_value);
+            if state
+                .memory_reniced_pids
+                .get(&p.pid)
+                .map(|(n, _)| *n)
+                != Some(nice_val)
+            {
+                match renice_process(p.pid, nice_val).await {
+                    Ok(()) => {
+                        state
+                            .memory_reniced_pids
+                            .insert(p.pid, (nice_val, p.command.clone()));
+                        eprintln!(
+                            "🛡️ mem-renice pid={} cmd={} -> nice {} (pressure {})",
+                            p.pid, p.command, nice_val, pressure
+                        );
+                        limited.push(format!("renice {}={}", p.command, nice_val));
+                    }
+                    Err(e) => eprintln!(
+                        "⚠️ mem-renice failed for pid={} cmd={}: {}",
+                        p.pid, p.command, e
+                    ),
+                }
+            }
+        }
+    }
+    if pressure == "critical" && guard.bias_oom_on_pressure {
+        for p in &top_rss {
+            if state.oom_biased_pids.contains_key(&p.pid) {
+                continue;
+            }
+            let identity_ok = proc_identity(p.pid)
+                .map(|(comm, _)| comm == p.command)
+                .unwrap_or(false);
+            if !identity_ok {
+                continue;
+            }
+            let adj_path = format!("/proc/{}/oom_score_adj", p.pid);
+            let cur = fs::read_to_string(&adj_path)
+                .ok()
+                .and_then(|s| s.trim().parse::<i32>().ok());
+            if let Some(orig) = cur {
+                if let Some(target) = oom_bias_target(orig) {
+                    if fs::write(&adj_path, format!("{target}\n")).is_ok() {
+                        state
+                            .oom_biased_pids
+                            .insert(p.pid, (orig, p.command.clone()));
+                        eprintln!(
+                            "🛡️ oom-bias pid={} cmd={} adj {} -> {} (critical pressure)",
+                            p.pid, p.command, orig, target
+                        );
+                        limited.push(format!("oom-bias {}={}", p.command, target));
+                    }
+                }
+            }
+        }
+    }
+    if pressure == "critical" && guard.cap_offenders_cpu_percent > 0 {
+        for p in &top_rss {
+            if state.capped_pids.contains_key(&p.pid) {
+                continue;
+            }
+            let identity_ok = proc_identity(p.pid)
+                .map(|(comm, _)| comm == p.command)
+                .unwrap_or(false);
+            if !identity_ok {
+                continue;
+            }
+            match cap_cpu_process(p.pid, &p.command, guard.cap_offenders_cpu_percent).await {
+                Ok(scope) => {
+                    state.capped_pids.insert(
+                        p.pid,
+                        (scope.clone(), format!("cap {}={}%", p.command, guard.cap_offenders_cpu_percent)),
+                    );
+                    eprintln!(
+                        "🛡️ cpu-cap pid={} cmd={} -> CPUQuota={}% (scope {})",
+                        p.pid, p.command, guard.cap_offenders_cpu_percent, scope
+                    );
+                    limited.push(format!(
+                        "cpu-cap {}={}%",
+                        p.command, guard.cap_offenders_cpu_percent
+                    ));
+                }
+                Err(e) => eprintln!(
+                    "⚠️ cpu-cap failed for pid={} cmd={}: {}",
+                    p.pid, p.command, e
+                ),
+            }
+        }
+    }
+
+    if pressure == "ok" {
+        let now = Instant::now();
+        let release_dur = Duration::from_secs(guard.release_after_secs);
+        // Un-renice memory-limited pids after the release window.
+        let mut to_unrenice = Vec::new();
+        for &pid in state.memory_reniced_pids.keys() {
+            let cooled_at = state.memory_cooled_since.entry(pid).or_insert(now);
+            if now.duration_since(*cooled_at) >= release_dur {
+                to_unrenice.push(pid);
+            }
+        }
+        for pid in to_unrenice {
+            if let Some((_, ref orig_cmd)) = state.memory_reniced_pids.get(&pid) {
+                let identity_ok = proc_identity(pid)
+                    .map(|(comm, _)| comm == *orig_cmd)
+                    .unwrap_or(false);
+                if !identity_ok {
+                    state.memory_reniced_pids.remove(&pid);
+                    state.memory_cooled_since.remove(&pid);
+                    continue;
+                }
+            }
+            let _ = renice_process(pid, 0).await;
+            eprintln!("🛡️ mem-unrenice pid={} -> nice 0 (pressure released)", pid);
+            state.memory_reniced_pids.remove(&pid);
+            state.memory_cooled_since.remove(&pid);
+        }
+        state
+            .memory_cooled_since
+            .retain(|pid, _| state.memory_reniced_pids.contains_key(pid));
+        // Restore oom_score_adj after the release window.
+        let mut to_unbias = Vec::new();
+        for &pid in state.oom_biased_pids.keys() {
+            let cooled_at = state.oom_cooled_since.entry(pid).or_insert(now);
+            if now.duration_since(*cooled_at) >= release_dur {
+                to_unbias.push(pid);
+            }
+        }
+        for pid in to_unbias {
+            if let Some((orig, ref orig_cmd)) = state.oom_biased_pids.get(&pid) {
+                let identity_ok = proc_identity(pid)
+                    .map(|(comm, _)| comm == *orig_cmd)
+                    .unwrap_or(false);
+                if !identity_ok {
+                    state.oom_biased_pids.remove(&pid);
+                    state.oom_cooled_since.remove(&pid);
+                    continue;
+                }
+            }
+            let _ = fs::write(format!("/proc/{pid}/oom_score_adj"), format!("{orig}\n"));
+            eprintln!("🛡️ oom-restore pid={} adj -> {} (pressure released)", pid, orig);
+            state.oom_biased_pids.remove(&pid);
+            state.oom_cooled_since.remove(&pid);
+        }
+        state
+            .oom_cooled_since
+            .retain(|pid, _| state.oom_biased_pids.contains_key(pid));
+        // Lift CPUQuota scopes after the release window.
+        let mut to_uncap = Vec::new();
+        for &pid in state.capped_pids.keys() {
+            let cooled_at = state.cap_cooled_since.entry(pid).or_insert(now);
+            if now.duration_since(*cooled_at) >= release_dur {
+                to_uncap.push(pid);
+            }
+        }
+        for pid in to_uncap {
+            let _ = uncap_cpu_process(pid).await;
+            state.capped_pids.remove(&pid);
+            state.cap_cooled_since.remove(&pid);
+        }
+        state
+            .cap_cooled_since
+            .retain(|pid, _| state.capped_pids.contains_key(pid));
+    } else {
+        // Pressure persists: restart any release timers from zero.
+        state.memory_cooled_since.clear();
+        state.oom_cooled_since.clear();
+        state.cap_cooled_since.clear();
+    }
+    // Prune maps for pids that no longer exist.
+    state
+        .memory_reniced_pids
+        .retain(|pid, _| Path::new(&format!("/proc/{pid}")).exists());
+    state
+        .oom_biased_pids
+        .retain(|pid, _| Path::new(&format!("/proc/{pid}")).exists());
+    state
+        .capped_pids
+        .retain(|pid, _| Path::new(&format!("/proc/{pid}")).exists());
+
         if should_notify(state, &key, guard.notify_cooldown_secs.max(600)) {
             let offenders: String = top_rss
                 .iter()
