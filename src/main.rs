@@ -1506,6 +1506,7 @@ async fn restore_runtime_adjustments(state: &mut GuardRuntimeState) -> bool {
     .await
 }
 
+#[cfg(test)]
 async fn restore_runtime_adjustments_with(
     state: &mut GuardRuntimeState,
     renice_bin: &Path,
