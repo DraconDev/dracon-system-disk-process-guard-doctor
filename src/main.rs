@@ -1787,6 +1787,7 @@ async fn restore_runtime_adjustments_with_samples(
     state.reniced_pids.is_empty()
         && state.memory_reniced_pids.is_empty()
         && state.oom_biased_pids.is_empty()
+        && state.oom_pending_descendants.is_empty()
         && state.capped_pids.is_empty()
 }
 
@@ -3274,11 +3275,16 @@ async fn check_memory_pressure(
             ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch
         )
     });
+    let pending_oom_roots: HashSet<i32> = state
+        .oom_pending_descendants
+        .values()
+        .map(|pending| pending.root_pid)
+        .collect();
     state.oom_biased_pids.retain(|pid, (_, identity)| {
         !matches!(
             process_identity_status(Path::new("/proc"), *pid, identity),
             ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch
-        )
+        ) || pending_oom_roots.contains(pid)
     });
     state
         .oom_known_descendants
