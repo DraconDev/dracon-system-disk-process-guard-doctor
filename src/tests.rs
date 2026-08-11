@@ -52,6 +52,10 @@ fn write_process_fixture(
     oom_score_adj: Option<i32>,
     cgroup: Option<&str>,
 ) {
+    // Mirror the `/proc/self` availability marker used by the production
+    // identity check so this fixture can distinguish a gone PID from a
+    // missing/unavailable proc tree.
+    fs::create_dir_all(root.join("self")).expect("create proc availability fixture");
     let dir = root.join(pid.to_string());
     fs::create_dir_all(&dir).expect("create process fixture");
     fs::write(dir.join("comm"), format!("{comm}\n")).expect("write comm fixture");
@@ -118,6 +122,11 @@ async fn restore_runtime_adjustments_restores_renice_and_oom() {
         process_identity_status(&tmp, 102, &identity),
         ProcessIdentityStatus::Gone
     );
+    assert_eq!(
+        process_identity_status(&tmp.join("missing-proc-root"), 101, &identity,),
+        ProcessIdentityStatus::Unavailable,
+        "a missing proc root must not be treated as a gone PID"
+    );
     let mut state = GuardRuntimeState::default();
     state.reniced_pids.insert(101, (5, identity.clone()));
     state.oom_biased_pids.insert(101, (-100, identity));
@@ -147,6 +156,7 @@ async fn restore_runtime_adjustments_retains_failed_cpu_cap() {
             .as_nanos()
     ));
     fs::create_dir_all(&tmp).expect("create temp dir");
+    fs::create_dir_all(tmp.join("self")).expect("create proc availability marker");
     let renice = tmp.join("renice");
     let systemctl = tmp.join("systemctl");
     write_test_script(&renice, "exit 0");
@@ -195,6 +205,27 @@ async fn restore_runtime_adjustments_retains_failed_cpu_cap() {
         "cgroup read failure must prevent runtime reset"
     );
     assert!(state.capped_pids.contains_key(&1000));
+
+    // A missing cgroup file with a live PID directory is also indeterminate;
+    // it may mean the cgroup source is unavailable rather than that the
+    // process exited.
+    write_process_fixture(&tmp, 1001, "worker", 89, None, None);
+    state.capped_pids.insert(
+        1001,
+        (
+            "dracon-cap.service".to_string(),
+            "user.slice".to_string(),
+            ProcessIdentity {
+                comm: "worker".to_string(),
+                starttime: 89,
+            },
+        ),
+    );
+    assert!(
+        !restore_runtime_adjustments_with(&mut state, &renice, &systemctl, &tmp).await,
+        "a missing live-PID cgroup file must prevent runtime reset"
+    );
+    assert!(state.capped_pids.contains_key(&1001));
     let _ = fs::remove_dir_all(&tmp);
 }
 

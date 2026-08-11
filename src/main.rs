@@ -820,15 +820,39 @@ fn read_proc_identity(root: &Path, pid: i32) -> std::io::Result<ProcessIdentity>
     Ok(ProcessIdentity { comm, starttime })
 }
 
+/// `/proc/self` is a mount-availability marker: unlike a tracked PID,
+/// it exists whenever the proc filesystem is mounted and readable. A missing
+/// root or marker is therefore indeterminate, not evidence that the tracked
+/// process exited.
+fn proc_root_is_available(root: &Path) -> bool {
+    matches!(
+        std::fs::metadata(root),
+        Ok(meta) if meta.is_dir()
+    ) && std::fs::metadata(root.join("self")).is_ok()
+}
+
 fn process_identity_status(
     root: &Path,
     pid: i32,
     expected: &ProcessIdentity,
 ) -> ProcessIdentityStatus {
+    if !proc_root_is_available(root) {
+        return ProcessIdentityStatus::Unavailable;
+    }
     match read_proc_identity(root, pid) {
         Ok(actual) if actual.starttime == expected.starttime => ProcessIdentityStatus::Match,
         Ok(_) => ProcessIdentityStatus::Mismatch,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => ProcessIdentityStatus::Gone,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // A missing comm/stat file while the PID directory remains is a
+            // partial/unavailable proc read. Only a missing PID directory in
+            // an available proc tree proves that the process is gone.
+            match std::fs::metadata(root.join(pid.to_string())) {
+                Err(dir_error) if dir_error.kind() == std::io::ErrorKind::NotFound => {
+                    ProcessIdentityStatus::Gone
+                }
+                _ => ProcessIdentityStatus::Unavailable,
+            }
+        }
         Err(_) => ProcessIdentityStatus::Unavailable,
     }
 }
@@ -1141,7 +1165,22 @@ async fn uncap_cpu_process_with_bin(
             }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // The process is gone; there is no live PID left to move.
+            // A missing cgroup file means the process is gone only when its
+            // PID directory is also gone from an available proc tree. If the
+            // proc/cgroup source itself is unavailable, retain the entry: the
+            // cap cannot be considered restored safely.
+            let pid_dir = proc_root.join(pid.to_string());
+            let pid_gone = matches!(
+                std::fs::metadata(&pid_dir),
+                Err(dir_error) if dir_error.kind() == std::io::ErrorKind::NotFound
+            );
+            if !proc_root_is_available(proc_root) || !pid_gone {
+                errors.push(format!(
+                    "cgroup source unavailable for pid {} under {}",
+                    pid,
+                    proc_root.display()
+                ));
+            }
         }
         Err(e) => errors.push(format!("read {}/cgroup: {e}", proc_root.display())),
     }
