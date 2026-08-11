@@ -2748,20 +2748,30 @@ async fn check_memory_pressure(
             }
         }
         for pid in to_unrenice {
-            if let Some((_, ref orig_cmd)) = state.memory_reniced_pids.get(&pid) {
-                let identity_ok = proc_identity(pid)
-                    .map(|(comm, _)| comm == *orig_cmd)
-                    .unwrap_or(false);
-                if !identity_ok {
-                    state.memory_reniced_pids.remove(&pid);
-                    state.memory_cooled_since.remove(&pid);
+            let identity = match state.memory_reniced_pids.get(&pid) {
+                Some((_, identity)) => identity.clone(),
+                None => continue,
+            };
+            match process_identity_status(Path::new("/proc"), pid, &identity) {
+                ProcessIdentityStatus::Match => {}
+                ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch => {
+                    remove_memory_renice(state, pid);
+                    continue;
+                }
+                ProcessIdentityStatus::Unavailable => {
+                    eprintln!(
+                        "⚠️ mem-unrenice deferred for pid={} — process identity unavailable",
+                        pid
+                    );
                     continue;
                 }
             }
-            let _ = renice_process(pid, 0).await;
+            if let Err(e) = renice_process(pid, 0).await {
+                eprintln!("⚠️ mem-unrenice failed for pid={}: {}", pid, e);
+                continue;
+            }
             eprintln!("🛡️ mem-unrenice pid={} -> nice 0 (pressure released)", pid);
-            state.memory_reniced_pids.remove(&pid);
-            state.memory_cooled_since.remove(&pid);
+            remove_memory_renice(state, pid);
         }
         state
             .memory_cooled_since
@@ -2775,23 +2785,36 @@ async fn check_memory_pressure(
             }
         }
         for pid in to_unbias {
-            if let Some((orig, ref orig_cmd)) = state.oom_biased_pids.get(&pid).cloned() {
-                let identity_ok = proc_identity(pid)
-                    .map(|(comm, _)| comm == *orig_cmd)
-                    .unwrap_or(false);
-                if !identity_ok {
-                    state.oom_biased_pids.remove(&pid);
-                    state.oom_cooled_since.remove(&pid);
+            let (orig, identity) = match state.oom_biased_pids.get(&pid).cloned() {
+                Some(entry) => entry,
+                None => continue,
+            };
+            match process_identity_status(Path::new("/proc"), pid, &identity) {
+                ProcessIdentityStatus::Match => {}
+                ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch => {
+                    remove_oom_bias(state, pid);
                     continue;
                 }
-                let _ = fs::write(format!("/proc/{pid}/oom_score_adj"), format!("{orig}\n"));
-                eprintln!(
-                    "🛡️ oom-restore pid={} adj -> {} (pressure released)",
-                    pid, orig
-                );
+                ProcessIdentityStatus::Unavailable => {
+                    eprintln!(
+                        "⚠️ oom-restore deferred for pid={} — process identity unavailable",
+                        pid
+                    );
+                    continue;
+                }
             }
-            state.oom_biased_pids.remove(&pid);
-            state.oom_cooled_since.remove(&pid);
+            if let Err(e) = fs::write(
+                format!("/proc/{pid}/oom_score_adj"),
+                format!("{orig}\n"),
+            ) {
+                eprintln!("⚠️ oom-restore failed for pid={}: {}", pid, e);
+                continue;
+            }
+            eprintln!(
+                "🛡️ oom-restore pid={} adj -> {} (pressure released)",
+                pid, orig
+            );
+            remove_oom_bias(state, pid);
         }
         state
             .oom_cooled_since
@@ -2805,13 +2828,35 @@ async fn check_memory_pressure(
             }
         }
         for pid in to_uncap {
-            if let Some((scope, orig_cgroup)) = state.capped_pids.get(&pid).cloned() {
-                if uncap_cpu_process(pid, &scope, &orig_cgroup).await.is_err() {
+            let (scope, orig_cgroup, identity) = match state.capped_pids.get(&pid).cloned() {
+                Some(entry) => entry,
+                None => continue,
+            };
+            let allow_pid_move = match process_identity_status(Path::new("/proc"), pid, &identity) {
+                ProcessIdentityStatus::Match | ProcessIdentityStatus::Gone => true,
+                ProcessIdentityStatus::Mismatch => false,
+                ProcessIdentityStatus::Unavailable => {
+                    eprintln!(
+                        "⚠️ cpu-un cap deferred for pid={} — process identity unavailable",
+                        pid
+                    );
                     continue;
                 }
+            };
+            if let Err(e) = uncap_cpu_process_with_bin(
+                Path::new("systemctl"),
+                Path::new("/proc"),
+                pid,
+                &scope,
+                &orig_cgroup,
+                allow_pid_move,
+            )
+            .await
+            {
+                eprintln!("⚠️ cpu-uncap failed for pid={} scope={}: {}", pid, scope, e);
+                continue;
             }
-            state.capped_pids.remove(&pid);
-            state.cap_cooled_since.remove(&pid);
+            remove_cpu_cap(state, pid);
         }
         state
             .cap_cooled_since
@@ -2822,16 +2867,26 @@ async fn check_memory_pressure(
         state.oom_cooled_since.clear();
         state.cap_cooled_since.clear();
     }
-    // Prune maps for pids that no longer exist.
-    state
-        .memory_reniced_pids
-        .retain(|pid, _| Path::new(&format!("/proc/{pid}")).exists());
-    state
-        .oom_biased_pids
-        .retain(|pid, _| Path::new(&format!("/proc/{pid}")).exists());
-    state
-        .capped_pids
-        .retain(|pid, _| Path::new(&format!("/proc/{pid}")).exists());
+    // Prune only known-gone or PID-reused entries. Identity read errors are
+    // retained so a transient /proc failure cannot silently lose a limiter.
+    state.memory_reniced_pids.retain(|pid, (_, identity)| {
+        !matches!(
+            process_identity_status(Path::new("/proc"), *pid, identity),
+            ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch
+        )
+    });
+    state.oom_biased_pids.retain(|pid, (_, identity)| {
+        !matches!(
+            process_identity_status(Path::new("/proc"), *pid, identity),
+            ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch
+        )
+    });
+    state.capped_pids.retain(|pid, (_, _, identity)| {
+        !matches!(
+            process_identity_status(Path::new("/proc"), *pid, identity),
+            ProcessIdentityStatus::Gone
+        )
+    });
 
     if pressure != "ok" {
         let key = "memory-pressure".to_string();
@@ -3154,7 +3209,7 @@ async fn check_heavy_processes(
         // recycled PID gets a different starttime, so its (forged
         // or stale) sustain window resets instead of letting the
         // guard renice an innocent process.
-        let live_start = proc_identity(p.pid).map(|(_, s)| s).unwrap_or(0);
+        let live_start = p.starttime;
         let entry = state.heavy_since.entry(p.pid).or_insert((now, live_start));
         if live_start != 0 && entry.1 != 0 && entry.1 != live_start {
             *entry = (now, live_start);
@@ -3195,12 +3250,8 @@ async fn check_heavy_processes(
             // identity check before touching the process — the comm
             // must still match AND the starttime must equal the
             // first-sighting value (PID-reuse window).
-            let identity_ok = proc_identity(p.pid)
-                .map(|(comm, start)| {
-                    comm == p.command
-                        && (start == 0 || recorded_start == 0 || start == recorded_start)
-                })
-                .unwrap_or(false);
+            let identity_ok = process_sample_is_current(&p)
+                && (recorded_start == 0 || p.starttime == recorded_start);
             if !identity_ok {
                 eprintln!(
                     "⚠️ skipping renice for pid={} cmd={} (identity changed — PID reused?)",
@@ -3224,9 +3275,10 @@ async fn check_heavy_processes(
             if already_niced != Some(nice_val) {
                 match renice_process(p.pid, nice_val).await {
                     Ok(()) => {
-                        state
-                            .reniced_pids
-                            .insert(p.pid, (nice_val, p.command.clone()));
+                        state.reniced_pids.insert(
+                            p.pid,
+                            (nice_val, process_sample_identity(&p)),
+                        );
                         eprintln!(
                             "🔧 renice pid={} cmd={} -> nice {} (cpu={:.1}% rss={}MiB)",
                             p.pid, p.command, nice_val, p.cpu_percent, p.rss_mb
@@ -3308,34 +3360,30 @@ async fn check_heavy_processes(
         }
     }
     for pid in to_unrenice {
-        if let Some((_nice, ref orig_cmd)) = state.reniced_pids.get(&pid) {
-            let proc_cmdline = PathBuf::from(format!("/proc/{}/cmdline", pid));
-            let same_process = match std::fs::read_to_string(&proc_cmdline) {
-                Ok(content) => {
-                    let cmd = content.replace('\0', " ");
-                    let exe = cmd.split_whitespace().next().unwrap_or("");
-                    let exe_name = std::path::Path::new(exe)
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    exe_name == orig_cmd.as_str()
-                }
-                Err(_) => false,
-            };
-            if !same_process {
+        let identity = match state.reniced_pids.get(&pid) {
+            Some((_, identity)) => identity.clone(),
+            None => continue,
+        };
+        match process_identity_status(Path::new("/proc"), pid, &identity) {
+            ProcessIdentityStatus::Match => {}
+            ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch => {
+                remove_legacy_renice(state, pid);
+                continue;
+            }
+            ProcessIdentityStatus::Unavailable => {
                 eprintln!(
-                    "🔧 skip un-renice pid={} — PID recycled (was {}, now different)",
-                    pid, orig_cmd
+                    "⚠️ un-renice deferred for pid={} — process identity unavailable",
+                    pid
                 );
-                state.reniced_pids.remove(&pid);
-                state.cooled_since.remove(&pid);
                 continue;
             }
         }
-        let _ = renice_process(pid, 0).await;
+        if let Err(e) = renice_process(pid, 0).await {
+            eprintln!("⚠️ un-renice failed for pid={}: {}", pid, e);
+            continue;
+        }
         eprintln!("🔧 un-renice pid={} -> nice 0 (pressure released)", pid);
-        state.reniced_pids.remove(&pid);
-        state.cooled_since.remove(&pid);
+        remove_legacy_renice(state, pid);
     }
     state
         .cooled_since
