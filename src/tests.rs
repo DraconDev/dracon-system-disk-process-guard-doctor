@@ -43,6 +43,118 @@ async fn renice_process_with_bin_reports_success_and_failure() {
     let _ = fs::remove_dir_all(&tmp);
 }
 
+#[cfg(unix)]
+fn write_process_fixture(
+    root: &std::path::Path,
+    pid: i32,
+    comm: &str,
+    starttime: u64,
+    oom_score_adj: Option<i32>,
+    cgroup: Option<&str>,
+) {
+    let dir = root.join(pid.to_string());
+    fs::create_dir_all(&dir).expect("create process fixture");
+    fs::write(dir.join("comm"), format!("{comm}\n")).expect("write comm fixture");
+    let mut stat_fields = vec!["S".to_string()];
+    stat_fields.extend(std::iter::repeat_n("0".to_string(), 18));
+    stat_fields.push(starttime.to_string());
+    fs::write(
+        dir.join("stat"),
+        format!("{pid} ({comm}) {}\n", stat_fields.join(" ")),
+    )
+    .expect("write stat fixture");
+    if let Some(adj) = oom_score_adj {
+        fs::write(dir.join("oom_score_adj"), format!("{adj}\n"))
+            .expect("write oom fixture");
+    }
+    if let Some(cgroup) = cgroup {
+        fs::write(dir.join("cgroup"), cgroup).expect("write cgroup fixture");
+    }
+}
+
+#[cfg(unix)]
+fn write_test_script(path: &std::path::Path, body: &str) {
+    fs::write(path, format!("#!/bin/sh\n{body}\n")).expect("write test script");
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("chmod test script");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn restore_runtime_adjustments_restores_renice_and_oom() {
+    let tmp = std::env::temp_dir().join(format!(
+        "dracon_system_restore_test_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&tmp).expect("create temp dir");
+    let renice = tmp.join("renice");
+    let systemctl = tmp.join("systemctl");
+    write_test_script(&renice, "exit 0");
+    write_test_script(&systemctl, "exit 0");
+    write_process_fixture(&tmp, 101, "zsh", 77, Some(250), None);
+
+    let identity = ProcessIdentity {
+        comm: "zsh".to_string(),
+        starttime: 77,
+    };
+    assert_eq!(
+        process_identity_status(&tmp, 101, &identity),
+        ProcessIdentityStatus::Match
+    );
+    let mut state = GuardRuntimeState::default();
+    state.reniced_pids.insert(101, (5, identity.clone()));
+    state.oom_biased_pids.insert(101, (-100, identity));
+
+    assert!(
+        restore_runtime_adjustments_with(&mut state, &renice, &systemctl, &tmp).await,
+        "all successful restorations should permit runtime reset"
+    );
+    assert!(state.reniced_pids.is_empty());
+    assert!(state.oom_biased_pids.is_empty());
+    assert_eq!(fs::read_to_string(tmp.join("101/oom_score_adj")).unwrap(), "-100\n");
+    let _ = fs::remove_dir_all(&tmp);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn restore_runtime_adjustments_retains_failed_cpu_cap() {
+    let tmp = std::env::temp_dir().join(format!(
+        "dracon_system_cap_restore_test_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&tmp).expect("create temp dir");
+    let renice = tmp.join("renice");
+    let systemctl = tmp.join("systemctl");
+    write_test_script(&renice, "exit 0");
+    write_test_script(&systemctl, "exit 1");
+    let mut state = GuardRuntimeState::default();
+    state.capped_pids.insert(
+        999_999,
+        (
+            "dracon-cap.service".to_string(),
+            "user.slice".to_string(),
+            ProcessIdentity {
+                comm: "gone".to_string(),
+                starttime: 1,
+            },
+        ),
+    );
+
+    assert!(
+        !restore_runtime_adjustments_with(&mut state, &renice, &systemctl, &tmp).await,
+        "failed systemd cleanup must prevent runtime reset"
+    );
+    assert!(state.capped_pids.contains_key(&999_999));
+    let _ = fs::remove_dir_all(&tmp);
+}
+
 #[test]
 fn human_bytes_formats_units() {
     assert_eq!(human_bytes(1), "1.0 B");

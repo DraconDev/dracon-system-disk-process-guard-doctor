@@ -833,13 +833,6 @@ fn process_identity_status(
     }
 }
 
-/// Backwards-compatible tuple view used by existing guard sampling callers.
-pub(crate) fn proc_identity(pid: i32) -> Option<(String, u64)> {
-    read_proc_identity(Path::new("/proc"), pid)
-        .ok()
-        .map(|identity| (identity.comm, identity.starttime))
-}
-
 fn process_sample_identity(sample: &ProcSample) -> ProcessIdentity {
     ProcessIdentity {
         comm: sample.command.clone(),
@@ -1116,18 +1109,6 @@ async fn systemctl_user_action(
 /// stop the now-empty transient scope. Every read, move, and systemd
 /// operation is checked so callers retain the cap entry when restoration
 /// cannot be verified.
-async fn uncap_cpu_process(pid: i32, scope: &str, orig_cgroup: &str) -> Result<(), String> {
-    uncap_cpu_process_with_bin(
-        Path::new("systemctl"),
-        Path::new("/proc"),
-        pid,
-        scope,
-        orig_cgroup,
-        true,
-    )
-    .await
-}
-
 async fn uncap_cpu_process_with_bin(
     systemctl_bin: &Path,
     proc_root: &Path,
