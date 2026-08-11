@@ -654,6 +654,34 @@ async fn docker_prune_returns_zero_on_dry_run() {
 }
 
 #[tokio::test]
+async fn empty_trash_credential_guard_blocks_dry_run_estimate() {
+    let home = std::env::temp_dir().join(format!(
+        "dracon_system_trash_guard_test_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    let trash_files = home.join(".local/share/Trash/files");
+    fs::create_dir_all(&trash_files).expect("create trash fixture");
+    let credential_fixture = trash_files.join("CREDENTIALS.md");
+    fs::write(&credential_fixture, b"fixture contents").expect("write credential fixture");
+
+    let (reclaimed, cleaned) = empty_trash_at(&home, false, &[], true)
+        .await
+        .expect("dry-run trash scan");
+    assert_eq!(reclaimed, 0, "blocked dry-run must not report reclaimable bytes");
+    assert!(cleaned.is_empty(), "blocked dry-run must report no cleanup action");
+    assert!(
+        credential_fixture.exists(),
+        "dry-run must not delete the credential-like fixture"
+    );
+
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[tokio::test]
 async fn guard_report_completes_for_ok_disk() {
     let mut state = GuardRuntimeState::default();
     let guard = GuardPolicy {

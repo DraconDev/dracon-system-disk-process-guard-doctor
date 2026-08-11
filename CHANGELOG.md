@@ -38,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Memory-pressure renice now preserves the original nice value**: runtime
   state stores both the pre-pressure and applied nice values, and release
   restores the captured pre-pressure value instead of hardcoding nice 0.
+- **Trash credential scanning now applies to dry-run estimates**: a
+  credential-like filename blocks both deletion and the reported reclaim
+  estimate, with the same warning/event path used by apply mode.
 
 ## [0.112.36] - 2026-08-10
 

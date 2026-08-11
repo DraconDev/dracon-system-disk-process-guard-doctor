@@ -2058,10 +2058,22 @@ async fn clean_package_caches(
 /// Empty trash. When `credential_guard` is set, the trash is first
 /// scanned for credential-signal filenames (see
 /// looks_credential_like and docs/design/disk-full-credentials-
-/// 2026-08-10.md); a single match aborts the deletion — the
-/// 2026-08-10 scan found 665 credential-pattern matches in the
-/// 56 GiB trash, so blind emptying is unsafe by default.
+/// 2026-08-10.md); a single match aborts deletion and the dry-run estimate.
+/// The 2026-08-10 scan found 665 credential-pattern matches in the 56 GiB
+/// trash, so blind emptying is unsafe by default.
 async fn empty_trash(
+    apply: bool,
+    protected_paths: &[String],
+    credential_guard: bool,
+) -> Result<(u64, Vec<String>)> {
+    let Some(home) = dirs::home_dir() else {
+        return Ok((0, Vec::new()));
+    };
+    empty_trash_at(&home, apply, protected_paths, credential_guard).await
+}
+
+async fn empty_trash_at(
+    home: &Path,
     apply: bool,
     protected_paths: &[String],
     credential_guard: bool,
@@ -2069,14 +2081,14 @@ async fn empty_trash(
     let mut reclaimed = 0u64;
     let mut cleaned = Vec::new();
 
-    if let Some(home) = dirs::home_dir() {
+    {
         let trash_files = home.join(".local/share/Trash/files");
         let trash_info = home.join(".local/share/Trash/info");
 
         if trash_files.exists() {
             let size = get_dir_size(&trash_files).await.unwrap_or(0);
             if size > 0 {
-                if apply && credential_guard {
+                if credential_guard {
                     let mut matches = Vec::new();
                     for entry in walkdir::WalkDir::new(&trash_files).max_depth(8) {
                         match entry {
