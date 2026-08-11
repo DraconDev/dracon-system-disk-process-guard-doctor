@@ -895,11 +895,7 @@ fn process_sample_is_current(sample: &ProcSample) -> bool {
 /// Return whether `pid` is a descendant of `root_pid` in a point-in-time
 /// process table. The bounded walk tolerates a process disappearing between
 /// `ps` and this check and cannot loop forever on malformed/cyclic fixtures.
-fn process_is_descendant_of(
-    pid: i32,
-    root_pid: i32,
-    parent_by_pid: &HashMap<i32, i32>,
-) -> bool {
+fn process_is_descendant_of(pid: i32, root_pid: i32, parent_by_pid: &HashMap<i32, i32>) -> bool {
     if pid == root_pid {
         return false;
     }
@@ -921,8 +917,10 @@ fn process_is_descendant_of(
 }
 
 fn process_descendant_samples(samples: &[ProcSample], root_pid: i32) -> Vec<ProcSample> {
-    let parent_by_pid: HashMap<i32, i32> =
-        samples.iter().map(|sample| (sample.pid, sample.ppid)).collect();
+    let parent_by_pid: HashMap<i32, i32> = samples
+        .iter()
+        .map(|sample| (sample.pid, sample.ppid))
+        .collect();
     samples
         .iter()
         .filter(|sample| process_is_descendant_of(sample.pid, root_pid, &parent_by_pid))
@@ -1139,7 +1137,7 @@ fn sweep_stranded_oom_descendants(
     let roots: Vec<(i32, i32, ProcessIdentity)> = state
         .oom_biased_pids
         .iter()
-        .map(|(&pid, &(orig_adj, ref identity))| (pid, orig_adj, identity.clone()))
+        .map(|(&pid, value)| (pid, value.0, value.1.clone()))
         .collect();
     let mut restored = Vec::new();
 
@@ -1148,17 +1146,10 @@ fn sweep_stranded_oom_descendants(
             ProcessIdentityStatus::Match | ProcessIdentityStatus::Gone => {}
             ProcessIdentityStatus::Mismatch | ProcessIdentityStatus::Unavailable => continue,
         }
-        let known = state
-            .oom_known_descendants
-            .entry(root_pid)
-            .or_default();
-        for child in oom_descendant_candidates(
-            samples,
-            root_pid,
-            known,
-            &tracked_pids,
-            exempt_names,
-        ) {
+        let known = state.oom_known_descendants.entry(root_pid).or_default();
+        for child in
+            oom_descendant_candidates(samples, root_pid, known, &tracked_pids, exempt_names)
+        {
             let child_identity = process_sample_identity(&child);
             if !matches!(
                 process_identity_status(proc_root, child.pid, &child_identity),
@@ -1489,6 +1480,7 @@ fn remove_memory_renice(state: &mut GuardRuntimeState, pid: i32) {
 
 fn remove_oom_bias(state: &mut GuardRuntimeState, pid: i32) {
     state.oom_biased_pids.remove(&pid);
+    state.oom_known_descendants.remove(&pid);
     state.oom_cooled_since.remove(&pid);
 }
 
@@ -1503,11 +1495,13 @@ fn remove_cpu_cap(state: &mut GuardRuntimeState, pid: i32) {
 /// remains tracked so the next guard pass can retry instead of losing a live
 /// adjustment.
 async fn restore_runtime_adjustments(state: &mut GuardRuntimeState) -> bool {
-    restore_runtime_adjustments_with(
+    let samples = process_samples().await.unwrap_or_default();
+    restore_runtime_adjustments_with_samples(
         state,
         Path::new("renice"),
         Path::new("systemctl"),
         Path::new("/proc"),
+        &samples,
     )
     .await
 }
@@ -1518,6 +1512,17 @@ async fn restore_runtime_adjustments_with(
     systemctl_bin: &Path,
     proc_root: &Path,
 ) -> bool {
+    restore_runtime_adjustments_with_samples(state, renice_bin, systemctl_bin, proc_root, &[]).await
+}
+
+async fn restore_runtime_adjustments_with_samples(
+    state: &mut GuardRuntimeState,
+    renice_bin: &Path,
+    systemctl_bin: &Path,
+    proc_root: &Path,
+    samples: &[ProcSample],
+) -> bool {
+    let _ = sweep_stranded_oom_descendants(proc_root, samples, state, &HashSet::new());
     for adjustment in runtime_adjustment_plan(state) {
         match adjustment {
             RuntimeAdjustment::LegacyRenice { pid, identity } => {
@@ -2855,38 +2860,11 @@ async fn check_memory_pressure(
 
     // Top RSS offenders (skipping kernel threads and exempt names).
     let exempt = parse_kinds(&guard.process_exempt_names);
-    let kernel_prefixes = [
-        "kworker",
-        "ksoftirqd",
-        "kthreadd",
-        "kswapd",
-        "kcompactd",
-        "rcu_",
-        "kdevtmpfs",
-        "kblockd",
-        "khugepaged",
-        "ksmd",
-        "kernfs",
-        "kauditd",
-        "kstrp",
-        "mm_percpu",
-        "oom_reaper",
-        "kvm",
-        "ktrain",
-        "kthrotld",
-        "scsi_",
-        "nvme",
-        "irq/",
-        "watchdog",
-    ];
-    let top_rss: Vec<ProcSample> = process_samples()
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|p| {
-            !exempt.contains(&p.command)
-                && !kernel_prefixes.iter().any(|k| p.command.starts_with(k))
-        })
+    let all_processes = process_samples().await.unwrap_or_default();
+    let top_rss: Vec<ProcSample> = all_processes
+        .iter()
+        .filter(|p| !exempt.contains(&p.command) && !is_kernel_process(&p.command))
+        .cloned()
         .fold(Vec::new(), |mut acc, p| {
             if acc.len() < 5 || p.rss_mb > acc.last().map(|x: &ProcSample| x.rss_mb).unwrap_or(0) {
                 acc.push(p);
@@ -2964,9 +2942,14 @@ async fn check_memory_pressure(
             if let Some(orig) = cur {
                 if let Some(target) = oom_bias_target(orig) {
                     if fs::write(&adj_path, format!("{target}\n")).is_ok() {
+                        let known_descendants = process_descendant_samples(&all_processes, p.pid)
+                            .into_iter()
+                            .map(|child| (child.pid, child.starttime))
+                            .collect();
                         state
                             .oom_biased_pids
                             .insert(p.pid, (orig, process_sample_identity(p)));
+                        state.oom_known_descendants.insert(p.pid, known_descendants);
                         eprintln!(
                             "🛡️ oom-bias pid={} cmd={} adj {} -> {} (critical pressure)",
                             p.pid, p.command, orig, target
@@ -3008,6 +2991,16 @@ async fn check_memory_pressure(
             }
         }
     }
+
+    // A child forked after its parent was biased inherits oom_score_adj=250,
+    // but is not present in `oom_biased_pids`. Sweep those descendants on
+    // every pass, including before a tracked parent is released or removed.
+    limited.extend(sweep_stranded_oom_descendants(
+        Path::new("/proc"),
+        &all_processes,
+        state,
+        &exempt,
+    ));
 
     if pressure == "ok" {
         let now = Instant::now();
@@ -3154,6 +3147,9 @@ async fn check_memory_pressure(
             ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch
         )
     });
+    state
+        .oom_known_descendants
+        .retain(|pid, _| state.oom_biased_pids.contains_key(pid));
     state.capped_pids.retain(|pid, (_, _, identity)| {
         !matches!(
             process_identity_status(Path::new("/proc"), *pid, identity),
