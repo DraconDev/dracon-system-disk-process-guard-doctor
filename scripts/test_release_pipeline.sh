@@ -96,6 +96,8 @@ BIN
         ;;
     test|build|clippy)
         ;;
+    deny)
+        ;;
     *)
         echo "unexpected cargo invocation: $*" >&2
         exit 2
