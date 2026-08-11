@@ -387,6 +387,14 @@ pub(crate) struct ZombieInfo {
     pub(crate) parent_alive: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProcessIdentity {
+    /// `/proc/<pid>/comm`, retained for diagnostics and the ps-row check.
+    pub(crate) comm: String,
+    /// `/proc/<pid>/stat` field 22; stable for the lifetime of a process.
+    pub(crate) starttime: u64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ProcSample {
     pub(crate) pid: i32,
@@ -395,6 +403,7 @@ pub(crate) struct ProcSample {
     pub(crate) rss_mb: u64,
     pub(crate) command: String,
     pub(crate) args: String,
+    pub(crate) starttime: u64,
 }
 
 #[derive(Default, Debug)]
@@ -420,20 +429,22 @@ pub(crate) struct GuardRuntimeState {
     /// for the swap-thrash fallback when PSI is unavailable.
     pub(crate) prev_swap_counters: Option<(Instant, u64, u64)>,
     /// ADDED 2026-08-10 (v0.112.36): pids reniced by the memory-
-    /// pressure limiter (nice, orig_cmd), and their release timers.
-    pub(crate) memory_reniced_pids: HashMap<i32, (i32, String)>,
+    /// pressure limiter (nice, stable process identity), and their
+    /// release timers.
+    pub(crate) memory_reniced_pids: HashMap<i32, (i32, ProcessIdentity)>,
     pub(crate) memory_cooled_since: HashMap<i32, Instant>,
     /// ADDED 2026-08-10 (v0.112.36): pids whose oom_score_adj was
-    /// raised under critical pressure (orig_adj, orig_cmd), and
-    /// their restore timers.
-    pub(crate) oom_biased_pids: HashMap<i32, (i32, String)>,
+    /// raised under critical pressure (original adjustment, stable
+    /// process identity), and their restore timers.
+    pub(crate) oom_biased_pids: HashMap<i32, (i32, ProcessIdentity)>,
     pub(crate) oom_cooled_since: HashMap<i32, Instant>,
     /// ADDED 2026-08-10 (v0.112.36): pids inside a transient
-    /// CPUQuota scope (scope_name, label), and their release timers.
-    pub(crate) capped_pids: HashMap<i32, (String, String)>,
+    /// CPUQuota scope (scope_name, original cgroup, stable identity),
+    /// and their release timers.
+    pub(crate) capped_pids: HashMap<i32, (String, String, ProcessIdentity)>,
     pub(crate) cap_cooled_since: HashMap<i32, Instant>,
     pub(crate) active_build_pids: HashSet<i32>,
-    pub(crate) reniced_pids: HashMap<i32, (i32, String)>,
+    pub(crate) reniced_pids: HashMap<i32, (i32, ProcessIdentity)>,
     pub(crate) cooled_since: HashMap<i32, Instant>,
     pub(crate) guard_cycle: u64,
     pub(crate) last_proactive_cleanup: Option<Instant>,
@@ -525,6 +536,7 @@ pub(crate) fn parse_ps_output(output: &str) -> Vec<ProcSample> {
                 rss_mb: rss_kb / 1024,
                 command,
                 args,
+                starttime: 0,
             })
         })
         .collect()
@@ -758,35 +770,69 @@ async fn process_samples() -> Result<Vec<ProcSample>> {
     // heavy-process sample for an arbitrary victim PID (which the
     // guard would then renice). The injected row's pid/comm pair
     // doesn't match a real process, so this filter kills it. Rows
-    // for just-exited PIDs are dropped the same way.
+    // for just-exited PIDs are dropped the same way. Preserve the
+    // verified starttime in the sample so any later adjustment is
+    // tied to this exact PID incarnation.
     Ok(parsed
         .into_iter()
-        .filter(|p| {
-            proc_identity(p.pid)
-                .map(|(comm, _)| comm == p.command)
-                .unwrap_or(false)
+        .filter_map(|mut p| match read_proc_identity(Path::new("/proc"), p.pid) {
+            Ok(identity) if identity.comm == p.command => {
+                p.starttime = identity.starttime;
+                Some(p)
+            }
+            _ => None,
         })
         .collect())
 }
 
-/// ADDED 2026-07-21 (v0.112.33, audit M34/F4.8): read a process's
-/// identity out-of-band: `/proc/<pid>/comm` (name, 15-char-truncated
-/// like ps's comm column) and `/proc/<pid>/stat` field 22
-/// (starttime, for the PID-reuse check). Returns None when the pid
-/// is gone.
-pub(crate) fn proc_identity(pid: i32) -> Option<(String, u64)> {
-    let comm = std::fs::read_to_string(format!("/proc/{}/comm", pid))
-        .ok()
-        .map(|s| s.trim().to_string())?;
-    let stat = std::fs::read_to_string(format!("/proc/{}/stat", pid)).ok()?;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcessIdentityStatus {
+    Match,
+    Gone,
+    Mismatch,
+    Unavailable,
+}
+
+/// Read a process's identity out-of-band: `/proc/<pid>/comm` (name,
+/// 15-char-truncated like ps's comm column) and `/proc/<pid>/stat` field 22
+/// (starttime, for the PID-reuse check).
+fn read_proc_identity(root: &Path, pid: i32) -> std::io::Result<ProcessIdentity> {
+    let comm = std::fs::read_to_string(root.join(pid.to_string()).join("comm"))?
+        .trim()
+        .to_string();
+    let stat = std::fs::read_to_string(root.join(pid.to_string()).join("stat"))?;
     // /proc/<pid>/stat field 22 is starttime. The comm field (2) can
     // contain spaces/parens, so split after the LAST ')'.
-    let after_comm = stat.rsplit_once(')')?.1;
+    let after_comm = stat.rsplit_once(')').ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, "malformed /proc stat")
+    })?.1;
     let starttime = after_comm
         .split_whitespace()
         .nth(19) // field 22 - field 3 (0-indexed after comm)
-        .and_then(|s| s.parse::<u64>().ok())?;
-    Some((comm, starttime))
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "missing starttime"))?
+        .parse::<u64>()
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid starttime"))?;
+    Ok(ProcessIdentity { comm, starttime })
+}
+
+fn process_identity_status(
+    root: &Path,
+    pid: i32,
+    expected: &ProcessIdentity,
+) -> ProcessIdentityStatus {
+    match read_proc_identity(root, pid) {
+        Ok(actual) if actual.starttime == expected.starttime => ProcessIdentityStatus::Match,
+        Ok(_) => ProcessIdentityStatus::Mismatch,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => ProcessIdentityStatus::Gone,
+        Err(_) => ProcessIdentityStatus::Unavailable,
+    }
+}
+
+/// Backwards-compatible tuple view used by existing guard sampling callers.
+pub(crate) fn proc_identity(pid: i32) -> Option<(String, u64)> {
+    read_proc_identity(Path::new("/proc"), pid)
+        .ok()
+        .map(|identity| (identity.comm, identity.starttime))
 }
 
 pub(crate) fn disk_state(used: u8, guard: &GuardPolicy) -> &'static str {
