@@ -40,8 +40,11 @@ cargo build --release
   - ≥500% CPU → nice 15 (strong deprio)
   - RSS ≥4GB → nice 5 (memory hog deprio)
   - RSS ≥8GB → nice 10 (heavy memory deprio)
-- **Never kills processes** — only renices
-- Auto-releases renice after process is no longer heavy
+- **Never directly kills processes** — mitigation can renice heavy jobs,
+  bias `oom_score_adj` during critical pressure, and optionally throttle
+  CPU with a reversible `CPUQuota`; OOM bias only influences the kernel's
+  last-resort choice
+- Auto-releases reversible process adjustments after pressure recovers
 
 ### Build-Aware Monitoring
 - Detects active Rust build processes
@@ -317,8 +320,13 @@ The guard tracks disk usage over time and uses linear regression to predict when
 
 ### Safety Boundaries
 
-The guard never kills processes; process mitigation is limited to `renice`.
-Destructive cleanup paths are canonicalized first, symlinks are rejected, and configured protected paths are honored. Log truncation uses the same safety check before modifying files, so system-protected or user-protected log paths are skipped.
+The guard never directly kills processes. Process mitigation is limited to
+reversible `renice`, optional `oom_score_adj` biasing, and optional CPUQuota
+throttling; OOM bias can only influence which process the kernel chooses if
+its last-resort OOM killer fires. Destructive cleanup paths are canonicalized
+first, symlinks are rejected, and configured protected paths are honored. Log
+truncation uses the same safety check before modifying files, so
+system-protected or user-protected log paths are skipped.
 
 ## Binary Size
 

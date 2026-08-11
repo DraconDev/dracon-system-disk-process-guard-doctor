@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Process-management documentation now matches v0.112.36 behavior**: the
+  guard's comments and README describe reversible renice, optional
+  `oom_score_adj` biasing, and optional CPUQuota throttling instead of
+  incorrectly claiming renice is the only process action.
 - **Doctor status output now reports failures correctly**: failing checks are
   labeled `fail` instead of the inverted `present`, and the canonical
   `~/.dracon` system-root check is included in the table. Added regression

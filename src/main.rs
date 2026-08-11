@@ -367,7 +367,7 @@ pub(crate) struct MemoryReport {
     pub(crate) pswpin_rate: Option<f64>,
     /// "ok" | "warn" | "critical"
     pub(crate) pressure: String,
-    /// Top RSS offenders (for "what do I kill" notifications).
+    /// Top RSS offenders for diagnostics and optional pressure mitigation.
     pub(crate) top_rss: Vec<ProcSample>,
     /// ADDED 2026-08-10 (v0.112.36): actions taken this pass, e.g.
     /// "renice svelte-check=10", "oom-bias node=250".
@@ -976,8 +976,10 @@ fn sync_freeze_marker_path(guard: &GuardPolicy) -> PathBuf {
 /// The process still gets full CPU when nothing else needs it — it just yields to the DE
 /// and other interactive processes.
 ///
-/// **INVARIANT: This function is the ONLY process management action the guard takes.**
-/// The guard NEVER kills processes — it only renices. Killing is explicitly banned.
+/// Process mitigation is limited to reversible renice, optional `oom_score_adj`
+/// biasing, and optional CPUQuota capping. The guard never invokes `kill`:
+/// OOM biasing only influences the kernel's last-resort choice if an OOM occurs,
+/// while CPUQuota throttles the process without killing it.
 pub(crate) fn graduated_nice_value(cpu_percent: f32, rss_mb: u64, base_nice: i32) -> i32 {
     let cpu_tiers: &[(f32, i32)] = &[(500.0, 15), (300.0, 10), (180.0, 5)];
     let mem_tiers: &[(u64, i32)] = &[(8192, 10), (4096, 5)];
@@ -2638,8 +2640,9 @@ async fn check_rapid_disk_fill(
 /// Memory/swap pressure guard (ADDED 2026-08-10, v0.112.35).
 /// Detects the 2026-08-09/10 failure mode: RAM exhausted, swap
 /// thrashing (PSI full avg10 high), everything crawling while
-/// kswapd spins. Reports the top RSS offenders so the operator
-/// knows what to kill; never kills anything itself.
+/// kswapd spins. Reports the top RSS offenders and, when configured,
+/// applies reversible renice, OOM-bias, and CPUQuota mitigation; it
+/// never kills a process itself.
 async fn check_memory_pressure(
     guard: &GuardPolicy,
     state: &mut GuardRuntimeState,
