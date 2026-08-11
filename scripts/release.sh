@@ -240,6 +240,8 @@ refresh_standalone_lock() {
     local lock_tmp
     lock_tmp=$(mktemp -d "${TMPDIR:-/tmp}/dracon-system-lock-XXXXXX")
     cp "$CRATE_TOML" "$lock_tmp/Cargo.toml"
+    mkdir -p "$lock_tmp/src"
+    : > "$lock_tmp/src/main.rs"
     if ! (cd "$lock_tmp" && timeout 300 cargo generate-lockfile); then
         rm -rf "$lock_tmp"
         die_pre "failed to regenerate standalone Cargo.lock"
