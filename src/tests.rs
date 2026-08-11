@@ -64,8 +64,7 @@ fn write_process_fixture(
     )
     .expect("write stat fixture");
     if let Some(adj) = oom_score_adj {
-        fs::write(dir.join("oom_score_adj"), format!("{adj}\n"))
-            .expect("write oom fixture");
+        fs::write(dir.join("oom_score_adj"), format!("{adj}\n")).expect("write oom fixture");
     }
     if let Some(cgroup) = cgroup {
         fs::write(dir.join("cgroup"), cgroup).expect("write cgroup fixture");
@@ -104,6 +103,21 @@ async fn restore_runtime_adjustments_restores_renice_and_oom() {
         process_identity_status(&tmp, 101, &identity),
         ProcessIdentityStatus::Match
     );
+    assert_eq!(
+        process_identity_status(
+            &tmp,
+            101,
+            &ProcessIdentity {
+                comm: "zsh".to_string(),
+                starttime: 78,
+            },
+        ),
+        ProcessIdentityStatus::Mismatch
+    );
+    assert_eq!(
+        process_identity_status(&tmp, 102, &identity),
+        ProcessIdentityStatus::Gone
+    );
     let mut state = GuardRuntimeState::default();
     state.reniced_pids.insert(101, (5, identity.clone()));
     state.oom_biased_pids.insert(101, (-100, identity));
@@ -114,7 +128,10 @@ async fn restore_runtime_adjustments_restores_renice_and_oom() {
     );
     assert!(state.reniced_pids.is_empty());
     assert!(state.oom_biased_pids.is_empty());
-    assert_eq!(fs::read_to_string(tmp.join("101/oom_score_adj")).unwrap(), "-100\n");
+    assert_eq!(
+        fs::read_to_string(tmp.join("101/oom_score_adj")).unwrap(),
+        "-100\n"
+    );
     let _ = fs::remove_dir_all(&tmp);
 }
 
@@ -152,6 +169,32 @@ async fn restore_runtime_adjustments_retains_failed_cpu_cap() {
         "failed systemd cleanup must prevent runtime reset"
     );
     assert!(state.capped_pids.contains_key(&999_999));
+
+    // Once systemd succeeds, the previously retained cap may be removed.
+    write_test_script(&systemctl, "exit 0");
+    assert!(restore_runtime_adjustments_with(&mut state, &renice, &systemctl, &tmp).await);
+    assert!(state.capped_pids.is_empty());
+
+    // A live process whose cgroup cannot be read is indeterminate and must
+    // also remain tracked even when systemd itself reports success.
+    write_process_fixture(&tmp, 1000, "worker", 88, None, None);
+    fs::create_dir(tmp.join("1000/cgroup")).expect("create unreadable cgroup fixture");
+    state.capped_pids.insert(
+        1000,
+        (
+            "dracon-cap.service".to_string(),
+            "user.slice".to_string(),
+            ProcessIdentity {
+                comm: "worker".to_string(),
+                starttime: 88,
+            },
+        ),
+    );
+    assert!(
+        !restore_runtime_adjustments_with(&mut state, &renice, &systemctl, &tmp).await,
+        "cgroup read failure must prevent runtime reset"
+    );
+    assert!(state.capped_pids.contains_key(&1000));
     let _ = fs::remove_dir_all(&tmp);
 }
 
