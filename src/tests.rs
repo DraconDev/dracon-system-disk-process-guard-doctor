@@ -189,8 +189,21 @@ async fn restore_runtime_adjustments_restores_renice_and_oom() {
     assert!(failure_state.reniced_pids.contains_key(&103));
     assert!(failure_state.oom_biased_pids.contains_key(&104));
 
+    // A kernel comm name can be truncated or differ from argv[0]. The
+    // release identity check must use the stable starttime, not cmdline.
+    write_process_fixture(&tmp, 105, "very-long-process", 81, None, None);
+    let long_comm_identity = ProcessIdentity {
+        comm: "very-long".to_string(),
+        starttime: 81,
+    };
+    assert_eq!(
+        process_identity_status(&tmp, 105, &long_comm_identity),
+        ProcessIdentityStatus::Match
+    );
+
     let mut state = GuardRuntimeState::default();
     state.reniced_pids.insert(101, (5, identity.clone()));
+    state.reniced_pids.insert(105, (5, long_comm_identity));
     state.oom_biased_pids.insert(101, (-100, identity));
 
     assert!(
