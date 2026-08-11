@@ -15,8 +15,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ## [0.112.36] - 2026-08-10
 
-## [0.112.36] - 2026-08-10
-
 ### Added
 
 - **Memory-pressure limiter** (`auto_renice_on_memory`, default `true`): when
@@ -49,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - None (behavioral additions only).
 
-## [0.112.35] - 2026-08-10## [0.112.35] - 2026-08-10
+## [0.112.35] - 2026-08-10
 
 ### Added (2026-08-10, v0.112.35)
 

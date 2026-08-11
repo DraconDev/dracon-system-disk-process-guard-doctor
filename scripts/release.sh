@@ -198,36 +198,11 @@ log "step 2/${TOTAL_STEPS}: closing CHANGELOG.md [Unreleased] → [${VERSION}]"
 CHANGELOG="CHANGELOG.md"
 DATE=$(date -u +%Y-%m-%d)
 if [[ $DRY_RUN -eq 0 ]]; then
-    python3 - "$CHANGELOG" "$VERSION" "$DATE" <<'PY'
-import sys, pathlib
-p, version, date = sys.argv[1], sys.argv[2], sys.argv[3]
-text = pathlib.Path(p).read_text()
-marker = "## [Unreleased]"
-if marker not in text:
-    print(f"  CHANGELOG.md: no [Unreleased] section found; leaving unchanged", file=sys.stderr)
-    sys.exit(0)
-
-# Find the [Unreleased] section and the next ## [X.Y.Z] header.
-import re
-unreleased_match = re.search(r"^## \[Unreleased\][^\n]*\n", text, re.MULTILINE)
-if not unreleased_match:
-    print(f"  CHANGELOG.md: regex miss for [Unreleased] header; leaving unchanged", file=sys.stderr)
-    sys.exit(0)
-
-start = unreleased_match.end()
-# Find the next '## [' header (or end of file)
-next_match = re.search(r"^## \[[^\n]*\n", text[start:], re.MULTILINE)
-if next_match:
-    end = start + next_match.start()
-    new_header = f"## [{version}] - {date}\n"
-    insertion = f"{new_header}{text[start:end]}"
-    new_text = text[:start] + insertion + text[end:]
-else:
-    new_header = f"\n## [{version}] - {date}\n{text[start:]}"
-    new_text = text[:start] + new_header
-pathlib.Path(p).write_text(new_text)
-PY
-    ok "  CHANGELOG.md: [Unreleased] closed, [${VERSION}] - ${DATE} added"
+    # FIXED 2026-08-11 (audit HIGH): extracted the inline closer into the
+    # tested idempotent helper. Re-running after a partial release now leaves
+    # an existing version header byte-identical instead of duplicating it.
+    python3 "$SCRIPT_DIR/close-changelog.py" "$CHANGELOG" "$VERSION" "$DATE"
+    ok "  CHANGELOG.md: [Unreleased] closed as [${VERSION}] - ${DATE} (or already closed)"
 else
     ok "  CHANGELOG.md: would close [Unreleased] → [${VERSION}] - ${DATE} (skipped: --dry-run)"
 fi
