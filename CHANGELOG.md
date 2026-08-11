@@ -27,9 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **SIGHUP policy reload now restores every active process limiter** before
-  resetting runtime state: legacy and memory renice adjustments, OOM bias,
-  and transient CPUQuota cgroups are all restored or retained for retry.
+- **SIGHUP policy reload and graceful shutdown now restore every active
+  process limiter** before discarding runtime state: legacy and memory renice
+  adjustments, OOM bias, and transient CPUQuota cgroups are all restored or
+  retained for retry.
 
 ## [0.112.36] - 2026-08-10
 
