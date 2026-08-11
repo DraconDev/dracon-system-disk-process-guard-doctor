@@ -16,7 +16,7 @@ if ! command -v "$BIN" >/dev/null 2>&1; then
     exit 1
 fi
 
-VERSION_OUT="$($BIN --version 2>&1)" || {
+VERSION_OUT="$("$BIN" --version 2>&1)" || {
     echo "✗ FAIL: '$BIN --version' failed" >&2
     exit 1
 }
@@ -25,7 +25,7 @@ if ! grep -Eq '^dracon-system [0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$' <<<"
     exit 1
 fi
 
-STATUS_JSON="$($BIN status --json 2>/dev/null)" || {
+STATUS_JSON="$("$BIN" status --json 2>/dev/null)" || {
     echo "✗ FAIL: '$BIN status --json' failed" >&2
     exit 1
 }
