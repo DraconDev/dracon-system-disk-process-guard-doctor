@@ -35,11 +35,11 @@ fn runtime_adjustment_plan_includes_every_reversible_limiter() {
 
     let plan = crate::runtime_adjustment_plan(&state);
     assert_eq!(plan.len(), 4);
-    assert!(plan.contains(&crate::RuntimeAdjustment::Renice {
+    assert!(plan.contains(&crate::RuntimeAdjustment::LegacyRenice {
         pid: 101,
         orig_cmd: "legacy-worker".to_string(),
     }));
-    assert!(plan.contains(&crate::RuntimeAdjustment::Renice {
+    assert!(plan.contains(&crate::RuntimeAdjustment::MemoryRenice {
         pid: 102,
         orig_cmd: "memory-worker".to_string(),
     }));

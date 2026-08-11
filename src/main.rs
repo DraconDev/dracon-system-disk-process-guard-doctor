@@ -1052,7 +1052,11 @@ async fn uncap_cpu_process(pid: i32, scope: &str, orig_cgroup: &str) -> Result<(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RuntimeAdjustment {
-    Renice {
+    LegacyRenice {
+        pid: i32,
+        orig_cmd: String,
+    },
+    MemoryRenice {
         pid: i32,
         orig_cmd: String,
     },
@@ -1075,13 +1079,13 @@ enum RuntimeAdjustment {
 fn runtime_adjustment_plan(state: &GuardRuntimeState) -> Vec<RuntimeAdjustment> {
     let mut plan = Vec::new();
     for (&pid, (_, orig_cmd)) in &state.reniced_pids {
-        plan.push(RuntimeAdjustment::Renice {
+        plan.push(RuntimeAdjustment::LegacyRenice {
             pid,
             orig_cmd: orig_cmd.clone(),
         });
     }
     for (&pid, (_, orig_cmd)) in &state.memory_reniced_pids {
-        plan.push(RuntimeAdjustment::Renice {
+        plan.push(RuntimeAdjustment::MemoryRenice {
             pid,
             orig_cmd: orig_cmd.clone(),
         });
@@ -1119,25 +1123,52 @@ fn process_matches_command(pid: i32, orig_cmd: &str) -> bool {
 }
 
 /// Restore all process-level mitigations before a policy reload discards the
-/// old runtime. A failed restoration is logged, but the reload still proceeds:
-/// the existing guard loop's normal release/retry paths remain responsible for
-/// transient process exits and command failures.
-async fn restore_runtime_adjustments(state: &GuardRuntimeState) {
+/// old runtime. Successfully restored (or already-gone) entries are removed;
+/// entries that fail to restore remain tracked so the next guard pass can
+/// retry instead of losing a live adjustment.
+async fn restore_runtime_adjustments(state: &mut GuardRuntimeState) -> bool {
     for adjustment in runtime_adjustment_plan(state) {
         match adjustment {
-            RuntimeAdjustment::Renice { pid, orig_cmd } => {
+            RuntimeAdjustment::LegacyRenice { pid, orig_cmd } => {
                 if !process_matches_command(pid, &orig_cmd) {
                     eprintln!(
                         "⚠ SIGHUP skip un-renice pid={} — PID recycled (was {})",
                         pid, orig_cmd
                     );
+                    state.reniced_pids.remove(&pid);
+                    state.cooled_since.remove(&pid);
                     continue;
                 }
-                if let Err(e) = renice_process(pid, 0).await {
-                    eprintln!(
+                match renice_process(pid, 0).await {
+                    Ok(()) => {
+                        state.reniced_pids.remove(&pid);
+                        state.cooled_since.remove(&pid);
+                    }
+                    Err(e) => eprintln!(
                         "⚠ SIGHUP failed to restore nice value for pid={} cmd={}: {}",
                         pid, orig_cmd, e
+                    ),
+                }
+            }
+            RuntimeAdjustment::MemoryRenice { pid, orig_cmd } => {
+                if !process_matches_command(pid, &orig_cmd) {
+                    eprintln!(
+                        "⚠ SIGHUP skip memory un-renice pid={} — PID recycled (was {})",
+                        pid, orig_cmd
                     );
+                    state.memory_reniced_pids.remove(&pid);
+                    state.memory_cooled_since.remove(&pid);
+                    continue;
+                }
+                match renice_process(pid, 0).await {
+                    Ok(()) => {
+                        state.memory_reniced_pids.remove(&pid);
+                        state.memory_cooled_since.remove(&pid);
+                    }
+                    Err(e) => eprintln!(
+                        "⚠ SIGHUP failed to restore memory nice value for pid={} cmd={}: {}",
+                        pid, orig_cmd, e
+                    ),
                 }
             }
             RuntimeAdjustment::OomBias {
@@ -1150,32 +1181,44 @@ async fn restore_runtime_adjustments(state: &GuardRuntimeState) {
                         "⚠ SIGHUP skip oom restore pid={} — PID recycled (was {})",
                         pid, orig_cmd
                     );
+                    state.oom_biased_pids.remove(&pid);
+                    state.oom_cooled_since.remove(&pid);
                     continue;
                 }
-                if let Err(e) = fs::write(
+                match fs::write(
                     format!("/proc/{pid}/oom_score_adj"),
                     format!("{orig_adj}\n"),
                 ) {
-                    eprintln!(
+                    Ok(()) => {
+                        state.oom_biased_pids.remove(&pid);
+                        state.oom_cooled_since.remove(&pid);
+                    }
+                    Err(e) => eprintln!(
                         "⚠ SIGHUP failed to restore oom_score_adj for pid={} cmd={}: {}",
                         pid, orig_cmd, e
-                    );
+                    ),
                 }
             }
             RuntimeAdjustment::CpuCap {
                 pid,
                 scope,
                 orig_cgroup,
-            } => {
-                if let Err(e) = uncap_cpu_process(pid, &scope, &orig_cgroup).await {
-                    eprintln!(
-                        "⚠ SIGHUP failed to restore CPU cgroup for pid={} scope={}: {}",
-                        pid, scope, e
-                    );
+            } => match uncap_cpu_process(pid, &scope, &orig_cgroup).await {
+                Ok(()) => {
+                    state.capped_pids.remove(&pid);
+                    state.cap_cooled_since.remove(&pid);
                 }
-            }
+                Err(e) => eprintln!(
+                    "⚠ SIGHUP failed to restore CPU cgroup for pid={} scope={}: {}",
+                    pid, scope, e
+                ),
+            },
         }
     }
+    state.reniced_pids.is_empty()
+        && state.memory_reniced_pids.is_empty()
+        && state.oom_biased_pids.is_empty()
+        && state.capped_pids.is_empty()
 }
 
 /// Detect active cargo/rustc processes and return their PIDs and working directories
@@ -4262,10 +4305,16 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
                     // discarding the old runtime. This includes the v0.112.36
                     // memory-renice, OOM-bias, and CPUQuota maps as well as
                     // the legacy heavy-process renice map.
-                    restore_runtime_adjustments(&runtime).await;
+                    let adjustments_restored = restore_runtime_adjustments(&mut runtime).await;
                     *guard = new_policy.guard;
                     normalize_guard_policy(guard);
-                    runtime = GuardRuntimeState::default();
+                    if adjustments_restored {
+                        runtime = GuardRuntimeState::default();
+                    } else {
+                        eprintln!(
+                            "⚠ SIGHUP retaining process-adjustment state after partial restore"
+                        );
+                    }
                     interval = guard.interval_secs;
                     veprintln!(
                         2,
