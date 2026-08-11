@@ -22,7 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   released reruns, and prints exact mirror-tag push reminders. The standalone
   repository also ships a synchronized `Cargo.lock` and `deny.toml`, with a
   clean-clone regression covering all release gates so the parent workspace
-  cannot mask failures.
+  cannot mask failures. Dry-runs now update Cargo.toml/Cargo.lock/changelog/
+  release notes for inspection, and `--abort` rolls back that complete set.
 
 ## [0.112.36] - 2026-08-10
 

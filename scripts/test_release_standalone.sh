@@ -49,7 +49,10 @@ echo 'standalone release gates: ok'
 # Exercise the documented local preview and rollback contract against the real
 # release script. This catches a bumped manifest whose omitted lockfile would
 # make the next locked preflight fail.
-next_version=0.112.37
+current_version=$(awk -F'"' '/^version[[:space:]]*=/{print $2; exit}' Cargo.toml)
+base_version="${current_version%%-*}"
+IFS=. read -r major minor patch <<< "$base_version"
+next_version="${major}.${minor}.$((patch + 1))"
 baseline_commit=$(git rev-parse HEAD)
 baseline_toml_sha=$(sha256sum Cargo.toml | awk '{print $1}')
 baseline_lock_sha=$(sha256sum Cargo.lock | awk '{print $1}')
@@ -75,7 +78,8 @@ test -f "release-notes-v${next_version}.md"
 grep -A2 'name = "dracon-system"' Cargo.lock \
     | grep -q "version = \"$next_version\""
 changed_paths=$(git status --porcelain | awk '{print $2}' | sort)
-test "$changed_paths" = $'Cargo.lock\nCargo.toml\nCHANGELOG.md\nrelease-notes-v0.112.37.md'
+expected_paths=$(printf 'Cargo.lock\nCargo.toml\nCHANGELOG.md\nrelease-notes-v%s.md' "$next_version")
+test "$changed_paths" = "$expected_paths"
 
 # The regenerated lockfile must make the post-bump locked preflight succeed.
 run_gate post-test cargo test --workspace --locked
