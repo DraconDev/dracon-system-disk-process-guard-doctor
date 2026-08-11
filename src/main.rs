@@ -1153,74 +1153,153 @@ fn is_kernel_process(command: &str) -> bool {
         .any(|prefix| command.starts_with(prefix))
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+struct OomSweepResult {
+    restored: Vec<String>,
+    deferred: usize,
+}
+
+fn remember_oom_descendant_identity(
+    state: &mut GuardRuntimeState,
+    root_pid: i32,
+    pid: i32,
+    identity: &ProcessIdentity,
+) {
+    state
+        .oom_known_descendants
+        .entry(root_pid)
+        .or_default()
+        .insert((pid, identity.starttime));
+}
+
+/// Retry descendant writes that were previously unreadable or failed. A
+/// pending child keeps its root bias entry alive until restoration succeeds,
+/// the child is proven gone, or its PID incarnation changes.
+fn restore_pending_oom_descendants(
+    proc_root: &Path,
+    state: &mut GuardRuntimeState,
+    exempt_names: &HashSet<String>,
+) -> OomSweepResult {
+    let pending_keys: Vec<(i32, u64)> = state.oom_pending_descendants.keys().copied().collect();
+    let mut result = OomSweepResult::default();
+    for key in pending_keys {
+        let Some(pending) = state.oom_pending_descendants.get(&key).cloned() else {
+            continue;
+        };
+        if exempt_names.contains(&pending.identity.comm)
+            || is_kernel_process(&pending.identity.comm)
+        {
+            state.oom_pending_descendants.remove(&key);
+            remember_oom_descendant_identity(state, pending.root_pid, key.0, &pending.identity);
+            continue;
+        }
+        match process_identity_status(proc_root, key.0, &pending.identity) {
+            ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch => {
+                state.oom_pending_descendants.remove(&key);
+                continue;
+            }
+            ProcessIdentityStatus::Unavailable => {
+                result.deferred += 1;
+                continue;
+            }
+            ProcessIdentityStatus::Match => {}
+        }
+        let adj_path = proc_root.join(key.0.to_string()).join("oom_score_adj");
+        let current = match fs::read_to_string(&adj_path)
+            .ok()
+            .and_then(|value| value.trim().parse::<i32>().ok())
+        {
+            Some(current) => current,
+            None => {
+                result.deferred += 1;
+                continue;
+            }
+        };
+        if current != OOM_BIAS_TARGET {
+            state.oom_pending_descendants.remove(&key);
+            remember_oom_descendant_identity(state, pending.root_pid, key.0, &pending.identity);
+            continue;
+        }
+        if let Err(error) = fs::write(&adj_path, format!("{}\n", pending.original_adj)) {
+            eprintln!(
+                "⚠️ oom-descendant-restore failed for pid={} parent={} : {}",
+                key.0, pending.root_pid, error
+            );
+            result.deferred += 1;
+            continue;
+        }
+        eprintln!(
+            "🛡️ oom-descendant-restore pid={} parent={} adj -> {}",
+            key.0, pending.root_pid, pending.original_adj
+        );
+        result
+            .restored
+            .push(format!("oom-restore-descendant {}={}", pending.identity.comm, pending.original_adj));
+        state.oom_pending_descendants.remove(&key);
+        remember_oom_descendant_identity(state, pending.root_pid, key.0, &pending.identity);
+    }
+    result
+}
+
 /// Restore oom_score_adj inherited by descendants created after a tracked
 /// process was biased. Existing descendants are recorded at bias time so a
-/// pre-existing operator adjustment is not overwritten; only new process
-/// incarnations currently at the guard's target are candidates.
+/// pre-existing operator adjustment is not overwritten. Nested biased roots
+/// assign each new descendant to the nearest root, avoiding arbitrary
+/// HashMap iteration order.
 fn sweep_stranded_oom_descendants(
     proc_root: &Path,
     samples: &[ProcSample],
     state: &mut GuardRuntimeState,
     exempt_names: &HashSet<String>,
-) -> Vec<String> {
+) -> OomSweepResult {
     let tracked_pids: HashSet<i32> = state.oom_biased_pids.keys().copied().collect();
-    let roots: Vec<(i32, i32, ProcessIdentity)> = state
-        .oom_biased_pids
-        .iter()
-        .map(|(&pid, value)| (pid, value.0, value.1.clone()))
-        .collect();
-    let mut restored = Vec::new();
-
-    for (root_pid, orig_adj, root_identity) in roots {
-        match process_identity_status(proc_root, root_pid, &root_identity) {
-            ProcessIdentityStatus::Match | ProcessIdentityStatus::Gone => {}
-            ProcessIdentityStatus::Mismatch | ProcessIdentityStatus::Unavailable => continue,
-        }
-        let known = state.oom_known_descendants.entry(root_pid).or_default();
-        for child in
-            oom_descendant_candidates(samples, root_pid, known, &tracked_pids, exempt_names)
-        {
-            let child_identity = process_sample_identity(&child);
-            if !matches!(
-                process_identity_status(proc_root, child.pid, &child_identity),
-                ProcessIdentityStatus::Match
-            ) {
-                continue;
+    let mut root_values = HashMap::new();
+    for (&pid, &(original_adj, ref identity)) in &state.oom_biased_pids {
+        match process_identity_status(proc_root, pid, identity) {
+            ProcessIdentityStatus::Match | ProcessIdentityStatus::Gone => {
+                root_values.insert(pid, (original_adj, identity.clone()));
             }
-            let adj_path = proc_root.join(child.pid.to_string()).join("oom_score_adj");
-            let current = fs::read_to_string(&adj_path)
-                .ok()
-                .and_then(|value| value.trim().parse::<i32>().ok());
-            match current {
-                Some(OOM_BIAS_TARGET) => {
-                    if let Err(error) = fs::write(&adj_path, format!("{orig_adj}\n")) {
-                        eprintln!(
-                            "⚠️ oom-descendant-restore failed for pid={} parent={} : {}",
-                            child.pid, root_pid, error
-                        );
-                        continue;
-                    }
-                    eprintln!(
-                        "🛡️ oom-descendant-restore pid={} parent={} adj -> {}",
-                        child.pid, root_pid, orig_adj
-                    );
-                    restored.push(format!(
-                        "oom-restore-descendant {}={}",
-                        child.command, orig_adj
-                    ));
-                    known.insert((child.pid, child.starttime));
-                }
-                Some(_) => {
-                    // It did not inherit the guard's target. Remember the
-                    // incarnation so a later operator write to 250 is not
-                    // mistaken for inheritance from this bias.
-                    known.insert((child.pid, child.starttime));
-                }
-                None => {}
-            }
+            ProcessIdentityStatus::Mismatch | ProcessIdentityStatus::Unavailable => {}
         }
     }
-    restored
+    let biased_roots: HashSet<i32> = root_values.keys().copied().collect();
+    let parent_by_pid: HashMap<i32, i32> = samples
+        .iter()
+        .map(|sample| (sample.pid, sample.ppid))
+        .collect();
+    for child in samples {
+        if tracked_pids.contains(&child.pid)
+            || exempt_names.contains(&child.command)
+            || is_kernel_process(&child.command)
+        {
+            continue;
+        }
+        let Some(root_pid) = nearest_biased_ancestor(child.pid, &parent_by_pid, &biased_roots)
+        else {
+            continue;
+        };
+        let key = (child.pid, child.starttime);
+        if state.oom_pending_descendants.contains_key(&key)
+            || state
+                .oom_known_descendants
+                .get(&root_pid)
+                .is_some_and(|known| known.contains(&key))
+        {
+            continue;
+        }
+        let Some((original_adj, _)) = root_values.get(&root_pid) else {
+            continue;
+        };
+        state.oom_pending_descendants.insert(
+            key,
+            OomPendingDescendant {
+                root_pid,
+                original_adj: *original_adj,
+                identity: process_sample_identity(child),
+            },
+        );
+    }
+    restore_pending_oom_descendants(proc_root, state, exempt_names)
 }
 
 /// Cap a process's CPU to `percent`% via a transient user systemd
