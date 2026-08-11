@@ -303,6 +303,11 @@ fn sweep_stranded_oom_descendants_restores_only_post_bias_children() {
     );
     assert_eq!(actions.deferred, 1);
     assert!(state.oom_pending_descendants.contains_key(&(105, 81)));
+    remove_oom_bias(&mut state, 101);
+    assert!(
+        state.oom_biased_pids.contains_key(&101),
+        "root bias must remain tracked while child restoration is pending"
+    );
     assert_eq!(
         fs::read_to_string(tmp.join("102/oom_score_adj")).unwrap(),
         "250\n"
