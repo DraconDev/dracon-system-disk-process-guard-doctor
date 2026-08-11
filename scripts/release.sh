@@ -96,7 +96,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 TAG="v${VERSION}"
-TOTAL_STEPS=6
+TOTAL_STEPS=8
 
 # ----- colors (only on a tty) ---------------------------------------------
 if [[ -t 1 ]]; then
@@ -197,8 +197,23 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
     die_pre "version '$VERSION' is not semver (expected e.g. 0.112.12)"
 fi
 
-# ----- step 1: bump Cargo.toml version ------------------------------------
-log "step 1/${TOTAL_STEPS}: bumping Cargo.toml to ${VERSION}"
+# ----- step 1: test discipline gates (AGENTS.md) -------------------------
+log "step 1/${TOTAL_STEPS}: test discipline gates (AGENTS.md)"
+# Run the repository's mandatory gates before any release-surface mutation.
+# They also run for --dry-run: only ignored target/ artifacts are produced.
+require_cmd cargo-deny
+run_gate() {
+    printf '   $ %s\n' "$*"
+    "$@"
+}
+run_gate cargo test --workspace --locked
+run_gate cargo build --release --locked
+run_gate cargo deny check
+run_gate cargo clippy --workspace --locked -- -D warnings
+ok "  all gates passed"
+
+# ----- step 2: bump Cargo.toml version ------------------------------------
+log "step 2/${TOTAL_STEPS}: bumping Cargo.toml to ${VERSION}"
 CRATE_TOML="Cargo.toml"
 current=$(awk -F'"' '/^version[[:space:]]*=/{print $2; exit}' "$CRATE_TOML" 2>/dev/null || true)
 if [[ -z "$current" ]]; then
@@ -213,8 +228,8 @@ else
     ok "  $CRATE_TOML: $current → $VERSION"
 fi
 
-# ----- step 2: close CHANGELOG [Unreleased] -------------------------------
-log "step 2/${TOTAL_STEPS}: closing CHANGELOG.md [Unreleased] → [${VERSION}]"
+# ----- step 3: close CHANGELOG [Unreleased] -------------------------------
+log "step 3/${TOTAL_STEPS}: closing CHANGELOG.md [Unreleased] → [${VERSION}]"
 CHANGELOG="CHANGELOG.md"
 DATE=$(date -u +%Y-%m-%d)
 if [[ $DRY_RUN -eq 0 ]]; then
@@ -227,8 +242,8 @@ else
     ok "  CHANGELOG.md: would close [Unreleased] → [${VERSION}] - ${DATE} (skipped: --dry-run)"
 fi
 
-# ----- step 3: create release-notes file ----------------------------------
-log "step 3/${TOTAL_STEPS}: creating release-notes-v${VERSION}.md"
+# ----- step 4: create release-notes file ----------------------------------
+log "step 4/${TOTAL_STEPS}: creating release-notes-v${VERSION}.md"
 NOTES="release-notes-v${VERSION}.md"
 if [[ -f "$NOTES" ]]; then
     ok "  $NOTES already exists"
@@ -266,26 +281,108 @@ EOF
     ok "  $NOTES created"
 fi
 
-# ----- step 4: cargo publish --dry-run (sanity) ---------------------------
-log "step 4/${TOTAL_STEPS}: cargo publish --dry-run (sanity check)"
+# ----- step 5: cargo publish --dry-run (sanity) ---------------------------
+log "step 5/${TOTAL_STEPS}: cargo publish --dry-run (sanity check)"
 run cargo publish -p "$CRATE_NAME" --dry-run --allow-dirty
 
-# ----- step 5: cargo publish for real -------------------------------------
-log "step 5/${TOTAL_STEPS}: cargo publish -p $CRATE_NAME"
-run cargo publish -p "$CRATE_NAME" --allow-dirty
+# ----- step 6: cargo publish for real -------------------------------------
+log "step 6/${TOTAL_STEPS}: cargo publish -p $CRATE_NAME"
+# Idempotent re-run path: an already-published version is success when a
+# previous run failed after the crates.io upload.
+if [[ $DRY_RUN -eq 1 ]]; then
+    run cargo publish -p "$CRATE_NAME" --allow-dirty
+else
+    printf '   $ cargo publish -p %s --allow-dirty\n' "$CRATE_NAME"
+    if ! publish_out="$(cargo publish -p "$CRATE_NAME" --allow-dirty 2>&1)"; then
+        if grep -qiE "already exists on crates.io index|already published" <<<"$publish_out"; then
+            ok "  $CRATE_NAME@$VERSION already published; continuing"
+        else
+            printf '%s\n' "$publish_out" >&2
+            die_pub "cargo publish failed — tag NOT created"
+        fi
+    fi
+fi
 
-# ----- step 6: commit, tag, push, gh release ------------------------------
-log "step 6/${TOTAL_STEPS}: commit + tag + push + gh release"
+# ----- step 7: fixture check on the published artifact -------------------
+log "step 7/${TOTAL_STEPS}: fixture check on packaged artifact"
+# Installing from target/package reproduces the dependency resolution of a
+# crates.io install. A broken packaged binary must not be tagged or released.
+PKG_ROOT="$(cargo metadata --no-deps --format-version 1 2>/dev/null \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["workspace_root"])' \
+    2>/dev/null || echo "$REPO_ROOT")"
+PKG_DIR="$PKG_ROOT/target/package/${CRATE_NAME}-${VERSION}"
+if [[ -d "$PKG_DIR" ]]; then
+    FIXTURE_ROOT="$PKG_ROOT/target/fixture-bin"
+    if [[ $DRY_RUN -eq 1 ]]; then
+        printf '   $ cargo install --path %s --root %s --force  (skipped: --dry-run)\n' "$PKG_DIR" "$FIXTURE_ROOT"
+    else
+        run cargo install --path "$PKG_DIR" --root "$FIXTURE_ROOT" --force
+        if ! "$SCRIPT_DIR/verify-install.sh" "$FIXTURE_ROOT/bin/dracon-system"; then
+            die_pub "fixture check FAILED on the packaged artifact — release is broken, do NOT tag"
+        fi
+    fi
+elif [[ $DRY_RUN -eq 1 ]]; then
+    warn "  packaged crate dir not present (publish was skipped in --dry-run); fixture check skipped"
+else
+    die_pub "packaged crate dir $PKG_DIR missing — cannot run fixture check (publish must have failed)"
+fi
+
+# ----- step 8: commit, tag, push, gh release ------------------------------
+log "step 8/${TOTAL_STEPS}: commit, tag, push, gh release"
 run git add Cargo.toml CHANGELOG.md "$NOTES"
-run git -c user.email=dracsharp@gmail.com -c user.name=DraconDev \
-    commit --no-verify -m "release: v${VERSION}"
-run git tag "$TAG"
+# Idempotent re-run path: skip already-completed commit, tag, and GitHub
+# release operations when a previous run failed later in the pipeline.
+if [[ $DRY_RUN -eq 1 ]]; then
+    run git commit --no-verify -m "release: v${VERSION}"
+    run git tag "$TAG"
+else
+    if git diff --cached --quiet; then
+        ok "  nothing to commit (release commit already exists)"
+    else
+        printf '   $ git commit --no-verify -m release: v%s\n' "$VERSION"
+        git commit --no-verify -m "release: v${VERSION}"
+    fi
+    if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+        ok "  tag $TAG already exists"
+    else
+        printf '   $ git tag %s\n' "$TAG"
+        git tag "$TAG"
+    fi
+fi
 run git push "$REMOTE" main "$TAG"
 
-run gh release create "$TAG" \
-    --target main \
-    --title "v${VERSION}" \
-    --notes-file "$NOTES"
+if [[ $DRY_RUN -eq 1 ]]; then
+    run gh release create "$TAG" \
+        --target main \
+        --title "v${VERSION}" \
+        --notes-file "$NOTES"
+else
+    if gh release view "$TAG" >/dev/null 2>&1; then
+        ok "  github release $TAG already exists"
+    else
+        printf '   $ gh release create %s\n' "$TAG"
+        gh release create "$TAG" \
+            --target main \
+            --title "v${VERSION}" \
+            --notes-file "$NOTES"
+    fi
+fi
+
+# Mirror remotes receive main from the daemon, but tags are operator-pushed.
+# Print exact commands so a release cannot silently leave mirrors tagless.
+mirror_remotes=()
+while IFS= read -r mline; do
+    mkey="${mline%% *}"
+    mname="${mkey#remote.}"; mname="${mname%.url}"
+    [[ "$mname" == "$REMOTE" ]] || mirror_remotes+=("$mname")
+done < <(git config --get-regexp '^remote\..*\.url$' || true)
+if [[ ${#mirror_remotes[@]} -gt 0 ]]; then
+    warn ""
+    warn "mirror remotes get main from the daemon, but tags are operator-pushed:"
+    for m in "${mirror_remotes[@]}"; do
+        warn "    git push $m $TAG"
+    done
+fi
 
 ok ""
 ok "════════════════════════════════════════════"
@@ -293,6 +390,10 @@ ok "✓ dracon-system v${VERSION} released"
 ok "  crates.io:  https://crates.io/crates/dracon-system"
 ok "  github:     https://github.com/DraconDev/dracon-system-disk-process-guard-doctor/releases/tag/${TAG}"
 ok "════════════════════════════════════════════"
+
+warn ""
+warn "after 'cargo install dracon-system --version ${VERSION}', run the fixture check:"
+warn "    scripts/verify-install.sh"
 
 if [[ $DRY_RUN -eq 1 ]]; then
     echo ""
