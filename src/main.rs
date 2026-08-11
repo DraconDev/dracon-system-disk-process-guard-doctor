@@ -1384,10 +1384,28 @@ async fn restore_runtime_adjustments_with(
                         ),
                     }
                 }
-                ProcessIdentityStatus::Mismatch => eprintln!(
-                    "⚠ SIGHUP retaining CPU cgroup pid={} — PID incarnation changed",
-                    pid
-                ),
+                ProcessIdentityStatus::Mismatch => {
+                    // Do not move a different process out of the scope. The
+                    // helper may still stop the scope when the PID is no
+                    // longer inside it, and otherwise reports an error so
+                    // this entry remains tracked.
+                    match uncap_cpu_process_with_bin(
+                        systemctl_bin,
+                        proc_root,
+                        pid,
+                        &scope,
+                        &orig_cgroup,
+                        false,
+                    )
+                    .await
+                    {
+                        Ok(()) => remove_cpu_cap(state, pid),
+                        Err(e) => eprintln!(
+                            "⚠ SIGHUP retaining CPU cgroup pid={} scope={}: {}",
+                            pid, scope, e
+                        ),
+                    }
+                }
                 ProcessIdentityStatus::Unavailable => eprintln!(
                     "⚠ SIGHUP retaining CPU cgroup pid={} — process identity unavailable",
                     pid
