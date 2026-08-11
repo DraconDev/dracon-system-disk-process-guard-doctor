@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Doctor status output now reports failures correctly**: failing checks are
+  labeled `fail` instead of the inverted `present`, and the canonical
+  `~/.dracon` system-root check is included in the table. Added regression
+  coverage for the root row and status mapping.
 - **SIGHUP policy reload and graceful shutdown now restore every active
   process limiter** before discarding runtime state: legacy and memory renice
   adjustments, OOM bias, and transient CPUQuota cgroups are all restored or

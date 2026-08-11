@@ -31,35 +31,15 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
     }
 }
 
-/// Handle the `doctor` CLI subcommand.
-pub(crate) async fn cmd_doctor(json: bool, strict: bool) -> Result<()> {
-    use comfy_table::{presets::UTF8_FULL_CONDENSED, Cell, Color, ContentArrangement, Table};
+type DoctorCheck = (&'static str, bool, &'static str);
 
-    let report = build_doctor_report().await;
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&report)?);
-        if strict {
-            // In strict mode, fail if any check fails
-            if !report.all_ok() {
-                std::process::exit(1);
-            }
-        }
-        return Ok(());
-    }
-
-    let mut table = Table::new();
-    table
-        .load_preset(UTF8_FULL_CONDENSED)
-        .set_content_arrangement(ContentArrangement::Dynamic)
-        .set_header(vec![
-            Cell::new(" "),
-            Cell::new("CHECK"),
-            Cell::new("STATUS"),
-        ]);
-
-    // (label, ok, remediation hint when failing)
-    let checks: Vec<(&str, bool, &str)> = vec![
+fn doctor_checks(report: &crate::DoctorReport) -> Vec<DoctorCheck> {
+    vec![
+        (
+            "~/.dracon",
+            report.system_root_exists,
+            "Create the canonical system root at ~/.dracon",
+        ),
         (
             "~/.dracon/nixos",
             report.nixos_root_exists,
@@ -90,7 +70,45 @@ pub(crate) async fn cmd_doctor(json: bool, strict: bool) -> Result<()> {
             report.sync_service_active,
             "systemctl --user enable --now dracon-sync.service",
         ),
-    ];
+    ]
+}
+
+fn doctor_status(ok: bool) -> &'static str {
+    if ok {
+        "ok"
+    } else {
+        "fail"
+    }
+}
+
+/// Handle the `doctor` CLI subcommand.
+pub(crate) async fn cmd_doctor(json: bool, strict: bool) -> Result<()> {
+    use comfy_table::{presets::UTF8_FULL_CONDENSED, Cell, Color, ContentArrangement, Table};
+
+    let report = build_doctor_report().await;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        if strict {
+            // In strict mode, fail if any check fails
+            if !report.all_ok() {
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
+    }
+
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL_CONDENSED)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new(" "),
+            Cell::new("CHECK"),
+            Cell::new("STATUS"),
+        ]);
+
+    let checks = doctor_checks(&report);
 
     let mut has_failures = false;
     let mut remediation_lines: Vec<String> = Vec::new();
@@ -107,7 +125,7 @@ pub(crate) async fn cmd_doctor(json: bool, strict: bool) -> Result<()> {
         table.add_row(vec![
             Cell::new(icon).fg(color),
             Cell::new(*label),
-            Cell::new(if *ok { "ok" } else { "present" }),
+            Cell::new(doctor_status(*ok)),
         ]);
     }
 
@@ -127,4 +145,32 @@ pub(crate) async fn cmd_doctor(json: bool, strict: bool) -> Result<()> {
         eprintln!("\u{2705}  All checks passed.");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn doctor_checks_show_system_root_and_failure_status() {
+        let report = crate::DoctorReport {
+            system_root_exists: false,
+            nixos_root_exists: true,
+            canonical_libs_exists: true,
+            canonical_utils_exists: true,
+            sync_policy_exists: true,
+            legacy_config_dracon_exists: false,
+            sync_service_active: true,
+        };
+
+        let checks = doctor_checks(&report);
+        let root_check = checks
+            .iter()
+            .find(|(label, _, _)| *label == "~/.dracon")
+            .expect("system root check should be displayed");
+
+        assert!(!root_check.1);
+        assert_eq!(doctor_status(false), "fail");
+        assert_eq!(doctor_status(true), "ok");
+    }
 }
