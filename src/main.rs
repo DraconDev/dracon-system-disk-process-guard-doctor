@@ -416,6 +416,13 @@ pub(crate) struct MemoryReniceState {
     pub(crate) identity: ProcessIdentity,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct OomPendingDescendant {
+    pub(crate) root_pid: i32,
+    pub(crate) original_adj: i32,
+    pub(crate) identity: ProcessIdentity,
+}
+
 #[derive(Default, Debug)]
 pub(crate) struct GuardRuntimeState {
     /// CHANGED 2026-07-21 (v0.112.33, audit M34/F4.8): value is now
@@ -452,6 +459,9 @@ pub(crate) struct GuardRuntimeState {
     /// created afterwards inherit the target adjustment and are swept back
     /// to the root's original value instead of remaining stranded at 250.
     pub(crate) oom_known_descendants: HashMap<i32, HashSet<(i32, u64)>>,
+    /// Descendant restorations that could not yet be verified or written.
+    /// Root bias entries stay alive while any child incarnation is pending.
+    pub(crate) oom_pending_descendants: HashMap<(i32, u64), OomPendingDescendant>,
     pub(crate) oom_cooled_since: HashMap<i32, Instant>,
     /// ADDED 2026-08-10 (v0.112.36): pids inside a transient
     /// CPUQuota scope (scope_name, original cgroup, stable identity),
@@ -926,6 +936,26 @@ fn process_descendant_samples(samples: &[ProcSample], root_pid: i32) -> Vec<Proc
         .filter(|sample| process_is_descendant_of(sample.pid, root_pid, &parent_by_pid))
         .cloned()
         .collect()
+}
+
+fn nearest_biased_ancestor(
+    pid: i32,
+    parent_by_pid: &HashMap<i32, i32>,
+    biased_roots: &HashSet<i32>,
+) -> Option<i32> {
+    let mut current = pid;
+    let mut seen = HashSet::new();
+    for _ in 0..1024 {
+        let parent = parent_by_pid.get(&current).copied()?;
+        if biased_roots.contains(&parent) {
+            return Some(parent);
+        }
+        if parent <= 0 || !seen.insert(current) {
+            return None;
+        }
+        current = parent;
+    }
+    None
 }
 
 fn oom_descendant_candidates(
