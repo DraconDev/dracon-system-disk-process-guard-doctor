@@ -377,6 +377,114 @@ async fn restore_runtime_adjustments_retains_overlapping_nice_limiters_on_failur
 }
 
 #[cfg(unix)]
+#[tokio::test]
+async fn restore_runtime_adjustments_preserves_current_pid_incarnation() {
+    let tmp = std::env::temp_dir().join(format!(
+        "dracon_system_pid_reuse_restore_test_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&tmp).expect("create temp dir");
+    let renice_log = tmp.join("renice.log");
+    let renice = tmp.join("renice");
+    let systemctl = tmp.join("systemctl");
+    let escaped_log = renice_log.to_string_lossy().replace('\'', "'\\''");
+    write_test_script(
+        &renice,
+        &format!("printf '%s\\n' \"$*\" >> '{escaped_log}'\nexit 0"),
+    );
+    write_test_script(&systemctl, "exit 0");
+    // The legacy entry belongs to an exited incarnation; the memory entry is
+    // for the replacement process now occupying the same PID.
+    write_process_fixture(&tmp, 109, "reused-worker", 86, None, None);
+    let mut state = GuardRuntimeState::default();
+    state.reniced_pids.insert(
+        109,
+        LegacyReniceState {
+            original_nice: 3,
+            applied_nice: 8,
+            identity: ProcessIdentity {
+                comm: "reused-worker".to_string(),
+                starttime: 85,
+            },
+        },
+    );
+    state.memory_reniced_pids.insert(
+        109,
+        MemoryReniceState {
+            original_nice: 7,
+            applied_nice: 12,
+            identity: ProcessIdentity {
+                comm: "reused-worker".to_string(),
+                starttime: 86,
+            },
+        },
+    );
+
+    assert!(
+        restore_runtime_adjustments_with(&mut state, &renice, &systemctl, &tmp).await,
+        "stale PID state must not prevent current-incarnation restoration"
+    );
+    assert!(state.reniced_pids.is_empty());
+    assert!(state.memory_reniced_pids.is_empty());
+    assert_eq!(
+        fs::read_to_string(&renice_log)
+            .expect("read renice log")
+            .lines()
+            .collect::<Vec<_>>(),
+        vec!["-n 7 -p 109"],
+        "the replacement process must restore its own captured nice value"
+    );
+    let _ = fs::remove_dir_all(&tmp);
+}
+
+#[cfg(unix)]
+#[test]
+fn stale_nice_state_does_not_override_current_pid_incarnation() {
+    let mut state = GuardRuntimeState::default();
+    state.reniced_pids.insert(
+        110,
+        LegacyReniceState {
+            original_nice: 2,
+            applied_nice: 8,
+            identity: ProcessIdentity {
+                comm: "worker".to_string(),
+                starttime: 90,
+            },
+        },
+    );
+    state.memory_reniced_pids.insert(
+        110,
+        MemoryReniceState {
+            original_nice: 6,
+            applied_nice: 12,
+            identity: ProcessIdentity {
+                comm: "worker".to_string(),
+                starttime: 91,
+            },
+        },
+    );
+    let current_identity = ProcessIdentity {
+        comm: "worker".to_string(),
+        starttime: 91,
+    };
+
+    drop_stale_nice_adjustments(&mut state, 110, &current_identity);
+
+    assert!(!state.reniced_pids.contains_key(&110));
+    assert_eq!(
+        state
+            .memory_reniced_pids
+            .get(&110)
+            .map(|entry| entry.original_nice),
+        Some(6)
+    );
+}
+
+#[cfg(unix)]
 #[test]
 fn sweep_stranded_oom_descendants_restores_only_post_bias_children() {
     let tmp = std::env::temp_dir().join(format!(

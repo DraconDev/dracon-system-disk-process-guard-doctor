@@ -118,6 +118,7 @@ fn runtime_adjustment_plan_includes_every_reversible_limiter() {
             comm: "legacy-worker".to_string(),
             starttime: 1,
         },
+        scope: crate::NiceRestoreScope::Legacy,
     }));
     assert!(plan.contains(&crate::RuntimeAdjustment::Nice {
         pid: 102,
@@ -126,6 +127,7 @@ fn runtime_adjustment_plan_includes_every_reversible_limiter() {
             comm: "memory-worker".to_string(),
             starttime: 2,
         },
+        scope: crate::NiceRestoreScope::Memory,
     }));
     assert!(plan.contains(&crate::RuntimeAdjustment::OomBias {
         pid: 103,
