@@ -3159,6 +3159,11 @@ async fn check_memory_pressure(
                 Some(entry) => (entry.original_nice, entry.identity.clone()),
                 None => continue,
             };
+            let restore_nice = state
+                .reniced_pids
+                .get(&pid)
+                .map(|entry| entry.applied_nice)
+                .unwrap_or(original_nice);
             match process_identity_status(Path::new("/proc"), pid, &identity) {
                 ProcessIdentityStatus::Match => {}
                 ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch => {
@@ -3173,13 +3178,13 @@ async fn check_memory_pressure(
                     continue;
                 }
             }
-            if let Err(e) = renice_process(pid, original_nice).await {
+            if let Err(e) = renice_process(pid, restore_nice).await {
                 eprintln!("⚠️ mem-unrenice failed for pid={}: {}", pid, e);
                 continue;
             }
             eprintln!(
                 "🛡️ mem-unrenice pid={} -> nice {} (pressure released)",
-                pid, original_nice
+                pid, restore_nice
             );
             remove_memory_renice(state, pid);
         }
@@ -3692,14 +3697,33 @@ async fn check_heavy_processes(
                 });
                 continue;
             }
-            let already_niced = state.reniced_pids.get(&p.pid).map(|(n, _)| *n);
+            let already_niced = state
+                .reniced_pids
+                .get(&p.pid)
+                .map(|entry| entry.applied_nice);
             let nice_val = graduated_nice_value(p.cpu_percent, p.rss_mb, guard.renice_value);
             if already_niced != Some(nice_val) {
                 match renice_process(p.pid, nice_val).await {
                     Ok(()) => {
-                        state
+                        let original_nice = state
                             .reniced_pids
-                            .insert(p.pid, (nice_val, process_sample_identity(&p)));
+                            .get(&p.pid)
+                            .map(|entry| entry.original_nice)
+                            .or_else(|| {
+                                state
+                                    .memory_reniced_pids
+                                    .get(&p.pid)
+                                    .map(|entry| entry.original_nice)
+                            })
+                            .unwrap_or(p.nice);
+                        state.reniced_pids.insert(
+                            p.pid,
+                            LegacyReniceState {
+                                original_nice,
+                                applied_nice: nice_val,
+                                identity: process_sample_identity(&p),
+                            },
+                        );
                         eprintln!(
                             "🔧 renice pid={} cmd={} -> nice {} (cpu={:.1}% rss={}MiB)",
                             p.pid, p.command, nice_val, p.cpu_percent, p.rss_mb
@@ -3713,7 +3737,12 @@ async fn check_heavy_processes(
                     }
                 }
             }
-            if state.reniced_pids.get(&p.pid).map(|(n, _)| *n) == Some(nice_val) {
+            if state
+                .reniced_pids
+                .get(&p.pid)
+                .map(|entry| entry.applied_nice)
+                == Some(nice_val)
+            {
                 nice_applied = nice_val;
                 action = format!("renice:{}", nice_val);
             }
@@ -3781,10 +3810,15 @@ async fn check_heavy_processes(
         }
     }
     for pid in to_unrenice {
-        let identity = match state.reniced_pids.get(&pid) {
-            Some((_, identity)) => identity.clone(),
+        let (original_nice, identity) = match state.reniced_pids.get(&pid) {
+            Some(entry) => (entry.original_nice, entry.identity.clone()),
             None => continue,
         };
+        let restore_nice = state
+            .memory_reniced_pids
+            .get(&pid)
+            .map(|entry| entry.applied_nice)
+            .unwrap_or(original_nice);
         match process_identity_status(Path::new("/proc"), pid, &identity) {
             ProcessIdentityStatus::Match => {}
             ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch => {
@@ -3799,11 +3833,14 @@ async fn check_heavy_processes(
                 continue;
             }
         }
-        if let Err(e) = renice_process(pid, 0).await {
+        if let Err(e) = renice_process(pid, restore_nice).await {
             eprintln!("⚠️ un-renice failed for pid={}: {}", pid, e);
             continue;
         }
-        eprintln!("🔧 un-renice pid={} -> nice 0 (pressure released)", pid);
+        eprintln!(
+            "🔧 un-renice pid={} -> nice {} (pressure released)",
+            pid, restore_nice
+        );
         remove_legacy_renice(state, pid);
     }
     state
@@ -3812,9 +3849,9 @@ async fn check_heavy_processes(
 
     // Clean up only known-gone or PID-reused entries; retain identity read
     // failures for a later retry.
-    state.reniced_pids.retain(|pid, (_, identity)| {
+    state.reniced_pids.retain(|pid, entry| {
         !matches!(
-            process_identity_status(Path::new("/proc"), *pid, identity),
+            process_identity_status(Path::new("/proc"), *pid, &entry.identity),
             ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch
         )
     });
@@ -3824,7 +3861,7 @@ async fn check_heavy_processes(
         let summary: Vec<String> = state
             .reniced_pids
             .iter()
-            .map(|(pid, (nice, _))| format!("pid={}:nice={}", pid, nice))
+            .map(|(pid, entry)| format!("pid={}:nice={}", pid, entry.applied_nice))
             .collect();
         eprintln!("🔧 reniced active: [{}]", summary.join(", "));
     }
@@ -4672,7 +4709,18 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
     use comfy_table::{presets::UTF8_FULL_CONDENSED, Cell, ContentArrangement, Table};
 
     let mut runtime = GuardRuntimeState::default();
-    let report = run_guard_once(guard, &mut runtime).await?;
+    let report_result = run_guard_once(guard, &mut runtime).await;
+    // A one-shot invocation has no daemon runtime to carry these entries into
+    // a later retry. Restore every limiter before handling either a report or
+    // an error, including the JSON early-return path.
+    let adjustments_restored = restore_runtime_adjustments(&mut runtime).await;
+    if !adjustments_restored {
+        eprintln!("⚠ guard once: some process adjustments could not be restored");
+    }
+    let report = report_result?;
+    if !adjustments_restored {
+        anyhow::bail!("guard once could not restore every process adjustment");
+    }
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
         return Ok(());

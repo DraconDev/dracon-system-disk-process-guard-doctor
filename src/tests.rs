@@ -129,9 +129,14 @@ async fn restore_runtime_adjustments_restores_renice_and_oom() {
         "a missing proc root must not be treated as a gone PID"
     );
     let mut unavailable_state = GuardRuntimeState::default();
-    unavailable_state
-        .reniced_pids
-        .insert(101, (5, identity.clone()));
+    unavailable_state.reniced_pids.insert(
+        101,
+        LegacyReniceState {
+            original_nice: 0,
+            applied_nice: 5,
+            identity: identity.clone(),
+        },
+    );
     unavailable_state.capped_pids.insert(
         101,
         (
@@ -163,13 +168,14 @@ async fn restore_runtime_adjustments_restores_renice_and_oom() {
     let mut failure_state = GuardRuntimeState::default();
     failure_state.reniced_pids.insert(
         103,
-        (
-            5,
-            ProcessIdentity {
+        LegacyReniceState {
+            original_nice: 0,
+            applied_nice: 5,
+            identity: ProcessIdentity {
                 comm: "worker".to_string(),
                 starttime: 79,
             },
-        ),
+        },
     );
     failure_state.oom_biased_pids.insert(
         104,
@@ -211,8 +217,22 @@ async fn restore_runtime_adjustments_restores_renice_and_oom() {
     );
 
     let mut state = GuardRuntimeState::default();
-    state.reniced_pids.insert(101, (5, identity.clone()));
-    state.reniced_pids.insert(105, (5, long_comm_identity));
+    state.reniced_pids.insert(
+        101,
+        LegacyReniceState {
+            original_nice: 0,
+            applied_nice: 5,
+            identity: identity.clone(),
+        },
+    );
+    state.reniced_pids.insert(
+        105,
+        LegacyReniceState {
+            original_nice: 0,
+            applied_nice: 5,
+            identity: long_comm_identity,
+        },
+    );
     state.oom_biased_pids.insert(101, (-100, identity));
     state.memory_reniced_pids.insert(
         106,
