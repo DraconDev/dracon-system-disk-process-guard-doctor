@@ -16,7 +16,7 @@ make_fixture() {
     printf 'version = 4\n' > "$repo/Cargo.lock"
     printf '## [Unreleased]\n' > "$repo/CHANGELOG.md"
     printf 'clean\n' > "$repo/unrelated.txt"
-    git -C "$repo" add Cargo.toml CHANGELOG.md unrelated.txt scripts/release.sh
+    git -C "$repo" add Cargo.toml Cargo.lock CHANGELOG.md unrelated.txt scripts/release.sh
 }
 
 # Pre-existing modified and untracked files must make --abort refuse before
