@@ -14,8 +14,9 @@
 #     or a clear "already done" message.
 #   - `--dry-run` runs every step without mutating remote state (no push,
 #     no cargo publish for real, no gh release, no tag push). It still
-#     modifies local files (Cargo.toml version, CHANGELOG.md) so the
-#     operator can inspect the diff; `--abort` reverts them.
+#     modifies local release surfaces (Cargo.toml, Cargo.lock, CHANGELOG.md,
+#     and the release-notes file) so the operator can inspect the diff;
+#     `--abort` reverts them.
 #
 # Usage:
 #   scripts/release.sh <version> [options]
@@ -24,11 +25,13 @@
 #
 # Options:
 #   --dry-run             Run the pipeline end-to-end without mutating remote
-#                         state. Local files (Cargo.toml, CHANGELOG.md,
-#                         release-notes file) ARE modified so the operator
-#                         can inspect the diff. Use --abort to revert.
+#                         state. Local release surfaces (Cargo.toml,
+#                         Cargo.lock, CHANGELOG.md, release-notes file) ARE
+#                         modified so the operator can inspect the diff. Use
+#                         --abort to revert.
 #   --abort               Revert any local modifications made by --dry-run
-#                         (cargo + changelog + release-notes). Refuses to
+#                         (Cargo.toml + Cargo.lock + changelog +
+#                         release-notes). Refuses to
 #                         run if the working tree contains pre-existing
 #                         modifications outside those release surfaces
 #                         (CORRECTED 2026-08-11, audit MEDIUM: the guard is
@@ -147,14 +150,15 @@ require_credentials() {
 if [[ $ABORT -eq 1 ]]; then
     log "Reverting local modifications from a previous --dry-run..."
     # Dirty-at-start guard (audit MEDIUM 2026-08-11): a --dry-run touches
-    # ONLY Cargo.toml, CHANGELOG.md and untracked release-notes-v*.md, so any
-    # other modified/untracked file can only be pre-existing operator work.
+    # ONLY Cargo.toml, Cargo.lock, CHANGELOG.md and untracked
+    # release-notes-v*.md, so any other modified/untracked file can only be
+    # pre-existing operator work.
     # Refuse rather than risk reverting (or removing) it.
     other_modified=()
     while IFS= read -r f; do
         other_modified+=("$f")
     done < <(git ls-files --modified --exclude-standard \
-        | grep -vE '^(Cargo\.toml|CHANGELOG\.md)$' || true)
+        | grep -vE '^(Cargo\.toml|Cargo\.lock|CHANGELOG\.md)$' || true)
     other_untracked=()
     while IFS= read -r f; do
         other_untracked+=("$f")
@@ -166,7 +170,8 @@ if [[ $ABORT -eq 1 ]]; then
     abort_tracked=()
     while IFS= read -r f; do
         abort_tracked+=("$f")
-    done < <(git ls-files --modified --exclude-standard -- '*.toml' 'CHANGELOG.md' 2>/dev/null || true)
+    done < <(git ls-files --modified --exclude-standard \
+        -- 'Cargo.toml' 'Cargo.lock' 'CHANGELOG.md' 2>/dev/null || true)
     abort_untracked=()
     while IFS= read -r f; do
         abort_untracked+=("$f")
