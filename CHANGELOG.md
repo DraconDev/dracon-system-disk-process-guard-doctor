@@ -31,8 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   process limiter** before discarding runtime state: legacy and memory renice
   adjustments, OOM bias, and transient CPUQuota cgroups are all restored or
   retained for retry. Restorations use `/proc` starttime identities rather
-  than cmdline argv0, and CPU cgroup cleanup now reports unverified systemd
-  or cgroup operations instead of dropping the tracking entry.
+  than cmdline argv0, treat unavailable proc/cgroup trees as indeterminate,
+  and report unverified systemd or cgroup operations instead of dropping the
+  tracking entry.
 
 ## [0.112.36] - 2026-08-10
 

@@ -122,11 +122,37 @@ async fn restore_runtime_adjustments_restores_renice_and_oom() {
         process_identity_status(&tmp, 102, &identity),
         ProcessIdentityStatus::Gone
     );
+    let missing_proc_root = tmp.join("missing-proc-root");
     assert_eq!(
-        process_identity_status(&tmp.join("missing-proc-root"), 101, &identity,),
+        process_identity_status(&missing_proc_root, 101, &identity),
         ProcessIdentityStatus::Unavailable,
         "a missing proc root must not be treated as a gone PID"
     );
+    let mut unavailable_state = GuardRuntimeState::default();
+    unavailable_state
+        .reniced_pids
+        .insert(101, (5, identity.clone()));
+    unavailable_state.capped_pids.insert(
+        101,
+        (
+            "dracon-cap.service".to_string(),
+            "user.slice".to_string(),
+            identity.clone(),
+        ),
+    );
+    assert!(
+        !restore_runtime_adjustments_with(
+            &mut unavailable_state,
+            &renice,
+            &systemctl,
+            &missing_proc_root,
+        )
+        .await,
+        "missing proc root must retain every indeterminate adjustment"
+    );
+    assert!(unavailable_state.reniced_pids.contains_key(&101));
+    assert!(unavailable_state.capped_pids.contains_key(&101));
+
     let mut state = GuardRuntimeState::default();
     state.reniced_pids.insert(101, (5, identity.clone()));
     state.oom_biased_pids.insert(101, (-100, identity));
