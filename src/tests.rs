@@ -153,6 +153,42 @@ async fn restore_runtime_adjustments_restores_renice_and_oom() {
     assert!(unavailable_state.reniced_pids.contains_key(&101));
     assert!(unavailable_state.capped_pids.contains_key(&101));
 
+    // Failed renice and OOM writes must retain their entries for the next
+    // release retry rather than reporting success and dropping tracking.
+    let failing_renice = tmp.join("renice-failure");
+    write_test_script(&failing_renice, "exit 1");
+    write_process_fixture(&tmp, 103, "worker", 79, None, None);
+    write_process_fixture(&tmp, 104, "worker", 80, None, None);
+    fs::create_dir(tmp.join("104/oom_score_adj")).expect("create failing oom fixture");
+    let mut failure_state = GuardRuntimeState::default();
+    failure_state.reniced_pids.insert(
+        103,
+        (
+            5,
+            ProcessIdentity {
+                comm: "worker".to_string(),
+                starttime: 79,
+            },
+        ),
+    );
+    failure_state.oom_biased_pids.insert(
+        104,
+        (
+            -100,
+            ProcessIdentity {
+                comm: "worker".to_string(),
+                starttime: 80,
+            },
+        ),
+    );
+    assert!(
+        !restore_runtime_adjustments_with(&mut failure_state, &failing_renice, &systemctl, &tmp)
+            .await,
+        "failed release operations must prevent runtime reset"
+    );
+    assert!(failure_state.reniced_pids.contains_key(&103));
+    assert!(failure_state.oom_biased_pids.contains_key(&104));
+
     let mut state = GuardRuntimeState::default();
     state.reniced_pids.insert(101, (5, identity.clone()));
     state.oom_biased_pids.insert(101, (-100, identity));
