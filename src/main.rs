@@ -1564,9 +1564,9 @@ fn runtime_adjustment_plan(state: &GuardRuntimeState) -> Vec<RuntimeAdjustment> 
         nice_restores.insert(pid, (entry.original_nice, entry.identity.clone()));
     }
     for (&pid, entry) in &state.memory_reniced_pids {
-        // Both maps capture the pre-limiter nice value. `entry` is only
-        // inserted when the legacy limiter is absent; when both are active,
-        // the legacy entry already contains the shared original target.
+        // Both maps capture the pre-limiter nice value. When both are
+        // active, the legacy entry already contains the shared original
+        // target, so this PID still gets exactly one restore operation.
         nice_restores
             .entry(pid)
             .or_insert_with(|| (entry.original_nice, entry.identity.clone()));

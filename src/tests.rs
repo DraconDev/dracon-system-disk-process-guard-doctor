@@ -266,6 +266,117 @@ async fn restore_runtime_adjustments_restores_renice_and_oom() {
 }
 
 #[cfg(unix)]
+#[tokio::test]
+async fn restore_runtime_adjustments_composes_overlapping_nice_limiters() {
+    let tmp = std::env::temp_dir().join(format!(
+        "dracon_system_overlap_restore_test_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&tmp).expect("create temp dir");
+    let renice_log = tmp.join("renice.log");
+    let renice = tmp.join("renice");
+    let systemctl = tmp.join("systemctl");
+    let escaped_log = renice_log.to_string_lossy().replace('\'', "'\\''");
+    write_test_script(
+        &renice,
+        &format!("printf '%s\\n' \"$*\" >> '{escaped_log}'\nexit 0"),
+    );
+    write_test_script(&systemctl, "exit 0");
+    write_process_fixture(&tmp, 107, "overlap-worker", 83, None, None);
+
+    let identity = ProcessIdentity {
+        comm: "overlap-worker".to_string(),
+        starttime: 83,
+    };
+    let mut state = GuardRuntimeState::default();
+    state.reniced_pids.insert(
+        107,
+        LegacyReniceState {
+            original_nice: 3,
+            applied_nice: 8,
+            identity: identity.clone(),
+        },
+    );
+    state.memory_reniced_pids.insert(
+        107,
+        MemoryReniceState {
+            original_nice: 3,
+            applied_nice: 12,
+            identity,
+        },
+    );
+
+    assert!(
+        restore_runtime_adjustments_with(&mut state, &renice, &systemctl, &tmp).await,
+        "overlapping nice limiters should restore successfully"
+    );
+    assert!(state.reniced_pids.is_empty());
+    assert!(state.memory_reniced_pids.is_empty());
+    assert_eq!(
+        fs::read_to_string(&renice_log)
+            .expect("read renice log")
+            .lines()
+            .collect::<Vec<_>>(),
+        vec!["-n 3 -p 107"],
+        "one compositional restore must target the pre-limiter nice value"
+    );
+    let _ = fs::remove_dir_all(&tmp);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn restore_runtime_adjustments_retains_overlapping_nice_limiters_on_failure() {
+    let tmp = std::env::temp_dir().join(format!(
+        "dracon_system_overlap_failure_test_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&tmp).expect("create temp dir");
+    let renice = tmp.join("renice-failure");
+    let systemctl = tmp.join("systemctl");
+    write_test_script(&renice, "exit 1");
+    write_test_script(&systemctl, "exit 0");
+    write_process_fixture(&tmp, 108, "overlap-worker", 84, None, None);
+
+    let identity = ProcessIdentity {
+        comm: "overlap-worker".to_string(),
+        starttime: 84,
+    };
+    let mut state = GuardRuntimeState::default();
+    state.reniced_pids.insert(
+        108,
+        LegacyReniceState {
+            original_nice: 4,
+            applied_nice: 9,
+            identity: identity.clone(),
+        },
+    );
+    state.memory_reniced_pids.insert(
+        108,
+        MemoryReniceState {
+            original_nice: 4,
+            applied_nice: 13,
+            identity,
+        },
+    );
+
+    assert!(
+        !restore_runtime_adjustments_with(&mut state, &renice, &systemctl, &tmp).await,
+        "a failed compositional restore must remain retryable"
+    );
+    assert!(state.reniced_pids.contains_key(&108));
+    assert!(state.memory_reniced_pids.contains_key(&108));
+    let _ = fs::remove_dir_all(&tmp);
+}
+
+#[cfg(unix)]
 #[test]
 fn sweep_stranded_oom_descendants_restores_only_post_bias_children() {
     let tmp = std::env::temp_dir().join(format!(

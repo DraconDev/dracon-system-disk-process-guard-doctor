@@ -67,13 +67,14 @@ fn runtime_adjustment_plan_includes_every_reversible_limiter() {
     let mut state = crate::GuardRuntimeState::default();
     state.reniced_pids.insert(
         101,
-        (
-            5,
-            crate::ProcessIdentity {
+        crate::LegacyReniceState {
+            original_nice: 0,
+            applied_nice: 5,
+            identity: crate::ProcessIdentity {
                 comm: "legacy-worker".to_string(),
                 starttime: 1,
             },
-        ),
+        },
     );
     state.memory_reniced_pids.insert(
         102,
@@ -110,14 +111,15 @@ fn runtime_adjustment_plan_includes_every_reversible_limiter() {
 
     let plan = crate::runtime_adjustment_plan(&state);
     assert_eq!(plan.len(), 4);
-    assert!(plan.contains(&crate::RuntimeAdjustment::LegacyRenice {
+    assert!(plan.contains(&crate::RuntimeAdjustment::Nice {
         pid: 101,
+        original_nice: 0,
         identity: crate::ProcessIdentity {
             comm: "legacy-worker".to_string(),
             starttime: 1,
         },
     }));
-    assert!(plan.contains(&crate::RuntimeAdjustment::MemoryRenice {
+    assert!(plan.contains(&crate::RuntimeAdjustment::Nice {
         pid: 102,
         original_nice: 3,
         identity: crate::ProcessIdentity {
