@@ -671,8 +671,14 @@ async fn empty_trash_credential_guard_blocks_dry_run_estimate() {
     let (reclaimed, cleaned) = empty_trash_at(&home, false, &[], true)
         .await
         .expect("dry-run trash scan");
-    assert_eq!(reclaimed, 0, "blocked dry-run must not report reclaimable bytes");
-    assert!(cleaned.is_empty(), "blocked dry-run must report no cleanup action");
+    assert_eq!(
+        reclaimed, 0,
+        "blocked dry-run must not report reclaimable bytes"
+    );
+    assert!(
+        cleaned.is_empty(),
+        "blocked dry-run must report no cleanup action"
+    );
     assert!(
         credential_fixture.exists(),
         "dry-run must not delete the credential-like fixture"
