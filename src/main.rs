@@ -447,6 +447,11 @@ pub(crate) struct GuardRuntimeState {
     /// raised under critical pressure (original adjustment, stable
     /// process identity), and their restore timers.
     pub(crate) oom_biased_pids: HashMap<i32, (i32, ProcessIdentity)>,
+    /// ADDED 2026-08-11 (audit LOW): process incarnations that already
+    /// descended from each biased pid when the bias was applied. Children
+    /// created afterwards inherit the target adjustment and are swept back
+    /// to the root's original value instead of remaining stranded at 250.
+    pub(crate) oom_known_descendants: HashMap<i32, HashSet<(i32, u64)>>,
     pub(crate) oom_cooled_since: HashMap<i32, Instant>,
     /// ADDED 2026-08-10 (v0.112.36): pids inside a transient
     /// CPUQuota scope (scope_name, original cgroup, stable identity),
@@ -887,6 +892,62 @@ fn process_sample_is_current(sample: &ProcSample) -> bool {
     )
 }
 
+/// Return whether `pid` is a descendant of `root_pid` in a point-in-time
+/// process table. The bounded walk tolerates a process disappearing between
+/// `ps` and this check and cannot loop forever on malformed/cyclic fixtures.
+fn process_is_descendant_of(
+    pid: i32,
+    root_pid: i32,
+    parent_by_pid: &HashMap<i32, i32>,
+) -> bool {
+    if pid == root_pid {
+        return false;
+    }
+    let mut current = pid;
+    let mut seen = HashSet::new();
+    for _ in 0..1024 {
+        let Some(parent) = parent_by_pid.get(&current).copied() else {
+            return false;
+        };
+        if parent == root_pid {
+            return true;
+        }
+        if parent <= 0 || !seen.insert(current) {
+            return false;
+        }
+        current = parent;
+    }
+    false
+}
+
+fn process_descendant_samples(samples: &[ProcSample], root_pid: i32) -> Vec<ProcSample> {
+    let parent_by_pid: HashMap<i32, i32> =
+        samples.iter().map(|sample| (sample.pid, sample.ppid)).collect();
+    samples
+        .iter()
+        .filter(|sample| process_is_descendant_of(sample.pid, root_pid, &parent_by_pid))
+        .cloned()
+        .collect()
+}
+
+fn oom_descendant_candidates(
+    samples: &[ProcSample],
+    root_pid: i32,
+    known_descendants: &HashSet<(i32, u64)>,
+    tracked_pids: &HashSet<i32>,
+    exempt_names: &HashSet<String>,
+) -> Vec<ProcSample> {
+    process_descendant_samples(samples, root_pid)
+        .into_iter()
+        .filter(|sample| {
+            !known_descendants.contains(&(sample.pid, sample.starttime))
+                && !tracked_pids.contains(&sample.pid)
+                && !exempt_names.contains(&sample.command)
+                && !is_kernel_process(&sample.command)
+        })
+        .collect()
+}
+
 pub(crate) fn disk_state(used: u8, guard: &GuardPolicy) -> &'static str {
     if used >= guard.disk_critical_percent {
         "critical"
@@ -1031,6 +1092,114 @@ pub(crate) fn oom_bias_target(current: i32) -> Option<i32> {
     } else {
         Some(OOM_BIAS_TARGET)
     }
+}
+
+const KERNEL_PROCESS_PREFIXES: &[&str] = &[
+    "kworker",
+    "ksoftirqd",
+    "kthreadd",
+    "kswapd",
+    "kcompactd",
+    "rcu_",
+    "kdevtmpfs",
+    "kblockd",
+    "khugepaged",
+    "ksmd",
+    "kernfs",
+    "kauditd",
+    "kstrp",
+    "mm_percpu",
+    "oom_reaper",
+    "kvm",
+    "ktrain",
+    "kthrotld",
+    "scsi_",
+    "nvme",
+    "irq/",
+    "watchdog",
+];
+
+fn is_kernel_process(command: &str) -> bool {
+    KERNEL_PROCESS_PREFIXES
+        .iter()
+        .any(|prefix| command.starts_with(prefix))
+}
+
+/// Restore oom_score_adj inherited by descendants created after a tracked
+/// process was biased. Existing descendants are recorded at bias time so a
+/// pre-existing operator adjustment is not overwritten; only new process
+/// incarnations currently at the guard's target are candidates.
+fn sweep_stranded_oom_descendants(
+    proc_root: &Path,
+    samples: &[ProcSample],
+    state: &mut GuardRuntimeState,
+    exempt_names: &HashSet<String>,
+) -> Vec<String> {
+    let tracked_pids: HashSet<i32> = state.oom_biased_pids.keys().copied().collect();
+    let roots: Vec<(i32, i32, ProcessIdentity)> = state
+        .oom_biased_pids
+        .iter()
+        .map(|(&pid, &(orig_adj, ref identity))| (pid, orig_adj, identity.clone()))
+        .collect();
+    let mut restored = Vec::new();
+
+    for (root_pid, orig_adj, root_identity) in roots {
+        match process_identity_status(proc_root, root_pid, &root_identity) {
+            ProcessIdentityStatus::Match | ProcessIdentityStatus::Gone => {}
+            ProcessIdentityStatus::Mismatch | ProcessIdentityStatus::Unavailable => continue,
+        }
+        let known = state
+            .oom_known_descendants
+            .entry(root_pid)
+            .or_default();
+        for child in oom_descendant_candidates(
+            samples,
+            root_pid,
+            known,
+            &tracked_pids,
+            exempt_names,
+        ) {
+            let child_identity = process_sample_identity(&child);
+            if !matches!(
+                process_identity_status(proc_root, child.pid, &child_identity),
+                ProcessIdentityStatus::Match
+            ) {
+                continue;
+            }
+            let adj_path = proc_root.join(child.pid.to_string()).join("oom_score_adj");
+            let current = fs::read_to_string(&adj_path)
+                .ok()
+                .and_then(|value| value.trim().parse::<i32>().ok());
+            match current {
+                Some(OOM_BIAS_TARGET) => {
+                    if let Err(error) = fs::write(&adj_path, format!("{orig_adj}\n")) {
+                        eprintln!(
+                            "⚠️ oom-descendant-restore failed for pid={} parent={} : {}",
+                            child.pid, root_pid, error
+                        );
+                        continue;
+                    }
+                    eprintln!(
+                        "🛡️ oom-descendant-restore pid={} parent={} adj -> {}",
+                        child.pid, root_pid, orig_adj
+                    );
+                    restored.push(format!(
+                        "oom-restore-descendant {}={}",
+                        child.command, orig_adj
+                    ));
+                    known.insert((child.pid, child.starttime));
+                }
+                Some(_) => {
+                    // It did not inherit the guard's target. Remember the
+                    // incarnation so a later operator write to 250 is not
+                    // mistaken for inheritance from this bias.
+                    known.insert((child.pid, child.starttime));
+                }
+                None => {}
+            }
+        }
+    }
+    restored
 }
 
 /// Cap a process's CPU to `percent`% via a transient user systemd
