@@ -167,7 +167,10 @@ pub(crate) fn unique_backup_path(dir: &Path, base: &str) -> PathBuf {
 }
 
 /// Apply link policy: create or fix symlinks according to the configuration.
-pub(crate) fn apply_link_policy(policy: &SystemPolicy, force_replace: bool) -> Result<LinkStatusReport> {
+pub(crate) fn apply_link_policy(
+    policy: &SystemPolicy,
+    force_replace: bool,
+) -> Result<LinkStatusReport> {
     for entry in &policy.links.entries {
         let link = expand_tilde(&entry.link);
         let target = expand_tilde(&entry.target);

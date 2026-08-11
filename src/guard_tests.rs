@@ -364,7 +364,9 @@ full avg10=4.56 avg60=0.30 avg300=0.65 total=3579061268
 
 #[test]
 fn parse_pressure_memory_no_full_line_returns_none() {
-    assert!(crate::parse_pressure_memory("some avg10=1.00 avg60=1.00 avg300=1.00 total=1").is_none());
+    assert!(
+        crate::parse_pressure_memory("some avg10=1.00 avg60=1.00 avg300=1.00 total=1").is_none()
+    );
 }
 
 #[test]
@@ -517,8 +519,7 @@ fn memory_limiter_policy_defaults_are_safe() {
 #[test]
 fn policy_load_roundtrip_memory_limiter_knobs() {
     // TOML parse → defaults preserved when keys absent.
-    let policy: crate::GuardPolicy =
-        toml::from_str("").expect("empty policy parses with defaults");
+    let policy: crate::GuardPolicy = toml::from_str("").expect("empty policy parses with defaults");
     assert!(policy.auto_renice_on_memory);
     assert!(policy.bias_oom_on_pressure);
     assert_eq!(policy.cap_offenders_cpu_percent, 0);

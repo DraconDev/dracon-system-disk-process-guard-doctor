@@ -270,7 +270,13 @@ fn scan_broken_symlinks_detects_broken_chains() {
     );
     let names: Vec<String> = broken
         .iter()
-        .map(|b| std::path::Path::new(&b.path).file_name().unwrap().to_string_lossy().to_string())
+        .map(|b| {
+            std::path::Path::new(&b.path)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string()
+        })
         .collect();
     assert!(names.contains(&"mid".to_string()) && names.contains(&"leaf".to_string()));
 
@@ -278,7 +284,7 @@ fn scan_broken_symlinks_detects_broken_chains() {
     std::fs::write(base.join("real"), "x").unwrap();
     std::os::unix::fs::symlink(base.join("real"), base.join("ok-mid")).unwrap();
     std::os::unix::fs::symlink(base.join("ok-mid"), base.join("ok-leaf")).unwrap();
-     let (count, broken) = crate::scan_broken_symlinks(&base, 3);
+    let (count, broken) = crate::scan_broken_symlinks(&base, 3);
     assert_eq!(count, 4);
     assert_eq!(broken.len(), 2, "healthy chain must not be reported broken");
     let _ = std::fs::remove_dir_all(&base);
@@ -292,7 +298,10 @@ fn lexical_normalize_collapses_dot_components() {
         crate::lexical_normalize(Path::new("/a/./b")),
         PathBuf::from("/a/b")
     );
-    assert_eq!(crate::lexical_normalize(Path::new("/a/../b")), PathBuf::from("/b"));
+    assert_eq!(
+        crate::lexical_normalize(Path::new("/a/../b")),
+        PathBuf::from("/b")
+    );
     // `..` cannot climb above the root.
     assert_eq!(
         crate::lexical_normalize(Path::new("/../b")),
@@ -302,7 +311,10 @@ fn lexical_normalize_collapses_dot_components() {
         crate::lexical_normalize(Path::new("a/b/../../c")),
         PathBuf::from("c")
     );
-    assert_eq!(crate::lexical_normalize(Path::new("a/../b")), PathBuf::from("b"));
+    assert_eq!(
+        crate::lexical_normalize(Path::new("a/../b")),
+        PathBuf::from("b")
+    );
     assert_eq!(crate::lexical_normalize(Path::new("/")), PathBuf::from("/"));
 }
 

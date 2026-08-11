@@ -544,8 +544,7 @@ impl MemorySample {
         if self.mem_total_kb == 0 {
             return 0;
         }
-        (self.mem_available_kb.saturating_mul(100) / self.mem_total_kb)
-            .min(100) as u8
+        (self.mem_available_kb.saturating_mul(100) / self.mem_total_kb).min(100) as u8
     }
 
     pub(crate) fn swap_used_percent(&self) -> u8 {
@@ -557,7 +556,7 @@ impl MemorySample {
             .saturating_sub(self.swap_free_kb)
             .saturating_mul(100)
             / self.swap_total_kb)
-        .min(100) as u8
+            .min(100) as u8
     }
 }
 
@@ -617,7 +616,9 @@ pub(crate) fn parse_pressure_memory(output: &str) -> Option<(f64, f64)> {
 
 /// PSI `full avg10` — 0..=100 (percent of the last 10s fully stalled).
 async fn psi_full_avg10() -> Option<f64> {
-    let content = tokio::fs::read_to_string("/proc/pressure/memory").await.ok()?;
+    let content = tokio::fs::read_to_string("/proc/pressure/memory")
+        .await
+        .ok()?;
     parse_pressure_memory(&content).map(|(full, _)| full)
 }
 
@@ -670,12 +671,22 @@ pub(crate) fn parse_proc_stat_zombie(line: &str) -> Option<(i32, String, i32, u6
 pub(crate) fn looks_credential_like(name: &str) -> bool {
     let lower = name.to_lowercase();
     const SUBSTR: &[&str] = &[
-        "chrome", "chromium", "credential", "password", "secret", "token", "keyring",
-        "login data", "hosts.yml", ".git-credentials", ".npmrc", ".netrc", "cookie",
+        "chrome",
+        "chromium",
+        "credential",
+        "password",
+        "secret",
+        "token",
+        "keyring",
+        "login data",
+        "hosts.yml",
+        ".git-credentials",
+        ".npmrc",
+        ".netrc",
+        "cookie",
     ];
     const SUFFIX: &[&str] = &[".env", ".pem", ".key", ".age", ".p12", ".pfx"];
-    SUBSTR.iter().any(|s| lower.contains(s))
-        || SUFFIX.iter().any(|s| lower.ends_with(s))
+    SUBSTR.iter().any(|s| lower.contains(s)) || SUFFIX.iter().any(|s| lower.ends_with(s))
 }
 
 /// Sustained disk fill rate in GiB/hour from a byte-precise df
@@ -2209,8 +2220,7 @@ async fn check_memory_pressure(
 
     let mem_low = mem_available_percent <= guard.mem_available_warn_percent;
     let swap_high = swap_used_percent >= guard.swap_used_warn_percent;
-    let psi_thrash = psi_full_avg10
-        .is_some_and(|v| v >= guard.mem_psi_full_warn)
+    let psi_thrash = psi_full_avg10.is_some_and(|v| v >= guard.mem_psi_full_warn)
         || pswpin_rate.is_some_and(|r| r >= 1000.0);
 
     let pressure = if mem_low && (swap_high || psi_thrash) {
@@ -2224,9 +2234,28 @@ async fn check_memory_pressure(
     // Top RSS offenders (skipping kernel threads and exempt names).
     let exempt = parse_kinds(&guard.process_exempt_names);
     let kernel_prefixes = [
-        "kworker", "ksoftirqd", "kthreadd", "kswapd", "kcompactd", "rcu_", "kdevtmpfs",
-        "kblockd", "khugepaged", "ksmd", "kernfs", "kauditd", "kstrp", "mm_percpu",
-        "oom_reaper", "kvm", "ktrain", "kthrotld", "scsi_", "nvme", "irq/", "watchdog",
+        "kworker",
+        "ksoftirqd",
+        "kthreadd",
+        "kswapd",
+        "kcompactd",
+        "rcu_",
+        "kdevtmpfs",
+        "kblockd",
+        "khugepaged",
+        "ksmd",
+        "kernfs",
+        "kauditd",
+        "kstrp",
+        "mm_percpu",
+        "oom_reaper",
+        "kvm",
+        "ktrain",
+        "kthrotld",
+        "scsi_",
+        "nvme",
+        "irq/",
+        "watchdog",
     ];
     let top_rss: Vec<ProcSample> = process_samples()
         .await
@@ -2265,12 +2294,7 @@ async fn check_memory_pressure(
                 continue;
             }
             let nice_val = graduated_nice_value(p.cpu_percent, p.rss_mb, guard.renice_value);
-            if state
-                .memory_reniced_pids
-                .get(&p.pid)
-                .map(|(n, _)| *n)
-                != Some(nice_val)
-            {
+            if state.memory_reniced_pids.get(&p.pid).map(|(n, _)| *n) != Some(nice_val) {
                 match renice_process(p.pid, nice_val).await {
                     Ok(()) => {
                         state
@@ -2396,13 +2420,17 @@ async fn check_memory_pressure(
             if let Some((orig, ref orig_cmd)) = state.oom_biased_pids.get(&pid).cloned() {
                 let identity_ok = proc_identity(pid)
                     .map(|(comm, _)| comm == *orig_cmd)
-                    .unwrap_or(false);                if !identity_ok {
+                    .unwrap_or(false);
+                if !identity_ok {
                     state.oom_biased_pids.remove(&pid);
                     state.oom_cooled_since.remove(&pid);
                     continue;
                 }
                 let _ = fs::write(format!("/proc/{pid}/oom_score_adj"), format!("{orig}\n"));
-                eprintln!("🛡️ oom-restore pid={} adj -> {} (pressure released)", pid, orig);
+                eprintln!(
+                    "🛡️ oom-restore pid={} adj -> {} (pressure released)",
+                    pid, orig
+                );
             }
             state.oom_biased_pids.remove(&pid);
             state.oom_cooled_since.remove(&pid);
@@ -2463,7 +2491,9 @@ async fn check_memory_pressure(
                     pressure,
                     mem_available_percent,
                     swap_used_percent,
-                    psi_full_avg10.map(|v| format!(", PSI full {:.1}%", v)).unwrap_or_default(),
+                    psi_full_avg10
+                        .map(|v| format!(", PSI full {:.1}%", v))
+                        .unwrap_or_default(),
                     if offenders.is_empty() {
                         "(none)".to_string()
                     } else {
@@ -2541,9 +2571,9 @@ fn zombie_details(state: &mut GuardRuntimeState) -> Vec<ZombieInfo> {
             });
         }
     }
-    state.zombies_since.retain(|pid, _| {
-        zombies.iter().any(|z| z.pid == *pid)
-    });
+    state
+        .zombies_since
+        .retain(|pid, _| zombies.iter().any(|z| z.pid == *pid));
     zombies.sort_by_key(|b| std::cmp::Reverse(b.age_secs));
     zombies
 }
@@ -2767,10 +2797,7 @@ async fn check_heavy_processes(
         // or stale) sustain window resets instead of letting the
         // guard renice an innocent process.
         let live_start = proc_identity(p.pid).map(|(_, s)| s).unwrap_or(0);
-        let entry = state
-            .heavy_since
-            .entry(p.pid)
-            .or_insert((now, live_start));
+        let entry = state.heavy_since.entry(p.pid).or_insert((now, live_start));
         if live_start != 0 && entry.1 != 0 && entry.1 != live_start {
             *entry = (now, live_start);
         }
@@ -3003,7 +3030,10 @@ async fn check_inode_usage(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
     }
 }
 
-async fn check_zombie_processes(guard: &GuardPolicy, state: &mut GuardRuntimeState) -> Vec<ZombieInfo> {
+async fn check_zombie_processes(
+    guard: &GuardPolicy,
+    state: &mut GuardRuntimeState,
+) -> Vec<ZombieInfo> {
     if !guard.monitor_zombies {
         return Vec::new();
     }
@@ -3935,7 +3965,11 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
 
     // ADDED 2026-08-10 (v0.112.35): zombie + fill-rate rows.
     table.add_row(vec![
-        Cell::new(if report.zombies.is_empty() { "✅" } else { "⚠️" }),
+        Cell::new(if report.zombies.is_empty() {
+            "✅"
+        } else {
+            "⚠️"
+        }),
         Cell::new("Zombies"),
         Cell::new(if report.zombies.is_empty() {
             "none".to_string()
@@ -3952,10 +3986,12 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
     table.add_row(vec![
         Cell::new(""),
         Cell::new("Disk Fill Rate"),
-        Cell::new(report
-            .disk_fill_gbph
-            .map(|r| format!("{:.1} GiB/h", r))
-            .unwrap_or_else(|| "< 0.1 GiB/h or settling".to_string())),
+        Cell::new(
+            report
+                .disk_fill_gbph
+                .map(|r| format!("{:.1} GiB/h", r))
+                .unwrap_or_else(|| "< 0.1 GiB/h or settling".to_string()),
+        ),
     ]);
 
     println!("{table}");
@@ -4318,8 +4354,12 @@ async fn cmd_guard_clean(
     }
 
     if do_trash {
-        match empty_trash(apply, &guard_clone.protected_paths, guard_clone.trash_credential_guard)
-            .await
+        match empty_trash(
+            apply,
+            &guard_clone.protected_paths,
+            guard_clone.trash_credential_guard,
+        )
+        .await
         {
             Ok((bytes, cleaned)) => {
                 total_reclaimed += bytes;
