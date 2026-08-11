@@ -1052,7 +1052,10 @@ async fn uncap_cpu_process(pid: i32, scope: &str, orig_cgroup: &str) -> Result<(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RuntimeAdjustment {
-    Renice { pid: i32, orig_cmd: String },
+    Renice {
+        pid: i32,
+        orig_cmd: String,
+    },
     OomBias {
         pid: i32,
         orig_adj: i32,
@@ -1149,8 +1152,10 @@ async fn restore_runtime_adjustments(state: &GuardRuntimeState) {
                     );
                     continue;
                 }
-                if let Err(e) = fs::write(format!("/proc/{pid}/oom_score_adj"), format!("{orig_adj}\n"))
-                {
+                if let Err(e) = fs::write(
+                    format!("/proc/{pid}/oom_score_adj"),
+                    format!("{orig_adj}\n"),
+                ) {
                     eprintln!(
                         "⚠ SIGHUP failed to restore oom_score_adj for pid={} cmd={}: {}",
                         pid, orig_cmd, e
