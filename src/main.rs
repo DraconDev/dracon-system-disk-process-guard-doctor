@@ -1068,53 +1068,121 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
     Ok((unit, orig_rel))
 }
 
+async fn systemctl_user_action(
+    systemctl_bin: &Path,
+    action: &str,
+    scope: &str,
+) -> Result<(), String> {
+    let output = Command::new(systemctl_bin)
+        .args(["--user", action, scope])
+        .output()
+        .await
+        .map_err(|e| format!("systemctl {action} {scope}: {e}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let detail = String::from_utf8_lossy(&output.stderr);
+    Err(format!(
+        "systemctl {action} {scope} exited with {}: {}",
+        output.status,
+        detail.trim()
+    ))
+}
+
 /// Lift a CPUQuota cap: move the pid back to its original cgroup and
-/// stop the now-empty transient scope. Moving back never kills; the
-/// scope stop only kills the placeholder sleep.
+/// stop the now-empty transient scope. Every read, move, and systemd
+/// operation is checked so callers retain the cap entry when restoration
+/// cannot be verified.
 async fn uncap_cpu_process(pid: i32, scope: &str, orig_cgroup: &str) -> Result<(), String> {
-    // Only move back if the pid is still alive AND still inside the scope.
-    if let Ok(cg_line) = std::fs::read_to_string(format!("/proc/{pid}/cgroup")) {
-        let rel = cg_line
-            .lines()
-            .next()
-            .and_then(|l| l.split_once("::").map(|(_, p)| p.trim_start_matches('/')))
-            .unwrap_or_default();
-        if rel.contains(scope) {
-            let procs_file = format!("/sys/fs/cgroup/{orig_cgroup}/cgroup.procs");
-            std::fs::write(&procs_file, format!("{pid}\n"))
-                .map_err(|e| format!("move pid {pid} back to {procs_file}: {e}"))?;
+    uncap_cpu_process_with_bin(Path::new("systemctl"), Path::new("/proc"), pid, scope, orig_cgroup)
+        .await
+}
+
+async fn uncap_cpu_process_with_bin(
+    systemctl_bin: &Path,
+    proc_root: &Path,
+    pid: i32,
+    scope: &str,
+    orig_cgroup: &str,
+) -> Result<(), String> {
+    let cgroup_path = proc_root.join(pid.to_string()).join("cgroup");
+    let mut errors = Vec::new();
+    let mut process_was_read = false;
+    match std::fs::read_to_string(&cgroup_path) {
+        Ok(cg_line) => {
+            process_was_read = true;
+            let rel = cg_line
+                .lines()
+                .next()
+                .and_then(|l| l.split_once("::").map(|(_, p)| p.trim_start_matches('/')))
+                .unwrap_or_default();
+            if rel.contains(scope) {
+                let procs_file = format!("/sys/fs/cgroup/{orig_cgroup}/cgroup.procs");
+                if let Err(e) = std::fs::write(&procs_file, format!("{pid}\n")) {
+                    errors.push(format!("move pid {pid} back to {procs_file}: {e}"));
+                }
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // The process is gone; there is no live PID left to move.
+        }
+        Err(e) => errors.push(format!("read {}/cgroup: {e}", proc_root.display())),
+    }
+
+    if let Err(e) = systemctl_user_action(systemctl_bin, "stop", scope).await {
+        errors.push(e);
+    }
+    if let Err(e) = systemctl_user_action(systemctl_bin, "reset-failed", scope).await {
+        errors.push(e);
+    }
+
+    // If the process was readable before cleanup, prove it is no longer in
+    // the transient scope. An unreadable live process is indeterminate and
+    // must remain tracked for a later retry.
+    if process_was_read {
+        match std::fs::read_to_string(&cgroup_path) {
+            Ok(cg_line) => {
+                let rel = cg_line
+                    .lines()
+                    .next()
+                    .and_then(|l| l.split_once("::").map(|(_, p)| p.trim_start_matches('/')))
+                    .unwrap_or_default();
+                if rel.contains(scope) {
+                    errors.push(format!("pid {pid} remains in CPUQuota scope {scope}"));
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => errors.push(format!("verify {}/cgroup: {e}", proc_root.display())),
         }
     }
-    let _ = Command::new("systemctl")
-        .args(["--user", "stop", scope])
-        .status()
-        .await;
-    let _ = Command::new("systemctl")
-        .args(["--user", "reset-failed", scope])
-        .status()
-        .await;
-    Ok(())
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RuntimeAdjustment {
     LegacyRenice {
         pid: i32,
-        orig_cmd: String,
+        identity: ProcessIdentity,
     },
     MemoryRenice {
         pid: i32,
-        orig_cmd: String,
+        identity: ProcessIdentity,
     },
     OomBias {
         pid: i32,
         orig_adj: i32,
-        orig_cmd: String,
+        identity: ProcessIdentity,
     },
     CpuCap {
         pid: i32,
         scope: String,
         orig_cgroup: String,
+        identity: ProcessIdentity,
     },
 }
 
@@ -1124,124 +1192,156 @@ enum RuntimeAdjustment {
 /// legacy renice map again when a new limiter is added.
 fn runtime_adjustment_plan(state: &GuardRuntimeState) -> Vec<RuntimeAdjustment> {
     let mut plan = Vec::new();
-    for (&pid, (_, orig_cmd)) in &state.reniced_pids {
+    for (&pid, (_, identity)) in &state.reniced_pids {
         plan.push(RuntimeAdjustment::LegacyRenice {
             pid,
-            orig_cmd: orig_cmd.clone(),
+            identity: identity.clone(),
         });
     }
-    for (&pid, (_, orig_cmd)) in &state.memory_reniced_pids {
+    for (&pid, (_, identity)) in &state.memory_reniced_pids {
         plan.push(RuntimeAdjustment::MemoryRenice {
             pid,
-            orig_cmd: orig_cmd.clone(),
+            identity: identity.clone(),
         });
     }
-    for (&pid, (orig_adj, orig_cmd)) in &state.oom_biased_pids {
+    for (&pid, (orig_adj, identity)) in &state.oom_biased_pids {
         plan.push(RuntimeAdjustment::OomBias {
             pid,
             orig_adj: *orig_adj,
-            orig_cmd: orig_cmd.clone(),
+            identity: identity.clone(),
         });
     }
-    for (&pid, (scope, orig_cgroup)) in &state.capped_pids {
+    for (&pid, (scope, orig_cgroup, identity)) in &state.capped_pids {
         plan.push(RuntimeAdjustment::CpuCap {
             pid,
             scope: scope.clone(),
             orig_cgroup: orig_cgroup.clone(),
+            identity: identity.clone(),
         });
     }
     plan
 }
 
-fn process_matches_command(pid: i32, orig_cmd: &str) -> bool {
-    let proc_cmdline = PathBuf::from(format!("/proc/{pid}/cmdline"));
-    match std::fs::read_to_string(proc_cmdline) {
-        Ok(content) => {
-            let cmd = content.replace('\0', " ");
-            let exe = cmd.split_whitespace().next().unwrap_or("");
-            Path::new(exe)
-                .file_name()
-                .map(|name| name.to_string_lossy() == orig_cmd)
-                .unwrap_or(false)
-        }
-        Err(_) => false,
-    }
+fn remove_legacy_renice(state: &mut GuardRuntimeState, pid: i32) {
+    state.reniced_pids.remove(&pid);
+    state.cooled_since.remove(&pid);
+}
+
+fn remove_memory_renice(state: &mut GuardRuntimeState, pid: i32) {
+    state.memory_reniced_pids.remove(&pid);
+    state.memory_cooled_since.remove(&pid);
+}
+
+fn remove_oom_bias(state: &mut GuardRuntimeState, pid: i32) {
+    state.oom_biased_pids.remove(&pid);
+    state.oom_cooled_since.remove(&pid);
+}
+
+fn remove_cpu_cap(state: &mut GuardRuntimeState, pid: i32) {
+    state.capped_pids.remove(&pid);
+    state.cap_cooled_since.remove(&pid);
 }
 
 /// Restore all process-level mitigations before a policy reload discards the
-/// old runtime. Successfully restored (or already-gone) entries are removed;
-/// entries that fail to restore remain tracked so the next guard pass can
-/// retry instead of losing a live adjustment.
+/// old runtime. A PID that is gone or has a different starttime is safe to
+/// drop; an unreadable live process, a failed command, or an unverified cgroup
+/// remains tracked so the next guard pass can retry instead of losing a live
+/// adjustment.
 async fn restore_runtime_adjustments(state: &mut GuardRuntimeState) -> bool {
+    restore_runtime_adjustments_with(
+        state,
+        Path::new("renice"),
+        Path::new("systemctl"),
+        Path::new("/proc"),
+    )
+    .await
+}
+
+async fn restore_runtime_adjustments_with(
+    state: &mut GuardRuntimeState,
+    renice_bin: &Path,
+    systemctl_bin: &Path,
+    proc_root: &Path,
+) -> bool {
     for adjustment in runtime_adjustment_plan(state) {
         match adjustment {
-            RuntimeAdjustment::LegacyRenice { pid, orig_cmd } => {
-                if !process_matches_command(pid, &orig_cmd) {
-                    eprintln!(
-                        "⚠ SIGHUP skip un-renice pid={} — PID recycled (was {})",
-                        pid, orig_cmd
-                    );
-                    state.reniced_pids.remove(&pid);
-                    state.cooled_since.remove(&pid);
-                    continue;
-                }
-                match renice_process(pid, 0).await {
-                    Ok(()) => {
-                        state.reniced_pids.remove(&pid);
-                        state.cooled_since.remove(&pid);
+            RuntimeAdjustment::LegacyRenice { pid, identity } => {
+                match process_identity_status(proc_root, pid, &identity) {
+                    ProcessIdentityStatus::Match => {
+                        match renice_process_with_bin(renice_bin, pid, 0).await {
+                            Ok(()) => remove_legacy_renice(state, pid),
+                            Err(e) => eprintln!(
+                                "⚠ SIGHUP failed to restore nice value for pid={} comm={}: {}",
+                                pid, identity.comm, e
+                            ),
+                        }
                     }
-                    Err(e) => eprintln!(
-                        "⚠ SIGHUP failed to restore nice value for pid={} cmd={}: {}",
-                        pid, orig_cmd, e
+                    ProcessIdentityStatus::Gone => remove_legacy_renice(state, pid),
+                    ProcessIdentityStatus::Mismatch => {
+                        eprintln!(
+                            "⚠ SIGHUP dropping legacy renice pid={} — PID incarnation changed",
+                            pid
+                        );
+                        remove_legacy_renice(state, pid);
+                    }
+                    ProcessIdentityStatus::Unavailable => eprintln!(
+                        "⚠ SIGHUP retaining legacy renice pid={} — process identity unavailable",
+                        pid
                     ),
                 }
             }
-            RuntimeAdjustment::MemoryRenice { pid, orig_cmd } => {
-                if !process_matches_command(pid, &orig_cmd) {
-                    eprintln!(
-                        "⚠ SIGHUP skip memory un-renice pid={} — PID recycled (was {})",
-                        pid, orig_cmd
-                    );
-                    state.memory_reniced_pids.remove(&pid);
-                    state.memory_cooled_since.remove(&pid);
-                    continue;
-                }
-                match renice_process(pid, 0).await {
-                    Ok(()) => {
-                        state.memory_reniced_pids.remove(&pid);
-                        state.memory_cooled_since.remove(&pid);
+            RuntimeAdjustment::MemoryRenice { pid, identity } => {
+                match process_identity_status(proc_root, pid, &identity) {
+                    ProcessIdentityStatus::Match => {
+                        match renice_process_with_bin(renice_bin, pid, 0).await {
+                            Ok(()) => remove_memory_renice(state, pid),
+                            Err(e) => eprintln!(
+                                "⚠ SIGHUP failed to restore memory nice value for pid={} comm={}: {}",
+                                pid, identity.comm, e
+                            ),
+                        }
                     }
-                    Err(e) => eprintln!(
-                        "⚠ SIGHUP failed to restore memory nice value for pid={} cmd={}: {}",
-                        pid, orig_cmd, e
+                    ProcessIdentityStatus::Gone => remove_memory_renice(state, pid),
+                    ProcessIdentityStatus::Mismatch => {
+                        eprintln!(
+                            "⚠ SIGHUP dropping memory renice pid={} — PID incarnation changed",
+                            pid
+                        );
+                        remove_memory_renice(state, pid);
+                    }
+                    ProcessIdentityStatus::Unavailable => eprintln!(
+                        "⚠ SIGHUP retaining memory renice pid={} — process identity unavailable",
+                        pid
                     ),
                 }
             }
             RuntimeAdjustment::OomBias {
                 pid,
                 orig_adj,
-                orig_cmd,
+                identity,
             } => {
-                if !process_matches_command(pid, &orig_cmd) {
-                    eprintln!(
-                        "⚠ SIGHUP skip oom restore pid={} — PID recycled (was {})",
-                        pid, orig_cmd
-                    );
-                    state.oom_biased_pids.remove(&pid);
-                    state.oom_cooled_since.remove(&pid);
-                    continue;
-                }
-                match fs::write(
-                    format!("/proc/{pid}/oom_score_adj"),
-                    format!("{orig_adj}\n"),
-                ) {
-                    Ok(()) => {
-                        state.oom_biased_pids.remove(&pid);
-                        state.oom_cooled_since.remove(&pid);
+                match process_identity_status(proc_root, pid, &identity) {
+                    ProcessIdentityStatus::Match => {
+                        let adj_path = proc_root.join(pid.to_string()).join("oom_score_adj");
+                        match fs::write(&adj_path, format!("{orig_adj}\n")) {
+                            Ok(()) => remove_oom_bias(state, pid),
+                            Err(e) => eprintln!(
+                                "⚠ SIGHUP failed to restore oom_score_adj for pid={} comm={}: {}",
+                                pid, identity.comm, e
+                            ),
+                        }
                     }
-                    Err(e) => eprintln!(
-                        "⚠ SIGHUP failed to restore oom_score_adj for pid={} cmd={}: {}",
-                        pid, orig_cmd, e
+                    ProcessIdentityStatus::Gone => remove_oom_bias(state, pid),
+                    ProcessIdentityStatus::Mismatch => {
+                        eprintln!(
+                            "⚠ SIGHUP dropping oom bias pid={} — PID incarnation changed",
+                            pid
+                        );
+                        remove_oom_bias(state, pid);
+                    }
+                    ProcessIdentityStatus::Unavailable => eprintln!(
+                        "⚠ SIGHUP retaining oom bias pid={} — process identity unavailable",
+                        pid
                     ),
                 }
             }
@@ -1249,14 +1349,32 @@ async fn restore_runtime_adjustments(state: &mut GuardRuntimeState) -> bool {
                 pid,
                 scope,
                 orig_cgroup,
-            } => match uncap_cpu_process(pid, &scope, &orig_cgroup).await {
-                Ok(()) => {
-                    state.capped_pids.remove(&pid);
-                    state.cap_cooled_since.remove(&pid);
+                identity,
+            } => match process_identity_status(proc_root, pid, &identity) {
+                ProcessIdentityStatus::Match | ProcessIdentityStatus::Gone => {
+                    match uncap_cpu_process_with_bin(
+                        systemctl_bin,
+                        proc_root,
+                        pid,
+                        &scope,
+                        &orig_cgroup,
+                    )
+                    .await
+                    {
+                        Ok(()) => remove_cpu_cap(state, pid),
+                        Err(e) => eprintln!(
+                            "⚠ SIGHUP failed to restore CPU cgroup for pid={} scope={}: {}",
+                            pid, scope, e
+                        ),
+                    }
                 }
-                Err(e) => eprintln!(
-                    "⚠ SIGHUP failed to restore CPU cgroup for pid={} scope={}: {}",
-                    pid, scope, e
+                ProcessIdentityStatus::Mismatch => eprintln!(
+                    "⚠ SIGHUP retaining CPU cgroup pid={} — PID incarnation changed",
+                    pid
+                ),
+                ProcessIdentityStatus::Unavailable => eprintln!(
+                    "⚠ SIGHUP retaining CPU cgroup pid={} — process identity unavailable",
+                    pid
                 ),
             },
         }
