@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   avoid stopping transient services until cgroup state is readable, and report
   unverified systemd or cgroup operations instead of dropping the tracking
   entry.
+- **Memory-pressure renice now preserves the original nice value**: runtime
+  state stores both the pre-pressure and applied nice values, and release
+  restores the captured pre-pressure value instead of hardcoding nice 0.
 
 ## [0.112.36] - 2026-08-10
 

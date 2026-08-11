@@ -531,7 +531,7 @@ pub(crate) fn parse_ps_output(output: &str) -> Vec<ProcSample> {
             if trimmed.is_empty() {
                 return None;
             }
-            // Format: pid ppid pcpu rss comm args...
+            // Format: pid ppid pcpu rss nice comm args...
             let mut parts = trimmed.split_whitespace();
             let pid = parts.next()?.parse::<i32>().ok()?;
             let ppid = parts.next()?.parse::<i32>().ok()?;
@@ -2859,7 +2859,10 @@ async fn check_memory_pressure(
                 eprintln!("⚠️ mem-unrenice failed for pid={}: {}", pid, e);
                 continue;
             }
-            eprintln!("🛡️ mem-unrenice pid={} -> nice 0 (pressure released)", pid);
+            eprintln!(
+                "🛡️ mem-unrenice pid={} -> nice {} (pressure released)",
+                pid, original_nice
+            );
             remove_memory_renice(state, pid);
         }
         state
