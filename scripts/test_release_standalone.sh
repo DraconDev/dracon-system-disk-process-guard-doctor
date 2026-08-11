@@ -75,7 +75,7 @@ test -f "release-notes-v${next_version}.md"
 grep -A2 'name = "dracon-system"' Cargo.lock \
     | grep -q "version = \"$next_version\""
 changed_paths=$(git status --porcelain | awk '{print $2}' | sort)
-test "$changed_paths" = $'CHANGELOG.md\nCargo.lock\nCargo.toml\nrelease-notes-v0.112.37.md'
+test "$changed_paths" = $'Cargo.lock\nCargo.toml\nCHANGELOG.md\nrelease-notes-v0.112.37.md'
 
 # The regenerated lockfile must make the post-bump locked preflight succeed.
 run_gate post-test cargo test --workspace --locked
