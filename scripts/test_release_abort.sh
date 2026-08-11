@@ -26,11 +26,11 @@ make_fixture "$guarded"
 printf 'operator edit\n' > "$guarded/unrelated.txt"
 printf 'version = "0.2.0"\n' > "$guarded/Cargo.toml"
 printf 'release notes\n' > "$guarded/release-notes-v0.2.0.md"
-if (cd "$guarded" && scripts/release.sh --abort >stdout 2>stderr); then
+if (cd "$guarded" && scripts/release.sh --abort >"$work/guarded.stdout" 2>"$work/guarded.stderr"); then
     echo "guarded abort unexpectedly succeeded" >&2
     exit 1
 fi
-grep -F 'working tree dirty outside the release surfaces' "$guarded/stderr" >/dev/null
+grep -F 'working tree dirty outside the release surfaces' "$work/guarded.stderr" >/dev/null
 test "$(cat "$guarded/unrelated.txt")" = 'operator edit'
 test "$(cat "$guarded/Cargo.toml")" = 'version = "0.2.0"'
 test -f "$guarded/release-notes-v0.2.0.md"
@@ -42,7 +42,7 @@ mkdir -p "$allowed"
 make_fixture "$allowed"
 printf 'version = "0.2.0"\n' > "$allowed/Cargo.toml"
 printf 'release notes\n' > "$allowed/release-notes-v0.2.0.md"
-(cd "$allowed" && scripts/release.sh --abort >stdout 2>stderr)
+(cd "$allowed" && scripts/release.sh --abort >"$work/allowed.stdout" 2>"$work/allowed.stderr")
 test "$(cat "$allowed/Cargo.toml")" = 'version = "0.1.0"'
 test ! -e "$allowed/release-notes-v0.2.0.md"
 
