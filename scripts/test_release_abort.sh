@@ -13,6 +13,7 @@ make_fixture() {
     chmod +x "$repo/scripts/release.sh"
     git -C "$repo" init -q
     printf 'version = "0.1.0"\n' > "$repo/Cargo.toml"
+    printf 'version = 4\n' > "$repo/Cargo.lock"
     printf '## [Unreleased]\n' > "$repo/CHANGELOG.md"
     printf 'clean\n' > "$repo/unrelated.txt"
     git -C "$repo" add Cargo.toml CHANGELOG.md unrelated.txt scripts/release.sh
@@ -25,6 +26,7 @@ mkdir -p "$guarded"
 make_fixture "$guarded"
 printf 'operator edit\n' > "$guarded/unrelated.txt"
 printf 'version = "0.2.0"\n' > "$guarded/Cargo.toml"
+printf 'broken lock\n' > "$guarded/Cargo.lock"
 printf 'release notes\n' > "$guarded/release-notes-v0.2.0.md"
 if (cd "$guarded" && scripts/release.sh --abort >"$work/guarded.stdout" 2>"$work/guarded.stderr"); then
     echo "guarded abort unexpectedly succeeded" >&2
@@ -33,6 +35,7 @@ fi
 grep -F 'working tree dirty outside the release surfaces' "$work/guarded.stderr" >/dev/null
 test "$(cat "$guarded/unrelated.txt")" = 'operator edit'
 test "$(cat "$guarded/Cargo.toml")" = 'version = "0.2.0"'
+test "$(cat "$guarded/Cargo.lock")" = 'broken lock'
 test -f "$guarded/release-notes-v0.2.0.md"
 
 # With only release-surface changes, --abort may revert the staged-file edit
@@ -41,9 +44,11 @@ allowed="$work/allowed"
 mkdir -p "$allowed"
 make_fixture "$allowed"
 printf 'version = "0.2.0"\n' > "$allowed/Cargo.toml"
+printf 'changed lock\n' > "$allowed/Cargo.lock"
 printf 'release notes\n' > "$allowed/release-notes-v0.2.0.md"
 (cd "$allowed" && scripts/release.sh --abort >"$work/allowed.stdout" 2>"$work/allowed.stderr")
 test "$(cat "$allowed/Cargo.toml")" = 'version = "0.1.0"'
+test "$(cat "$allowed/Cargo.lock")" = 'version = 4'
 test ! -e "$allowed/release-notes-v0.2.0.md"
 
 echo "release --abort regression tests: ok"
