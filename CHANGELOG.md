@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **OOM bias no longer strands forked descendants at 250**: critical-pressure
+  biasing records the existing descendant incarnations, then sweeps newly
+  forked descendants on each guard pass and restores them to the parent's
+  pre-bias `oom_score_adj`. The sweep is ancestry-, identity-, exemption-,
+  and kernel-aware, and includes regression coverage for nested descendants.
 - **Process-management documentation now matches v0.112.36 behavior**: the
   guard's comments and README describe reversible renice, optional
   `oom_score_adj` biasing, and optional CPUQuota throttling instead of
