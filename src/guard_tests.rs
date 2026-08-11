@@ -647,6 +647,18 @@ fn memory_limiter_policy_defaults_are_safe() {
 }
 
 #[test]
+fn normalize_guard_policy_clamps_cpu_cap_percent() {
+    let mut policy = crate::GuardPolicy::default();
+    policy.cap_offenders_cpu_percent = u32::MAX;
+    crate::normalize_guard_policy(&mut policy);
+    assert_eq!(policy.cap_offenders_cpu_percent, 100);
+
+    policy.cap_offenders_cpu_percent = 100;
+    crate::normalize_guard_policy(&mut policy);
+    assert_eq!(policy.cap_offenders_cpu_percent, 100);
+}
+
+#[test]
 fn policy_load_roundtrip_memory_limiter_knobs() {
     // TOML parse → defaults preserved when keys absent.
     let policy: crate::GuardPolicy = toml::from_str("").expect("empty policy parses with defaults");

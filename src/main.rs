@@ -4231,6 +4231,11 @@ pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) {
         .max(policy.process_sustain_secs);
     policy.mem_available_warn_percent = policy.mem_available_warn_percent.clamp(1, 100);
     policy.swap_used_warn_percent = policy.swap_used_warn_percent.clamp(1, 100);
+    // systemd CPUQuota accepts values above 100%, but this knob is a cap
+    // expressed as a percentage of one CPU. Keep invalid values from
+    // reaching the per-pass cap loop, where they would fail and retry for
+    // every offender on every interval.
+    policy.cap_offenders_cpu_percent = policy.cap_offenders_cpu_percent.min(100);
     policy.mem_psi_full_warn = policy.mem_psi_full_warn.max(0.0);
     policy.disk_rapid_fill_gbph = policy.disk_rapid_fill_gbph.max(0.5);
     policy.notify_cooldown_secs = policy.notify_cooldown_secs.max(5);

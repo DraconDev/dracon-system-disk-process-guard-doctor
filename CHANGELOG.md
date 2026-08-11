@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CPUQuota offender caps now clamp to 100%**: values above one CPU are
+  normalized before the critical-pressure loop, preventing an invalid
+  configuration from producing a failed cap warning for every offender on
+  every guard interval. Added regression coverage for oversized values.
 - **OOM bias no longer strands forked descendants at 250**: critical-pressure
   biasing records the existing descendant incarnations, then sweeps newly
   forked descendants on each guard pass and restores them to the nearest
