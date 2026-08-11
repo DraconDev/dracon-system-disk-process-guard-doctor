@@ -1,0 +1,86 @@
+# cargo-deny configuration
+# https://embarkstudios.github.io/cargo-deny/checks/cfg.html
+
+[graph]
+targets = [
+    "x86_64-unknown-linux-gnu",
+]
+all-features = false
+
+[advisories]
+unmaintained = "workspace"
+unsound = "all"
+ignore = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+skip = [
+    { crate = "base64@0.21", reason = "age (encryption) uses old version" },
+    { crate = "bech32@0.9", reason = "age 0.10 uses the older Bech32 API while dracon-security uses 0.11" },
+    { crate = "getrandom@0.2", reason = "age/rand 0.8 crypto stack requires getrandom 0.2" },
+    { crate = "getrandom@0.4", reason = "tempfile 3.27 and uuid 1.23 use the newest getrandom API" },
+    { crate = "hashbrown@0.14", reason = "age/i18n-embed-fl 0.7 pulls dashmap 5" },
+    { crate = "hashbrown@0.17", reason = "reqwest/zbus stack pulls newer indexmap 2" },
+    { crate = "rustc-hash@1.1", reason = "fluent/i18n-embed-fl 0.7 dependency chain" },
+    { crate = "rustc-hash@2.1", reason = "fluent/intl-memoizer dependency chain" },
+    { crate = "strsim@0.10", reason = "i18n-embed-fl 0.7 dependency chain" },
+    { crate = "strsim@0.11", reason = "clap 4 dependency chain" },
+    { crate = "syn@1.0", reason = "proc-macro-error/i18n-embed-fl 0.7 dependency chain" },
+    { crate = "toml@0.5", reason = "i18n-embed-fl/find-crate dependency chain" },
+    { crate = "toml_datetime@0.6", reason = "toml 0.8 dependency chain" },
+    { crate = "toml_datetime@1.1", reason = "zbus/proc-macro-crate dependency chain" },
+    { crate = "toml_edit@0.22", reason = "toml 0.8 dependency chain" },
+    { crate = "toml_edit@0.25", reason = "zbus/proc-macro-crate dependency chain" },
+    { crate = "winnow@0.7", reason = "toml_edit 0.22/toml 0.8 dependency chain" },
+    { crate = "winnow@1.0", reason = "zbus/toml_edit 0.25 dependency chain" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = [
+    # RESOLVED 2026-08-08: dracon-git v94.7.2 published to crates.io — the
+    # git-source allowlist entry for DraconDev/dracon-libs is no longer needed.
+    # (History: 2026-07-18 [patch.crates-io] workaround; see
+    # docs/design/installed-binary-drops-patch-dracon-git-2026-08-08.md.)
+]
+
+[licenses]
+confidence-threshold = 0.80
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unlicense",
+    "MPL-2.0",
+    "CDLA-Permissive-2.0",
+    "AGPL-3.0-only",
+]
+private = { ignore = true }
+exceptions = [
+    # icu4x crates use (MIT OR Apache-2.0) AND Unicode-3.0
+    { allow = ["Unicode-3.0"], crate = "icu_collections" },
+    { allow = ["Unicode-3.0"], crate = "icu_locale_core" },
+    { allow = ["Unicode-3.0"], crate = "icu_normalizer" },
+    { allow = ["Unicode-3.0"], crate = "icu_normalizer_data" },
+    { allow = ["Unicode-3.0"], crate = "icu_properties" },
+    { allow = ["Unicode-3.0"], crate = "icu_properties_data" },
+    { allow = ["Unicode-3.0"], crate = "icu_provider" },
+    { allow = ["Unicode-3.0"], crate = "litemap" },
+    { allow = ["Unicode-3.0"], crate = "potential_utf" },
+    { allow = ["Unicode-3.0"], crate = "tinystr" },
+    { allow = ["Unicode-3.0"], crate = "unicode-ident" },
+    { allow = ["Unicode-3.0"], crate = "writeable" },
+    { allow = ["Unicode-3.0"], crate = "yoke" },
+    { allow = ["Unicode-3.0"], crate = "yoke-derive" },
+    { allow = ["Unicode-3.0"], crate = "zerofrom" },
+    { allow = ["Unicode-3.0"], crate = "zerofrom-derive" },
+    { allow = ["Unicode-3.0"], crate = "zerotrie" },
+    { allow = ["Unicode-3.0"], crate = "zerovec" },
+    { allow = ["Unicode-3.0"], crate = "zerovec-derive" },
+]
