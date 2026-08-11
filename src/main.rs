@@ -1587,7 +1587,17 @@ fn remove_memory_renice(state: &mut GuardRuntimeState, pid: i32) {
     state.memory_cooled_since.remove(&pid);
 }
 
+fn oom_root_has_pending_descendants(state: &GuardRuntimeState, pid: i32) -> bool {
+    state
+        .oom_pending_descendants
+        .values()
+        .any(|pending| pending.root_pid == pid)
+}
+
 fn remove_oom_bias(state: &mut GuardRuntimeState, pid: i32) {
+    if oom_root_has_pending_descendants(state, pid) {
+        return;
+    }
     state.oom_biased_pids.remove(&pid);
     state.oom_known_descendants.remove(&pid);
     state.oom_cooled_since.remove(&pid);
@@ -1632,7 +1642,13 @@ async fn restore_runtime_adjustments_with_samples(
     proc_root: &Path,
     samples: &[ProcSample],
 ) -> bool {
-    let _ = sweep_stranded_oom_descendants(proc_root, samples, state, &HashSet::new());
+    let sweep = sweep_stranded_oom_descendants(proc_root, samples, state, &HashSet::new());
+    if sweep.deferred > 0 {
+        eprintln!(
+            "⚠ SIGHUP retaining {} pending descendant OOM restorations",
+            sweep.deferred
+        );
+    }
     for adjustment in runtime_adjustment_plan(state) {
         match adjustment {
             RuntimeAdjustment::LegacyRenice { pid, identity } => {
@@ -3105,12 +3121,19 @@ async fn check_memory_pressure(
     // A child forked after its parent was biased inherits oom_score_adj=250,
     // but is not present in `oom_biased_pids`. Sweep those descendants on
     // every pass, including before a tracked parent is released or removed.
-    limited.extend(sweep_stranded_oom_descendants(
+    let sweep = sweep_stranded_oom_descendants(
         Path::new("/proc"),
         &all_processes,
         state,
         &exempt,
-    ));
+    );
+    if sweep.deferred > 0 {
+        eprintln!(
+            "⚠️ retaining {} pending descendant OOM restorations",
+            sweep.deferred
+        );
+    }
+    limited.extend(sweep.restored);
 
     if pressure == "ok" {
         let now = Instant::now();
