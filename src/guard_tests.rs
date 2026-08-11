@@ -19,39 +19,80 @@ fn guard_runtime_state_default_is_empty() {
 #[test]
 fn runtime_adjustment_plan_includes_every_reversible_limiter() {
     let mut state = crate::GuardRuntimeState::default();
-    state
-        .reniced_pids
-        .insert(101, (5, "legacy-worker".to_string()));
-    state
-        .memory_reniced_pids
-        .insert(102, (10, "memory-worker".to_string()));
-    state
-        .oom_biased_pids
-        .insert(103, (-100, "oom-worker".to_string()));
+    state.reniced_pids.insert(
+        101,
+        (
+            5,
+            crate::ProcessIdentity {
+                comm: "legacy-worker".to_string(),
+                starttime: 1,
+            },
+        ),
+    );
+    state.memory_reniced_pids.insert(
+        102,
+        (
+            10,
+            crate::ProcessIdentity {
+                comm: "memory-worker".to_string(),
+                starttime: 2,
+            },
+        ),
+    );
+    state.oom_biased_pids.insert(
+        103,
+        (
+            -100,
+            crate::ProcessIdentity {
+                comm: "oom-worker".to_string(),
+                starttime: 3,
+            },
+        ),
+    );
     state.capped_pids.insert(
         104,
-        ("dracon-cap.service".to_string(), "user.slice".to_string()),
+        (
+            "dracon-cap.service".to_string(),
+            "user.slice".to_string(),
+            crate::ProcessIdentity {
+                comm: "cap-worker".to_string(),
+                starttime: 4,
+            },
+        ),
     );
 
     let plan = crate::runtime_adjustment_plan(&state);
     assert_eq!(plan.len(), 4);
     assert!(plan.contains(&crate::RuntimeAdjustment::LegacyRenice {
         pid: 101,
-        orig_cmd: "legacy-worker".to_string(),
+        identity: crate::ProcessIdentity {
+            comm: "legacy-worker".to_string(),
+            starttime: 1,
+        },
     }));
     assert!(plan.contains(&crate::RuntimeAdjustment::MemoryRenice {
         pid: 102,
-        orig_cmd: "memory-worker".to_string(),
+        identity: crate::ProcessIdentity {
+            comm: "memory-worker".to_string(),
+            starttime: 2,
+        },
     }));
     assert!(plan.contains(&crate::RuntimeAdjustment::OomBias {
         pid: 103,
         orig_adj: -100,
-        orig_cmd: "oom-worker".to_string(),
+        identity: crate::ProcessIdentity {
+            comm: "oom-worker".to_string(),
+            starttime: 3,
+        },
     }));
     assert!(plan.contains(&crate::RuntimeAdjustment::CpuCap {
         pid: 104,
         scope: "dracon-cap.service".to_string(),
         orig_cgroup: "user.slice".to_string(),
+        identity: crate::ProcessIdentity {
+            comm: "cap-worker".to_string(),
+            starttime: 4,
+        },
     }));
 }
 

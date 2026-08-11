@@ -775,13 +775,15 @@ async fn process_samples() -> Result<Vec<ProcSample>> {
     // tied to this exact PID incarnation.
     Ok(parsed
         .into_iter()
-        .filter_map(|mut p| match read_proc_identity(Path::new("/proc"), p.pid) {
-            Ok(identity) if identity.comm == p.command => {
-                p.starttime = identity.starttime;
-                Some(p)
-            }
-            _ => None,
-        })
+        .filter_map(
+            |mut p| match read_proc_identity(Path::new("/proc"), p.pid) {
+                Ok(identity) if identity.comm == p.command => {
+                    p.starttime = identity.starttime;
+                    Some(p)
+                }
+                _ => None,
+            },
+        )
         .collect())
 }
 
@@ -803,9 +805,12 @@ fn read_proc_identity(root: &Path, pid: i32) -> std::io::Result<ProcessIdentity>
     let stat = std::fs::read_to_string(root.join(pid.to_string()).join("stat"))?;
     // /proc/<pid>/stat field 22 is starttime. The comm field (2) can
     // contain spaces/parens, so split after the LAST ')'.
-    let after_comm = stat.rsplit_once(')').ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidData, "malformed /proc stat")
-    })?.1;
+    let after_comm = stat
+        .rsplit_once(')')
+        .ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "malformed /proc stat")
+        })?
+        .1;
     let starttime = after_comm
         .split_whitespace()
         .nth(19) // field 22 - field 3 (0-indexed after comm)
@@ -844,7 +849,11 @@ fn process_sample_identity(sample: &ProcSample) -> ProcessIdentity {
 
 fn process_sample_is_current(sample: &ProcSample) -> bool {
     matches!(
-        process_identity_status(Path::new("/proc"), sample.pid, &process_sample_identity(sample)),
+        process_identity_status(
+            Path::new("/proc"),
+            sample.pid,
+            &process_sample_identity(sample)
+        ),
         ProcessIdentityStatus::Match
     )
 }
@@ -1346,32 +1355,30 @@ async fn restore_runtime_adjustments_with(
                 pid,
                 orig_adj,
                 identity,
-            } => {
-                match process_identity_status(proc_root, pid, &identity) {
-                    ProcessIdentityStatus::Match => {
-                        let adj_path = proc_root.join(pid.to_string()).join("oom_score_adj");
-                        match fs::write(&adj_path, format!("{orig_adj}\n")) {
-                            Ok(()) => remove_oom_bias(state, pid),
-                            Err(e) => eprintln!(
-                                "⚠ SIGHUP failed to restore oom_score_adj for pid={} comm={}: {}",
-                                pid, identity.comm, e
-                            ),
-                        }
+            } => match process_identity_status(proc_root, pid, &identity) {
+                ProcessIdentityStatus::Match => {
+                    let adj_path = proc_root.join(pid.to_string()).join("oom_score_adj");
+                    match fs::write(&adj_path, format!("{orig_adj}\n")) {
+                        Ok(()) => remove_oom_bias(state, pid),
+                        Err(e) => eprintln!(
+                            "⚠ SIGHUP failed to restore oom_score_adj for pid={} comm={}: {}",
+                            pid, identity.comm, e
+                        ),
                     }
-                    ProcessIdentityStatus::Gone => remove_oom_bias(state, pid),
-                    ProcessIdentityStatus::Mismatch => {
-                        eprintln!(
-                            "⚠ SIGHUP dropping oom bias pid={} — PID incarnation changed",
-                            pid
-                        );
-                        remove_oom_bias(state, pid);
-                    }
-                    ProcessIdentityStatus::Unavailable => eprintln!(
-                        "⚠ SIGHUP retaining oom bias pid={} — process identity unavailable",
-                        pid
-                    ),
                 }
-            }
+                ProcessIdentityStatus::Gone => remove_oom_bias(state, pid),
+                ProcessIdentityStatus::Mismatch => {
+                    eprintln!(
+                        "⚠ SIGHUP dropping oom bias pid={} — PID incarnation changed",
+                        pid
+                    );
+                    remove_oom_bias(state, pid);
+                }
+                ProcessIdentityStatus::Unavailable => eprintln!(
+                    "⚠ SIGHUP retaining oom bias pid={} — process identity unavailable",
+                    pid
+                ),
+            },
             RuntimeAdjustment::CpuCap {
                 pid,
                 scope,
@@ -1385,6 +1392,7 @@ async fn restore_runtime_adjustments_with(
                         pid,
                         &scope,
                         &orig_cgroup,
+                        true,
                     )
                     .await
                     {
@@ -2657,10 +2665,9 @@ async fn check_memory_pressure(
             if state.memory_reniced_pids.get(&p.pid).map(|(n, _)| *n) != Some(nice_val) {
                 match renice_process(p.pid, nice_val).await {
                     Ok(()) => {
-                        state.memory_reniced_pids.insert(
-                            p.pid,
-                            (nice_val, process_sample_identity(p)),
-                        );
+                        state
+                            .memory_reniced_pids
+                            .insert(p.pid, (nice_val, process_sample_identity(p)));
                         eprintln!(
                             "🛡️ mem-renice pid={} cmd={} -> nice {} (pressure {})",
                             p.pid, p.command, nice_val, pressure
@@ -2803,10 +2810,7 @@ async fn check_memory_pressure(
                     continue;
                 }
             }
-            if let Err(e) = fs::write(
-                format!("/proc/{pid}/oom_score_adj"),
-                format!("{orig}\n"),
-            ) {
+            if let Err(e) = fs::write(format!("/proc/{pid}/oom_score_adj"), format!("{orig}\n")) {
                 eprintln!("⚠️ oom-restore failed for pid={}: {}", pid, e);
                 continue;
             }
@@ -3275,10 +3279,9 @@ async fn check_heavy_processes(
             if already_niced != Some(nice_val) {
                 match renice_process(p.pid, nice_val).await {
                     Ok(()) => {
-                        state.reniced_pids.insert(
-                            p.pid,
-                            (nice_val, process_sample_identity(&p)),
-                        );
+                        state
+                            .reniced_pids
+                            .insert(p.pid, (nice_val, process_sample_identity(&p)));
                         eprintln!(
                             "🔧 renice pid={} cmd={} -> nice {} (cpu={:.1}% rss={}MiB)",
                             p.pid, p.command, nice_val, p.cpu_percent, p.rss_mb
@@ -3389,10 +3392,14 @@ async fn check_heavy_processes(
         .cooled_since
         .retain(|pid, _| state.reniced_pids.contains_key(pid));
 
-    // Clean up reniced_pids for processes that no longer exist
-    state
-        .reniced_pids
-        .retain(|pid, _| PathBuf::from(format!("/proc/{}", pid)).exists());
+    // Clean up only known-gone or PID-reused entries; retain identity read
+    // failures for a later retry.
+    state.reniced_pids.retain(|pid, (_, identity)| {
+        !matches!(
+            process_identity_status(Path::new("/proc"), *pid, identity),
+            ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch
+        )
+    });
 
     // Summary feedback
     if !state.reniced_pids.is_empty() {
