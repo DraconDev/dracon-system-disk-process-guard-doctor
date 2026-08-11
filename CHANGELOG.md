@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Swap fallback now retains `pswpout`**: the previous swap-counter sample
+  stores both parsed `/proc/vmstat` counters instead of replacing `pswpout`
+  with zero, matching the runtime-state contract and regression coverage.
 - **CPUQuota offender caps now clamp to 100%**: values above one CPU are
   normalized before the critical-pressure loop, preventing an invalid
   configuration from producing a failed cap warning for every offender on

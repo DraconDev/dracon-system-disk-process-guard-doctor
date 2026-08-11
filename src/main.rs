@@ -683,6 +683,10 @@ async fn vmstat_swap_counters() -> Option<(u64, u64)> {
     parse_vmstat_swap(&content)
 }
 
+fn record_swap_counters(state: &mut GuardRuntimeState, pswpin: u64, pswpout: u64) {
+    state.prev_swap_counters = Some((Instant::now(), pswpin, pswpout));
+}
+
 /// Parse one /proc/<pid>/stat line for zombie detection.
 /// Returns (pid, comm, ppid, starttime) when state == 'Z'.
 pub(crate) fn parse_proc_stat_zombie(line: &str) -> Option<(i32, String, i32, u64)> {
@@ -2968,14 +2972,14 @@ async fn check_memory_pressure(
     // Swap-in rate fallback (pages/s) when PSI is unavailable.
     let mut pswpin_rate = None;
     if psi_full_avg10.is_none() {
-        if let Some((pin, _)) = vmstat_swap_counters().await {
-            if let Some((prev_at, prev_pin, _)) = state.prev_swap_counters {
+        if let Some((pin, pout)) = vmstat_swap_counters().await {
+            if let Some((prev_at, prev_pin, _prev_pout)) = state.prev_swap_counters {
                 let dt = prev_at.elapsed().as_secs_f64();
                 if dt > 0.0 {
                     pswpin_rate = Some(pin.saturating_sub(prev_pin) as f64 / dt);
                 }
             }
-            state.prev_swap_counters = Some((Instant::now(), pin, 0));
+            record_swap_counters(state, pin, pout);
         }
     } else {
         state.prev_swap_counters = None;

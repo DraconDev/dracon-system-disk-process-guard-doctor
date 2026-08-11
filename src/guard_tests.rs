@@ -512,6 +512,15 @@ fn parse_vmstat_swap_reads_counters() {
 // ---------------------------------------------------------------------------
 
 #[test]
+fn record_swap_counters_preserves_pswpout() {
+    let mut state = crate::GuardRuntimeState::default();
+    crate::record_swap_counters(&mut state, 123, 456);
+    let (_, pswpin, pswpout) = state.prev_swap_counters.expect("counters recorded");
+    assert_eq!(pswpin, 123);
+    assert_eq!(pswpout, 456);
+}
+
+#[test]
 fn parse_proc_stat_zombie_detects_z_state() {
     // pid=1234, comm contains a space (valid), state=Z, ppid=567,
     // starttime=999 (field 22, index 19 after pid+comm).
