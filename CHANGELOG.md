@@ -61,7 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   state stores both the pre-pressure and applied nice values, and release
   restores the captured pre-pressure value instead of hardcoding nice 0.
 - **Overlapping limiter cleanup now restores the pre-limiter nice value once**:
-  legacy and memory renice state compose for the same PID, failed restoration
+  legacy and memory renice state compose for the same process incarnation,
+  stale PID-reuse entries cannot discard a current entry, failed restoration
   remains retryable, and `guard once` restores process limiters on success,
   JSON output, and error paths instead of dropping its local runtime state.
 - **Trash credential scanning now applies to dry-run estimates**: a

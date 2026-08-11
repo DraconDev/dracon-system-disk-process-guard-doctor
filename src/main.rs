@@ -3231,7 +3231,9 @@ async fn check_memory_pressure(
                 .map(|entry| entry.applied_nice)
                 .unwrap_or(original_nice);
             match process_identity_status(Path::new("/proc"), pid, &identity) {
-                ProcessIdentityStatus::Match => {}
+                ProcessIdentityStatus::Match => {
+                    drop_stale_nice_adjustments(state, pid, &identity);
+                }
                 ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch => {
                     remove_memory_renice(state, pid);
                     continue;
@@ -3889,7 +3891,9 @@ async fn check_heavy_processes(
             .map(|entry| entry.applied_nice)
             .unwrap_or(original_nice);
         match process_identity_status(Path::new("/proc"), pid, &identity) {
-            ProcessIdentityStatus::Match => {}
+            ProcessIdentityStatus::Match => {
+                drop_stale_nice_adjustments(state, pid, &identity);
+            }
             ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch => {
                 remove_legacy_renice(state, pid);
                 continue;
