@@ -201,20 +201,46 @@ async fn restore_runtime_adjustments_restores_renice_and_oom() {
         ProcessIdentityStatus::Match
     );
 
+    write_process_fixture(&tmp, 106, "memory-worker", 82, None, None);
+    let renice_log = tmp.join("renice.log");
+    let recording_renice = tmp.join("renice-recording");
+    let escaped_renice_log = renice_log.to_string_lossy().replace('\'', "'\\''");
+    write_test_script(
+        &recording_renice,
+        &format!("printf '%s\\n' \"$*\" >> '{escaped_renice_log}'\nexit 0"),
+    );
+
     let mut state = GuardRuntimeState::default();
     state.reniced_pids.insert(101, (5, identity.clone()));
     state.reniced_pids.insert(105, (5, long_comm_identity));
     state.oom_biased_pids.insert(101, (-100, identity));
+    state.memory_reniced_pids.insert(
+        106,
+        MemoryReniceState {
+            original_nice: 10,
+            applied_nice: 5,
+            identity: ProcessIdentity {
+                comm: "memory-worker".to_string(),
+                starttime: 82,
+            },
+        },
+    );
 
     assert!(
-        restore_runtime_adjustments_with(&mut state, &renice, &systemctl, &tmp).await,
+        restore_runtime_adjustments_with(&mut state, &recording_renice, &systemctl, &tmp).await,
         "all successful restorations should permit runtime reset"
     );
     assert!(state.reniced_pids.is_empty());
+    assert!(state.memory_reniced_pids.is_empty());
     assert!(state.oom_biased_pids.is_empty());
     assert_eq!(
         fs::read_to_string(tmp.join("101/oom_score_adj")).unwrap(),
         "-100\n"
+    );
+    let renice_calls = fs::read_to_string(&renice_log).unwrap();
+    assert!(
+        renice_calls.lines().any(|call| call == "-n 10 -p 106"),
+        "memory release must restore the captured original nice value"
     );
     let _ = fs::remove_dir_all(&tmp);
 }

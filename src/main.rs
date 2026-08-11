@@ -1378,31 +1378,29 @@ async fn restore_runtime_adjustments_with(
                 pid,
                 original_nice,
                 identity,
-            } => {
-                match process_identity_status(proc_root, pid, &identity) {
-                    ProcessIdentityStatus::Match => {
-                        match renice_process_with_bin(renice_bin, pid, original_nice).await {
-                            Ok(()) => remove_memory_renice(state, pid),
-                            Err(e) => eprintln!(
-                                "⚠ SIGHUP failed to restore memory nice value for pid={} comm={}: {}",
-                                pid, identity.comm, e
-                            ),
-                        }
+            } => match process_identity_status(proc_root, pid, &identity) {
+                ProcessIdentityStatus::Match => {
+                    match renice_process_with_bin(renice_bin, pid, original_nice).await {
+                        Ok(()) => remove_memory_renice(state, pid),
+                        Err(e) => eprintln!(
+                            "⚠ SIGHUP failed to restore memory nice value for pid={} comm={}: {}",
+                            pid, identity.comm, e
+                        ),
                     }
-                    ProcessIdentityStatus::Gone => remove_memory_renice(state, pid),
-                    ProcessIdentityStatus::Mismatch => {
-                        eprintln!(
-                            "⚠ SIGHUP dropping memory renice pid={} — PID incarnation changed",
-                            pid
-                        );
-                        remove_memory_renice(state, pid);
-                    }
-                    ProcessIdentityStatus::Unavailable => eprintln!(
-                        "⚠ SIGHUP retaining memory renice pid={} — process identity unavailable",
-                        pid
-                    ),
                 }
-            }
+                ProcessIdentityStatus::Gone => remove_memory_renice(state, pid),
+                ProcessIdentityStatus::Mismatch => {
+                    eprintln!(
+                        "⚠ SIGHUP dropping memory renice pid={} — PID incarnation changed",
+                        pid
+                    );
+                    remove_memory_renice(state, pid);
+                }
+                ProcessIdentityStatus::Unavailable => eprintln!(
+                    "⚠ SIGHUP retaining memory renice pid={} — process identity unavailable",
+                    pid
+                ),
+            },
             RuntimeAdjustment::OomBias {
                 pid,
                 orig_adj,
