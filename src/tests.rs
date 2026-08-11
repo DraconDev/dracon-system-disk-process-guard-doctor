@@ -481,13 +481,14 @@ fn parse_df_use_percent_works() {
 
 #[test]
 fn parse_ps_output_works() {
-    let sample = "123 1 250.5 4194304 git\n456 2 12.0 2048 zsh\n";
+    let sample = "123 1 250.5 4194304 5 git\n456 2 12.0 2048 0 zsh\n";
     let rows = parse_ps_output(sample);
     assert_eq!(rows.len(), 2);
     assert_eq!(rows[0].pid, 123);
     assert_eq!(rows[0].ppid, 1);
     assert_eq!(rows[0].command, "git");
     assert_eq!(rows[0].rss_mb, 4096);
+    assert_eq!(rows[0].nice, 5);
     assert_eq!(rows[0].args, "");
 }
 
@@ -530,7 +531,7 @@ fn check_path_str_blocks_descendants() {
 
 #[test]
 fn parse_ps_output_extracts_all_fields() {
-    let sample = "9999 1 75.0 8192000 git-fetch origin main\n";
+    let sample = "9999 1 75.0 8192000 0 git-fetch origin main\n";
     let rows = parse_ps_output(sample);
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].pid, 9999);

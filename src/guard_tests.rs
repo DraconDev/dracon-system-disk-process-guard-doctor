@@ -31,13 +31,14 @@ fn runtime_adjustment_plan_includes_every_reversible_limiter() {
     );
     state.memory_reniced_pids.insert(
         102,
-        (
-            10,
-            crate::ProcessIdentity {
+        crate::MemoryReniceState {
+            original_nice: 3,
+            applied_nice: 10,
+            identity: crate::ProcessIdentity {
                 comm: "memory-worker".to_string(),
                 starttime: 2,
             },
-        ),
+        },
     );
     state.oom_biased_pids.insert(
         103,
@@ -72,6 +73,7 @@ fn runtime_adjustment_plan_includes_every_reversible_limiter() {
     }));
     assert!(plan.contains(&crate::RuntimeAdjustment::MemoryRenice {
         pid: 102,
+        original_nice: 3,
         identity: crate::ProcessIdentity {
             comm: "memory-worker".to_string(),
             starttime: 2,
@@ -215,7 +217,7 @@ fn graduated_nice_value_high_base_clamped_to_max() {
 #[test]
 fn parse_ps_output_extracts_all_fields() {
     // ps output uses KB for RSS (ps man page: rss: resident set size in KB)
-    let output = "12345  1  50.0  1024  cargo\n  23456  12345  25.0  2048  rustc";
+    let output = "12345  1  50.0  1024  3  cargo\n  23456  12345  25.0  2048  7  rustc";
     let samples = crate::parse_ps_output(output);
     assert_eq!(samples.len(), 2);
 
@@ -224,12 +226,14 @@ fn parse_ps_output_extracts_all_fields() {
     assert_eq!(samples[0].cpu_percent, 50.0);
     // RSS is in KB, converted to MB via /1024
     assert_eq!(samples[0].rss_mb, 1024 / 1024); // 1024 KB = 1 MB
+    assert_eq!(samples[0].nice, 3);
     assert_eq!(samples[0].command, "cargo");
 
     assert_eq!(samples[1].pid, 23456);
     assert_eq!(samples[1].ppid, 12345);
     assert_eq!(samples[1].cpu_percent, 25.0);
     assert_eq!(samples[1].rss_mb, 2048 / 1024); // 2048 KB = 2 MB
+    assert_eq!(samples[1].nice, 7);
     assert_eq!(samples[1].command, "rustc");
 }
 
@@ -242,7 +246,7 @@ fn parse_ps_output_empty_input() {
 #[test]
 fn parse_ps_output_malformed_lines_skipped() {
     // Malformed lines should be skipped, good lines parsed
-    let output = "not_valid\n12345  1  75.0  512  cargo";
+    let output = "not_valid\n12345  1  75.0  512  0  cargo";
     let samples = crate::parse_ps_output(output);
     assert_eq!(samples.len(), 1);
     assert_eq!(samples[0].pid, 12345);
