@@ -1050,6 +1050,129 @@ async fn uncap_cpu_process(pid: i32, scope: &str, orig_cgroup: &str) -> Result<(
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RuntimeAdjustment {
+    Renice { pid: i32, orig_cmd: String },
+    OomBias {
+        pid: i32,
+        orig_adj: i32,
+        orig_cmd: String,
+    },
+    CpuCap {
+        pid: i32,
+        scope: String,
+        orig_cgroup: String,
+    },
+}
+
+/// Build the complete set of reversible process adjustments currently held
+/// by the guard. SIGHUP must drain every v0.112.36 map before resetting the
+/// runtime; keeping this plan separate makes it hard to restore only the
+/// legacy renice map again when a new limiter is added.
+fn runtime_adjustment_plan(state: &GuardRuntimeState) -> Vec<RuntimeAdjustment> {
+    let mut plan = Vec::new();
+    for (&pid, (_, orig_cmd)) in &state.reniced_pids {
+        plan.push(RuntimeAdjustment::Renice {
+            pid,
+            orig_cmd: orig_cmd.clone(),
+        });
+    }
+    for (&pid, (_, orig_cmd)) in &state.memory_reniced_pids {
+        plan.push(RuntimeAdjustment::Renice {
+            pid,
+            orig_cmd: orig_cmd.clone(),
+        });
+    }
+    for (&pid, (orig_adj, orig_cmd)) in &state.oom_biased_pids {
+        plan.push(RuntimeAdjustment::OomBias {
+            pid,
+            orig_adj: *orig_adj,
+            orig_cmd: orig_cmd.clone(),
+        });
+    }
+    for (&pid, (scope, orig_cgroup)) in &state.capped_pids {
+        plan.push(RuntimeAdjustment::CpuCap {
+            pid,
+            scope: scope.clone(),
+            orig_cgroup: orig_cgroup.clone(),
+        });
+    }
+    plan
+}
+
+fn process_matches_command(pid: i32, orig_cmd: &str) -> bool {
+    let proc_cmdline = PathBuf::from(format!("/proc/{pid}/cmdline"));
+    match std::fs::read_to_string(proc_cmdline) {
+        Ok(content) => {
+            let cmd = content.replace('\0', " ");
+            let exe = cmd.split_whitespace().next().unwrap_or("");
+            Path::new(exe)
+                .file_name()
+                .map(|name| name.to_string_lossy() == orig_cmd)
+                .unwrap_or(false)
+        }
+        Err(_) => false,
+    }
+}
+
+/// Restore all process-level mitigations before a policy reload discards the
+/// old runtime. A failed restoration is logged, but the reload still proceeds:
+/// the existing guard loop's normal release/retry paths remain responsible for
+/// transient process exits and command failures.
+async fn restore_runtime_adjustments(state: &GuardRuntimeState) {
+    for adjustment in runtime_adjustment_plan(state) {
+        match adjustment {
+            RuntimeAdjustment::Renice { pid, orig_cmd } => {
+                if !process_matches_command(pid, &orig_cmd) {
+                    eprintln!(
+                        "⚠ SIGHUP skip un-renice pid={} — PID recycled (was {})",
+                        pid, orig_cmd
+                    );
+                    continue;
+                }
+                if let Err(e) = renice_process(pid, 0).await {
+                    eprintln!(
+                        "⚠ SIGHUP failed to restore nice value for pid={} cmd={}: {}",
+                        pid, orig_cmd, e
+                    );
+                }
+            }
+            RuntimeAdjustment::OomBias {
+                pid,
+                orig_adj,
+                orig_cmd,
+            } => {
+                if !process_matches_command(pid, &orig_cmd) {
+                    eprintln!(
+                        "⚠ SIGHUP skip oom restore pid={} — PID recycled (was {})",
+                        pid, orig_cmd
+                    );
+                    continue;
+                }
+                if let Err(e) = fs::write(format!("/proc/{pid}/oom_score_adj"), format!("{orig_adj}\n"))
+                {
+                    eprintln!(
+                        "⚠ SIGHUP failed to restore oom_score_adj for pid={} cmd={}: {}",
+                        pid, orig_cmd, e
+                    );
+                }
+            }
+            RuntimeAdjustment::CpuCap {
+                pid,
+                scope,
+                orig_cgroup,
+            } => {
+                if let Err(e) = uncap_cpu_process(pid, &scope, &orig_cgroup).await {
+                    eprintln!(
+                        "⚠ SIGHUP failed to restore CPU cgroup for pid={} scope={}: {}",
+                        pid, scope, e
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// Detect active cargo/rustc processes and return their PIDs and working directories
 async fn detect_active_rust_builds() -> Result<HashSet<i32>> {
     let out = Command::new("ps")
@@ -4130,31 +4253,13 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
                             "SIGHUP reload: no policy file found, using defaults".to_string(),
                         ));
                     }
+                    // Restore every reversible process adjustment before
+                    // discarding the old runtime. This includes the v0.112.36
+                    // memory-renice, OOM-bias, and CPUQuota maps as well as
+                    // the legacy heavy-process renice map.
+                    restore_runtime_adjustments(&runtime).await;
                     *guard = new_policy.guard;
                     normalize_guard_policy(guard);
-                    for (&pid, (_, ref orig_cmd)) in &runtime.reniced_pids {
-                        let proc_cmdline = PathBuf::from(format!("/proc/{}/cmdline", pid));
-                        let same_process = match std::fs::read_to_string(&proc_cmdline) {
-                            Ok(content) => {
-                                let cmd = content.replace('\0', " ");
-                                let exe = cmd.split_whitespace().next().unwrap_or("");
-                                let exe_name = Path::new(exe)
-                                    .file_name()
-                                    .map(|n| n.to_string_lossy().to_string())
-                                    .unwrap_or_default();
-                                exe_name == orig_cmd.as_str()
-                            }
-                            Err(_) => false,
-                        };
-                        if !same_process {
-                            eprintln!(
-                                "⚠ SIGHUP skip un-renice pid={} — PID recycled (was {})",
-                                pid, orig_cmd
-                            );
-                            continue;
-                        }
-                        let _ = renice_process(pid, 0).await;
-                    }
                     runtime = GuardRuntimeState::default();
                     interval = guard.interval_secs;
                     veprintln!(
