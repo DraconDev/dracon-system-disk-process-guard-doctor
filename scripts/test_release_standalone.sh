@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 work=$(mktemp -d "${TMPDIR:-/tmp}/dracon-system-release-standalone-XXXXXX")
 trap 'rm -rf "$work"' EXIT
+host_cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+host_rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
 
 if [[ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]]; then
     echo "standalone release regression requires a clean source tree" >&2
@@ -61,7 +63,7 @@ chmod +x "$work/bin/gh"
 touch "$work/home/.cargo/credentials.toml"
 
 preview_out="$work/dry-run.out"
-HOME="$work/home" CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" \
+HOME="$work/home" CARGO_HOME="$host_cargo_home" RUSTUP_HOME="$host_rustup_home" \
 PATH="$work/bin:$PATH" CARGO_TARGET_DIR="$work/target" \
 timeout 1200 "$clone/scripts/release.sh" "$next_version" --dry-run \
     >"$preview_out" 2>"$work/dry-run.err"
@@ -78,7 +80,7 @@ test "$changed_paths" = $'CHANGELOG.md\nCargo.lock\nCargo.toml\nrelease-notes-v0
 # The regenerated lockfile must make the post-bump locked preflight succeed.
 run_gate post-test cargo test --workspace --locked
 
-HOME="$work/home" CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" \
+HOME="$work/home" CARGO_HOME="$host_cargo_home" RUSTUP_HOME="$host_rustup_home" \
 PATH="$work/bin:$PATH" CARGO_TARGET_DIR="$work/target" \
 timeout 120 "$clone/scripts/release.sh" "$next_version" --abort \
     >"$work/abort.out" 2>"$work/abort.err"
