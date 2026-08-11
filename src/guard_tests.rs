@@ -15,6 +15,7 @@ fn guard_runtime_state_default_is_empty() {
     assert!(state.notify_cooldowns.is_empty());
     assert!(state.last_disk_state.is_empty());
     assert!(state.oom_known_descendants.is_empty());
+    assert!(state.oom_pending_descendants.is_empty());
 }
 
 #[test]

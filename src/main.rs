@@ -958,6 +958,7 @@ fn nearest_biased_ancestor(
     None
 }
 
+#[cfg(test)]
 fn oom_descendant_candidates(
     samples: &[ProcSample],
     root_pid: i32,

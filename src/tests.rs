@@ -302,9 +302,7 @@ fn sweep_stranded_oom_descendants_restores_only_post_bias_children() {
         vec!["oom-restore-descendant forked-child=-100"]
     );
     assert_eq!(actions.deferred, 1);
-    assert!(state
-        .oom_pending_descendants
-        .contains_key(&(105, 81)));
+    assert!(state.oom_pending_descendants.contains_key(&(105, 81)));
     assert_eq!(
         fs::read_to_string(tmp.join("102/oom_score_adj")).unwrap(),
         "250\n"
@@ -331,11 +329,90 @@ fn sweep_stranded_oom_descendants_restores_only_post_bias_children() {
         &mut state,
         &std::collections::HashSet::new(),
     );
-    assert_eq!(retry.restored, vec!["oom-restore-descendant failed-child=-100"]);
+    assert_eq!(
+        retry.restored,
+        vec!["oom-restore-descendant failed-child=-100"]
+    );
     assert_eq!(retry.deferred, 0);
     assert!(!state.oom_pending_descendants.contains_key(&(105, 81)));
     remove_oom_bias(&mut state, 101);
     assert!(!state.oom_biased_pids.contains_key(&101));
+    let _ = fs::remove_dir_all(&tmp);
+}
+
+#[cfg(unix)]
+#[test]
+fn sweep_stranded_oom_descendants_uses_nearest_biased_ancestor() {
+    let tmp = std::env::temp_dir().join(format!(
+        "dracon_system_nested_oom_test_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&tmp).expect("create temp dir");
+    write_process_fixture(&tmp, 201, "outer", 91, Some(250), None);
+    write_process_fixture(&tmp, 202, "inner", 92, Some(250), None);
+    write_process_fixture(&tmp, 203, "nested-child", 93, Some(250), None);
+    let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
+        pid,
+        ppid,
+        cpu_percent: 0.0,
+        rss_mb: 1,
+        nice: 0,
+        command: command.to_string(),
+        args: String::new(),
+        starttime,
+    };
+    let samples = vec![
+        sample(201, 1, 91, "outer"),
+        sample(202, 201, 92, "inner"),
+        sample(203, 202, 93, "nested-child"),
+    ];
+    let mut state = GuardRuntimeState::default();
+    state.oom_biased_pids.insert(
+        201,
+        (
+            -100,
+            ProcessIdentity {
+                comm: "outer".to_string(),
+                starttime: 91,
+            },
+        ),
+    );
+    state.oom_biased_pids.insert(
+        202,
+        (
+            25,
+            ProcessIdentity {
+                comm: "inner".to_string(),
+                starttime: 92,
+            },
+        ),
+    );
+    state
+        .oom_known_descendants
+        .insert(201, std::collections::HashSet::from([(202, 92)]));
+    state
+        .oom_known_descendants
+        .insert(202, std::collections::HashSet::new());
+
+    let result = sweep_stranded_oom_descendants(
+        &tmp,
+        &samples,
+        &mut state,
+        &std::collections::HashSet::new(),
+    );
+    assert_eq!(
+        result.restored,
+        vec!["oom-restore-descendant nested-child=25"]
+    );
+    assert_eq!(result.deferred, 0);
+    assert_eq!(
+        fs::read_to_string(tmp.join("203/oom_score_adj")).unwrap(),
+        "25\n"
+    );
     let _ = fs::remove_dir_all(&tmp);
 }
 
