@@ -1529,16 +1529,24 @@ async fn uncap_cpu_process_with_bin(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NiceRestoreScope {
+    Legacy,
+    Memory,
+    Both,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum RuntimeAdjustment {
-    /// A single restoration for all overlapping nice limiters on one PID.
-    /// Both limiters capture the pre-limiter nice value, so restoration must
-    /// not apply two sequential targets and leave the second limiter's value
-    /// behind.
+    /// A restoration for a nice limiter on one PID. Overlapping limiters on
+    /// the same process incarnation use `Both`; entries for different PID
+    /// incarnations remain separate so a stale entry cannot discard the
+    /// current process's live limiter.
     Nice {
         pid: i32,
         original_nice: i32,
         identity: ProcessIdentity,
+        scope: NiceRestoreScope,
     },
     OomBias {
         pid: i32,
@@ -1559,24 +1567,45 @@ enum RuntimeAdjustment {
 /// legacy renice map again when a new limiter is added.
 fn runtime_adjustment_plan(state: &GuardRuntimeState) -> Vec<RuntimeAdjustment> {
     let mut plan = Vec::new();
-    let mut nice_restores: HashMap<i32, (i32, ProcessIdentity)> = HashMap::new();
+    let mut nice_restores: HashMap<i32, Vec<(i32, ProcessIdentity, NiceRestoreScope)>> =
+        HashMap::new();
     for (&pid, entry) in &state.reniced_pids {
-        nice_restores.insert(pid, (entry.original_nice, entry.identity.clone()));
+        nice_restores.entry(pid).or_default().push((
+            entry.original_nice,
+            entry.identity.clone(),
+            NiceRestoreScope::Legacy,
+        ));
     }
     for (&pid, entry) in &state.memory_reniced_pids {
-        // Both maps capture the pre-limiter nice value. When both are
-        // active, the legacy entry already contains the shared original
-        // target, so this PID still gets exactly one restore operation.
-        nice_restores
-            .entry(pid)
-            .or_insert_with(|| (entry.original_nice, entry.identity.clone()));
+        let restores = nice_restores.entry(pid).or_default();
+        if let Some((_, identity, scope)) = restores
+            .iter_mut()
+            .find(|(_, identity, _)| same_process_incarnation(identity, &entry.identity))
+        {
+            // Both maps captured the same pre-limiter nice value. Keep one
+            // restore operation and remove both entries only after it works.
+            *scope = NiceRestoreScope::Both;
+            debug_assert_eq!(identity.starttime, entry.identity.starttime);
+        } else {
+            // A PID may have been reused between limiter passes. Keep the
+            // old and current incarnations independent so a mismatch in one
+            // cannot remove the live entry belonging to the other.
+            restores.push((
+                entry.original_nice,
+                entry.identity.clone(),
+                NiceRestoreScope::Memory,
+            ));
+        }
     }
-    for (pid, (original_nice, identity)) in nice_restores {
-        plan.push(RuntimeAdjustment::Nice {
-            pid,
-            original_nice,
-            identity,
-        });
+    for (pid, restores) in nice_restores {
+        for (original_nice, identity, scope) in restores {
+            plan.push(RuntimeAdjustment::Nice {
+                pid,
+                original_nice,
+                identity,
+                scope,
+            });
+        }
     }
     for (&pid, (orig_adj, identity)) in &state.oom_biased_pids {
         plan.push(RuntimeAdjustment::OomBias {
@@ -1594,6 +1623,39 @@ fn runtime_adjustment_plan(state: &GuardRuntimeState) -> Vec<RuntimeAdjustment> 
         });
     }
     plan
+}
+
+fn same_process_incarnation(left: &ProcessIdentity, right: &ProcessIdentity) -> bool {
+    left.starttime != 0 && left.starttime == right.starttime
+}
+
+fn drop_stale_nice_adjustments(
+    state: &mut GuardRuntimeState,
+    pid: i32,
+    current_identity: &ProcessIdentity,
+) {
+    if state
+        .reniced_pids
+        .get(&pid)
+        .is_some_and(|entry| !same_process_incarnation(&entry.identity, current_identity))
+    {
+        remove_legacy_renice(state, pid);
+    }
+    if state
+        .memory_reniced_pids
+        .get(&pid)
+        .is_some_and(|entry| !same_process_incarnation(&entry.identity, current_identity))
+    {
+        remove_memory_renice(state, pid);
+    }
+}
+
+fn remove_nice_scope(state: &mut GuardRuntimeState, pid: i32, scope: NiceRestoreScope) {
+    match scope {
+        NiceRestoreScope::Legacy => remove_legacy_renice(state, pid),
+        NiceRestoreScope::Memory => remove_memory_renice(state, pid),
+        NiceRestoreScope::Both => remove_nice_adjustments(state, pid),
+    }
 }
 
 fn remove_legacy_renice(state: &mut GuardRuntimeState, pid: i32) {
@@ -1679,26 +1741,27 @@ async fn restore_runtime_adjustments_with_samples(
                 pid,
                 original_nice,
                 identity,
+                scope,
             } => match process_identity_status(proc_root, pid, &identity) {
                 ProcessIdentityStatus::Match => {
                     match renice_process_with_bin(renice_bin, pid, original_nice).await {
-                        Ok(()) => remove_nice_adjustments(state, pid),
+                        Ok(()) => remove_nice_scope(state, pid, scope),
                         Err(e) => eprintln!(
                             "⚠ SIGHUP failed to restore nice value for pid={} comm={}: {}",
                             pid, identity.comm, e
                         ),
                     }
                 }
-                ProcessIdentityStatus::Gone => remove_nice_adjustments(state, pid),
+                ProcessIdentityStatus::Gone => remove_nice_scope(state, pid, scope),
                 ProcessIdentityStatus::Mismatch => {
                     eprintln!(
-                        "⚠ SIGHUP dropping nice adjustments pid={} — PID incarnation changed",
+                        "⚠ SIGHUP dropping stale nice adjustment pid={} — PID incarnation changed",
                         pid
                     );
-                    remove_nice_adjustments(state, pid);
+                    remove_nice_scope(state, pid, scope);
                 }
                 ProcessIdentityStatus::Unavailable => eprintln!(
-                    "⚠ SIGHUP retaining nice adjustments pid={} — process identity unavailable",
+                    "⚠ SIGHUP retaining nice adjustment pid={} — process identity unavailable",
                     pid
                 ),
             },
@@ -3024,6 +3087,8 @@ async fn check_memory_pressure(
             if !identity_ok {
                 continue;
             }
+            let current_identity = process_sample_identity(p);
+            drop_stale_nice_adjustments(state, p.pid, &current_identity);
             let nice_val = graduated_nice_value(p.cpu_percent, p.rss_mb, guard.renice_value);
             let applied_nice = state
                 .memory_reniced_pids
@@ -3048,7 +3113,7 @@ async fn check_memory_pressure(
                             MemoryReniceState {
                                 original_nice,
                                 applied_nice: nice_val,
-                                identity: process_sample_identity(p),
+                                identity: current_identity,
                             },
                         );
                         eprintln!(
@@ -3162,6 +3227,7 @@ async fn check_memory_pressure(
             let restore_nice = state
                 .reniced_pids
                 .get(&pid)
+                .filter(|entry| same_process_incarnation(&entry.identity, &identity))
                 .map(|entry| entry.applied_nice)
                 .unwrap_or(original_nice);
             match process_identity_status(Path::new("/proc"), pid, &identity) {
@@ -3697,6 +3763,8 @@ async fn check_heavy_processes(
                 });
                 continue;
             }
+            let current_identity = process_sample_identity(&p);
+            drop_stale_nice_adjustments(state, p.pid, &current_identity);
             let already_niced = state
                 .reniced_pids
                 .get(&p.pid)
@@ -3721,7 +3789,7 @@ async fn check_heavy_processes(
                             LegacyReniceState {
                                 original_nice,
                                 applied_nice: nice_val,
-                                identity: process_sample_identity(&p),
+                                identity: current_identity,
                             },
                         );
                         eprintln!(
@@ -3817,6 +3885,7 @@ async fn check_heavy_processes(
         let restore_nice = state
             .memory_reniced_pids
             .get(&pid)
+            .filter(|entry| same_process_incarnation(&entry.identity, &identity))
             .map(|entry| entry.applied_nice)
             .unwrap_or(original_nice);
         match process_identity_status(Path::new("/proc"), pid, &identity) {
