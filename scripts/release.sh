@@ -205,7 +205,8 @@ fi
 # ----- step 1: test discipline gates (AGENTS.md) -------------------------
 log "step 1/${TOTAL_STEPS}: test discipline gates (AGENTS.md)"
 # Run the repository's mandatory gates before any release-surface mutation.
-# They also run for --dry-run: only ignored target/ artifacts are produced.
+# They also run for --dry-run before any release-surface mutation; only
+# ignored target/ artifacts are produced by the gates themselves.
 require_cmd cargo-deny
 run_gate() {
     printf '   $ %s\n' "$*"
@@ -227,25 +228,42 @@ fi
 if [[ "$current" == "$VERSION" ]]; then
     ok "  $CRATE_TOML already at $VERSION"
 else
-    if [[ $DRY_RUN -eq 0 ]]; then
-        sed -i "0,/^version[[:space:]]*=/{s/^version[[:space:]]*=.*$/version = \"${VERSION}\"/}" "$CRATE_TOML"
-    fi
+    sed -i "0,/^version[[:space:]]*=/{s/^version[[:space:]]*=.*$/version = \"${VERSION}\"/}" "$CRATE_TOML"
     ok "  $CRATE_TOML: $current → $VERSION"
 fi
+
+# Cargo.lock is a release surface too: after the manifest version changes,
+# generate it from the standalone manifest outside any enclosing monorepo
+# workspace. Running from a nested checkout would otherwise update the
+# parent's lockfile and leave the standalone release stale.
+refresh_standalone_lock() {
+    local lock_tmp
+    lock_tmp=$(mktemp -d "${TMPDIR:-/tmp}/dracon-system-lock-XXXXXX")
+    cp "$CRATE_TOML" "$lock_tmp/Cargo.toml"
+    if ! (cd "$lock_tmp" && timeout 300 cargo generate-lockfile); then
+        rm -rf "$lock_tmp"
+        die_pre "failed to regenerate standalone Cargo.lock"
+    fi
+    if [[ ! -s "$lock_tmp/Cargo.lock" ]]; then
+        rm -rf "$lock_tmp"
+        die_pre "cargo generate-lockfile produced no Cargo.lock"
+    fi
+    cp "$lock_tmp/Cargo.lock" Cargo.lock
+    rm -rf "$lock_tmp"
+    ok "  Cargo.lock synchronized for dracon-system@$VERSION"
+}
+refresh_standalone_lock
 
 # ----- step 3: close CHANGELOG [Unreleased] -------------------------------
 log "step 3/${TOTAL_STEPS}: closing CHANGELOG.md [Unreleased] → [${VERSION}]"
 CHANGELOG="CHANGELOG.md"
 DATE=$(date -u +%Y-%m-%d)
-if [[ $DRY_RUN -eq 0 ]]; then
-    # FIXED 2026-08-11 (audit HIGH): extracted the inline closer into the
-    # tested idempotent helper. Re-running after a partial release now leaves
-    # an existing version header byte-identical instead of duplicating it.
-    python3 "$SCRIPT_DIR/close-changelog.py" "$CHANGELOG" "$VERSION" "$DATE"
-    ok "  CHANGELOG.md: [Unreleased] closed as [${VERSION}] - ${DATE} (or already closed)"
-else
-    ok "  CHANGELOG.md: would close [Unreleased] → [${VERSION}] - ${DATE} (skipped: --dry-run)"
-fi
+# FIXED 2026-08-11 (audit HIGH): extracted the inline closer into the
+# tested idempotent helper. Re-running after a partial release now leaves an
+# existing version header byte-identical instead of duplicating it. A dry-run
+# deliberately writes the local release surface so --abort has real work.
+python3 "$SCRIPT_DIR/close-changelog.py" "$CHANGELOG" "$VERSION" "$DATE"
+ok "  CHANGELOG.md: [Unreleased] closed as [${VERSION}] - ${DATE} (or already closed)"
 
 # ----- step 4: create release-notes file ----------------------------------
 log "step 4/${TOTAL_STEPS}: creating release-notes-v${VERSION}.md"
@@ -253,8 +271,7 @@ NOTES="release-notes-v${VERSION}.md"
 if [[ -f "$NOTES" ]]; then
     ok "  $NOTES already exists"
 else
-    if [[ $DRY_RUN -eq 0 ]]; then
-        cat > "$NOTES" <<EOF
+    cat > "$NOTES" <<EOF
 # dracon-system v${VERSION} (${DATE})
 
 Invisible git sync daemon for deterministic AI-assisted development.
@@ -282,7 +299,6 @@ systemctl --user enable --now dracon-system-guard.service
 
 **Full Changelog**: https://github.com/DraconDev/dracon-system-disk-process-guard-doctor/compare/$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")...v${VERSION}
 EOF
-    fi
     ok "  $NOTES created"
 fi
 
@@ -334,7 +350,7 @@ fi
 
 # ----- step 8: commit, tag, push, gh release ------------------------------
 log "step 8/${TOTAL_STEPS}: commit, tag, push, gh release"
-run git add Cargo.toml CHANGELOG.md "$NOTES"
+run git add Cargo.toml Cargo.lock CHANGELOG.md "$NOTES"
 # Idempotent re-run path: skip already-completed commit, tag, and GitHub
 # release operations when a previous run failed later in the pipeline.
 if [[ $DRY_RUN -eq 1 ]]; then
@@ -402,6 +418,6 @@ warn "    scripts/verify-install.sh"
 
 if [[ $DRY_RUN -eq 1 ]]; then
     echo ""
-    warn "This was a --dry-run. Local files were modified but no remote state was changed."
+    warn "This was a --dry-run. Local release surfaces were modified but no remote state was changed."
     warn "Run 'scripts/release.sh ${VERSION} --abort' to revert, or 'scripts/release.sh ${VERSION} --yes' to execute for real."
 fi

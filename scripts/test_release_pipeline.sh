@@ -98,6 +98,15 @@ BIN
         ;;
     deny)
         ;;
+    generate-lockfile)
+        cat > Cargo.lock <<'LOCK'
+version = 4
+
+[[package]]
+name = "dracon-system"
+version = "0.1.0"
+LOCK
+        ;;
     *)
         echo "unexpected cargo invocation: $*" >&2
         exit 2
