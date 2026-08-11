@@ -19,7 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Release pipeline hardening**: `scripts/release.sh` now runs the locked
   test/build/clippy/deny gates before mutation, verifies the packaged binary
   through an install fixture, handles already-published/committed/tagged/
-  released reruns, and prints exact mirror-tag push reminders.
+  released reruns, and prints exact mirror-tag push reminders. The standalone
+  repository also ships a synchronized `Cargo.lock` and `deny.toml`, with a
+  clean-clone regression covering all release gates so the parent workspace
+  cannot mask failures.
 
 ## [0.112.36] - 2026-08-10
 
