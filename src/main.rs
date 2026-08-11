@@ -1232,9 +1232,10 @@ fn restore_pending_oom_descendants(
             "🛡️ oom-descendant-restore pid={} parent={} adj -> {}",
             key.0, pending.root_pid, pending.original_adj
         );
-        result
-            .restored
-            .push(format!("oom-restore-descendant {}={}", pending.identity.comm, pending.original_adj));
+        result.restored.push(format!(
+            "oom-restore-descendant {}={}",
+            pending.identity.comm, pending.original_adj
+        ));
         state.oom_pending_descendants.remove(&key);
         remember_oom_descendant_identity(state, pending.root_pid, key.0, &pending.identity);
     }
@@ -1709,6 +1710,13 @@ async fn restore_runtime_adjustments_with_samples(
                 identity,
             } => match process_identity_status(proc_root, pid, &identity) {
                 ProcessIdentityStatus::Match => {
+                    if oom_root_has_pending_descendants(state, pid) {
+                        eprintln!(
+                            "⚠ SIGHUP deferring oom restore for pid={} until descendants recover",
+                            pid
+                        );
+                        continue;
+                    }
                     let adj_path = proc_root.join(pid.to_string()).join("oom_score_adj");
                     match fs::write(&adj_path, format!("{orig_adj}\n")) {
                         Ok(()) => remove_oom_bias(state, pid),
@@ -3122,12 +3130,7 @@ async fn check_memory_pressure(
     // A child forked after its parent was biased inherits oom_score_adj=250,
     // but is not present in `oom_biased_pids`. Sweep those descendants on
     // every pass, including before a tracked parent is released or removed.
-    let sweep = sweep_stranded_oom_descendants(
-        Path::new("/proc"),
-        &all_processes,
-        state,
-        &exempt,
-    );
+    let sweep = sweep_stranded_oom_descendants(Path::new("/proc"), &all_processes, state, &exempt);
     if sweep.deferred > 0 {
         eprintln!(
             "⚠️ retaining {} pending descendant OOM restorations",
@@ -3205,6 +3208,13 @@ async fn check_memory_pressure(
                     );
                     continue;
                 }
+            }
+            if oom_root_has_pending_descendants(state, pid) {
+                eprintln!(
+                    "⚠️ oom-restore deferred for pid={} until descendants recover",
+                    pid
+                );
+                continue;
             }
             if let Err(e) = fs::write(format!("/proc/{pid}/oom_score_adj"), format!("{orig}\n")) {
                 eprintln!("⚠️ oom-restore failed for pid={}: {}", pid, e);

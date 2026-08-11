@@ -261,6 +261,8 @@ fn sweep_stranded_oom_descendants_restores_only_post_bias_children() {
     write_process_fixture(&tmp, 102, "existing-child", 78, Some(250), None);
     write_process_fixture(&tmp, 103, "forked-child", 79, Some(250), None);
     write_process_fixture(&tmp, 104, "unrelated", 80, Some(250), None);
+    write_process_fixture(&tmp, 105, "failed-child", 81, None, None);
+    fs::create_dir(tmp.join("105/oom_score_adj")).expect("create failing child oom fixture");
 
     let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
         pid,
@@ -277,6 +279,7 @@ fn sweep_stranded_oom_descendants_restores_only_post_bias_children() {
         sample(102, 101, 78, "existing-child"),
         sample(103, 101, 79, "forked-child"),
         sample(104, 1, 80, "unrelated"),
+        sample(105, 101, 81, "failed-child"),
     ];
     let identity = ProcessIdentity {
         comm: "oom-parent".to_string(),
@@ -294,7 +297,14 @@ fn sweep_stranded_oom_descendants_restores_only_post_bias_children() {
         &mut state,
         &std::collections::HashSet::new(),
     );
-    assert_eq!(actions, vec!["oom-restore-descendant forked-child=-100"]);
+    assert_eq!(
+        actions.restored,
+        vec!["oom-restore-descendant forked-child=-100"]
+    );
+    assert_eq!(actions.deferred, 1);
+    assert!(state
+        .oom_pending_descendants
+        .contains_key(&(105, 81)));
     assert_eq!(
         fs::read_to_string(tmp.join("102/oom_score_adj")).unwrap(),
         "250\n"
@@ -312,6 +322,20 @@ fn sweep_stranded_oom_descendants_restores_only_post_bias_children() {
         .get(&101)
         .unwrap()
         .contains(&(103, 79)));
+
+    fs::remove_dir(tmp.join("105/oom_score_adj")).expect("remove failing child fixture");
+    fs::write(tmp.join("105/oom_score_adj"), "250\n").expect("restore child fixture");
+    let retry = sweep_stranded_oom_descendants(
+        &tmp,
+        &samples,
+        &mut state,
+        &std::collections::HashSet::new(),
+    );
+    assert_eq!(retry.restored, vec!["oom-restore-descendant failed-child=-100"]);
+    assert_eq!(retry.deferred, 0);
+    assert!(!state.oom_pending_descendants.contains_key(&(105, 81)));
+    remove_oom_bias(&mut state, 101);
+    assert!(!state.oom_biased_pids.contains_key(&101));
     let _ = fs::remove_dir_all(&tmp);
 }
 
