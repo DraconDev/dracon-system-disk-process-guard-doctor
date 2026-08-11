@@ -246,6 +246,76 @@ async fn restore_runtime_adjustments_restores_renice_and_oom() {
 }
 
 #[cfg(unix)]
+#[test]
+fn sweep_stranded_oom_descendants_restores_only_post_bias_children() {
+    let tmp = std::env::temp_dir().join(format!(
+        "dracon_system_oom_descendants_test_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&tmp).expect("create temp dir");
+    write_process_fixture(&tmp, 101, "oom-parent", 77, Some(250), None);
+    write_process_fixture(&tmp, 102, "existing-child", 78, Some(250), None);
+    write_process_fixture(&tmp, 103, "forked-child", 79, Some(250), None);
+    write_process_fixture(&tmp, 104, "unrelated", 80, Some(250), None);
+
+    let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
+        pid,
+        ppid,
+        cpu_percent: 0.0,
+        rss_mb: 1,
+        nice: 0,
+        command: command.to_string(),
+        args: String::new(),
+        starttime,
+    };
+    let samples = vec![
+        sample(101, 1, 77, "oom-parent"),
+        sample(102, 101, 78, "existing-child"),
+        sample(103, 101, 79, "forked-child"),
+        sample(104, 1, 80, "unrelated"),
+    ];
+    let identity = ProcessIdentity {
+        comm: "oom-parent".to_string(),
+        starttime: 77,
+    };
+    let mut state = GuardRuntimeState::default();
+    state.oom_biased_pids.insert(101, (-100, identity));
+    state
+        .oom_known_descendants
+        .insert(101, std::collections::HashSet::from([(102, 78)]));
+
+    let actions = sweep_stranded_oom_descendants(
+        &tmp,
+        &samples,
+        &mut state,
+        &std::collections::HashSet::new(),
+    );
+    assert_eq!(actions, vec!["oom-restore-descendant forked-child=-100"]);
+    assert_eq!(
+        fs::read_to_string(tmp.join("102/oom_score_adj")).unwrap(),
+        "250\n"
+    );
+    assert_eq!(
+        fs::read_to_string(tmp.join("103/oom_score_adj")).unwrap(),
+        "-100\n"
+    );
+    assert_eq!(
+        fs::read_to_string(tmp.join("104/oom_score_adj")).unwrap(),
+        "250\n"
+    );
+    assert!(state
+        .oom_known_descendants
+        .get(&101)
+        .unwrap()
+        .contains(&(103, 79)));
+    let _ = fs::remove_dir_all(&tmp);
+}
+
+#[cfg(unix)]
 #[tokio::test]
 async fn restore_runtime_adjustments_retains_failed_cpu_cap() {
     let tmp = std::env::temp_dir().join(format!(

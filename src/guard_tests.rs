@@ -14,6 +14,51 @@ fn guard_runtime_state_default_is_empty() {
     assert!(state.heavy_since.is_empty());
     assert!(state.notify_cooldowns.is_empty());
     assert!(state.last_disk_state.is_empty());
+    assert!(state.oom_known_descendants.is_empty());
+}
+
+#[test]
+fn oom_descendant_candidates_only_select_new_untracked_user_processes() {
+    let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
+        pid,
+        ppid,
+        cpu_percent: 0.0,
+        rss_mb: 1,
+        nice: 0,
+        command: command.to_string(),
+        args: String::new(),
+        starttime,
+    };
+    let samples = vec![
+        sample(10, 1, 10, "root"),
+        sample(11, 10, 11, "existing-child"),
+        sample(12, 10, 12, "new-child"),
+        sample(13, 12, 13, "new-grandchild"),
+        sample(14, 1, 14, "unrelated"),
+        sample(15, 10, 15, "kworker/0:1"),
+        sample(16, 10, 16, "editor"),
+        sample(17, 10, 17, "tracked-child"),
+    ];
+    let known = HashSet::from([(11, 11)]);
+    let tracked = HashSet::from([10, 17]);
+    let exempt = HashSet::from(["editor".to_string()]);
+
+    let descendants = crate::process_descendant_samples(&samples, 10);
+    assert_eq!(
+        descendants
+            .iter()
+            .map(|sample| sample.pid)
+            .collect::<Vec<_>>(),
+        vec![11, 12, 13, 15, 16, 17]
+    );
+    let candidates = crate::oom_descendant_candidates(&samples, 10, &known, &tracked, &exempt);
+    assert_eq!(
+        candidates
+            .iter()
+            .map(|sample| sample.pid)
+            .collect::<Vec<_>>(),
+        vec![12, 13]
+    );
 }
 
 #[test]
