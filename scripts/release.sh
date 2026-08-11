@@ -30,7 +30,7 @@
 #   --abort               Revert any local modifications made by --dry-run
 #                         (cargo + changelog + release-notes). Refuses to
 #                         run if the working tree was already dirty at start.
-#   --remote <name>       Push to this git remote (default: github).
+#   --remote <name>       Push to this git remote (default: origin).
 #   --yes                 Skip the interactive "are you sure" prompt before
 #                         push/publish/tag steps. Required for non-interactive
 #                         runs.
