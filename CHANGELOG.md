@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cannot mask failures. Dry-runs now update Cargo.toml/Cargo.lock/changelog/
   release notes for inspection, and `--abort` rolls back that complete set.
 
+### Fixed
+
+- **SIGHUP policy reload now restores every active process limiter** before
+  resetting runtime state: legacy and memory renice adjustments, OOM bias,
+  and transient CPUQuota cgroups are all restored or retained for retry.
+
 ## [0.112.36] - 2026-08-10
 
 ### Added
