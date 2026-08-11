@@ -835,6 +835,20 @@ pub(crate) fn proc_identity(pid: i32) -> Option<(String, u64)> {
         .map(|identity| (identity.comm, identity.starttime))
 }
 
+fn process_sample_identity(sample: &ProcSample) -> ProcessIdentity {
+    ProcessIdentity {
+        comm: sample.command.clone(),
+        starttime: sample.starttime,
+    }
+}
+
+fn process_sample_is_current(sample: &ProcSample) -> bool {
+    matches!(
+        process_identity_status(Path::new("/proc"), sample.pid, &process_sample_identity(sample)),
+        ProcessIdentityStatus::Match
+    )
+}
+
 pub(crate) fn disk_state(used: u8, guard: &GuardPolicy) -> &'static str {
     if used >= guard.disk_critical_percent {
         "critical"
@@ -1094,8 +1108,15 @@ async fn systemctl_user_action(
 /// operation is checked so callers retain the cap entry when restoration
 /// cannot be verified.
 async fn uncap_cpu_process(pid: i32, scope: &str, orig_cgroup: &str) -> Result<(), String> {
-    uncap_cpu_process_with_bin(Path::new("systemctl"), Path::new("/proc"), pid, scope, orig_cgroup)
-        .await
+    uncap_cpu_process_with_bin(
+        Path::new("systemctl"),
+        Path::new("/proc"),
+        pid,
+        scope,
+        orig_cgroup,
+        true,
+    )
+    .await
 }
 
 async fn uncap_cpu_process_with_bin(
@@ -1104,6 +1125,7 @@ async fn uncap_cpu_process_with_bin(
     pid: i32,
     scope: &str,
     orig_cgroup: &str,
+    allow_pid_move: bool,
 ) -> Result<(), String> {
     let cgroup_path = proc_root.join(pid.to_string()).join("cgroup");
     let mut errors = Vec::new();
@@ -1117,6 +1139,11 @@ async fn uncap_cpu_process_with_bin(
                 .and_then(|l| l.split_once("::").map(|(_, p)| p.trim_start_matches('/')))
                 .unwrap_or_default();
             if rel.contains(scope) {
+                if !allow_pid_move {
+                    return Err(format!(
+                        "pid {pid} remains in {scope} but its identity changed"
+                    ));
+                }
                 let procs_file = format!("/sys/fs/cgroup/{orig_cgroup}/cgroup.procs");
                 if let Err(e) = std::fs::write(&procs_file, format!("{pid}\n")) {
                     errors.push(format!("move pid {pid} back to {procs_file}: {e}"));
@@ -2622,9 +2649,7 @@ async fn check_memory_pressure(
     let mut limited: Vec<String> = Vec::new();
     if pressure != "ok" && guard.auto_renice_on_memory {
         for p in &top_rss {
-            let identity_ok = proc_identity(p.pid)
-                .map(|(comm, _)| comm == p.command)
-                .unwrap_or(false);
+            let identity_ok = process_sample_is_current(p);
             if !identity_ok {
                 continue;
             }
@@ -2632,9 +2657,10 @@ async fn check_memory_pressure(
             if state.memory_reniced_pids.get(&p.pid).map(|(n, _)| *n) != Some(nice_val) {
                 match renice_process(p.pid, nice_val).await {
                     Ok(()) => {
-                        state
-                            .memory_reniced_pids
-                            .insert(p.pid, (nice_val, p.command.clone()));
+                        state.memory_reniced_pids.insert(
+                            p.pid,
+                            (nice_val, process_sample_identity(p)),
+                        );
                         eprintln!(
                             "🛡️ mem-renice pid={} cmd={} -> nice {} (pressure {})",
                             p.pid, p.command, nice_val, pressure
@@ -2654,9 +2680,7 @@ async fn check_memory_pressure(
             if state.oom_biased_pids.contains_key(&p.pid) {
                 continue;
             }
-            let identity_ok = proc_identity(p.pid)
-                .map(|(comm, _)| comm == p.command)
-                .unwrap_or(false);
+            let identity_ok = process_sample_is_current(p);
             if !identity_ok {
                 continue;
             }
@@ -2669,7 +2693,7 @@ async fn check_memory_pressure(
                     if fs::write(&adj_path, format!("{target}\n")).is_ok() {
                         state
                             .oom_biased_pids
-                            .insert(p.pid, (orig, p.command.clone()));
+                            .insert(p.pid, (orig, process_sample_identity(p)));
                         eprintln!(
                             "🛡️ oom-bias pid={} cmd={} adj {} -> {} (critical pressure)",
                             p.pid, p.command, orig, target
@@ -2685,17 +2709,16 @@ async fn check_memory_pressure(
             if state.capped_pids.contains_key(&p.pid) {
                 continue;
             }
-            let identity_ok = proc_identity(p.pid)
-                .map(|(comm, _)| comm == p.command)
-                .unwrap_or(false);
+            let identity_ok = process_sample_is_current(p);
             if !identity_ok {
                 continue;
             }
             match cap_cpu_process(p.pid, guard.cap_offenders_cpu_percent).await {
                 Ok((scope, orig_cgroup)) => {
-                    state
-                        .capped_pids
-                        .insert(p.pid, (scope.clone(), orig_cgroup));
+                    state.capped_pids.insert(
+                        p.pid,
+                        (scope.clone(), orig_cgroup, process_sample_identity(p)),
+                    );
                     eprintln!(
                         "🛡️ cpu-cap pid={} cmd={} -> CPUQuota={}% (scope {})",
                         p.pid, p.command, guard.cap_offenders_cpu_percent, scope
