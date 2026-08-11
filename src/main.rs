@@ -1041,11 +1041,7 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
     // Current cgroup BEFORE moving (the path we restore to later).
     let orig = std::fs::read_to_string(format!("/proc/{pid}/cgroup"))
         .map_err(|e| format!("read /proc/{pid}/cgroup: {e}"))?;
-    let orig_rel = orig
-        .lines()
-        .next()
-        .and_then(|l| l.split_once("::").map(|(_, p)| p.trim_start_matches('/')))
-        .filter(|p| !p.is_empty())
+    let orig_rel = parse_cgroup_rel_path(&orig)
         .ok_or_else(|| format!("unparseable cgroup line: {}", orig.trim()))?
         .to_string();
 
@@ -1108,6 +1104,15 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
     Ok((unit, orig_rel))
 }
 
+fn parse_cgroup_rel_path(cg_line: &str) -> Option<&str> {
+    let path = cg_line
+        .lines()
+        .next()?
+        .split_once("::")
+        .map(|(_, path)| path.trim_start_matches('/'))?;
+    (!path.is_empty()).then_some(path)
+}
+
 async fn systemctl_user_action(
     systemctl_bin: &Path,
     action: &str,
@@ -1142,16 +1147,10 @@ async fn uncap_cpu_process_with_bin(
     allow_pid_move: bool,
 ) -> Result<(), String> {
     let cgroup_path = proc_root.join(pid.to_string()).join("cgroup");
-    let mut errors = Vec::new();
-    let mut process_was_read = false;
-    match std::fs::read_to_string(&cgroup_path) {
+    let process_was_read = match std::fs::read_to_string(&cgroup_path) {
         Ok(cg_line) => {
-            process_was_read = true;
-            let rel = cg_line
-                .lines()
-                .next()
-                .and_then(|l| l.split_once("::").map(|(_, p)| p.trim_start_matches('/')))
-                .unwrap_or_default();
+            let rel = parse_cgroup_rel_path(&cg_line)
+                .ok_or_else(|| format!("unparseable {}/cgroup", proc_root.display()))?;
             if rel.contains(scope) {
                 if !allow_pid_move {
                     return Err(format!(
@@ -1159,32 +1158,35 @@ async fn uncap_cpu_process_with_bin(
                     ));
                 }
                 let procs_file = format!("/sys/fs/cgroup/{orig_cgroup}/cgroup.procs");
-                if let Err(e) = std::fs::write(&procs_file, format!("{pid}\n")) {
-                    errors.push(format!("move pid {pid} back to {procs_file}: {e}"));
-                }
+                std::fs::write(&procs_file, format!("{pid}\n"))
+                    .map_err(|e| format!("move pid {pid} back to {procs_file}: {e}"))?;
             }
+            true
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // A missing cgroup file means the process is gone only when its
             // PID directory is also gone from an available proc tree. If the
-            // proc/cgroup source itself is unavailable, retain the entry: the
-            // cap cannot be considered restored safely.
+            // proc/cgroup source itself is unavailable, retain the entry and
+            // do not stop the transient service: doing so could remove the
+            // cap from, or kill, a process whose membership we cannot inspect.
             let pid_dir = proc_root.join(pid.to_string());
             let pid_gone = matches!(
                 std::fs::metadata(&pid_dir),
                 Err(dir_error) if dir_error.kind() == std::io::ErrorKind::NotFound
             );
             if !proc_root_is_available(proc_root) || !pid_gone {
-                errors.push(format!(
+                return Err(format!(
                     "cgroup source unavailable for pid {} under {}",
                     pid,
                     proc_root.display()
                 ));
             }
+            false
         }
-        Err(e) => errors.push(format!("read {}/cgroup: {e}", proc_root.display())),
-    }
+        Err(e) => return Err(format!("read {}/cgroup: {e}", proc_root.display())),
+    };
 
+    let mut errors = Vec::new();
     if let Err(e) = systemctl_user_action(systemctl_bin, "stop", scope).await {
         errors.push(e);
     }
@@ -1197,17 +1199,29 @@ async fn uncap_cpu_process_with_bin(
     // must remain tracked for a later retry.
     if process_was_read {
         match std::fs::read_to_string(&cgroup_path) {
-            Ok(cg_line) => {
-                let rel = cg_line
-                    .lines()
-                    .next()
-                    .and_then(|l| l.split_once("::").map(|(_, p)| p.trim_start_matches('/')))
-                    .unwrap_or_default();
-                if rel.contains(scope) {
+            Ok(cg_line) => match parse_cgroup_rel_path(&cg_line) {
+                Some(rel) if rel.contains(scope) => {
                     errors.push(format!("pid {pid} remains in CPUQuota scope {scope}"));
                 }
+                Some(_) => {}
+                None => errors.push(format!(
+                    "verify {}/cgroup: unparseable cgroup line",
+                    proc_root.display()
+                )),
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                let pid_dir = proc_root.join(pid.to_string());
+                let pid_gone = matches!(
+                    std::fs::metadata(&pid_dir),
+                    Err(dir_error) if dir_error.kind() == std::io::ErrorKind::NotFound
+                );
+                if !proc_root_is_available(proc_root) || !pid_gone {
+                    errors.push(format!(
+                        "verify {}/cgroup: source unavailable",
+                        proc_root.display()
+                    ));
+                }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => errors.push(format!("verify {}/cgroup: {e}", proc_root.display())),
         }
     }

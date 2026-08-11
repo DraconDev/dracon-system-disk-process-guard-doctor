@@ -232,6 +232,14 @@ async fn restore_runtime_adjustments_retains_failed_cpu_cap() {
     );
     assert!(state.capped_pids.contains_key(&1000));
 
+    let systemctl_probe = tmp.join("systemctl-probe");
+    let probe_log = tmp.join("systemctl-probe.log");
+    let escaped_probe_log = probe_log.to_string_lossy().replace('\'', "'\\''");
+    write_test_script(
+        &systemctl_probe,
+        &format!("printf 'called\\n' >> '{escaped_probe_log}'\nexit 0"),
+    );
+
     // A missing cgroup file with a live PID directory is also indeterminate;
     // it may mean the cgroup source is unavailable rather than that the
     // process exited.
@@ -248,10 +256,34 @@ async fn restore_runtime_adjustments_retains_failed_cpu_cap() {
         ),
     );
     assert!(
-        !restore_runtime_adjustments_with(&mut state, &renice, &systemctl, &tmp).await,
+        !restore_runtime_adjustments_with(&mut state, &renice, &systemctl_probe, &tmp).await,
         "a missing live-PID cgroup file must prevent runtime reset"
     );
     assert!(state.capped_pids.contains_key(&1001));
+
+    // Malformed cgroup data is equally indeterminate and must not trigger
+    // systemd cleanup or allow the cap entry to be discarded.
+    write_process_fixture(&tmp, 1002, "worker", 90, None, Some("malformed\n"));
+    state.capped_pids.insert(
+        1002,
+        (
+            "dracon-cap.service".to_string(),
+            "user.slice".to_string(),
+            ProcessIdentity {
+                comm: "worker".to_string(),
+                starttime: 90,
+            },
+        ),
+    );
+    assert!(
+        !restore_runtime_adjustments_with(&mut state, &renice, &systemctl_probe, &tmp).await,
+        "malformed cgroup data must prevent runtime reset"
+    );
+    assert!(state.capped_pids.contains_key(&1002));
+    assert!(
+        !probe_log.exists(),
+        "indeterminate cgroup state must not stop the transient service"
+    );
     let _ = fs::remove_dir_all(&tmp);
 }
 
