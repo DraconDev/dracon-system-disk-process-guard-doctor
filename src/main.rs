@@ -4357,6 +4357,9 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
             elapsed += 1;
         }
     }
+    if !restore_runtime_adjustments(&mut runtime).await {
+        eprintln!("⚠ shutdown: some process adjustments could not be restored");
+    }
     veprintln!(1, "system: guard daemon shutdown complete");
     Ok(())
 }
