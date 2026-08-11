@@ -401,9 +401,19 @@ pub(crate) struct ProcSample {
     pub(crate) ppid: i32,
     pub(crate) cpu_percent: f32,
     pub(crate) rss_mb: u64,
+    /// Current Unix nice value from `ps ni`, captured before any limiter
+    /// changes it so memory-pressure release can restore the original value.
+    pub(crate) nice: i32,
     pub(crate) command: String,
     pub(crate) args: String,
     pub(crate) starttime: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MemoryReniceState {
+    pub(crate) original_nice: i32,
+    pub(crate) applied_nice: i32,
+    pub(crate) identity: ProcessIdentity,
 }
 
 #[derive(Default, Debug)]
@@ -429,9 +439,9 @@ pub(crate) struct GuardRuntimeState {
     /// for the swap-thrash fallback when PSI is unavailable.
     pub(crate) prev_swap_counters: Option<(Instant, u64, u64)>,
     /// ADDED 2026-08-10 (v0.112.36): pids reniced by the memory-
-    /// pressure limiter (nice, stable process identity), and their
-    /// release timers.
-    pub(crate) memory_reniced_pids: HashMap<i32, (i32, ProcessIdentity)>,
+    /// pressure limiter (original/applied nice, stable process identity),
+    /// and their release timers.
+    pub(crate) memory_reniced_pids: HashMap<i32, MemoryReniceState>,
     pub(crate) memory_cooled_since: HashMap<i32, Instant>,
     /// ADDED 2026-08-10 (v0.112.36): pids whose oom_score_adj was
     /// raised under critical pressure (original adjustment, stable
@@ -527,6 +537,7 @@ pub(crate) fn parse_ps_output(output: &str) -> Vec<ProcSample> {
             let ppid = parts.next()?.parse::<i32>().ok()?;
             let cpu_percent = parts.next()?.parse::<f32>().ok()?;
             let rss_kb = parts.next()?.parse::<u64>().ok()?;
+            let nice = parts.next()?.parse::<i32>().ok()?;
             let command = parts.next()?.to_string();
             let args = parts.collect::<Vec<_>>().join(" ");
             Some(ProcSample {
@@ -534,6 +545,7 @@ pub(crate) fn parse_ps_output(output: &str) -> Vec<ProcSample> {
                 ppid,
                 cpu_percent,
                 rss_mb: rss_kb / 1024,
+                nice,
                 command,
                 args,
                 starttime: 0,
@@ -745,7 +757,7 @@ async fn disk_use_percent_for(path: &str) -> Result<u8> {
 
 async fn process_samples() -> Result<Vec<ProcSample>> {
     let out = Command::new("ps")
-        .args(["-eo", "pid,ppid,pcpu,rss,comm,args", "--no-headers"])
+        .args(["-eo", "pid,ppid,pcpu,rss,ni,comm,args", "--no-headers"])
         .output()
         .await
         .map_err(|e| {
@@ -1241,6 +1253,7 @@ enum RuntimeAdjustment {
     },
     MemoryRenice {
         pid: i32,
+        original_nice: i32,
         identity: ProcessIdentity,
     },
     OomBias {
@@ -1268,10 +1281,11 @@ fn runtime_adjustment_plan(state: &GuardRuntimeState) -> Vec<RuntimeAdjustment> 
             identity: identity.clone(),
         });
     }
-    for (&pid, (_, identity)) in &state.memory_reniced_pids {
+    for (&pid, entry) in &state.memory_reniced_pids {
         plan.push(RuntimeAdjustment::MemoryRenice {
             pid,
-            identity: identity.clone(),
+            original_nice: entry.original_nice,
+            identity: entry.identity.clone(),
         });
     }
     for (&pid, (orig_adj, identity)) in &state.oom_biased_pids {
@@ -1360,10 +1374,14 @@ async fn restore_runtime_adjustments_with(
                     ),
                 }
             }
-            RuntimeAdjustment::MemoryRenice { pid, identity } => {
+            RuntimeAdjustment::MemoryRenice {
+                pid,
+                original_nice,
+                identity,
+            } => {
                 match process_identity_status(proc_root, pid, &identity) {
                     ProcessIdentityStatus::Match => {
-                        match renice_process_with_bin(renice_bin, pid, 0).await {
+                        match renice_process_with_bin(renice_bin, pid, original_nice).await {
                             Ok(()) => remove_memory_renice(state, pid),
                             Err(e) => eprintln!(
                                 "⚠ SIGHUP failed to restore memory nice value for pid={} comm={}: {}",
@@ -2714,12 +2732,26 @@ async fn check_memory_pressure(
                 continue;
             }
             let nice_val = graduated_nice_value(p.cpu_percent, p.rss_mb, guard.renice_value);
-            if state.memory_reniced_pids.get(&p.pid).map(|(n, _)| *n) != Some(nice_val) {
+            let applied_nice = state
+                .memory_reniced_pids
+                .get(&p.pid)
+                .map(|entry| entry.applied_nice);
+            if applied_nice != Some(nice_val) {
+                let original_nice = state
+                    .memory_reniced_pids
+                    .get(&p.pid)
+                    .map(|entry| entry.original_nice)
+                    .unwrap_or(p.nice);
                 match renice_process(p.pid, nice_val).await {
                     Ok(()) => {
-                        state
-                            .memory_reniced_pids
-                            .insert(p.pid, (nice_val, process_sample_identity(p)));
+                        state.memory_reniced_pids.insert(
+                            p.pid,
+                            MemoryReniceState {
+                                original_nice,
+                                applied_nice: nice_val,
+                                identity: process_sample_identity(p),
+                            },
+                        );
                         eprintln!(
                             "🛡️ mem-renice pid={} cmd={} -> nice {} (pressure {})",
                             p.pid, p.command, nice_val, pressure
@@ -2807,8 +2839,8 @@ async fn check_memory_pressure(
             }
         }
         for pid in to_unrenice {
-            let identity = match state.memory_reniced_pids.get(&pid) {
-                Some((_, identity)) => identity.clone(),
+            let (original_nice, identity) = match state.memory_reniced_pids.get(&pid) {
+                Some(entry) => (entry.original_nice, entry.identity.clone()),
                 None => continue,
             };
             match process_identity_status(Path::new("/proc"), pid, &identity) {
@@ -2825,7 +2857,7 @@ async fn check_memory_pressure(
                     continue;
                 }
             }
-            if let Err(e) = renice_process(pid, 0).await {
+            if let Err(e) = renice_process(pid, original_nice).await {
                 eprintln!("⚠️ mem-unrenice failed for pid={}: {}", pid, e);
                 continue;
             }
@@ -2925,9 +2957,9 @@ async fn check_memory_pressure(
     }
     // Prune only known-gone or PID-reused entries. Identity read errors are
     // retained so a transient /proc failure cannot silently lose a limiter.
-    state.memory_reniced_pids.retain(|pid, (_, identity)| {
+    state.memory_reniced_pids.retain(|pid, entry| {
         !matches!(
-            process_identity_status(Path::new("/proc"), *pid, identity),
+            process_identity_status(Path::new("/proc"), *pid, &entry.identity),
             ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch
         )
     });
