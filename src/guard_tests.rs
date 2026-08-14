@@ -303,6 +303,17 @@ fn parse_ps_output_malformed_lines_skipped() {
     assert_eq!(samples[0].cpu_percent, 75.0);
 }
 
+#[test]
+fn nice_restore_privilege_requires_root_or_cap_sys_nice() {
+    let unprivileged = "Uid:\t1000\t1000\t1000\t1000\nCapEff:\t0000000000000000\n";
+    let privileged = "Uid:\t1000\t1000\t1000\t1000\nCapEff:\t0000000000800000\n";
+    let root = "Uid:\t0\t0\t0\t0\nCapEff:\t0000000000000000\n";
+
+    assert!(!crate::has_nice_restore_privilege_from_status(unprivileged));
+    assert!(crate::has_nice_restore_privilege_from_status(privileged));
+    assert!(crate::has_nice_restore_privilege_from_status(root));
+}
+
 // ---------------------------------------------------------------------------
 // disk_state
 // ---------------------------------------------------------------------------

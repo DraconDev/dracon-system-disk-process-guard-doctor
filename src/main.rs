@@ -3941,6 +3941,11 @@ async fn check_heavy_processes(
 ) -> Result<Vec<GuardProcessAlert>> {
     let exempt = parse_kinds(&guard.process_exempt_names);
     let samples = process_samples().await?;
+    let can_restore_nice = if guard.auto_renice || !state.reniced_pids.is_empty() {
+        nice_restore_capability_available(state)
+    } else {
+        true
+    };
     let mut current_heavy = HashSet::new();
     let mut current_report_keys = HashSet::new();
     let mut alerts = Vec::new();
@@ -3998,7 +4003,7 @@ async fn check_heavy_processes(
         // 2026-08-09 incident. Notification only; no auto-kill.
         let stuck = sustained >= guard.process_stuck_after_secs;
 
-        if guard.auto_renice {
+        if guard.auto_renice && can_restore_nice {
             // ADDED 2026-07-21 (v0.112.33, audit M34/F4.8): final
             // identity check before touching the process — the comm
             // must still match AND the starttime must equal the
@@ -4131,60 +4136,65 @@ async fn check_heavy_processes(
         .report_states
         .retain(|key, _| !key.starts_with("heavy-process-") || current_report_keys.contains(key));
 
-    // Un-renice recovery: processes that are no longer heavy
-    let now = Instant::now();
-    let release_dur = Duration::from_secs(guard.release_after_secs);
-    let mut to_unrenice = Vec::new();
-    for &pid in state.reniced_pids.keys() {
-        if current_heavy.contains(&pid) {
-            state.cooled_since.remove(&pid);
-            continue;
-        }
-        let cooled_at = state.cooled_since.entry(pid).or_insert(now);
-        if now.duration_since(*cooled_at) >= release_dur {
-            to_unrenice.push(pid);
-        }
-    }
-    for pid in to_unrenice {
-        let (original_nice, identity) = match state.reniced_pids.get(&pid) {
-            Some(entry) => (entry.original_nice, entry.identity.clone()),
-            None => continue,
-        };
-        let restore_nice = state
-            .memory_reniced_pids
-            .get(&pid)
-            .filter(|entry| same_process_incarnation(&entry.identity, &identity))
-            .map(|entry| entry.applied_nice)
-            .unwrap_or(original_nice);
-        match process_identity_status(Path::new("/proc"), pid, &identity) {
-            ProcessIdentityStatus::Match => {
-                drop_stale_nice_adjustments(state, pid, &identity);
-            }
-            ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch => {
-                remove_legacy_renice(state, pid);
+    // Un-renice recovery: processes that are no longer heavy. This is only
+    // reached when the capability gate allowed the reversible action above;
+    // otherwise retained state is deliberately left untouched for a future
+    // run under a service with the required privilege.
+    if can_restore_nice {
+        let now = Instant::now();
+        let release_dur = Duration::from_secs(guard.release_after_secs);
+        let mut to_unrenice = Vec::new();
+        for &pid in state.reniced_pids.keys() {
+            if current_heavy.contains(&pid) {
+                state.cooled_since.remove(&pid);
                 continue;
             }
-            ProcessIdentityStatus::Unavailable => {
-                eprintln!(
-                    "⚠️ un-renice deferred for pid={} — process identity unavailable",
-                    pid
-                );
-                continue;
+            let cooled_at = state.cooled_since.entry(pid).or_insert(now);
+            if now.duration_since(*cooled_at) >= release_dur {
+                to_unrenice.push(pid);
             }
         }
-        if let Err(e) = renice_process(pid, restore_nice).await {
-            eprintln!("⚠️ un-renice failed for pid={}: {}", pid, e);
-            continue;
+        for pid in to_unrenice {
+            let (original_nice, identity) = match state.reniced_pids.get(&pid) {
+                Some(entry) => (entry.original_nice, entry.identity.clone()),
+                None => continue,
+            };
+            let restore_nice = state
+                .memory_reniced_pids
+                .get(&pid)
+                .filter(|entry| same_process_incarnation(&entry.identity, &identity))
+                .map(|entry| entry.applied_nice)
+                .unwrap_or(original_nice);
+            match process_identity_status(Path::new("/proc"), pid, &identity) {
+                ProcessIdentityStatus::Match => {
+                    drop_stale_nice_adjustments(state, pid, &identity);
+                }
+                ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch => {
+                    remove_legacy_renice(state, pid);
+                    continue;
+                }
+                ProcessIdentityStatus::Unavailable => {
+                    eprintln!(
+                        "⚠️ un-renice deferred for pid={} — process identity unavailable",
+                        pid
+                    );
+                    continue;
+                }
+            }
+            if let Err(e) = renice_process(pid, restore_nice).await {
+                eprintln!("⚠️ un-renice failed for pid={}: {}", pid, e);
+                continue;
+            }
+            eprintln!(
+                "🔧 un-renice pid={} -> nice {} (pressure released)",
+                pid, restore_nice
+            );
+            remove_legacy_renice(state, pid);
         }
-        eprintln!(
-            "🔧 un-renice pid={} -> nice {} (pressure released)",
-            pid, restore_nice
-        );
-        remove_legacy_renice(state, pid);
+        state
+            .cooled_since
+            .retain(|pid, _| state.reniced_pids.contains_key(pid));
     }
-    state
-        .cooled_since
-        .retain(|pid, _| state.reniced_pids.contains_key(pid));
 
     // Clean up only known-gone or PID-reused entries; retain identity read
     // failures for a later retry.
