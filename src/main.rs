@@ -3049,19 +3049,23 @@ async fn check_disk_trends(guard: &GuardPolicy, state: &mut GuardRuntimeState, u
 }
 
 async fn check_disk_early_warning(guard: &GuardPolicy, state: &mut GuardRuntimeState, used: u8) {
-    if used >= guard.disk_early_warn_percent && used < guard.disk_warn_percent {
-        let key = "disk-early-warn".to_string();
-        if should_notify(state, &key, guard.notify_cooldown_secs.max(1800)) {
-            send_notification(
-                guard,
-                "Dracon System Guard - Early Warning",
-                &format!(
-                    "Disk usage at {}% (early warning threshold: {}%)",
-                    used, guard.disk_early_warn_percent
-                ),
-            )
-            .await;
-        }
+    let early = used >= guard.disk_early_warn_percent && used < guard.disk_warn_percent;
+    let (previous, _) = report_state_transition(
+        state,
+        "disk-early-warning",
+        if early { "early" } else { "ok" },
+        guard.report_repeat_secs,
+    );
+    if early && previous.as_deref() != Some("early") {
+        send_notification(
+            guard,
+            "Dracon System Guard - Early Warning",
+            &format!(
+                "Disk usage at {}% (early warning threshold: {}%)",
+                used, guard.disk_early_warn_percent
+            ),
+        )
+        .await;
     }
 }
 
@@ -3815,17 +3819,19 @@ async fn check_disk_state_change(
     used: u8,
     dstate: &str,
 ) {
-    if state.last_disk_state != dstate {
-        let key = format!("disk-state-{dstate}");
-        if should_notify(state, &key, guard.notify_cooldown_secs) {
-            send_notification(
-                guard,
-                "Dracon System Guard",
-                &format!("Disk pressure state changed to {} (used={}%)", dstate, used),
-            )
-            .await;
-        }
-        state.last_disk_state = dstate.to_string();
+    let previous = std::mem::replace(&mut state.last_disk_state, dstate.to_string());
+    let transitioned = !previous.is_empty() && previous != dstate;
+    // Do not notify merely because the service restarted while disk usage is
+    // in the ordinary warning band. A critical initial state is actionable;
+    // otherwise wait for a real transition.
+    let initial_critical = previous.is_empty() && dstate == "critical";
+    if transitioned || initial_critical {
+        send_notification(
+            guard,
+            "Dracon System Guard",
+            &format!("Disk pressure state changed to {} (used={}%)", dstate, used),
+        )
+        .await;
     }
 }
 
