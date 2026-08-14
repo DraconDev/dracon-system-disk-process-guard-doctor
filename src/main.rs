@@ -478,6 +478,11 @@ pub(crate) struct GuardRuntimeState {
     /// and their release timers.
     pub(crate) memory_reniced_pids: HashMap<i32, MemoryReniceState>,
     pub(crate) memory_cooled_since: HashMap<i32, Instant>,
+    /// A user service without CAP_SYS_NICE can lower a process's priority but
+    /// cannot raise it back during recovery. Remember that limitation so the
+    /// guard disables reversible renice actions instead of leaving processes
+    /// permanently deprioritized and retrying noisy restorations forever.
+    pub(crate) nice_restore_capability_warned: bool,
     /// ADDED 2026-08-10 (v0.112.36): pids whose oom_score_adj was
     /// raised under critical pressure (original adjustment, stable
     /// process identity), and their restore timers.
@@ -598,6 +603,56 @@ pub(crate) fn parse_ps_output(output: &str) -> Vec<ProcSample> {
             })
         })
         .collect()
+}
+
+/// Test whether a Linux process has the privilege needed to restore a nice
+/// value after lowering a process's priority. `NoNewPrivileges=true` user
+/// services commonly lack this capability even when they can successfully
+/// perform the initial `renice`.
+pub(crate) fn has_nice_restore_privilege_from_status(status: &str) -> bool {
+    let uid = status.lines().find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        (key == "Uid")
+            .then(|| value.split_whitespace().next()?.parse::<u64>().ok())
+            .flatten()
+    });
+    if uid == Some(0) {
+        return true;
+    }
+    let cap_eff = status.lines().find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        (key == "CapEff")
+            .then(|| u64::from_str_radix(value.trim(), 16).ok())
+            .flatten()
+    });
+    // Linux CAP_SYS_NICE is capability 23.
+    cap_eff.is_some_and(|caps| caps & (1u64 << 23) != 0)
+}
+
+fn has_nice_restore_privilege() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::fs::read_to_string("/proc/self/status")
+            .map(|status| has_nice_restore_privilege_from_status(&status))
+            .unwrap_or(false)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        // The guard's process controls are Linux-specific in practice; keep
+        // other platforms permissive so their existing behavior is retained.
+        true
+    }
+}
+
+fn nice_restore_capability_available(state: &mut GuardRuntimeState) -> bool {
+    let available = has_nice_restore_privilege();
+    if !available && !state.nice_restore_capability_warned {
+        eprintln!(
+            "⚠️ renice mitigation disabled: guard lacks CAP_SYS_NICE needed to restore priority"
+        );
+        state.nice_restore_capability_warned = true;
+    }
+    available
 }
 
 /// Parsed /proc/meminfo values (all in kB).
@@ -3201,6 +3256,17 @@ async fn check_memory_pressure(
         Instant::now(),
     );
 
+    // A user service can often lower a process's priority but cannot raise it
+    // again during recovery. Do not apply a reversible limiter unless the
+    // service can complete both halves of that lifecycle.
+    let can_restore_nice = if guard.auto_renice_on_memory
+        || !state.memory_reniced_pids.is_empty()
+    {
+        nice_restore_capability_available(state)
+    } else {
+        true
+    };
+
     // Top RSS offenders (skipping kernel threads and exempt names).
     let exempt = parse_kinds(&guard.process_exempt_names);
     let all_processes = process_samples().await.unwrap_or_default();
@@ -3228,7 +3294,7 @@ async fn check_memory_pressure(
     // loop that renice can't tame. See the user discussion
     // 2026-08-10 in AGENTS.md.
     let mut limited: Vec<String> = Vec::new();
-    if pressure != "ok" && guard.auto_renice_on_memory {
+    if pressure != "ok" && guard.auto_renice_on_memory && can_restore_nice {
         for p in &top_rss {
             let identity_ok = process_sample_is_current(p);
             if !identity_ok {
@@ -3355,7 +3421,7 @@ async fn check_memory_pressure(
     }
     limited.extend(sweep.restored);
 
-    if pressure == "ok" {
+    if pressure == "ok" && can_restore_nice {
         let now = Instant::now();
         let release_dur = Duration::from_secs(guard.release_after_secs);
         // Un-renice memory-limited pids after the release window.
