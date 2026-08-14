@@ -3259,9 +3259,7 @@ async fn check_memory_pressure(
     // A user service can often lower a process's priority but cannot raise it
     // again during recovery. Do not apply a reversible limiter unless the
     // service can complete both halves of that lifecycle.
-    let can_restore_nice = if guard.auto_renice_on_memory
-        || !state.memory_reniced_pids.is_empty()
-    {
+    let can_restore_nice = if guard.auto_renice_on_memory || !state.memory_reniced_pids.is_empty() {
         nice_restore_capability_available(state)
     } else {
         true
