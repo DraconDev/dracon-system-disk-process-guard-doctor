@@ -1259,7 +1259,8 @@ fn check_safe_to_delete_rejects_log_symlink_before_truncate() {
 
 #[test]
 fn proactive_cleanup_defaults() {
-    assert_eq!(default_proactive_cleanup_percent(), 50);
+    assert_eq!(default_proactive_cleanup_percent(), 80);
+    assert_eq!(default_auto_cleanup_interval_secs(), 1800);
     assert_eq!(default_rust_target_max_age_days(), 14);
     assert_eq!(default_proactive_cleanup_interval_cycles(), 120);
 }
@@ -1302,10 +1303,35 @@ fn normalize_proactive_interval_min_1() {
 }
 
 #[test]
+fn normalize_auto_cleanup_interval_min_60() {
+    let policy = GuardPolicy {
+        auto_cleanup_interval_secs: 0,
+        ..Default::default()
+    };
+    let mut policy = policy;
+    normalize_guard_policy(&mut policy);
+    assert!(policy.auto_cleanup_interval_secs >= 60);
+}
+
+#[test]
+fn auto_cleanup_cadence_is_stateful() {
+    let now = Instant::now();
+    let mut state = GuardRuntimeState::default();
+    assert!(auto_cleanup_due_at(&state, 1800, now));
+
+    state.last_auto_cleanup = Some(now - Duration::from_secs(1799));
+    assert!(!auto_cleanup_due_at(&state, 1800, now));
+
+    state.last_auto_cleanup = Some(now - Duration::from_secs(1800));
+    assert!(auto_cleanup_due_at(&state, 1800, now));
+}
+
+#[test]
 fn guard_runtime_state_default_cycle_zero() {
     let state = GuardRuntimeState::default();
     assert_eq!(state.guard_cycle, 0);
     assert!(state.last_proactive_cleanup.is_none());
+    assert!(state.last_auto_cleanup.is_none());
 }
 
 #[test]

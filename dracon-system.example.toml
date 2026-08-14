@@ -62,8 +62,14 @@ guard_log_max_mb = 1
 # When false (default), the daemon only logs what it would clean.
 auto_cleanup_rust = true
 auto_cleanup_apply = false
+# Bound action-level dry-run scans to once every 30 minutes.
+auto_cleanup_interval_secs = 1800
 cleanup_min_size_mb = 256
 rust_search_roots = "~/Dev"
+
+# Proactive cleanup scans begin at 80% disk usage and run hourly.
+proactive_cleanup_percent = 80
+proactive_cleanup_interval_cycles = 120
 
 # Auto-cleanup old node_modules
 node_modules_search_roots = "~/Dev"

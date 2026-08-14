@@ -4111,14 +4111,10 @@ async fn check_heavy_processes(
     Ok(alerts)
 }
 
-fn auto_cleanup_due_at(
-    state: &GuardRuntimeState,
-    interval_secs: u64,
-    now: Instant,
-) -> bool {
-    state.last_auto_cleanup.is_none_or(|last| {
-        now.duration_since(last).as_secs() >= interval_secs.max(60)
-    })
+fn auto_cleanup_due_at(state: &GuardRuntimeState, interval_secs: u64, now: Instant) -> bool {
+    state
+        .last_auto_cleanup
+        .is_none_or(|last| now.duration_since(last).as_secs() >= interval_secs.max(60))
 }
 
 fn cleanup_stale_cooldowns(state: &mut GuardRuntimeState, cooldown_secs: u64) {
