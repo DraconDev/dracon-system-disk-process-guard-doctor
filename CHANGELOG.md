@@ -14,8 +14,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **State-aware guard reporting** (`report_state_transition`): repeated
+  unchanged observations are coalesced into a per-condition state machine
+  instead of firing every guard cycle. Entry, escalation, and recovery
+  transitions notify immediately; unchanged non-`ok` conditions repeat at
+  most every `report_repeat_secs` (default 1800 = 30 min). Structured events
+  and desktop notifications share the same backoff.
+- **Memory-pressure classification with hysteresis**: swap occupancy alone is
+  no longer treated as pressure. An observation only counts when free memory
+  is low (`mem_available_warn_percent`) and/or PSI/swap-in thrash is active,
+  and a candidate state must persist for `memory_pressure_sustain_secs`
+  (default 120 s) before any notification or process mitigation fires.
+  `guard once --json` now reports both `observed_pressure` and the stabilized
+  `pressure`. Added regression coverage for classification and persistence.
+- **Heavy-process alert keying**: per-process alert state is keyed by
+  `pid + /proc starttime`, so a process incarnation gets at most one
+  notification on entry (and one on stuck-candidate escalation), and a
+  recycled PID cannot inherit silence from a previous incarnation. Alert
+  state is dropped when the incarnation is no longer heavy.
+- **Action-level cleanup scan cadence** (`auto_cleanup_interval_secs`,
+  default 1800): the action/critical-level Rust/Trash/Nix/node_modules
+  scan is bounded even in report-only mode, so persistent disk pressure no
+  longer re-walks large trees every guard cycle. The timestamp is set before
+  the scan so a filesystem error cannot retry-loop.
+
 ### Changed
 
+- **Proactive cleanup now starts at 80% disk usage** (was 50%): stale
+  `target/` scans only run when the disk actually needs attention. Codified
+  in the example policy with the 120-cycle hourly cadence.
 - **Release pipeline hardening**: `scripts/release.sh` now runs the locked
   test/build/clippy/deny gates before mutation, verifies the packaged binary
   through an install fixture, handles already-published/committed/tagged/
@@ -26,6 +55,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release notes for inspection, and `--abort` rolls back that complete set.
 
 ### Fixed
+
+- **Disk state-change notification on restart**: starting the guard while
+  disk usage is in the ordinary `warn` band no longer fires a spurious
+  "state changed to warn" notification. Only a transition from a previous
+  in-process state notifies; an initial `critical` reading is still
+  actionable and notifies.
+- **Heavy-process notification spam**: the per-process notification now
+  honors the process-incarnation state machine instead of re-notifying every
+  `notify_cooldown_secs` while the same heavy process persists. Escalation to
+  `stuck` is still reported once.
 
 - **Swap fallback now retains `pswpout`**: the previous swap-counter sample
   stores both parsed `/proc/vmstat` counters instead of replacing `pswpout`
