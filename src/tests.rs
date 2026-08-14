@@ -9,6 +9,21 @@ fn defaults_are_expected() {
     assert_eq!(default_kinds(), "rust-build,node-deps,build-output,cache");
 }
 
+#[test]
+fn guard_clean_all_flag_is_explicit() {
+    let rust_only = CleanTargets {
+        rust: true,
+        ..CleanTargets::default()
+    };
+    let resolved = resolve_clean_targets(false, &rust_only).expect("rust target");
+    assert!(resolved.rust);
+    assert!(!resolved.trash);
+
+    let resolved_all = resolve_clean_targets(true, &rust_only).expect("all targets");
+    assert!(resolved_all.rust && resolved_all.trash && resolved_all.docker);
+    assert!(resolve_clean_targets(false, &CleanTargets::default()).is_none());
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn renice_process_with_bin_reports_success_and_failure() {

@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > is the canonical record.
 
 ## [Unreleased]
+
+- **Guard cleanup target selection is now explicit** (audit M21, 2026-08-14):
+  `guard clean` with no target flags no longer silently means “all”, and
+  `--all` now wins over individual target flags as documented.
+
+- **Workspace cleanup continues after individual deletion failures** (audit
+  M23, 2026-08-14): `storage --cleanup --apply` now reports failed paths and
+  still attempts the remaining selected paths instead of aborting on the
+  first protected or I/O error.
 ## [0.112.37] - 2026-08-14
 
 ### Added

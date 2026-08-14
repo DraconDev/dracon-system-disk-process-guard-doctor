@@ -5475,10 +5475,22 @@ impl CleanTargets {
     fn is_empty(&self) -> bool {
         !self.rust && !self.trash && !self.nix && !self.caches && !self.node_modules && !self.docker
     }
+}
 
-    /// Returns true if ANY target is enabled.
-    fn any(&self) -> bool {
-        self.rust || self.trash || self.nix || self.caches || self.node_modules || self.docker
+fn resolve_clean_targets(all: bool, targets: &CleanTargets) -> Option<CleanTargets> {
+    if all {
+        Some(CleanTargets {
+            rust: true,
+            trash: true,
+            nix: true,
+            caches: true,
+            node_modules: true,
+            docker: true,
+        })
+    } else if targets.is_empty() {
+        None
+    } else {
+        Some(targets.clone())
     }
 }
 
@@ -5490,17 +5502,16 @@ async fn cmd_guard_clean(
     targets: CleanTargets,
     min_size_mb: Option<u64>,
 ) -> Result<()> {
-    let do_all = all;
-    if !do_all && !targets.any() {
+    let Some(targets) = resolve_clean_targets(all, &targets) else {
         eprintln!("⚠️ No cleanup targets specified. Use --all to clean everything, or specify individual flags (--rust, --trash, --nix, --caches, --node-modules, --docker).");
         return Ok(());
-    }
-    let do_rust = targets.rust || do_all;
-    let do_trash = targets.trash || do_all;
-    let do_nix = targets.nix || do_all;
-    let do_caches = targets.caches || do_all;
-    let do_node = targets.node_modules || do_all;
-    let do_docker = targets.docker || do_all;
+    };
+    let do_rust = targets.rust;
+    let do_trash = targets.trash;
+    let do_nix = targets.nix;
+    let do_caches = targets.caches;
+    let do_node = targets.node_modules;
+    let do_docker = targets.docker;
 
     let mut guard_clone = guard.clone();
     if let Some(mb) = min_size_mb {
