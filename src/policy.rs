@@ -146,7 +146,9 @@ pub(crate) struct GuardPolicy {
     pub(crate) memory_pressure_sustain_secs: u64,
     // ADDED 2026-08-10 (v0.112.36): during memory pressure, deprioritize
     // the top RSS offenders (graduated nice, reversible when pressure
-    // drops). Whitelist via process_exempt_names. Never a cap.
+    // drops). The runtime requires CAP_SYS_NICE so a user service cannot
+    // leave a process permanently deprioritized when recovery needs to
+    // raise its priority. Whitelist via process_exempt_names. Never a cap.
     #[serde(default = "default_true")]
     pub(crate) auto_renice_on_memory: bool,
     // ADDED 2026-08-10 (v0.112.36): during CRITICAL memory pressure,
