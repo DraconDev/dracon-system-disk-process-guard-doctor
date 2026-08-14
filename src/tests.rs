@@ -1412,7 +1412,11 @@ async fn clean_old_node_modules_counts_nested_tree_once() {
         .await
         .expect("dry-run node_modules cleanup");
 
-    assert_eq!(cleaned.len(), 1, "nested node_modules must not be listed twice");
+    assert_eq!(
+        cleaned.len(),
+        1,
+        "nested node_modules must not be listed twice"
+    );
     assert_eq!(reclaimed, expected, "outer tree must be counted once");
     let _ = std::fs::remove_dir_all(&td);
 }
