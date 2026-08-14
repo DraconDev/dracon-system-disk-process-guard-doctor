@@ -2949,7 +2949,7 @@ fn truncate_log_file(
         total_written += line_bytes.len() as u64 + 1;
     }
 
-    for line in lines.flatten() {
+    for line in lines.map_while(Result::ok) {
         let line_bytes = line.into_bytes();
         let line_len = line_bytes.len() as u64;
         if total_written + line_len + 1 > max_size_bytes {
