@@ -2,10 +2,9 @@
 
 Disk, process, guard, doctor — local machine diagnostics and watchdog for Dracon workspaces.
 
-This repository is the **canonical "main"** for `dracon-system` on GitHub,
-GitLab, and Codeberg. It contains the actual source code (mirrored from the
-[`DraconDev/dracon-utilities`](https://github.com/DraconDev/dracon-utilities)
-monorepo), the `Cargo.toml`, tests, examples, and the per-utility README.
+This repository is the **canonical standalone source** for `dracon-system` on
+GitHub, GitLab, and Codeberg. It contains the source code, `Cargo.toml`, tests,
+examples, and release metadata.
 You can build and install this utility directly from this repo.
 
 ## Quick start (standalone build)
@@ -14,11 +13,6 @@ You can build and install this utility directly from this repo.
 # Clone this repo
 git clone https://github.com/DraconDev/dracon-system-disk-process-guard-doctor.git
 cd dracon-system-disk-process-guard-doctor
-
-# Clone required siblings (path-dep layout)
-git clone https://github.com/DraconDev/dracon-libs.git ../dracon-libs
-
-
 
 # Build
 cargo build --release
@@ -31,8 +25,8 @@ sudo cp target/release/dracon-system /usr/local/bin/
 
 - `src/` — utility source code
 - `tests/` — integration tests (if present)
-- `Cargo.toml` — standalone build manifest with path-dep siblings
-- `README.md` — this file (the per-utility README from the monorepo is at `monorepo-README.md`)
+- `Cargo.toml` — standalone build manifest with registry dependencies
+- `README.md` — this utility's user guide
 - `BLUEPRINT.md` — design notes
 - `dracon-system.example.toml` — example config
 - `dracon-system-guard.service` — systemd user-service unit
@@ -43,10 +37,10 @@ sudo cp target/release/dracon-system /usr/local/bin/
 
 | Boundary | Decision |
 |----------|----------|
-| Source code | Mirrored from `dracon-utilities/dracon-system` via `scripts/regenerate_facade_repos.py` on every monorepo commit |
-| Source of truth | `dracon-utilities` monorepo (the auto-sync is one-way) |
-| Feature surface | This repo (canonical main for `dracon-system`) |
-| Shared libraries | Sibling `dracon-libs` workspace (`../dracon-libs`) |
+| Source code | This repository's `main` branch |
+| Source of truth | This standalone repository |
+| Workspace integration | Included by the `dracon-utilities` meta workspace when checked out under `dracon-system/` |
+| Shared libraries | Published `dracon-system-lib` crate from crates.io |
 | Operational policy | `~/.dracon/utilities/` TOML files |
 
 ## Why this name?
@@ -100,12 +94,9 @@ machine-readable snapshot (disk state, memory `observed` vs stabilized
 
 ## Maintenance
 
-When the monorepo changes the utility source code, README, or example config,
-the monorepo's `post-commit` hook calls `scripts/regenerate_facade_repos.py`
-which mirrors the changes to this repo. The `dracon-sync` daemon picks up
-the local change in `/home/dracon/Dev/facade-repos/dracon-system-disk-process-guard-doctor` and
-auto-pushes to the 3 remotes (github, gitlab, codeberg). No manual
-`--apply` or `--push-all-remotes` invocation is needed in the normal flow.
+Changes are made in this standalone repository. The `dracon-sync` daemon
+watches it and pushes configured remotes; the parent meta workspace does not
+mirror source files into it.
 
 ## License
 
