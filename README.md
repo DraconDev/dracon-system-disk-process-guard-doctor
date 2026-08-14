@@ -68,6 +68,36 @@ Protects machines from disk/process pressure and provides deterministic diagnost
 - Example policy: `dracon-system/dracon-system.example.toml`
 - Common commands: `dracon-system status · dracon-system doctor · dracon-system storage · dracon-system guard daemon`
 
+## Guard behavior (observation-first)
+
+`dracon-system guard daemon` monitors disk, memory, CPU, zombies, inodes,
+logs, and cleanup candidates every `interval_secs`. Defaults are deliberately
+quiet and non-destructive:
+
+- **Report, don't act**: CPU-heavy processes are reported, not reniced
+  (`auto_renice = false`); cleanup is dry-run/report-first
+  (`auto_cleanup_apply = false`); disk pressure never pauses `dracon-sync`
+  (`freeze_sync_at_action = false`). No process is killed, reniced, or moved
+  and no file is deleted unless the operator opts in.
+- **Memory-pressure limiting is reversible and gated**: `auto_renice_on_memory`
+  and `bias_oom_on_pressure` (both default `true`) act only after a
+  multi-signal pressure state persists `memory_pressure_sustain_secs`
+  (120 s). Swap occupancy alone is **not** pressure — low available memory
+  and/or PSI/swap-in thrash is required. Hard CPU caps
+  (`cap_offenders_cpu_percent`) are off by default.
+- **Stateful, rate-limited alerts**: entry/escalation/recovery notify once;
+  unchanged conditions emit at most every `report_repeat_secs` (30 min).
+  Heavy-process alerts are keyed by pid + process start time, so a persistent
+  process cannot nag and a recycled PID cannot be silenced.
+- **Bounded scans**: action-level cleanup scans run at most every
+  `auto_cleanup_interval_secs` (30 min) even in report-only mode; proactive
+  stale-`target/` scans start at `proactive_cleanup_percent = 80`.
+
+Everything is configurable in the `[guard]` table of the policy file; see
+`dracon-system.example.toml`. `dracon-system guard once --json` prints a full
+machine-readable snapshot (disk state, memory `observed` vs stabilized
+`pressure`, zombies, offenders).
+
 ## Maintenance
 
 When the monorepo changes the utility source code, README, or example config,

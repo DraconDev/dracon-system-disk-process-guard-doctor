@@ -10,8 +10,10 @@
 - Gives you time to clean up before space becomes critical
 
 #### 2. Automatic Rust Target Cleanup
-- **Enabled by default:** `auto_cleanup_rust = true`
-- Automatically cleans `target/` directories when disk hits action level (90%)
+- **Runs at action level, report-only by default:** `auto_cleanup_rust = true`
+  scans `target/` directories when disk hits action level (90%); deletion
+  additionally requires `auto_cleanup_apply = true`. Scan cadence is bounded
+  by `auto_cleanup_interval_secs` (default 1800).
 - Smart protection for active builds:
   - Detects running `cargo`, `rustc`, `clippy-driver` processes
   - Protects target dirs in their working directories
@@ -42,11 +44,15 @@ disk_warn_percent = 80
 disk_action_percent = 90
 disk_critical_percent = 95
 
-# Automatic Rust target cleanup
+# Automatic Rust target cleanup (scan at action level; delete only with auto_cleanup_apply = true)
 auto_cleanup_rust = true
+auto_cleanup_interval_secs = 1800
 cleanup_min_size_mb = 256
-rust_search_roots = "~/Dev,~/dracon"
-protect_recent_minutes = 30
+rust_search_roots = "~/Dev"
+
+# Proactive stale-target scan (starts at 80%, hourly cadence)
+proactive_cleanup_percent = 80
+proactive_cleanup_interval_cycles = 120
 
 # Trend prediction
 track_trends = true
@@ -57,12 +63,46 @@ trend_warn_hours = 24
 
 | State | Default Threshold | Action |
 |-------|------------------|--------|
-| early-warn | 70% | Notification only |
-| warn | 80% | Notification, state change |
-| action | 90% | Freeze sync, auto-cleanup Rust targets |
+| early-warn | 70% | Notification only (transition-based) |
+| warn | 80% | Notification, state change (transition-based) |
+| action | 90% | Rate-limited cleanup scan (report-only by default) |
 | critical | 95% | All above actions, more aggressive |
 
----
+## Guard Reporting & Pressure Classification (v0.112.37)
+
+### State-aware reporting
+
+Every reportable condition (memory pressure, zombies, heavy processes,
+rapid disk fill, early warning, disk state, cleanup outcomes) flows through
+`report_state_transition()`:
+
+- Entry / escalation / recovery notify **once**, immediately.
+- Unchanged non-`ok` conditions repeat at most every `report_repeat_secs`
+  (default 1800 = 30 min).
+- Structured events and desktop notifications share the same backoff.
+- Heavy-process alert keys are `pid + /proc starttime`, so one process
+  incarnation cannot nag and a recycled PID cannot inherit silence.
+- Disk state-change notifications require an in-process transition; a
+  service restart in the ordinary `warn` band stays silent (an initial
+  `critical` reading still notifies).
+
+### Memory pressure needs sustained multi-signal evidence
+
+Swap occupancy alone is **not** pressure. `classify_memory_pressure` requires
+low available memory and/or active PSI/swap-in thrash, and the candidate
+state must persist `memory_pressure_sustain_secs` (default 120 s) before any
+notification, renice, or OOM bias fires. `guard once --json` reports both
+`observed_pressure` (instantaneous) and `pressure` (stabilized state used for
+actions).
+
+### Bounded cleanup scans
+
+- Action-level scans (`run_auto_cleanup`): at most every
+  `auto_cleanup_interval_secs` (default 1800) in apply *and* report-only
+  mode; the timestamp is set before the scan so a persistent filesystem
+  error cannot retry-loop.
+- Proactive cleanup: starts at `proactive_cleanup_percent` (80 on the
+  example/live policy) with the 120-cycle cadence.
 
 ## Issues Fixed
 
