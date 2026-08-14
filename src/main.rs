@@ -3842,6 +3842,7 @@ async fn check_heavy_processes(
     let exempt = parse_kinds(&guard.process_exempt_names);
     let samples = process_samples().await?;
     let mut current_heavy = HashSet::new();
+    let mut current_report_keys = HashSet::new();
     let mut alerts = Vec::new();
 
     for p in samples {
@@ -3853,6 +3854,8 @@ async fn check_heavy_processes(
             continue;
         }
         current_heavy.insert(p.pid);
+        let report_key = format!("heavy-process-{}-{}", p.pid, p.starttime);
+        current_report_keys.insert(report_key.clone());
         let now = Instant::now();
         // ADDED 2026-07-21 (v0.112.33, audit M34/F4.8): record the
         // /proc starttime at first sight and detect PID reuse — a
@@ -3973,8 +3976,10 @@ async fn check_heavy_processes(
             }
         }
 
-        let key = format!("proc-{}", p.pid);
-        if should_notify(state, &key, guard.notify_cooldown_secs) {
+        let alert_state = if stuck { "stuck" } else { "heavy" };
+        let (previous, _) =
+            report_state_transition(state, &report_key, alert_state, guard.report_repeat_secs);
+        if previous.as_deref() != Some(alert_state) {
             send_notification(
                 guard,
                 "Dracon System Guard",
@@ -4019,6 +4024,12 @@ async fn check_heavy_processes(
     state
         .heavy_since
         .retain(|pid, _| current_heavy.contains(pid));
+    // Drop alert state when the process incarnation is no longer heavy so a
+    // later recurrence can produce one fresh notification. Including
+    // /proc starttime in the key prevents PID reuse from inheriting silence.
+    state
+        .report_states
+        .retain(|key, _| !key.starts_with("heavy-process-") || current_report_keys.contains(key));
 
     // Un-renice recovery: processes that are no longer heavy
     let now = Instant::now();
