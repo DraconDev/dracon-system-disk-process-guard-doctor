@@ -92,3 +92,9 @@ fn shorten_event_time_non_rfc3339() {
     let truncated = "2026-05-15T17:22:57";
     assert_eq!(shorten_event_time(truncated), "2026-05-15T17:22:57");
 }
+
+#[test]
+fn shorten_event_time_non_ascii_is_safe() {
+    let value = "2026-05-15T17:22:é7";
+    assert_eq!(crate::shorten_event_time(value), "2026-05-15T17:22:é7");
+}

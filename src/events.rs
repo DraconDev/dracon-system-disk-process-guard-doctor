@@ -271,7 +271,10 @@ pub(crate) fn shorten_event_time(ts: &str) -> String {
         return format!("{}mo", days / 30);
     }
     if ts.len() > 19 {
-        ts[..19].to_string()
+        // Keep the display fallback Unicode-safe. Byte slicing at an
+        // arbitrary offset can panic when malformed/non-RFC input contains
+        // a multibyte character near the cutoff.
+        ts.chars().take(19).collect()
     } else {
         ts.to_string()
     }

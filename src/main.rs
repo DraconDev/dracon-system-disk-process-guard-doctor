@@ -89,7 +89,6 @@ pub(crate) fn acquire_daemon_lock(name: &str) -> Result<File> {
 
     let file = std::fs::OpenOptions::new()
         .create(true)
-        .truncate(true)
         .write(true)
         .mode(0o600)
         .open(&lock_file)?;
@@ -98,6 +97,10 @@ pub(crate) fn acquire_daemon_lock(name: &str) -> Result<File> {
         return Err(anyhow::anyhow!("lock file is held by another process"));
     }
 
+    // Never truncate before acquiring the lock: another guard process could
+    // otherwise erase the first process's lock-file contents before learning
+    // that it must exit. Once the exclusive lock is held, clearing stale
+    // diagnostic contents is safe.
     file.set_len(0)?;
 
     #[cfg(unix)]
@@ -2355,8 +2358,8 @@ async fn proactive_cleanup_rust_targets(
     Ok(result)
 }
 
-async fn inode_use_percent() -> Result<u8> {
-    let out = Command::new("df").args(["-Pi", "/"]).output().await?;
+async fn inode_use_percent(path: &str) -> Result<u8> {
+    let out = Command::new("df").args(["-Pi", path]).output().await?;
 
     if !out.status.success() {
         return Err(anyhow::anyhow!("df -i command failed"));
@@ -2371,9 +2374,9 @@ async fn inode_use_percent() -> Result<u8> {
         .ok_or_else(|| anyhow::anyhow!("failed parsing df -i output"))
 }
 
-/// Get inode info for root filesystem
-async fn get_inode_info() -> Result<(u64, u64, u64)> {
-    let out = Command::new("df").args(["-Pi", "/"]).output().await?;
+/// Get inode info for the configured filesystem.
+async fn get_inode_info(path: &str) -> Result<(u64, u64, u64)> {
+    let out = Command::new("df").args(["-Pi", path]).output().await?;
 
     if !out.status.success() {
         return Err(anyhow::anyhow!("df -i command failed"));
@@ -2687,7 +2690,7 @@ fn resolve_bin(name: &str) -> String {
         .unwrap_or_else(|| name.to_string());
     cache
         .lock()
-        .unwrap()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
         .insert(name.to_string(), result.clone());
     result
 }
@@ -2750,7 +2753,7 @@ async fn clean_nix_garbage(keep_generations: u32, apply: bool) -> Result<(u64, V
         reclaimed = delete_count as u64 * 1024 * 1024;
     }
 
-    if !errs.is_empty() && reclaimed == 0 {
+    if !errs.is_empty() {
         return Err(anyhow::anyhow!(
             "nix cleanup had {} error(s): {}",
             errs.len(),
@@ -4128,7 +4131,7 @@ async fn check_inode_usage(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
     if !guard.monitor_inodes {
         return;
     }
-    if let Ok(inode_percent) = inode_use_percent().await {
+    if let Ok(inode_percent) = inode_use_percent(&guard.disk_mount_path).await {
         if inode_percent >= guard.inode_warn_percent {
             let key = "inode-warning".to_string();
             if should_notify(state, &key, guard.notify_cooldown_secs.max(1800)) {
@@ -5416,7 +5419,7 @@ async fn cmd_guard_prune(
         let disk = disk_use_percent_for(&guard.disk_mount_path).await?;
         println!("Disk usage: {}% (mount: {})", disk, guard.disk_mount_path);
 
-        if let Ok((total, used, _free)) = get_inode_info().await {
+        if let Ok((total, used, _free)) = get_inode_info(&guard.disk_mount_path).await {
             let pct = used.saturating_mul(100).checked_div(total).unwrap_or(0) as u8;
             println!("Inode usage: {}% ({}/{} inodes used)", pct, used, total);
         }
