@@ -89,6 +89,7 @@ pub(crate) fn acquire_daemon_lock(name: &str) -> Result<File> {
 
     let file = std::fs::OpenOptions::new()
         .create(true)
+        .truncate(false)
         .write(true)
         .mode(0o600)
         .open(&lock_file)?;
