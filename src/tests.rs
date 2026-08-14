@@ -1362,10 +1362,8 @@ fn target_dir_info_has_mtime() {
 
 #[test]
 fn truncate_log_preserves_open_writer_inode() {
-    let td = std::env::temp_dir().join(format!(
-        "dracon-system-truncate-log-{}",
-        std::process::id()
-    ));
+    let td =
+        std::env::temp_dir().join(format!("dracon-system-truncate-log-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&td);
     std::fs::create_dir_all(&td).expect("temp dir");
     let path = td.join("guard.log");
@@ -1385,7 +1383,36 @@ fn truncate_log_preserves_open_writer_inode() {
 
     let content = std::fs::read_to_string(&path).expect("read log");
     assert!(content.starts_with("header\n"));
-    assert!(content.contains("tail\n"), "writer output must remain visible");
+    assert!(
+        content.contains("tail\n"),
+        "writer output must remain visible"
+    );
     assert!(!content.contains("body-two"));
+    let _ = std::fs::remove_dir_all(&td);
+}
+
+#[tokio::test]
+async fn clean_old_node_modules_counts_nested_tree_once() {
+    let td = std::env::temp_dir().join(format!(
+        "dracon-system-node-modules-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    let outer = td.join("project/node_modules");
+    let inner = outer.join("nested/node_modules");
+    std::fs::create_dir_all(&inner).expect("create nested node_modules");
+    std::fs::write(outer.join("outer.bin"), vec![b'o'; 17]).expect("write outer file");
+    std::fs::write(inner.join("inner.bin"), vec![b'i'; 29]).expect("write inner file");
+
+    let expected = get_dir_size(&outer).await.expect("measure outer tree");
+    let (reclaimed, cleaned) = clean_old_node_modules(&[td.clone()], 0, false, &[])
+        .await
+        .expect("dry-run node_modules cleanup");
+
+    assert_eq!(cleaned.len(), 1, "nested node_modules must not be listed twice");
+    assert_eq!(reclaimed, expected, "outer tree must be counted once");
     let _ = std::fs::remove_dir_all(&td);
 }

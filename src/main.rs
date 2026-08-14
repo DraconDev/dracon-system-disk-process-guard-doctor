@@ -2801,6 +2801,19 @@ async fn clean_old_node_modules(
             .max_depth(5)
             .follow_links(false)
             .into_iter()
+            // Once an outer node_modules directory is considered, its
+            // descendants are included in the outer size and will be
+            // removed with it. Do not visit nested node_modules trees or
+            // count them a second time.
+            .filter_entry(|entry| {
+                entry.depth() == 0
+                    || entry
+                        .path()
+                        .parent()
+                        .and_then(|parent| parent.file_name())
+                        .map(|name| name != "node_modules")
+                        .unwrap_or(true)
+            })
             .filter_map(|e| e.ok())
         {
             if !entry.file_type().is_dir() {

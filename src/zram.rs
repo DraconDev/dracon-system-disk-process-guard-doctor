@@ -101,9 +101,9 @@ pub(crate) fn cmd_zram(
         println!("  Compressed:    {:.1} GB", compr_gb);
         println!("  RAM used:      {:.1} GB", mem_used_gb);
         println!(
-            "  Compression ratio: {:.1}% ({:.1}x)",
-            ratio * 100.0,
-            if ratio > 0.0 { 1.0 / ratio } else { 0.0 }
+            "  Compression ratio: {:.1}x (compressed data is {:.1}% of original)",
+            if ratio > 0.0 { 1.0 / ratio } else { 0.0 },
+            ratio * 100.0
         );
         println!();
         println!("Configuration options:");
