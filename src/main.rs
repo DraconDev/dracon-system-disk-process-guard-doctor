@@ -2915,64 +2915,64 @@ fn truncate_log_file(
     }
 
     if preserve_header_lines == 0 {
-        // Simple truncate: open with truncate flag
+        // Truncate the existing inode in place. Replacing the path with a
+        // temporary file makes any process that already has the log open
+        // continue writing to an unlinked inode, losing those later lines.
         let file = std::fs::OpenOptions::new().write(true).open(path)?;
+        if file.metadata()?.len() != original_size {
+            // A writer changed the file while it was being inspected. Leave
+            // it alone and let the next cleanup pass retry safely.
+            return Ok(0);
+        }
         file.set_len(max_size_bytes)?;
         let new_size = file.metadata()?.len();
         return Ok(original_size.saturating_sub(new_size));
     }
 
-    // Preserve header lines: read first N lines, write them to temp file,
-    // then rename temp over original
+    // Preserve header lines in memory, then write them back to the same inode.
     let file = std::fs::File::open(path)?;
     let reader = BufReader::new(file);
-    let mut header_lines: Vec<Vec<u8>> = Vec::new();
+    let mut replacement = Vec::new();
+    let mut lines = reader.lines();
+    let mut total_written = 0u64;
 
-    for (i, line_result) in reader.lines().enumerate() {
-        if i >= preserve_header_lines {
+    for _ in 0..preserve_header_lines {
+        let Some(line_result) = lines.next() else {
             break;
-        }
-        if let Ok(line) = line_result {
-            header_lines.push(line.into_bytes());
-        } else {
+        };
+        let Ok(line) = line_result else {
             break;
-        }
+        };
+        let line_bytes = line.into_bytes();
+        replacement.extend_from_slice(&line_bytes);
+        replacement.push(b'\n');
+        total_written += line_bytes.len() as u64 + 1;
     }
 
-    // Write header + max content to temp file
-    let temp_path = path.with_extension(format!(
-        "{}.truncated.{}",
-        path.extension().and_then(|e| e.to_str()).unwrap_or("log"),
-        std::process::id()
-    ));
-    {
-        let mut temp_file = std::fs::File::create(&temp_path)?;
-        let mut total_written = 0u64;
-        for line_bytes in &header_lines {
-            temp_file.write_all(line_bytes)?;
-            temp_file.write_all(b"\n")?;
-            total_written += line_bytes.len() as u64 + 1;
+    for line in lines.flatten() {
+        let line_bytes = line.into_bytes();
+        let line_len = line_bytes.len() as u64;
+        if total_written + line_len + 1 > max_size_bytes {
+            break;
         }
-
-        let file = std::fs::File::open(path)?;
-        let reader = BufReader::new(file);
-        for line in reader.lines().skip(preserve_header_lines).flatten() {
-            let line_bytes = line.into_bytes();
-            let line_len = line_bytes.len() as u64;
-
-            if total_written + line_len + 1 > max_size_bytes {
-                break;
-            }
-
-            temp_file.write_all(&line_bytes)?;
-            temp_file.write_all(b"\n")?;
-            total_written += line_len + 1;
-        }
+        replacement.extend_from_slice(&line_bytes);
+        replacement.push(b'\n');
+        total_written += line_len + 1;
     }
 
-    // Atomically replace original
-    std::fs::rename(&temp_path, path)?;
-    let new_size = std::fs::metadata(path)?.len();
+    if std::fs::metadata(path)?.len() != original_size {
+        // Do not overwrite content that was appended while we were reading.
+        return Ok(0);
+    }
+
+    let mut output = std::fs::OpenOptions::new().write(true).open(path)?;
+    if output.metadata()?.len() != original_size {
+        return Ok(0);
+    }
+    output.set_len(0)?;
+    output.write_all(&replacement)?;
+    output.flush()?;
+    let new_size = output.metadata()?.len();
     Ok(original_size.saturating_sub(new_size))
 }
 

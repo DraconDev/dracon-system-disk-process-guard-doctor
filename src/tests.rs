@@ -1344,3 +1344,33 @@ fn target_dir_info_has_mtime() {
     assert_eq!(info.mtime_secs_ago, 86400 * 15);
     assert_eq!(info.bytes, 1024);
 }
+
+#[test]
+fn truncate_log_preserves_open_writer_inode() {
+    let td = std::env::temp_dir().join(format!(
+        "dracon-system-truncate-log-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&td);
+    std::fs::create_dir_all(&td).expect("temp dir");
+    let path = td.join("guard.log");
+    std::fs::write(&path, "header\nbody-one\nbody-two\n").expect("log");
+
+    // Keep an append handle open as a long-running logger would. A rename-
+    // based truncation leaves this handle on an unlinked inode; in-place
+    // truncation keeps subsequent lines visible at the original path.
+    let mut writer = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&path)
+        .expect("open writer");
+    let reclaimed = truncate_log_file(&path, 12, 1).expect("truncate");
+    assert!(reclaimed > 0);
+    use std::io::Write;
+    writer.write_all(b"tail\n").expect("append after truncate");
+
+    let content = std::fs::read_to_string(&path).expect("read log");
+    assert!(content.starts_with("header\n"));
+    assert!(content.contains("tail\n"), "writer output must remain visible");
+    assert!(!content.contains("body-two"));
+    let _ = std::fs::remove_dir_all(&td);
+}
