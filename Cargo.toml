@@ -1,6 +1,6 @@
 [package]
 name = "dracon-system"
-version = "0.112.36"
+version = "0.112.37"
 edition = "2021"
 license = "AGPL-3.0-only"
 description = "Disk, process, storage, and service diagnostics for local development machines"
