@@ -497,6 +497,9 @@ pub(crate) struct GuardRuntimeState {
     pub(crate) cooled_since: HashMap<i32, Instant>,
     pub(crate) guard_cycle: u64,
     pub(crate) last_proactive_cleanup: Option<Instant>,
+    /// Last action-level cleanup scan. Even report-only scans are bounded
+    /// because they walk large Rust and Node trees.
+    pub(crate) last_auto_cleanup: Option<Instant>,
 }
 
 /// Information about a Rust target directory for cleanup consideration
@@ -4108,6 +4111,16 @@ async fn check_heavy_processes(
     Ok(alerts)
 }
 
+fn auto_cleanup_due_at(
+    state: &GuardRuntimeState,
+    interval_secs: u64,
+    now: Instant,
+) -> bool {
+    state.last_auto_cleanup.is_none_or(|last| {
+        now.duration_since(last).as_secs() >= interval_secs.max(60)
+    })
+}
+
 fn cleanup_stale_cooldowns(state: &mut GuardRuntimeState, cooldown_secs: u64) {
     let cutoff = Instant::now() - Duration::from_secs(cooldown_secs.saturating_mul(2));
     state
@@ -4380,7 +4393,13 @@ pub(crate) async fn run_guard_once(
     manage_sync_freeze(guard, used, &dstate, &mut sync_frozen);
 
     if dstate == "action" || dstate == "critical" {
-        run_auto_cleanup(guard, state, used).await?;
+        let now = Instant::now();
+        if auto_cleanup_due_at(state, guard.auto_cleanup_interval_secs, now) {
+            // Set the timestamp before the scan so a persistent filesystem
+            // error cannot turn into a 30-second retry loop.
+            state.last_auto_cleanup = Some(now);
+            run_auto_cleanup(guard, state, used).await?;
+        }
     } else if used >= guard.proactive_cleanup_percent && guard.auto_cleanup_rust {
         state.guard_cycle += 1;
         let interval = guard.proactive_cleanup_interval_cycles;
@@ -4531,6 +4550,7 @@ pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) {
     policy.swap_used_warn_percent = policy.swap_used_warn_percent.clamp(1, 100);
     policy.memory_pressure_sustain_secs = policy.memory_pressure_sustain_secs.max(30);
     policy.report_repeat_secs = policy.report_repeat_secs.max(60);
+    policy.auto_cleanup_interval_secs = policy.auto_cleanup_interval_secs.max(60);
     // systemd CPUQuota accepts values above 100%, but this knob is a cap
     // expressed as a percentage of one CPU. Keep invalid values from
     // reaching the per-pass cap loop, where they would fail and retry for

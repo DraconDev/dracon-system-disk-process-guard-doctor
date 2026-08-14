@@ -104,6 +104,11 @@ pub(crate) struct GuardPolicy {
     pub(crate) auto_cleanup_rust: bool,
     #[serde(default)]
     pub(crate) auto_cleanup_apply: bool,
+    // Keep the action-level dry-run/cleanup scan from running every guard
+    // cycle while disk pressure persists. This is deliberately independent
+    // from report_repeat_secs: scanning the tree is work, not just reporting.
+    #[serde(default = "default_auto_cleanup_interval_secs")]
+    pub(crate) auto_cleanup_interval_secs: u64,
     #[serde(default = "default_cleanup_min_size_mb")]
     pub(crate) cleanup_min_size_mb: u64,
     #[serde(default = "default_rust_search_roots")]
@@ -242,6 +247,7 @@ impl Default for GuardPolicy {
             guard_log_max_mb: default_guard_log_max_mb(),
             auto_cleanup_rust: default_auto_cleanup_rust(),
             auto_cleanup_apply: false,
+            auto_cleanup_interval_secs: default_auto_cleanup_interval_secs(),
             cleanup_min_size_mb: default_cleanup_min_size_mb(),
             rust_search_roots: default_rust_search_roots(),
             node_modules_search_roots: default_node_modules_search_roots(),
@@ -490,7 +496,11 @@ pub(crate) fn default_nix_keep_generations() -> u32 {
 }
 
 pub(crate) fn default_proactive_cleanup_percent() -> u8 {
-    50
+    80
+}
+
+pub(crate) fn default_auto_cleanup_interval_secs() -> u64 {
+    1800
 }
 
 pub(crate) fn default_rust_target_max_age_days() -> u64 {
