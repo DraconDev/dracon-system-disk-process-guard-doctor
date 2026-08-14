@@ -2697,7 +2697,7 @@ fn resolve_bin(name: &str) -> String {
 
 /// Run nix-collect-garbage
 async fn clean_nix_garbage(keep_generations: u32, apply: bool) -> Result<(u64, Vec<String>)> {
-    let mut reclaimed = 0u64;
+    let reclaimed = 0u64;
     let mut cleaned = Vec::new();
     let mut errs = Vec::new();
 
@@ -2762,7 +2762,9 @@ async fn clean_nix_garbage(keep_generations: u32, apply: bool) -> Result<(u64, V
     let delete_count = text.lines().filter(|l| l.contains("deleting")).count();
     if delete_count > 0 {
         cleaned.push(format!("nix store garbage ({} paths)", delete_count));
-        reclaimed = delete_count as u64 * 1024 * 1024;
+        // nix-collect-garbage reports paths here, not their byte sizes. Do
+        // not turn a path count into a made-up reclaim estimate; callers use
+        // `reclaimed` for accounting and a false value is worse than zero.
     }
 
     if !errs.is_empty() {
