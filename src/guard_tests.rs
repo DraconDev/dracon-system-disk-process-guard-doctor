@@ -393,6 +393,93 @@ fn should_notify_respects_cooldown() {
     assert!(third);
 }
 
+#[test]
+fn report_state_transition_suppresses_unchanged_events() {
+    let mut state = crate::GuardRuntimeState::default();
+    let (previous, first) = crate::report_state_transition(&mut state, "memory", "warn", 1800);
+    assert!(previous.is_none());
+    assert!(first);
+
+    let (previous, repeated) = crate::report_state_transition(&mut state, "memory", "warn", 1800);
+    assert_eq!(previous.as_deref(), Some("warn"));
+    assert!(!repeated, "unchanged state must not emit every guard cycle");
+
+    let (previous, recovery) = crate::report_state_transition(&mut state, "memory", "ok", 1800);
+    assert_eq!(previous.as_deref(), Some("warn"));
+    assert!(recovery, "state transitions should emit immediately");
+}
+
+#[test]
+fn memory_pressure_ignores_swap_occupancy_without_active_pressure() {
+    assert_eq!(
+        crate::classify_memory_pressure(false, true, false),
+        "ok",
+        "cold pages in swap are not active pressure"
+    );
+    assert_eq!(
+        crate::classify_memory_pressure(true, false, false),
+        "warn"
+    );
+    assert_eq!(
+        crate::classify_memory_pressure(true, true, false),
+        "critical"
+    );
+    assert_eq!(
+        crate::classify_memory_pressure(false, false, true),
+        "warn"
+    );
+}
+
+#[test]
+fn memory_pressure_requires_persistence_before_transition() {
+    let mut state = crate::GuardRuntimeState::default();
+    let start = Instant::now();
+
+    let (stable, previous, changed) =
+        crate::stabilize_memory_pressure_at(&mut state, "warn", 120, start);
+    assert_eq!(stable, "ok");
+    assert!(previous.is_none());
+    assert!(!changed);
+
+    let (stable, _, changed) = crate::stabilize_memory_pressure_at(
+        &mut state,
+        "warn",
+        120,
+        start + Duration::from_secs(119),
+    );
+    assert_eq!(stable, "ok");
+    assert!(!changed);
+
+    let (stable, previous, changed) = crate::stabilize_memory_pressure_at(
+        &mut state,
+        "warn",
+        120,
+        start + Duration::from_secs(120),
+    );
+    assert_eq!(stable, "warn");
+    assert_eq!(previous.as_deref(), Some("ok"));
+    assert!(changed);
+
+    let (stable, _, changed) = crate::stabilize_memory_pressure_at(
+        &mut state,
+        "ok",
+        120,
+        start + Duration::from_secs(121),
+    );
+    assert_eq!(stable, "warn");
+    assert!(!changed);
+
+    let (stable, previous, changed) = crate::stabilize_memory_pressure_at(
+        &mut state,
+        "ok",
+        120,
+        start + Duration::from_secs(241),
+    );
+    assert_eq!(stable, "ok");
+    assert_eq!(previous.as_deref(), Some("warn"));
+    assert!(changed);
+}
+
 // ---------------------------------------------------------------------------
 // prediction
 // ---------------------------------------------------------------------------
@@ -651,8 +738,12 @@ fn oom_bias_target_boundaries() {
 #[test]
 fn memory_limiter_policy_defaults_are_safe() {
     let p = crate::GuardPolicy::default();
+    assert!(!p.freeze_sync_at_action, "sync freeze must be opt-in");
+    assert!(!p.auto_renice, "CPU priority changes must be opt-in");
     assert!(p.auto_renice_on_memory, "renice-on-memory default on");
     assert!(p.bias_oom_on_pressure, "oom-bias default on");
+    assert_eq!(p.memory_pressure_sustain_secs, 120);
+    assert_eq!(p.report_repeat_secs, 1800);
     assert_eq!(
         p.cap_offenders_cpu_percent, 0,
         "CPUQuota offender caps default OFF (opt-in)"

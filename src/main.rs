@@ -4287,12 +4287,6 @@ async fn check_large_logs(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
 
 async fn run_proactive_cleanup(guard: &GuardPolicy, state: &mut GuardRuntimeState) -> Result<()> {
     let apply = guard.auto_cleanup_apply;
-    if !apply {
-        eprintln!(
-            "💡 proactive cleanup in dry-run mode (set auto_cleanup_apply = true to execute)"
-        );
-    }
-
     let mut total_reclaimed = 0u64;
     let mut all_cleaned: Vec<String> = Vec::new();
 
@@ -4300,8 +4294,10 @@ async fn run_proactive_cleanup(guard: &GuardPolicy, state: &mut GuardRuntimeStat
         match proactive_cleanup_rust_targets(guard, state, apply).await {
             Ok(result) => {
                 total_reclaimed += result.reclaimed_bytes;
-                for p in &result.cleaned_paths {
-                    eprintln!("🧹 Proactive Rust: {}", p);
+                if apply {
+                    for p in &result.cleaned_paths {
+                        eprintln!("🧹 Proactive Rust: {}", p);
+                    }
                 }
                 all_cleaned.extend(result.cleaned_paths);
             }
@@ -4309,28 +4305,39 @@ async fn run_proactive_cleanup(guard: &GuardPolicy, state: &mut GuardRuntimeStat
         }
     }
 
-    if total_reclaimed > 0 {
-        let key = "proactive-cleanup".to_string();
-        if should_notify(state, &key, guard.notify_cooldown_secs.max(3600)) {
-            send_notification(
-                guard,
-                "Dracon System Guard - Proactive Cleanup",
-                &format!(
-                    "Proactively reclaimed {} ({} stale items)",
-                    human_bytes(total_reclaimed),
-                    all_cleaned.len()
-                ),
-            )
-            .await;
-        }
+    let cleanup_state = if all_cleaned.is_empty() {
+        "ok"
+    } else if apply {
+        "applied"
+    } else {
+        "candidates"
+    };
+    let (previous, event_due) = report_state_transition(
+        state,
+        "proactive-cleanup",
+        cleanup_state,
+        guard.report_repeat_secs,
+    );
+    if apply && total_reclaimed > 0 && previous.as_deref() != Some("applied") {
+        send_notification(
+            guard,
+            "Dracon System Guard - Proactive Cleanup",
+            &format!(
+                "Reclaimed {} ({} stale items)",
+                human_bytes(total_reclaimed),
+                all_cleaned.len()
+            ),
+        )
+        .await;
+    } else if !apply && cleanup_state == "candidates" && event_due {
         emit_event(&DraconEvent::new(
             "system",
             EventSeverity::Info,
             "guard/proactive-cleanup",
             format!(
-                "reclaimed {} from {} stale items",
-                human_bytes(total_reclaimed),
-                all_cleaned.len()
+                "dry-run identified {} stale items (estimated {})",
+                all_cleaned.len(),
+                human_bytes(total_reclaimed)
             ),
         ));
     }
