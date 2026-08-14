@@ -4960,15 +4960,29 @@ async fn cmd_storage(
         }
 
         let user_protected = policy.guard.protected_paths.clone();
+        let mut cleanup_failures = Vec::new();
         if cfg.apply {
             for path in actionable {
-                let safe_path = check_safe_to_delete(&path, &user_protected)?;
-                if safe_path.exists() {
-                    println!("🗑️  Deleting {}", path.display());
-                    tokio::fs::remove_dir_all(&safe_path).await?;
+                match check_safe_to_delete(&path, &user_protected) {
+                    Ok(safe_path) if safe_path.exists() => {
+                        println!("🗑️  Deleting {}", path.display());
+                        if let Err(e) = tokio::fs::remove_dir_all(&safe_path).await {
+                            cleanup_failures.push(format!("{}: {}", path.display(), e));
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(e) => cleanup_failures.push(format!("{}: {}", path.display(), e)),
                 }
             }
-            println!("✅ Cleanup complete.");
+            if cleanup_failures.is_empty() {
+                println!("✅ Cleanup complete.");
+            } else {
+                eprintln!("⚠️ {} cleanup path(s) failed:", cleanup_failures.len());
+                for failure in &cleanup_failures {
+                    eprintln!("  • {}", failure);
+                }
+                println!("Cleanup completed with failures; successful paths were removed.");
+            }
         } else {
             println!("💡 No changes made. Re-run with --apply to execute cleanup.");
         }
@@ -5472,10 +5486,11 @@ async fn cmd_guard_clean(
     guard: &GuardPolicy,
     json: bool,
     apply: bool,
+    all: bool,
     targets: CleanTargets,
     min_size_mb: Option<u64>,
 ) -> Result<()> {
-    let do_all = targets.is_empty();
+    let do_all = all;
     if !do_all && !targets.any() {
         eprintln!("⚠️ No cleanup targets specified. Use --all to clean everything, or specify individual flags (--rust, --trash, --nix, --caches, --node-modules, --docker).");
         return Ok(());
@@ -5672,7 +5687,7 @@ async fn cmd_guard(cmd: GuardCommands) -> Result<()> {
             caches,
             node_modules,
             docker,
-            all: _,
+            all,
             min_size_mb,
         } => {
             let targets = CleanTargets {
@@ -5683,7 +5698,7 @@ async fn cmd_guard(cmd: GuardCommands) -> Result<()> {
                 node_modules,
                 docker,
             };
-            cmd_guard_clean(&guard, json, apply, targets, min_size_mb).await
+            cmd_guard_clean(&guard, json, apply, all, targets, min_size_mb).await
         }
     }
 }
