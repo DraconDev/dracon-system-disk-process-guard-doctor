@@ -365,7 +365,10 @@ pub(crate) struct MemoryReport {
     pub(crate) psi_full_avg10: Option<f64>,
     /// Swap-in rate (pages/s) — fallback thrash signal when PSI is off.
     pub(crate) pswpin_rate: Option<f64>,
-    /// "ok" | "warn" | "critical"
+    /// The instantaneous classification before persistence/hysteresis.
+    pub(crate) observed_pressure: String,
+    /// The stabilized classification used for notifications and mitigation:
+    /// "ok" | "warn" | "critical".
     pub(crate) pressure: String,
     /// Top RSS offenders for diagnostics and optional pressure mitigation.
     pub(crate) top_rss: Vec<ProcSample>,
@@ -430,6 +433,12 @@ pub(crate) struct OomPendingDescendant {
     pub(crate) identity: ProcessIdentity,
 }
 
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ReportState {
+    pub(crate) value: String,
+    pub(crate) last_emitted: Option<Instant>,
+}
+
 #[derive(Default, Debug)]
 pub(crate) struct GuardRuntimeState {
     /// CHANGED 2026-07-21 (v0.112.33, audit M34/F4.8): value is now
@@ -440,6 +449,9 @@ pub(crate) struct GuardRuntimeState {
     /// skipped).
     pub(crate) heavy_since: HashMap<i32, (Instant, u64)>,
     pub(crate) notify_cooldowns: HashMap<String, Instant>,
+    /// State-aware event throttling. Repeated unchanged observations are
+    /// retained for on-demand inspection but are not emitted every cycle.
+    pub(crate) report_states: HashMap<String, ReportState>,
     pub(crate) last_disk_state: String,
     pub(crate) disk_history: Vec<(Instant, u8)>,
     /// ADDED 2026-08-10 (v0.112.35): byte-precise df history for
@@ -452,6 +464,11 @@ pub(crate) struct GuardRuntimeState {
     /// ADDED 2026-08-10 (v0.112.35): last pswpin/pswpout counters
     /// for the swap-thrash fallback when PSI is unavailable.
     pub(crate) prev_swap_counters: Option<(Instant, u64, u64)>,
+    /// Hysteresis state for memory pressure. A transient observed state
+    /// must persist before it can trigger mitigation or notification.
+    pub(crate) memory_pressure_state: String,
+    pub(crate) memory_pressure_candidate: String,
+    pub(crate) memory_pressure_candidate_since: Option<Instant>,
     /// ADDED 2026-08-10 (v0.112.36): pids reniced by the memory-
     /// pressure limiter (original/applied nice, stable process identity),
     /// and their release timers.
@@ -1067,6 +1084,87 @@ pub(crate) fn should_notify(state: &mut GuardRuntimeState, key: &str, cooldown_s
         now + Duration::from_secs(cooldown_secs.max(1)),
     );
     true
+}
+
+/// Update a report state and decide whether a structured event is due.
+/// State transitions are emitted immediately; an unchanged non-OK state is
+/// repeated only after `repeat_secs`. This keeps the event stream useful for
+/// diagnosis without turning a 30-second guard loop into notification spam.
+pub(crate) fn report_state_transition(
+    state: &mut GuardRuntimeState,
+    key: &str,
+    value: &str,
+    repeat_secs: u64,
+) -> (Option<String>, bool) {
+    let now = Instant::now();
+    let entry = state.report_states.entry(key.to_string()).or_default();
+    let previous = if entry.value.is_empty() {
+        None
+    } else {
+        Some(entry.value.clone())
+    };
+    let changed = previous.as_deref() != Some(value);
+    let repeat_due = entry
+        .last_emitted
+        .is_none_or(|last| now.duration_since(last).as_secs() >= repeat_secs.max(1));
+    let should_emit = changed || (value != "ok" && repeat_due);
+    entry.value = value.to_string();
+    if should_emit {
+        entry.last_emitted = Some(now);
+    }
+    (previous, should_emit)
+}
+
+/// Classify memory pressure from active signals. Swap occupancy alone is not
+/// pressure: it becomes relevant when paired with low available memory.
+pub(crate) fn classify_memory_pressure(
+    mem_low: bool,
+    swap_high: bool,
+    psi_or_swapin_active: bool,
+) -> &'static str {
+    if mem_low && (swap_high || psi_or_swapin_active) {
+        "critical"
+    } else if mem_low || psi_or_swapin_active {
+        "warn"
+    } else {
+        "ok"
+    }
+}
+
+/// Apply persistence/hysteresis to an instantaneous pressure observation.
+/// Returns `(stable_state, previous_state, transitioned)`.
+pub(crate) fn stabilize_memory_pressure_at(
+    state: &mut GuardRuntimeState,
+    observed: &str,
+    sustain_secs: u64,
+    now: Instant,
+) -> (String, Option<String>, bool) {
+    if state.memory_pressure_state.is_empty() {
+        state.memory_pressure_state = "ok".to_string();
+    }
+
+    if state.memory_pressure_state == observed {
+        state.memory_pressure_candidate.clear();
+        state.memory_pressure_candidate_since = None;
+        return (state.memory_pressure_state.clone(), None, false);
+    }
+
+    if state.memory_pressure_candidate != observed {
+        state.memory_pressure_candidate = observed.to_string();
+        state.memory_pressure_candidate_since = Some(now);
+        return (state.memory_pressure_state.clone(), None, false);
+    }
+
+    let candidate_since = state.memory_pressure_candidate_since.unwrap_or(now);
+    if now.duration_since(candidate_since).as_secs() < sustain_secs {
+        return (state.memory_pressure_state.clone(), None, false);
+    }
+
+    let previous = state.memory_pressure_state.clone();
+    state.memory_pressure_state = observed.to_string();
+    state.memory_pressure_candidate.clear();
+    state.memory_pressure_candidate_since = None;
+    (state.memory_pressure_state.clone(), Some(previous), true)
 }
 
 fn sync_freeze_marker_path(guard: &GuardPolicy) -> PathBuf {
@@ -2984,9 +3082,17 @@ async fn check_rapid_disk_fill(
         state.disk_bytes_history.drain(0..excess);
     }
     let rate = disk_fill_rate_gbph(&state.disk_bytes_history)?;
-    if rate >= guard.disk_rapid_fill_gbph {
-        let key = "disk-rapid-fill".to_string();
-        if should_notify(state, &key, guard.notify_cooldown_secs.max(1800)) {
+    let rapid = rate >= guard.disk_rapid_fill_gbph;
+    let (previous, event_due) = report_state_transition(
+        state,
+        "disk-rapid-fill",
+        if rapid { "rapid" } else { "ok" },
+        guard.report_repeat_secs,
+    );
+    if rapid {
+        // One notification on entry; unchanged rapid growth is retained in
+        // structured telemetry and summarized only at the repeat interval.
+        if previous.as_deref() != Some("rapid") {
             send_notification(
                 guard,
                 "Dracon System Guard - Disk Filling Rapidly",
@@ -2997,12 +3103,14 @@ async fn check_rapid_disk_fill(
             )
             .await;
         }
-        emit_event(&DraconEvent::new(
-            "system",
-            EventSeverity::Warn,
-            "disk/rapid-fill",
-            format!("growing at {:.1} GiB/h ({}% used)", rate, used_pct),
-        ));
+        if event_due {
+            emit_event(&DraconEvent::new(
+                "system",
+                EventSeverity::Warn,
+                "disk/rapid-fill",
+                format!("growing at {:.1} GiB/h ({}% used)", rate, used_pct),
+            ));
+        }
     }
     Some(rate)
 }
@@ -3042,17 +3150,18 @@ async fn check_memory_pressure(
     }
 
     let mem_low = mem_available_percent <= guard.mem_available_warn_percent;
+    // Swap occupancy is useful context, but is not active pressure on its
+    // own: Linux may keep cold pages in swap while RAM and PSI are healthy.
     let swap_high = swap_used_percent >= guard.swap_used_warn_percent;
     let psi_thrash = psi_full_avg10.is_some_and(|v| v >= guard.mem_psi_full_warn)
         || pswpin_rate.is_some_and(|r| r >= 1000.0);
-
-    let pressure = if mem_low && (swap_high || psi_thrash) {
-        "critical"
-    } else if mem_low || swap_high || psi_thrash {
-        "warn"
-    } else {
-        "ok"
-    };
+    let observed_pressure = classify_memory_pressure(mem_low, swap_high, psi_thrash);
+    let (pressure, _previous_pressure, pressure_changed) = stabilize_memory_pressure_at(
+        state,
+        observed_pressure,
+        guard.memory_pressure_sustain_secs,
+        Instant::now(),
+    );
 
     // Top RSS offenders (skipping kernel threads and exempt names).
     let exempt = parse_kinds(&guard.process_exempt_names);
@@ -3383,45 +3492,64 @@ async fn check_memory_pressure(
         )
     });
 
-    if pressure != "ok" {
-        let key = "memory-pressure".to_string();
-        if should_notify(state, &key, guard.notify_cooldown_secs.max(600)) {
-            let offenders: String = top_rss
-                .iter()
-                .map(|p| format!("{} pid={} {}MiB", p.command, p.pid, p.rss_mb))
-                .collect::<Vec<_>>()
-                .join(", ");
-            send_notification(
-                guard,
-                "Dracon System Guard - Memory Pressure",
-                &format!(
-                    "[{}] mem available {}%, swap used {}%{} top: {}",
-                    pressure,
-                    mem_available_percent,
-                    swap_used_percent,
-                    psi_full_avg10
-                        .map(|v| format!(", PSI full {:.1}%", v))
-                        .unwrap_or_default(),
-                    if offenders.is_empty() {
-                        "(none)".to_string()
-                    } else {
-                        offenders
-                    }
-                ),
-            )
-            .await;
-        }
+    let (last_reported_pressure, event_due) = report_state_transition(
+        state,
+        "memory-pressure",
+        &pressure,
+        guard.report_repeat_secs,
+    );
+
+    // Desktop notifications are reserved for stabilized state transitions.
+    // An unchanged warning may still produce an occasional structured event,
+    // but it will not repeatedly interrupt the operator.
+    if pressure_changed && pressure != "ok" {
+        let offenders: String = top_rss
+            .iter()
+            .map(|p| format!("{} pid={} {}MiB", p.command, p.pid, p.rss_mb))
+            .collect::<Vec<_>>()
+            .join(", ");
+        send_notification(
+            guard,
+            "Dracon System Guard - Memory Pressure",
+            &format!(
+                "[{}] mem available {}%, swap used {}%{} top: {}",
+                pressure,
+                mem_available_percent,
+                swap_used_percent,
+                psi_full_avg10
+                    .map(|v| format!(", PSI full {:.1}%", v))
+                    .unwrap_or_default(),
+                if offenders.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    offenders
+                }
+            ),
+        )
+        .await;
+    }
+
+    // Emit on entry/escalation/recovery, then only at the configured summary
+    // interval while the same non-OK state persists.
+    let recovery = pressure == "ok"
+        && last_reported_pressure
+            .as_deref()
+            .is_some_and(|previous| previous != "ok");
+    if event_due && (pressure != "ok" || recovery) {
         emit_event(&DraconEvent::new(
             "system",
             if pressure == "critical" {
                 EventSeverity::Error
-            } else {
+            } else if pressure == "warn" {
                 EventSeverity::Warn
+            } else {
+                EventSeverity::Info
             },
             "memory/pressure",
             format!(
-                "{}: mem available {}%, swap used {}%, PSI full {:?}, top rss: {}",
+                "{}: observed={}, mem available {}%, swap used {}%, PSI full {:?}, top rss: {}",
                 pressure,
+                observed_pressure,
                 mem_available_percent,
                 swap_used_percent,
                 psi_full_avg10,
@@ -3439,7 +3567,8 @@ async fn check_memory_pressure(
         swap_used_percent,
         psi_full_avg10,
         pswpin_rate,
-        pressure: pressure.to_string(),
+        observed_pressure: observed_pressure.to_string(),
+        pressure,
         top_rss,
         limited,
     })
@@ -3531,9 +3660,6 @@ async fn run_auto_cleanup(
     used: u8,
 ) -> Result<()> {
     let apply = guard.auto_cleanup_apply;
-    if !apply {
-        eprintln!("💡 disk at {}% — auto-cleanup is in dry-run mode (set auto_cleanup_apply = true to execute)", used);
-    }
     let mut total_reclaimed = 0u64;
     let mut all_cleaned: Vec<String> = Vec::new();
 
@@ -3541,8 +3667,10 @@ async fn run_auto_cleanup(
         match auto_cleanup_rust_targets(guard, state, apply).await {
             Ok(result) => {
                 total_reclaimed += result.reclaimed_bytes;
-                for p in &result.cleaned_paths {
-                    eprintln!("🧹 Rust: {}", p);
+                if apply {
+                    for p in &result.cleaned_paths {
+                        eprintln!("🧹 Rust: {}", p);
+                    }
                 }
                 all_cleaned.extend(result.cleaned_paths);
             }
@@ -3555,8 +3683,10 @@ async fn run_auto_cleanup(
             Ok((bytes, cleaned)) => {
                 total_reclaimed += bytes;
                 all_cleaned.extend(cleaned.iter().map(|s| format!("Trash: {}", s)));
-                for c in &cleaned {
-                    eprintln!("🗑️ {}", c);
+                if apply {
+                    for c in &cleaned {
+                        eprintln!("🗑️ {}", c);
+                    }
                 }
             }
             Err(e) => eprintln!("⚠️ Trash cleanup failed: {}", e),
@@ -3568,8 +3698,10 @@ async fn run_auto_cleanup(
             Ok((bytes, cleaned)) => {
                 total_reclaimed += bytes;
                 all_cleaned.extend(cleaned.iter().map(|s| format!("Nix: {}", s)));
-                for c in &cleaned {
-                    eprintln!("📦 {}", c);
+                if apply {
+                    for c in &cleaned {
+                        eprintln!("📦 {}", c);
+                    }
                 }
             }
             Err(e) => eprintln!("⚠️ Nix cleanup failed: {}", e),
@@ -3608,8 +3740,10 @@ async fn run_auto_cleanup(
     };
     total_reclaimed += bytes;
     all_cleaned.extend(cleaned.iter().map(|s| format!("Node: {}", s)));
-    for c in &cleaned {
-        eprintln!("📂 {}", c);
+    if apply {
+        for c in &cleaned {
+            eprintln!("📂 {}", c);
+        }
     }
 
     if guard.clean_package_caches {
@@ -3617,8 +3751,10 @@ async fn run_auto_cleanup(
             Ok((bytes, cleaned)) => {
                 total_reclaimed += bytes;
                 all_cleaned.extend(cleaned.iter().map(|s| format!("Cache: {}", s)));
-                for c in &cleaned {
-                    eprintln!("💾 {}", c);
+                if apply {
+                    for c in &cleaned {
+                        eprintln!("💾 {}", c);
+                    }
                 }
             }
             Err(e) => eprintln!("⚠️ Package cache cleanup failed: {}", e),
@@ -3636,25 +3772,40 @@ async fn run_auto_cleanup(
                 }
                 Err(e) => eprintln!("⚠️ Docker prune failed: {}", e),
             }
-        } else {
-            eprintln!("🐳 Would prune Docker (dry-run)");
         }
     }
 
-    if total_reclaimed > 0 {
-        let key = "auto-cleanup".to_string();
-        if should_notify(state, &key, guard.notify_cooldown_secs.max(600)) {
-            send_notification(
-                guard,
-                "Dracon System Guard - Auto Cleanup",
-                &format!(
-                    "Reclaimed {} ({} items cleaned)",
-                    human_bytes(total_reclaimed),
-                    all_cleaned.len()
-                ),
-            )
-            .await;
-        }
+    let cleanup_state = if all_cleaned.is_empty() {
+        "ok"
+    } else if apply {
+        "applied"
+    } else {
+        "candidates"
+    };
+    let (previous, event_due) = report_state_transition(
+        state,
+        "auto-cleanup",
+        cleanup_state,
+        guard.report_repeat_secs,
+    );
+    if apply && total_reclaimed > 0 && previous.as_deref() != Some("applied") {
+        send_notification(
+            guard,
+            "Dracon System Guard - Auto Cleanup",
+            &format!(
+                "Reclaimed {} ({} items cleaned)",
+                human_bytes(total_reclaimed),
+                all_cleaned.len()
+            ),
+        )
+        .await;
+    } else if !apply && cleanup_state == "candidates" && event_due {
+        eprintln!(
+            "💡 disk at {}% — dry-run found {} cleanup candidate(s), estimated {} (no changes made)",
+            used,
+            all_cleaned.len(),
+            human_bytes(total_reclaimed)
+        );
     }
 
     Ok(())
@@ -3979,9 +4130,15 @@ async fn check_zombie_processes(
         return Vec::new();
     }
     let zombies = zombie_details(state);
-    if zombies.len() as u64 > guard.zombie_threshold {
-        let key = "zombie-warning".to_string();
-        if should_notify(state, &key, guard.notify_cooldown_secs.max(3600)) {
+    let over_threshold = zombies.len() as u64 > guard.zombie_threshold;
+    let (previous, event_due) = report_state_transition(
+        state,
+        "zombie-warning",
+        if over_threshold { "over-threshold" } else { "ok" },
+        guard.report_repeat_secs,
+    );
+    if over_threshold {
+        if previous.as_deref() != Some("over-threshold") {
             let top: Vec<String> = zombies
                 .iter()
                 .take(3)
@@ -4008,21 +4165,23 @@ async fn check_zombie_processes(
             )
             .await;
         }
-        emit_event(&DraconEvent::new(
-            "system",
-            EventSeverity::Warn,
-            "process/zombies",
-            format!(
-                "{} zombies: {}",
-                zombies.len(),
-                zombies
-                    .iter()
-                    .take(5)
-                    .map(|z| format!("{}={}", z.comm, z.age_secs))
-                    .collect::<Vec<_>>()
-                    .join(",")
-            ),
-        ));
+        if event_due {
+            emit_event(&DraconEvent::new(
+                "system",
+                EventSeverity::Warn,
+                "process/zombies",
+                format!(
+                    "{} zombies: {}",
+                    zombies.len(),
+                    zombies
+                        .iter()
+                        .take(5)
+                        .map(|z| format!("{}={}", z.comm, z.age_secs))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ),
+            ));
+        }
     }
     zombies
 }
@@ -4344,6 +4503,8 @@ pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) {
         .max(policy.process_sustain_secs);
     policy.mem_available_warn_percent = policy.mem_available_warn_percent.clamp(1, 100);
     policy.swap_used_warn_percent = policy.swap_used_warn_percent.clamp(1, 100);
+    policy.memory_pressure_sustain_secs = policy.memory_pressure_sustain_secs.max(30);
+    policy.report_repeat_secs = policy.report_repeat_secs.max(60);
     // systemd CPUQuota accepts values above 100%, but this knob is a cap
     // expressed as a percentage of one CPU. Keep invalid values from
     // reaching the per-pass cap loop, where they would fail and retry for
@@ -4905,7 +5066,11 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
             Cell::new("Memory Pressure"),
             Cell::new(format!(
                 "{}: avail {}% swap {}%{} limited: {}",
-                m.pressure,
+                if m.observed_pressure != m.pressure {
+                    format!("{} (observed {})", m.pressure, m.observed_pressure)
+                } else {
+                    m.pressure.clone()
+                },
                 m.mem_available_percent,
                 m.swap_used_percent,
                 m.psi_full_avg10

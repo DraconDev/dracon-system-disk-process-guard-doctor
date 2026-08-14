@@ -64,7 +64,9 @@ pub(crate) struct GuardPolicy {
     pub(crate) disk_action_percent: u8,
     #[serde(default = "default_disk_critical_percent")]
     pub(crate) disk_critical_percent: u8,
-    #[serde(default = "default_true")]
+    // Disk pressure is reported by default; pausing synchronization is an
+    // explicit operator choice, not an automatic guard action.
+    #[serde(default = "default_false")]
     pub(crate) freeze_sync_at_action: bool,
     #[serde(default = "default_sync_freeze_marker")]
     pub(crate) sync_freeze_marker: String,
@@ -84,6 +86,10 @@ pub(crate) struct GuardPolicy {
     pub(crate) notify_command: String,
     #[serde(default = "default_notify_cooldown_secs")]
     pub(crate) notify_cooldown_secs: u64,
+    // Repeat structured warning events at most this often while a
+    // condition remains unchanged. State transitions are still immediate.
+    #[serde(default = "default_report_repeat_secs")]
+    pub(crate) report_repeat_secs: u64,
     #[serde(default)]
     pub(crate) auto_renice: bool,
     #[serde(default = "default_renice_value")]
@@ -128,6 +134,11 @@ pub(crate) struct GuardPolicy {
     pub(crate) swap_used_warn_percent: u8,
     #[serde(default = "default_mem_psi_full_warn")]
     pub(crate) mem_psi_full_warn: f64,
+    // Require memory pressure to persist before notifying or applying
+    // reversible pressure mitigation. This prevents transient samples
+    // and swap occupancy alone from disturbing active processes.
+    #[serde(default = "default_memory_pressure_sustain_secs")]
+    pub(crate) memory_pressure_sustain_secs: u64,
     // ADDED 2026-08-10 (v0.112.36): during memory pressure, deprioritize
     // the top RSS offenders (graduated nice, reversible when pressure
     // drops). Whitelist via process_exempt_names. Never a cap.
@@ -213,7 +224,7 @@ impl Default for GuardPolicy {
             disk_warn_percent: default_disk_warn_percent(),
             disk_action_percent: default_disk_action_percent(),
             disk_critical_percent: default_disk_critical_percent(),
-            freeze_sync_at_action: default_true(),
+            freeze_sync_at_action: default_false(),
             sync_freeze_marker: default_sync_freeze_marker(),
             unfreeze_below_percent: default_unfreeze_below_percent(),
             process_cpu_percent: default_process_cpu_percent(),
@@ -223,6 +234,7 @@ impl Default for GuardPolicy {
             notify: default_true(),
             notify_command: default_notify_command(),
             notify_cooldown_secs: default_notify_cooldown_secs(),
+            report_repeat_secs: default_report_repeat_secs(),
             auto_renice: false,
             renice_value: default_renice_value(),
             release_after_secs: default_release_after_secs(),
@@ -243,6 +255,7 @@ impl Default for GuardPolicy {
             mem_available_warn_percent: default_mem_available_warn_percent(),
             swap_used_warn_percent: default_swap_used_warn_percent(),
             mem_psi_full_warn: default_mem_psi_full_warn(),
+            memory_pressure_sustain_secs: default_memory_pressure_sustain_secs(),
             auto_renice_on_memory: default_true(),
             bias_oom_on_pressure: default_true(),
             cap_offenders_cpu_percent: 0,
@@ -284,6 +297,10 @@ pub(crate) fn default_kinds() -> String {
 
 pub(crate) fn default_true() -> bool {
     true
+}
+
+pub(crate) fn default_false() -> bool {
+    false
 }
 
 pub(crate) fn default_enabled() -> bool {
@@ -371,6 +388,10 @@ pub(crate) fn default_notify_cooldown_secs() -> u64 {
     300
 }
 
+pub(crate) fn default_report_repeat_secs() -> u64 {
+    1800
+}
+
 pub(crate) fn default_renice_value() -> i32 {
     5
 }
@@ -434,6 +455,10 @@ fn default_swap_used_warn_percent() -> u8 {
 
 fn default_mem_psi_full_warn() -> f64 {
     10.0
+}
+
+fn default_memory_pressure_sustain_secs() -> u64 {
+    120
 }
 
 fn default_process_stuck_after_secs() -> u64 {
