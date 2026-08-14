@@ -3761,17 +3761,15 @@ async fn run_auto_cleanup(
         }
     }
 
-    if guard.docker_prune {
-        if apply {
-            match docker_prune(guard.auto_cleanup_apply, true, guard.docker_prune_volumes).await {
-                Ok(bytes) => {
-                    total_reclaimed += bytes;
-                    if bytes > 0 {
-                        eprintln!("🐳 Docker prune: {}", human_bytes(bytes));
-                    }
+    if guard.docker_prune && apply {
+        match docker_prune(guard.auto_cleanup_apply, true, guard.docker_prune_volumes).await {
+            Ok(bytes) => {
+                total_reclaimed += bytes;
+                if bytes > 0 {
+                    eprintln!("🐳 Docker prune: {}", human_bytes(bytes));
                 }
-                Err(e) => eprintln!("⚠️ Docker prune failed: {}", e),
             }
+            Err(e) => eprintln!("⚠️ Docker prune failed: {}", e),
         }
     }
 
@@ -4134,7 +4132,11 @@ async fn check_zombie_processes(
     let (previous, event_due) = report_state_transition(
         state,
         "zombie-warning",
-        if over_threshold { "over-threshold" } else { "ok" },
+        if over_threshold {
+            "over-threshold"
+        } else {
+            "ok"
+        },
         guard.report_repeat_secs,
     );
     if over_threshold {

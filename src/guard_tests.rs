@@ -416,18 +416,12 @@ fn memory_pressure_ignores_swap_occupancy_without_active_pressure() {
         "ok",
         "cold pages in swap are not active pressure"
     );
-    assert_eq!(
-        crate::classify_memory_pressure(true, false, false),
-        "warn"
-    );
+    assert_eq!(crate::classify_memory_pressure(true, false, false), "warn");
     assert_eq!(
         crate::classify_memory_pressure(true, true, false),
         "critical"
     );
-    assert_eq!(
-        crate::classify_memory_pressure(false, false, true),
-        "warn"
-    );
+    assert_eq!(crate::classify_memory_pressure(false, false, true), "warn");
 }
 
 #[test]
