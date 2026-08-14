@@ -2704,16 +2704,22 @@ async fn clean_nix_garbage(keep_generations: u32, apply: bool) -> Result<(u64, V
     if apply && keep_generations > 0 {
         let gen_arg = keep_generations.to_string();
         let nix_env = resolve_bin("nix-env");
-        if let Err(e) = Command::new(&nix_env)
+        match Command::new(&nix_env)
             .arg("--delete-generations")
             .arg(&gen_arg)
             .output()
             .await
         {
-            errs.push(format!("nix-env delete generations: {}", e));
+            Ok(output) if output.status.success() => {}
+            Ok(output) => errs.push(format!(
+                "nix-env delete generations exited {}: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )),
+            Err(e) => errs.push(format!("nix-env delete generations: {}", e)),
         }
 
-        if let Err(e) = Command::new(&nix_env)
+        match Command::new(&nix_env)
             .arg("--delete-generations")
             .arg(&gen_arg)
             .arg("-p")
@@ -2721,7 +2727,13 @@ async fn clean_nix_garbage(keep_generations: u32, apply: bool) -> Result<(u64, V
             .output()
             .await
         {
-            errs.push(format!("nix-env delete user profile generations: {}", e));
+            Ok(output) if output.status.success() => {}
+            Ok(output) => errs.push(format!(
+                "nix-env delete user profile generations exited {}: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )),
+            Err(e) => errs.push(format!("nix-env delete user profile generations: {}", e)),
         }
     }
 
