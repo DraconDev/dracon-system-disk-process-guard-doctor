@@ -24,7 +24,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "ti
 walkdir = "2"
 chrono = "0.4"
 comfy-table = "7"
-dracon-system-lib = "94.2.7"
+dracon-system-lib = "=94.2.7"
 
 # This manifest is maintained in the standalone dracon-system repository.
 # The parent dracon-utilities workspace consumes this directory by path.
