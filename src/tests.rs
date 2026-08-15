@@ -1242,6 +1242,12 @@ fn guard_safe_delete_rejects_symlink() {
 #[test]
 fn guard_safe_delete_rejects_exact_system_roots() {
     for prot in SYSTEM_PROTECTED {
+        // Some build sandboxes (including Nix) intentionally omit host roots
+        // such as /home.  A missing path is already safe to delete, while
+        // every existing protected root must still be rejected here.
+        if !Path::new(prot).exists() {
+            continue;
+        }
         let result = check_safe_to_delete_guard(Path::new(prot), &[]);
         assert!(
             result.is_err(),
