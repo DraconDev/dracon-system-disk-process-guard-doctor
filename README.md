@@ -101,3 +101,7 @@ files into it.
 ## License
 
 AGPL-3.0-only — see [LICENSE](LICENSE).
+
+---
+
+*Part of the [Dracon](https://dracon.uk) developer workspace.*
