@@ -757,8 +757,10 @@ fn memory_limiter_policy_defaults_are_safe() {
 
 #[test]
 fn normalize_guard_policy_clamps_cpu_cap_percent() {
-    let mut policy = crate::GuardPolicy::default();
-    policy.cap_offenders_cpu_percent = u32::MAX;
+    let mut policy = crate::GuardPolicy {
+        cap_offenders_cpu_percent: u32::MAX,
+        ..Default::default()
+    };
     crate::normalize_guard_policy(&mut policy);
     assert_eq!(policy.cap_offenders_cpu_percent, 100);
 

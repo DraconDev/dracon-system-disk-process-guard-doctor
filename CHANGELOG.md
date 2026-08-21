@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > under the `dracon-system` heading. From 0.112.12 onward, this CHANGELOG
 > is the canonical record.
 
+## [Unreleased]
+
+- **Report-only storage kinds can no longer be selected for deletion**
+  (audit M2, 2026-08-21): `storage --cleanup --kinds git-db --apply`
+  could previously reach `remove_dir_all` on a project's `.git` directory
+  — project history, not a regenerable artifact — because the tracked-dir
+  gate cannot protect it (git never tracks its own database). Kind
+  selection now filters report-only kinds (`NON_CLEANUP_KINDS`) from both
+  the CLI flag and the policy default with an explicit warning, and
+  `validate_storage_cleanup_path` refuses any `.git` path as a backstop.
+
 ## [0.112.38] - 2026-08-21
 
 - **`storage --cleanup --apply` now uses the guard's deletion rules**
