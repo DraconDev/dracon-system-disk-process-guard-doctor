@@ -2021,6 +2021,24 @@ async fn restore_runtime_adjustments_with_samples(
 }
 
 /// Detect active cargo/rustc processes and return their PIDs and working directories
+/// Process-name classifier for active-build detection.
+///
+/// Matches against the `ps` `comm=` value (kernel-truncated to 15 chars).
+/// Substring matches cover toolchain-suffixed forms such as `cargo-build`
+/// or `rustc-1.94`; exact matches pin named tools whose comm would
+/// otherwise not match either substring.
+///
+/// CHANGED 2026-08-21 (active-build detection gap): `rust-analyzer` and
+/// `cargo-watch` hold a target dir just as a build does — before this fix
+/// only cargo/rustc/clippy-driver were recognized, so a disk-pressure
+/// cleanup cycle could delete a target dir out from under a live
+/// analysis/watch session (protected only by the mtime heuristic).
+fn is_rust_build_process(comm: &str) -> bool {
+    comm.contains("cargo")
+        || comm.contains("rustc")
+        || matches!(comm, "clippy-driver" | "rust-analyzer" | "cargo-watch")
+}
+
 async fn detect_active_rust_builds() -> Result<HashSet<i32>> {
     let out = Command::new("ps")
         .args(["-eo", "pid=,comm="])
@@ -2040,8 +2058,7 @@ async fn detect_active_rust_builds() -> Result<HashSet<i32>> {
         };
         let comm = parts.next().unwrap_or("");
 
-        // Detect cargo, rustc, cargo-build, etc.
-        if comm.contains("cargo") || comm.contains("rustc") || comm == "clippy-driver" {
+        if is_rust_build_process(comm) {
             build_pids.insert(pid);
         }
     }

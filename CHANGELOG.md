@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Active-build detection now recognizes long-lived Rust tooling**
+  (detection-gap fix, 2026-08-21): `detect_active_rust_builds` classified
+  only cargo/rustc/clippy-driver processes as active builds, so a
+  disk-pressure cleanup could delete a target dir out from under a live
+  `rust-analyzer` or `cargo-watch` session (which hold the dir but were
+  invisible to the cwd-based protection). Classification moved into a pure
+  `is_rust_build_process` helper with unit-test coverage of new and
+  pre-existing classes plus negative cases.
+
 - **Guard cleanup target selection is now explicit** (audit M21, 2026-08-14):
   `guard clean` with no target flags no longer silently means “all”, and
   `--all` now wins over individual target flags as documented.

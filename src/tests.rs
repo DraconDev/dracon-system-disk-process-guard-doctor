@@ -1426,3 +1426,22 @@ async fn clean_old_node_modules_counts_nested_tree_once() {
     assert_eq!(reclaimed, expected, "outer tree must be counted once");
     let _ = std::fs::remove_dir_all(&td);
 }
+
+#[test]
+fn rust_build_process_detection_covers_long_lived_tooling() {
+    // Pre-existing classes stay detected (substring + exact).
+    assert!(is_rust_build_process("cargo"));
+    assert!(is_rust_build_process("cargo-build"));
+    assert!(is_rust_build_process("rustc"));
+    assert!(is_rust_build_process("rustc-1.94.1"));
+    assert!(is_rust_build_process("clippy-driver"));
+    // Long-lived Rust tooling added 2026-08-21 (detection gap): a running
+    // analyzer or watch session holds the target dir just like a build.
+    assert!(is_rust_build_process("rust-analyzer"));
+    assert!(is_rust_build_process("cargo-watch"));
+    // Unrelated processes must not match.
+    assert!(!is_rust_build_process(""));
+    assert!(!is_rust_build_process("firefox"));
+    assert!(!is_rust_build_process("dracon-sync"));
+    assert!(!is_rust_build_process("node"));
+}
