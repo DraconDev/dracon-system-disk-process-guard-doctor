@@ -1445,3 +1445,46 @@ fn rust_build_process_detection_covers_long_lived_tooling() {
     assert!(!is_rust_build_process("dracon-sync"));
     assert!(!is_rust_build_process("node"));
 }
+
+#[test]
+fn storage_cleanup_apply_accepts_home_artifact_dirs_and_refuses_system_roots() {
+    // Regression (2026-08-21): `storage --cleanup --apply` used the strict
+    // classifier, refusing EVERY path under /home ("under system root
+    // /home") — i.e. every real candidate on a workstation — while the
+    // guard's auto-cleanup deleted the same class of paths. The apply path
+    // must accept an artifact dir under /home …
+    let home = dirs::home_dir().expect("home dir available");
+    let fixture = home.join(format!(
+        ".dracon_storage_apply_test_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&fixture).unwrap();
+    let validated = validate_storage_cleanup_path(&fixture, &[]);
+    assert!(
+        validated.is_ok(),
+        "apply must accept artifact dirs under /home: {:?}",
+        validated.err()
+    );
+    let _ = std::fs::remove_dir_all(&fixture);
+
+    // … while exact system roots stay refused.
+    for prot in SYSTEM_PROTECTED {
+        if !Path::new(prot).exists() {
+            continue;
+        }
+        assert!(
+            validate_storage_cleanup_path(Path::new(prot), &[]).is_err(),
+            "apply must refuse exact system root {prot}"
+        );
+    }
+
+    // The strict classifier remains strict: the two rule sets are
+    // intentionally different, this pins WHY the apply path must not use it.
+    if Path::new("/home").exists() {
+        assert!(check_safe_to_delete(Path::new("/home"), &[]).is_err());
+    }
+}

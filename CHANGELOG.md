@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **`storage --cleanup --apply` now uses the guard's deletion rules**
+  (protected-path inconsistency fix, 2026-08-21): the interactive cleanup
+  validated targets with the strict classifier whose system-root ancestor
+  check rejects everything under `/home`, so on a normal workstation every
+  candidate was refused while the guard's own auto-cleanup path deleted the
+  identical class of artifact dirs. Both paths now share
+  `check_safe_to_delete_guard`: /home-under artifact dirs are deletable,
+  exact system roots / user-protected paths / symlinks remain refused.
+
 - **Active-build detection now recognizes long-lived Rust tooling**
   (detection-gap fix, 2026-08-21): `detect_active_rust_builds` classified
   only cargo/rustc/clippy-driver processes as active builds, so a
