@@ -94,9 +94,9 @@ machine-readable snapshot (disk state, memory `observed` vs stabilized
 
 ## Maintenance
 
-Changes are made in this standalone repository. The `dracon-sync` daemon
-watches it and pushes configured remotes; the parent meta workspace does not
-mirror source files into it.
+Changes are made in this standalone repository. The `dracon-system` tooling
+runs locally on each node; the parent meta workspace does not mirror source
+files into it.
 
 ## License
 
