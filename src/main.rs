@@ -3827,41 +3827,46 @@ async fn run_auto_cleanup(
         }
     }
 
-    let roots: Vec<PathBuf> = guard
-        .node_modules_search_roots
-        .split(',')
-        .filter_map(|s| {
-            let s = s.trim();
-            if s.is_empty() {
-                return None;
+    // Audit M3 (2026-08-21): gated by clean_node_modules (default true)
+    // for symmetry with every other cleanup kind; explicit `guard clean
+    // --node-modules` remains available regardless of this flag.
+    if guard.clean_node_modules {
+        let roots: Vec<PathBuf> = guard
+            .node_modules_search_roots
+            .split(',')
+            .filter_map(|s| {
+                let s = s.trim();
+                if s.is_empty() {
+                    return None;
+                }
+                let p = expand_tilde(s);
+                if p.exists() {
+                    Some(p)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let (bytes, cleaned) = match clean_old_node_modules(
+            &roots,
+            guard.node_modules_max_age_days,
+            apply,
+            &guard.protected_paths,
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(e) => {
+                eprintln!("⚠️ Node modules cleanup failed: {}", e);
+                (0, vec![])
             }
-            let p = expand_tilde(s);
-            if p.exists() {
-                Some(p)
-            } else {
-                None
+        };
+        total_reclaimed += bytes;
+        all_cleaned.extend(cleaned.iter().map(|s| format!("Node: {}", s)));
+        if apply {
+            for c in &cleaned {
+                eprintln!("📂 {}", c);
             }
-        })
-        .collect();
-    let (bytes, cleaned) = match clean_old_node_modules(
-        &roots,
-        guard.node_modules_max_age_days,
-        apply,
-        &guard.protected_paths,
-    )
-    .await
-    {
-        Ok(result) => result,
-        Err(e) => {
-            eprintln!("⚠️ Node modules cleanup failed: {}", e);
-            (0, vec![])
-        }
-    };
-    total_reclaimed += bytes;
-    all_cleaned.extend(cleaned.iter().map(|s| format!("Node: {}", s)));
-    if apply {
-        for c in &cleaned {
-            eprintln!("📂 {}", c);
         }
     }
 

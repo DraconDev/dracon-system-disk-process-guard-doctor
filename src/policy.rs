@@ -207,6 +207,13 @@ pub(crate) struct GuardPolicy {
     pub(crate) clean_trash: bool,
     #[serde(default = "default_true")]
     pub(crate) clean_nix_garbage: bool,
+    // ADDED 2026-08-21 (audit M3): node_modules cleanup previously ran
+    // unconditionally whenever auto_cleanup_apply was on — the only
+    // cleanup kind with no feature flag. Default true preserves existing
+    // behavior; set false to disable (e.g. projects resumed after long
+    // pauses lose deps mid-session since node_modules mtimes are idle).
+    #[serde(default = "default_true")]
+    pub(crate) clean_node_modules: bool,
     #[serde(default = "default_nix_keep_generations")]
     pub(crate) nix_keep_generations: u32,
     #[serde(default = "default_node_modules_max_age_days")]
@@ -281,6 +288,7 @@ impl Default for GuardPolicy {
             clean_package_caches: default_true(),
             clean_trash: default_true(),
             clean_nix_garbage: default_true(),
+            clean_node_modules: default_true(),
             nix_keep_generations: 5,
             node_modules_max_age_days: default_node_modules_max_age_days(),
             protected_paths: Vec::new(),
