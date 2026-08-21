@@ -4971,23 +4971,6 @@ async fn cmd_storage(
         println!("{table}");
     }
 
-/// Validate one `storage --cleanup --apply` target for deletion.
-///
-/// CHANGED 2026-08-21 (protected-path inconsistency fix): the interactive
-/// cleanup previously used the strict `check_safe_to_delete`, whose
-/// SYSTEM_PROTECTED ancestor check rejects EVERY path under `/home` — on a
-/// normal workstation that is all of them (live incident 2026-08-21:
-/// node_modules/build candidates were refused with "under system root
-/// /home" while the guard's own auto-cleanup path deleted the same class
-/// of paths without issue). The apply path now uses
-/// `check_safe_to_delete_guard`, the same rule set as the guard: known
-/// artifact/cache dirs under /home are deletable, while exact system
-/// roots, user-protected paths, symlinks, and canonicalization failures
-/// stay refused.
-fn validate_storage_cleanup_path(path: &Path, user_protected: &[String]) -> Result<PathBuf> {
-    check_safe_to_delete_guard(path, user_protected)
-}
-
     if cleanup {
         let cfg = CleanupConfig {
             apply,
@@ -5132,6 +5115,23 @@ fn validate_storage_cleanup_path(path: &Path, user_protected: &[String]) -> Resu
     }
 
     Ok(())
+}
+
+/// Validate one `storage --cleanup --apply` target for deletion.
+///
+/// CHANGED 2026-08-21 (protected-path inconsistency fix): the interactive
+/// cleanup previously used the strict `check_safe_to_delete`, whose
+/// SYSTEM_PROTECTED ancestor check rejects EVERY path under `/home` — on a
+/// normal workstation that is all of them (live incident 2026-08-21:
+/// node_modules/build candidates were refused with "under system root
+/// /home" while the guard's own auto-cleanup path deleted the same class
+/// of paths without issue). The apply path now uses
+/// `check_safe_to_delete_guard`, the same rule set as the guard: known
+/// artifact/cache dirs under /home are deletable, while exact system
+/// roots, user-protected paths, symlinks, and canonicalization failures
+/// stay refused.
+fn validate_storage_cleanup_path(path: &Path, user_protected: &[String]) -> Result<PathBuf> {
+    check_safe_to_delete_guard(path, user_protected)
 }
 
 async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
