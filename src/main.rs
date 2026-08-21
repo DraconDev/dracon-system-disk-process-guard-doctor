@@ -4861,7 +4861,12 @@ async fn cmd_storage(
             .join("Dev")
     });
     let min_size_mb = min_size_mb.unwrap_or(policy.storage.min_size_mb);
-    let kinds = kinds.unwrap_or_else(|| policy.storage.kinds.clone());
+    let requested_kinds = kinds.unwrap_or_else(|| policy.storage.kinds.clone());
+    // Audit M2 (2026-08-21): report-only hotspot kinds (git-db) must never
+    // reach the deletion path — filter them out of every selection source
+    // (CLI flag and policy default alike) before building CleanupConfig.
+    let (effective_kinds, non_cleanup_requested) =
+        filter_selectable_cleanup_kinds(parse_kinds(&requested_kinds));
 
     let report = analyze_workspace_storage(&root, 15, 25).await?;
 
@@ -4976,7 +4981,7 @@ async fn cmd_storage(
             apply,
             allow_tracked,
             min_size_mb,
-            kinds: parse_kinds(&kinds),
+            kinds: effective_kinds,
         };
         let threshold = cfg.min_size_mb.saturating_mul(1024 * 1024);
         let selected: Vec<_> = report
@@ -4999,6 +5004,12 @@ async fn cmd_storage(
             "Cleanup mode: {}",
             if cfg.apply { "APPLY" } else { "DRY-RUN" }
         );
+        if !non_cleanup_requested.is_empty() {
+            println!(
+                "⚠️  Ignored report-only kinds (never deletable): {}",
+                non_cleanup_requested.join(", ")
+            );
+        }
         println!("Kinds: {}", {
             let mut v: Vec<_> = cfg.kinds.iter().cloned().collect();
             v.sort();
@@ -5131,6 +5142,17 @@ async fn cmd_storage(
 /// roots, user-protected paths, symlinks, and canonicalization failures
 /// stay refused.
 fn validate_storage_cleanup_path(path: &Path, user_protected: &[String]) -> Result<PathBuf> {
+    // Backstop for audit M2 (2026-08-21): `.git` is project history, not a
+    // regenerable artifact, and the tracked-dir gate cannot protect it (git
+    // never tracks its own database). Kind-level filtering keeps it out of
+    // the candidate list; this refuses it even if a future caller passes it
+    // through directly.
+    if path.file_name().is_some_and(|name| name == ".git") {
+        anyhow::bail!(
+            "refusing to delete git database (project history, not an artifact): {}",
+            path.display()
+        );
+    }
     check_safe_to_delete_guard(path, user_protected)
 }
 

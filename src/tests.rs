@@ -1488,3 +1488,59 @@ fn storage_cleanup_apply_accepts_home_artifact_dirs_and_refuses_system_roots() {
         assert!(check_safe_to_delete(Path::new("/home"), &[]).is_err());
     }
 }
+
+#[test]
+fn filter_selectable_cleanup_kinds_drops_git_db_and_keeps_artifact_kinds() {
+    // Audit M2 (2026-08-21): git-db is report-only — it must be filtered
+    // out of every cleanup selection source.
+    let requested: HashSet<String> = ["git-db", "rust-build", "node-deps"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let (kept, excluded) = filter_selectable_cleanup_kinds(requested);
+    assert!(kept.contains("rust-build") && kept.contains("node-deps"));
+    assert!(!kept.contains("git-db"), "git-db must never survive filtering");
+    assert_eq!(excluded, vec!["git-db".to_string()]);
+
+    // Absent kind → no exclusions reported; empty request stays empty.
+    let (kept, excluded) =
+        filter_selectable_cleanup_kinds(["cache".to_string()].into_iter().collect());
+    assert!(excluded.is_empty() && kept == ["cache".to_string()].into_iter().collect());
+    let (kept, excluded) = filter_selectable_cleanup_kinds(HashSet::new());
+    assert!(kept.is_empty() && excluded.is_empty());
+
+    // Every entry in NON_CLEANUP_KINDS is actually enforced by the filter.
+    for kind in NON_CLEANUP_KINDS {
+        let (kept, excluded) =
+            filter_selectable_cleanup_kinds([(kind.to_string())].into_iter().collect());
+        assert!(!kept.contains(*kind));
+        assert_eq!(excluded, vec![kind.to_string()]);
+    }
+}
+
+#[test]
+fn storage_cleanup_apply_refuses_git_database_dirs() {
+    // Audit M2 backstop: even if a .git path ever reaches
+    // validate_storage_cleanup_path directly, it must be refused — git
+    // never tracks its own database, so the allow_tracked gate cannot
+    // protect project history from remove_dir_all.
+    let home = dirs::home_dir().expect("home dir available");
+    let fixture = home.join(format!(
+        ".dracon_storage_gitdb_test_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let git_db = fixture.join("project").join(".git");
+    std::fs::create_dir_all(&git_db).unwrap();
+    let validated = validate_storage_cleanup_path(&git_db, &[]);
+    let _ = std::fs::remove_dir_all(&fixture);
+    let err = validated.expect_err("apply must refuse a .git directory");
+    let msg = format!("{err:#}");
+    assert!(
+        msg.contains("git database"),
+        "refusal must name the reason, got: {msg}"
+    );
+}

@@ -553,3 +553,34 @@ pub(crate) fn parse_kinds(csv: &str) -> HashSet<String> {
         .map(|s| s.to_string())
         .collect()
 }
+
+/// Hotspot kinds that are REPORT-ONLY and can never be selected for
+/// deletion by `storage --cleanup --apply` (audit M2, 2026-08-21).
+///
+/// `git-db` (.git directories) is project history, not a regenerable
+/// artifact: deleting it loses every commit, stash, and ref of a repo.
+/// The normal safety nets do not cover it — `is_git_tracked_dir(".git")`
+/// is always false (git never tracks its own database), so the
+/// `allow_tracked` gate would happily pass it through, and the guard
+/// classifier only knows about system roots / user-protected paths /
+/// symlinks. Exclusion therefore happens at kind-selection level AND as
+/// a path-level backstop in `validate_storage_cleanup_path`.
+pub(crate) const NON_CLEANUP_KINDS: &[&str] = &["git-db"];
+
+/// Partition requested cleanup kinds into selectable vs report-only.
+/// Returns `(kept, excluded)` where `excluded` lists the rejected kinds
+/// in `NON_CLEANUP_KINDS`, deduplicated and sorted.
+pub(crate) fn filter_selectable_cleanup_kinds(
+    requested: HashSet<String>,
+) -> (HashSet<String>, Vec<String>) {
+    let excluded: Vec<String> = NON_CLEANUP_KINDS
+        .iter()
+        .filter(|k| requested.contains(**k))
+        .map(|k| (*k).to_string())
+        .collect();
+    let kept = requested
+        .into_iter()
+        .filter(|k| !NON_CLEANUP_KINDS.contains(&k.as_str()))
+        .collect();
+    (kept, excluded)
+}
