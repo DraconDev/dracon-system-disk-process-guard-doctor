@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > under the `dracon-system` heading. From 0.112.12 onward, this CHANGELOG
 > is the canonical record.
 
-## [Unreleased]
+## [0.112.38] - 2026-08-21
 
 - **`storage --cleanup --apply` now uses the guard's deletion rules**
   (protected-path inconsistency fix, 2026-08-21): the interactive cleanup
