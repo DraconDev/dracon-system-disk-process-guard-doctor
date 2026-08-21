@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **`clean_node_modules` policy knob added** (audit M3, 2026-08-21):
+  node_modules cleanup was the only auto-cleanup kind with no feature
+  flag — it ran whenever `auto_cleanup_apply` was on. It is now gated by
+  `clean_node_modules` (default `true`, preserving behavior) alongside
+  its `clean_trash` / `clean_nix_garbage` siblings; set `false` to
+  disable (e.g. projects resumed after long pauses lose deps mid-session
+  since node_modules mtimes are idle). Explicit
+  `guard clean --node-modules` remains available regardless.
+
 - **Report-only storage kinds can no longer be selected for deletion**
   (audit M2, 2026-08-21): `storage --cleanup --kinds git-db --apply`
   could previously reach `remove_dir_all` on a project's `.git` directory
