@@ -4763,9 +4763,9 @@ pub(crate) async fn run_guard_once(
             // Set the timestamp before the scan so a persistent filesystem
             // error cannot turn into a 30-second retry loop.
             state.last_auto_cleanup = Some(now);
-            run_auto_cleanup(guard, state, used).await?;
+            run_auto_cleanup(guard, state, used, true).await?;
         }
-    } else if used >= guard.proactive_cleanup_percent && guard.auto_cleanup_rust {
+    } else if used >= guard.proactive_cleanup_percent {
         state.guard_cycle += 1;
         let interval = guard.proactive_cleanup_interval_cycles;
         let due = state.guard_cycle.is_multiple_of(interval);
@@ -4773,7 +4773,15 @@ pub(crate) async fn run_guard_once(
             .last_proactive_cleanup
             .is_none_or(|t| t.elapsed().as_secs() >= interval.saturating_mul(guard.interval_secs));
         if due && cooldown_ok {
-            run_proactive_cleanup(guard, state).await?;
+            // CHANGED 2026-08-25 (v0.112.39): the proactive tier previously
+            // ran ONLY the rust-target scan, so /tmp, trash, nix and docker
+            // all waited for action level (85%) — too late on a disk that
+            // fills 20–60 GiB/h. The cheap non-rust kinds now run here too
+            // (include_rust=false keeps the heavy ~/Dev scan on its own path).
+            if guard.auto_cleanup_rust {
+                run_proactive_cleanup(guard, state).await?;
+            }
+            run_auto_cleanup(guard, state, used, false).await?;
             state.last_proactive_cleanup = Some(Instant::now());
         }
     }
@@ -5947,6 +5955,7 @@ async fn cmd_guard_clean(
             apply,
             &guard_clone.protected_paths,
             guard_clone.trash_credential_guard,
+            guard_clone.trash_min_age_days,
         )
         .await
         {
