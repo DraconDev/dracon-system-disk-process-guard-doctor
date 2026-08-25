@@ -2681,59 +2681,64 @@ async fn empty_trash_at(
                     }
                 }
                 let mut succeeded = true;
-                if apply {
-                    // CHANGED 2026-08-25 (v0.112.39): age-based purge — with
-                    // trash_min_age_days > 0 only entries whose mtime is older
-                    // than the cutoff are removed, preserving a recovery window
-                    // instead of emptying everything at once (the old behavior
-                    // remains available via min_age_days = 0).
-                    if min_age_days == 0 {
-                        match check_safe_to_delete_guard(&trash_files, protected_paths) {
-                            Ok(ref safe_path) => {
-                                if let Err(e) = tokio::fs::remove_dir_all(safe_path).await {
-                                    eprintln!("⚠️ failed to remove trash files: {}", e);
-                                    succeeded = false;
-                                } else if let Err(e) = tokio::fs::create_dir_all(&trash_files).await {
-                                    eprintln!("⚠️ failed to recreate trash dir: {}", e);
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("⚠️ skipping trash files: {}", e);
+                if min_age_days > 0 {
+                    // CHANGED 2026-08-25 (v0.112.39): age-based purge — only
+                    // entries whose mtime is older than the cutoff are
+                    // removed, preserving a recovery window instead of
+                    // emptying everything at once. Handles both dry-run
+                    // measurement and deletion, including paired .trashinfo
+                    // metadata. min_age_days = 0 preserves the old behavior.
+                    match purge_aged_trash_entries(
+                        &trash_files,
+                        &trash_info,
+                        min_age_days,
+                        protected_paths,
+                        apply,
+                    )
+                    .await
+                    {
+                        Ok((bytes, count)) if bytes > 0 => {
+                            reclaimed += bytes;
+                            cleaned.push(format!(
+                                "{} trash entries older than {}d ({})",
+                                count,
+                                min_age_days,
+                                human_bytes(bytes)
+                            ));
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            eprintln!("⚠️ aged trash purge failed: {}", e);
+                            succeeded = false;
+                        }
+                    }
+                } else if apply {
+                    match check_safe_to_delete_guard(&trash_files, protected_paths) {
+                        Ok(ref safe_path) => {
+                            if let Err(e) = tokio::fs::remove_dir_all(safe_path).await {
+                                eprintln!("⚠️ failed to remove trash files: {}", e);
                                 succeeded = false;
+                            } else if let Err(e) = tokio::fs::create_dir_all(&trash_files).await {
+                                eprintln!("⚠️ failed to recreate trash dir: {}", e);
                             }
                         }
-                    } else {
-                        match purge_aged_trash_entries(
-                            &trash_files,
-                            &trash_info,
-                            min_age_days,
-                            protected_paths,
-                        )
-                        .await
-                        {
-                            Ok(purged) => {
-                                reclaimed += purged;
-                                cleaned.push(format!(
-                                    "trash entries older than {}d ({})",
-                                    min_age_days,
-                                    human_bytes(purged)
-                                ));
-                            }
-                            Err(e) => {
-                                eprintln!("⚠️ aged trash purge failed: {}", e);
-                                succeeded = false;
-                            }
+                        Err(e) => {
+                            eprintln!("⚠️ skipping trash files: {}", e);
+                            succeeded = false;
                         }
                     }
                 }
-                if !apply || succeeded {
+                if min_age_days == 0 && (!apply || succeeded) {
                     cleaned.push(format!("trash files ({})", human_bytes(size)));
                     reclaimed += size;
                 }
             }
         }
 
-        if trash_info.exists() {
+        // In aged mode (min_age_days > 0) the .trashinfo files are removed
+        // alongside their entries by purge_aged_trash_entries; only the old
+        // empty-everything path wipes the whole info directory.
+        if min_age_days == 0 && trash_info.exists() {
             let info_size = get_dir_size(&trash_info).await.unwrap_or(0);
             if info_size > 0 {
                 let mut succeeded = true;
@@ -2763,6 +2768,70 @@ async fn empty_trash_at(
     }
 
     Ok((reclaimed, cleaned))
+}
+
+/// Remove top-level trash entries whose mtime is older than
+/// `min_age_days`, together with their paired `.trashinfo` metadata.
+/// Works for both apply and dry-run (dry-run only measures). Protected
+/// paths are skipped with a note; removal failures keep the entry and
+/// do not abort the pass.
+async fn purge_aged_trash_entries(
+    trash_files: &Path,
+    trash_info: &Path,
+    min_age_days: u64,
+    protected_paths: &[String],
+    apply: bool,
+) -> Result<(u64, u64)> {
+    let cutoff = SystemTime::now().duration_since(UNIX_EPOCH)?
+        - Duration::from_secs(min_age_days.saturating_mul(86_400));
+    let cutoff = UNIX_EPOCH + cutoff;
+    let mut reclaimed = 0u64;
+    let mut count = 0u64;
+    let mut rd = tokio::fs::read_dir(trash_files).await?;
+    while let Some(entry) = rd.next_entry().await? {
+        let path = entry.path();
+        let meta = match entry.metadata().await {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let modified = match meta.modified() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        if modified > cutoff {
+            continue;
+        }
+        if let Err(e) = check_safe_to_delete_guard(&path, protected_paths) {
+            eprintln!("🛡️ keeping protected trash entry {}: {}", path.display(), e);
+            continue;
+        }
+        let entry_size = if meta.is_dir() {
+            get_dir_size(&path).await.unwrap_or(0)
+        } else {
+            meta.len()
+        };
+        if !apply {
+            reclaimed += entry_size;
+            count += 1;
+            continue;
+        }
+        let removed = if meta.is_dir() {
+            tokio::fs::remove_dir_all(&path).await
+        } else {
+            tokio::fs::remove_file(&path).await
+        };
+        if let Err(e) = removed {
+            eprintln!("⚠️ failed to remove trash entry {}: {}", path.display(), e);
+            continue;
+        }
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            let info = trash_info.join(format!("{}.trashinfo", name));
+            let _ = tokio::fs::remove_file(info).await;
+        }
+        reclaimed += entry_size;
+        count += 1;
+    }
+    Ok((reclaimed, count))
 }
 
 static RESOLVE_BIN_CACHE: std::sync::OnceLock<
@@ -3804,16 +3873,132 @@ fn manage_sync_freeze(guard: &GuardPolicy, used: u8, dstate: &str, sync_frozen: 
     }
 }
 
+/// Collect the set of paths under any of `roots` that are currently held
+/// open by a running process (/proc/*/fd readlink targets). Bounded by
+/// the fd tables of live processes; entries in this set are skipped by
+/// tmp cleanup even when old, because an open file may still be written.
+async fn collect_open_paths_under(roots: &[PathBuf]) -> std::collections::HashSet<PathBuf> {
+    let mut open = std::collections::HashSet::new();
+    let mut proc_rd = match tokio::fs::read_dir("/proc").await {
+        Ok(rd) => rd,
+        Err(_) => return open,
+    };
+    while let Ok(Some(pid_entry)) = proc_rd.next_entry().await {
+        let name = pid_entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.bytes().all(|b| b.is_ascii_digit()) {
+            continue;
+        }
+        let fd_dir = pid_entry.path().join("fd");
+        let mut fd_rd = match tokio::fs::read_dir(&fd_dir).await {
+            Ok(rd) => rd,
+            Err(_) => continue,
+        };
+        while let Ok(Some(fd_entry)) = fd_rd.next_entry().await {
+            if let Ok(target) = tokio::fs::read_link(fd_entry.path()).await {
+                let target: PathBuf = target;
+                if roots.iter().any(|r| target.starts_with(r)) {
+                    // Remember the deepest ancestor we saw so cleanup can
+                    // check "is any prefix of this entry open" cheaply.
+                    open.insert(target);
+                }
+            }
+        }
+    }
+    open
+}
+
+fn path_has_open_ancestor(path: &Path, open: &std::collections::HashSet<PathBuf>) -> bool {
+    open.iter().any(|o| o.starts_with(path) || path.starts_with(o))
+}
+
+/// Age-based top-level /tmp cleanup (ADDED 2026-08-25, v0.112.39).
+/// Removes TOP-LEVEL entries of each root whose mtime is older than
+/// `min_age_hours`, skipping symlinks, protected paths, and anything
+/// currently held open by a process. Dry-run only measures.
+async fn clean_tmp_paths(
+    apply: bool,
+    roots: &[String],
+    min_age_hours: u64,
+    protected_paths: &[String],
+) -> Result<(u64, Vec<String>)> {
+    let mut reclaimed = 0u64;
+    let mut cleaned = Vec::new();
+    if roots.is_empty() || min_age_hours == 0 {
+        return Ok((0, cleaned));
+    }
+    let root_paths: Vec<PathBuf> = roots.iter().map(|r| expand_tilde(r)).collect();
+    let open_paths = collect_open_paths_under(&root_paths).await;
+    let cutoff = SystemTime::now().duration_since(UNIX_EPOCH)?
+        - Duration::from_secs(min_age_hours.saturating_mul(3_600));
+    let cutoff = UNIX_EPOCH + cutoff;
+    for root in &root_paths {
+        let mut rd = match tokio::fs::read_dir(root).await {
+            Ok(rd) => rd,
+            Err(_) => continue,
+        };
+        while let Ok(Some(entry)) = rd.next_entry().await {
+            let path = entry.path();
+            // Never follow or remove symlinks in tmp roots.
+            let meta = match entry.metadata().await {
+                Ok(m) if !m.file_type().is_symlink() => m,
+                _ => continue,
+            };
+            let modified = match meta.modified() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            if modified > cutoff {
+                continue; // too young
+            }
+            if path_has_open_ancestor(&path, &open_paths) {
+                continue; // held open by a live process
+            }
+            if let Err(e) = check_safe_to_delete_guard(&path, protected_paths) {
+                eprintln!("🛡️ keeping protected tmp entry {}: {}", path.display(), e);
+                continue;
+            }
+            let entry_size = if meta.is_dir() {
+                get_dir_size(&path).await.unwrap_or(0)
+            } else {
+                meta.len()
+            };
+            if !apply {
+                reclaimed += entry_size;
+                cleaned.push(format!("{} ({}, dry-run)", path.display(), human_bytes(entry_size)));
+                continue;
+            }
+            let removed = if meta.is_dir() {
+                tokio::fs::remove_dir_all(&path).await
+            } else {
+                tokio::fs::remove_file(&path).await
+            };
+            match removed {
+                Ok(()) => {
+                    reclaimed += entry_size;
+                    cleaned.push(format!("{} ({})", path.display(), human_bytes(entry_size)));
+                }
+                Err(e) => eprintln!("⚠️ failed to remove tmp entry {}: {}", path.display(), e),
+            }
+        }
+    }
+    Ok((reclaimed, cleaned))
+}
+
 async fn run_auto_cleanup(
     guard: &GuardPolicy,
     state: &mut GuardRuntimeState,
     used: u8,
+    include_rust: bool,
 ) -> Result<()> {
     let apply = guard.auto_cleanup_apply;
     let mut total_reclaimed = 0u64;
     let mut all_cleaned: Vec<String> = Vec::new();
 
-    if guard.auto_cleanup_rust {
+    // include_rust=false runs only the cheap non-rust kinds — used by the
+    // proactive tier (>= proactive_cleanup_percent) where the expensive
+    // ~/Dev-wide rust-target scan stays on its own cadence.
+    if guard.auto_cleanup_rust && include_rust {
         match auto_cleanup_rust_targets(guard, state, apply).await {
             Ok(result) => {
                 total_reclaimed += result.reclaimed_bytes;
@@ -3829,7 +4014,14 @@ async fn run_auto_cleanup(
     }
 
     if guard.clean_trash {
-        match empty_trash(apply, &guard.protected_paths, guard.trash_credential_guard).await {
+        match empty_trash(
+            apply,
+            &guard.protected_paths,
+            guard.trash_credential_guard,
+            guard.trash_min_age_days,
+        )
+        .await
+        {
             Ok((bytes, cleaned)) => {
                 total_reclaimed += bytes;
                 all_cleaned.extend(cleaned.iter().map(|s| format!("Trash: {}", s)));
@@ -3840,6 +4032,25 @@ async fn run_auto_cleanup(
                 }
             }
             Err(e) => eprintln!("⚠️ Trash cleanup failed: {}", e),
+        }
+    }
+
+    if guard.clean_tmp {
+        let roots: Vec<String> = guard
+            .tmp_search_paths
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        match clean_tmp_paths(apply, &roots, guard.tmp_min_age_hours, &guard.protected_paths).await {
+            Ok((bytes, cleaned)) => {
+                total_reclaimed += bytes;
+                all_cleaned.extend(cleaned.iter().map(|s| format!("Tmp: {}", s)));
+                if apply && bytes > 0 {
+                    eprintln!("🧹 Tmp: {}", human_bytes(bytes));
+                }
+            }
+            Err(e) => eprintln!("⚠️ Tmp cleanup failed: {}", e),
         }
     }
 
