@@ -2614,11 +2614,12 @@ async fn empty_trash(
     apply: bool,
     protected_paths: &[String],
     credential_guard: bool,
+    min_age_days: u64,
 ) -> Result<(u64, Vec<String>)> {
     let Some(home) = dirs::home_dir() else {
         return Ok((0, Vec::new()));
     };
-    empty_trash_at(&home, apply, protected_paths, credential_guard).await
+    empty_trash_at(&home, apply, protected_paths, credential_guard, min_age_days).await
 }
 
 async fn empty_trash_at(
@@ -2626,6 +2627,7 @@ async fn empty_trash_at(
     apply: bool,
     protected_paths: &[String],
     credential_guard: bool,
+    min_age_days: u64,
 ) -> Result<(u64, Vec<String>)> {
     let mut reclaimed = 0u64;
     let mut cleaned = Vec::new();
@@ -2680,18 +2682,47 @@ async fn empty_trash_at(
                 }
                 let mut succeeded = true;
                 if apply {
-                    match check_safe_to_delete_guard(&trash_files, protected_paths) {
-                        Ok(ref safe_path) => {
-                            if let Err(e) = tokio::fs::remove_dir_all(safe_path).await {
-                                eprintln!("⚠️ failed to remove trash files: {}", e);
+                    // CHANGED 2026-08-25 (v0.112.39): age-based purge — with
+                    // trash_min_age_days > 0 only entries whose mtime is older
+                    // than the cutoff are removed, preserving a recovery window
+                    // instead of emptying everything at once (the old behavior
+                    // remains available via min_age_days = 0).
+                    if min_age_days == 0 {
+                        match check_safe_to_delete_guard(&trash_files, protected_paths) {
+                            Ok(ref safe_path) => {
+                                if let Err(e) = tokio::fs::remove_dir_all(safe_path).await {
+                                    eprintln!("⚠️ failed to remove trash files: {}", e);
+                                    succeeded = false;
+                                } else if let Err(e) = tokio::fs::create_dir_all(&trash_files).await {
+                                    eprintln!("⚠️ failed to recreate trash dir: {}", e);
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("⚠️ skipping trash files: {}", e);
                                 succeeded = false;
-                            } else if let Err(e) = tokio::fs::create_dir_all(&trash_files).await {
-                                eprintln!("⚠️ failed to recreate trash dir: {}", e);
                             }
                         }
-                        Err(e) => {
-                            eprintln!("⚠️ skipping trash files: {}", e);
-                            succeeded = false;
+                    } else {
+                        match purge_aged_trash_entries(
+                            &trash_files,
+                            &trash_info,
+                            min_age_days,
+                            protected_paths,
+                        )
+                        .await
+                        {
+                            Ok(purged) => {
+                                reclaimed += purged;
+                                cleaned.push(format!(
+                                    "trash entries older than {}d ({})",
+                                    min_age_days,
+                                    human_bytes(purged)
+                                ));
+                            }
+                            Err(e) => {
+                                eprintln!("⚠️ aged trash purge failed: {}", e);
+                                succeeded = false;
+                            }
                         }
                     }
                 }

@@ -218,6 +218,24 @@ pub(crate) struct GuardPolicy {
     pub(crate) nix_keep_generations: u32,
     #[serde(default = "default_node_modules_max_age_days")]
     pub(crate) node_modules_max_age_days: u64,
+    // ADDED 2026-08-25 (v0.112.39): /tmp hygiene — the 2026-08-25 disk
+    // incident found 207 GiB accumulated in /tmp (418 stale
+    // puppeteer/playwright profiles, pi-bash logs, stale audit clones)
+    // that no existing cleanup kind covers; rust-target cleanup never
+    // looks outside ~/Dev. Age-based TOP-LEVEL entry cleanup with
+    // open-fd protection (entries held open by any process are skipped).
+    #[serde(default = "default_true")]
+    pub(crate) clean_tmp: bool,
+    #[serde(default = "default_tmp_search_paths")]
+    pub(crate) tmp_search_paths: String,
+    #[serde(default = "default_tmp_min_age_hours")]
+    pub(crate) tmp_min_age_hours: u64,
+    // ADDED 2026-08-25 (v0.112.39): only purge trash entries older than
+    // this many days, so clean_trash keeps a recovery window instead of
+    // emptying everything at once at the next action-level event.
+    // 0 preserves the old empty-everything behavior.
+    #[serde(default = "default_trash_min_age_days")]
+    pub(crate) trash_min_age_days: u64,
     #[serde(default)]
     pub(crate) protected_paths: Vec<String>,
     #[serde(default = "default_proactive_cleanup_percent")]
@@ -291,6 +309,10 @@ impl Default for GuardPolicy {
             clean_node_modules: default_true(),
             nix_keep_generations: 5,
             node_modules_max_age_days: default_node_modules_max_age_days(),
+            clean_tmp: default_true(),
+            tmp_search_paths: default_tmp_search_paths(),
+            tmp_min_age_hours: default_tmp_min_age_hours(),
+            trash_min_age_days: default_trash_min_age_days(),
             protected_paths: Vec::new(),
             proactive_cleanup_percent: default_proactive_cleanup_percent(),
             rust_target_max_age_days: default_rust_target_max_age_days(),
@@ -313,6 +335,18 @@ pub(crate) fn default_kinds() -> String {
 
 pub(crate) fn default_true() -> bool {
     true
+}
+
+pub(crate) fn default_tmp_search_paths() -> String {
+    "/tmp".to_string()
+}
+
+pub(crate) fn default_tmp_min_age_hours() -> u64 {
+    24
+}
+
+pub(crate) fn default_trash_min_age_days() -> u64 {
+    7
 }
 
 pub(crate) fn default_false() -> bool {
