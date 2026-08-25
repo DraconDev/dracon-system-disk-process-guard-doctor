@@ -1098,7 +1098,7 @@ async fn empty_trash_credential_guard_blocks_dry_run_estimate() {
     let credential_fixture = trash_files.join("CREDENTIALS.md");
     fs::write(&credential_fixture, b"fixture contents").expect("write credential fixture");
 
-    let (reclaimed, cleaned) = empty_trash_at(&home, false, &[], true)
+    let (reclaimed, cleaned) = empty_trash_at(&home, false, &[], true, 0)
         .await
         .expect("dry-run trash scan");
     assert_eq!(
@@ -1115,6 +1115,126 @@ async fn empty_trash_credential_guard_blocks_dry_run_estimate() {
     );
 
     let _ = fs::remove_dir_all(&home);
+}
+
+// --- 2026-08-25 (v0.112.39): age-based trash + tmp cleanup regression tests ---
+
+fn write_file_with_mtime(path: &std::path::Path, contents: &[u8], age_secs: u64) {
+    fs::write(path, contents).expect("write fixture");
+    let f = fs::OpenOptions::new()
+        .append(true)
+        .open(path)
+        .expect("open fixture for mtime set");
+    let mtime = SystemTime::now() - Duration::from_secs(age_secs);
+    f.set_modified(mtime).expect("set_modified");
+}
+
+fn unique_test_home(tag: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!(
+        "dracon_system_{}_{}_{}",
+        tag,
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ))
+}
+
+#[tokio::test]
+async fn empty_trash_min_age_keeps_recent_entries() {
+    let home = unique_test_home("trash_age");
+    let trash_files = home.join(".local/share/Trash/files");
+    let trash_info = home.join(".local/share/Trash/info");
+    fs::create_dir_all(&trash_files).expect("create trash fixture");
+    fs::create_dir_all(&trash_info).expect("create info fixture");
+
+    // Old entry (30 days) must go; recent entry (1 hour) must stay.
+    let old = trash_files.join("old-stuff.txt");
+    let recent = trash_files.join("recent-stuff.txt");
+    write_file_with_mtime(&old, b"old", 30 * 86_400);
+    write_file_with_mtime(&recent, b"new", 3_600);
+    fs::write(trash_info.join("old-stuff.txt.trashinfo"), b"[Trash Info]")
+        .expect("info old");
+    fs::write(trash_info.join("recent-stuff.txt.trashinfo"), b"[Trash Info]")
+        .expect("info recent");
+
+    let (reclaimed, cleaned) = empty_trash_at(&home, true, &[], false, 7)
+        .await
+        .expect("aged purge");
+    assert!(reclaimed > 0, "aged purge should reclaim the old entry");
+    assert_eq!(cleaned.len(), 1, "exactly one cleanup line expected");
+    assert!(!old.exists(), "old entry must be removed");
+    assert!(recent.exists(), "recent entry must be kept");
+    assert!(!trash_info.join("old-stuff.txt.trashinfo").exists(), "paired .trashinfo for the old entry must be removed");
+    assert!(trash_info.join("recent-stuff.txt.trashinfo").exists(), "paired .trashinfo for the kept entry must survive");
+
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[tokio::test]
+async fn empty_trash_zero_age_empties_everything() {
+    let home = unique_test_home("trash_zero");
+    let trash_files = home.join(".local/share/Trash/files");
+    fs::create_dir_all(&trash_files).expect("create trash fixture");
+    write_file_with_mtime(&trash_files.join("a.txt"), b"a", 0);
+    write_file_with_mtime(&trash_files.join("b.txt"), b"b", 0);
+
+    let (_reclaimed, _cleaned) = empty_trash_at(&home, true, &[], false, 0)
+        .await
+        .expect("whole-empty purge");
+    assert!(!trash_files.join("a.txt").exists());
+    assert!(!trash_files.join("b.txt").exists());
+
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[tokio::test]
+async fn clean_tmp_paths_respects_age_dry_run_and_open_fds() {
+    let root = unique_test_home("tmp_clean");
+    fs::create_dir_all(&root).expect("create tmp root");
+    let old_file = root.join("stale-pi-bash.log");
+    let new_file = root.join("active-session.log");
+    write_file_with_mtime(&old_file, b"old log data", 2 * 86_400);
+    write_file_with_mtime(&new_file, b"live", 60);
+
+    // Hold an old-aged file open via this process so /proc/self/fd sees it.
+    let held = root.join("held-open.bin");
+    write_file_with_mtime(&held, b"held", 2 * 86_400);
+    let handle = fs::File::open(&held).expect("open held file");
+
+    let roots = vec![root.display().to_string()];
+
+    // Dry-run measures but deletes nothing.
+    let (dry_bytes, dry_lines) = clean_tmp_paths(false, &roots, 24, &[])
+        .await
+        .expect("dry run");
+    assert!(dry_bytes > 0, "dry run should report reclaimable bytes");
+    assert!(old_file.exists(), "dry run must not delete");
+    assert!(!dry_lines.iter().any(|l| l.contains("active-session")), "young entries are not candidates");
+    assert!(!dry_lines.iter().any(|l| l.contains("held-open")), "open-held entries are skipped even when old");
+
+    // Apply removes only aged, unheld entries.
+    let (bytes, lines) = clean_tmp_paths(true, &roots, 24, &[])
+        .await
+        .expect("apply");
+    assert_eq!(bytes, dry_bytes, "apply should reclaim exactly what dry-run measured");
+    assert!(!old_file.exists(), "aged unheld entry must be removed");
+    assert!(new_file.exists(), "young entry must be kept");
+    assert!(held.exists(), "entry held open by a live process must be kept");
+    assert_eq!(lines.len(), 1);
+
+    drop(handle);
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn guard_policy_defaults_cover_tmp_and_trash_age_fields() {
+    let guard = GuardPolicy::default();
+    assert!(guard.clean_tmp, "clean_tmp should default on");
+    assert_eq!(guard.tmp_search_paths, "/tmp");
+    assert_eq!(guard.tmp_min_age_hours, 24);
+    assert_eq!(guard.trash_min_age_days, 7);
 }
 
 #[tokio::test]
