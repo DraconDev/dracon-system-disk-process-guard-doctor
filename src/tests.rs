@@ -1009,7 +1009,7 @@ fn process_cmdline_is_sanitized_for_logs() {
 
 #[test]
 fn process_cmdline_is_bounded() {
-    let raw = vec![b'x'; MAX_PROCESS_CMDLINE_BYTES + 1];
+    let raw = vec![b'x'; MAX_PROCESS_CMDLINE_BYTES];
     let output = sanitize_process_cmdline(&raw, true);
     assert!(output.ends_with(" [truncated]"));
     assert!(output.len() <= MAX_PROCESS_CMDLINE_BYTES + " [truncated]".len());
