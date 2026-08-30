@@ -1274,6 +1274,80 @@ async fn guard_report_completes_for_ok_disk() {
 }
 
 #[test]
+fn guard_never_removes_or_overwrites_operator_freeze_marker() {
+    let marker = std::env::temp_dir().join(format!(
+        "dracon-system-freeze-operator-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    let operator_contents = "dracon-sync pause\n";
+    fs::write(&marker, operator_contents).expect("write operator marker");
+
+    let guard = GuardPolicy {
+        freeze_sync_at_action: false,
+        sync_freeze_marker: marker.display().to_string(),
+        unfreeze_below_percent: 70,
+        ..GuardPolicy::default()
+    };
+    let mut sync_frozen = true;
+    manage_sync_freeze(&guard, 68, "ok", &mut sync_frozen);
+    assert!(marker.exists(), "guard-disabled policy must not remove it");
+    assert_eq!(
+        fs::read_to_string(&marker).expect("read marker"),
+        operator_contents
+    );
+    assert!(sync_frozen);
+
+    // Even when automatic freezing is enabled, an existing marker written by
+    // dracon-sync remains operator-owned and must not be replaced or removed.
+    let enabled_guard = GuardPolicy {
+        freeze_sync_at_action: true,
+        ..guard
+    };
+    manage_sync_freeze(&enabled_guard, 95, "action", &mut sync_frozen);
+    assert!(marker.exists(), "guard must not replace an operator marker");
+    assert_eq!(
+        fs::read_to_string(&marker).expect("read marker"),
+        operator_contents
+    );
+
+    let _ = fs::remove_file(marker);
+}
+
+#[test]
+fn guard_removes_only_its_own_freeze_marker() {
+    let marker = std::env::temp_dir().join(format!(
+        "dracon-system-freeze-owned-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    let guard = GuardPolicy {
+        freeze_sync_at_action: true,
+        sync_freeze_marker: marker.display().to_string(),
+        unfreeze_below_percent: 70,
+        ..GuardPolicy::default()
+    };
+
+    let mut sync_frozen = false;
+    manage_sync_freeze(&guard, 95, "action", &mut sync_frozen);
+    assert!(sync_frozen);
+    assert!(marker.exists());
+    assert!(fs::read_to_string(&marker)
+        .expect("read guard marker")
+        .starts_with(GUARD_FREEZE_MARKER_PREFIX));
+
+    manage_sync_freeze(&guard, 68, "ok", &mut sync_frozen);
+    assert!(!marker.exists(), "guard-owned marker should be released");
+    assert!(!sync_frozen);
+}
+
+#[test]
 fn test_graduated_nice_value_cpu_tiers() {
     assert_eq!(graduated_nice_value(100.0, 0, 5), 5);
     assert_eq!(graduated_nice_value(180.0, 0, 5), 5);

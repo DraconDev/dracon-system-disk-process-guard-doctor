@@ -1359,6 +1359,22 @@ fn sync_freeze_marker_path(guard: &GuardPolicy) -> PathBuf {
     PathBuf::from(guard.sync_freeze_marker.clone())
 }
 
+// Only remove markers written by this guard. The marker path is shared with
+// `dracon-sync pause`, so mere existence is not proof that the guard owns it.
+const GUARD_FREEZE_MARKER_PREFIX: &str = "dracon-system guard freeze:";
+
+fn guard_owns_sync_freeze_marker(marker: &Path) -> bool {
+    // Read only the small ownership prefix. Besides avoiding an unnecessary
+    // allocation, this keeps a malformed/oversized marker from becoming a
+    // memory-pressure input to the guard itself.
+    let mut prefix = [0_u8; GUARD_FREEZE_MARKER_PREFIX.len()];
+    let Ok(mut file) = File::open(marker) else {
+        return false;
+    };
+    file.read_exact(&mut prefix).is_ok()
+        && prefix.as_slice() == GUARD_FREEZE_MARKER_PREFIX.as_bytes()
+}
+
 /// Graduated auto-renice: higher CPU/memory usage = higher nice value (lower priority).
 /// The process still gets full CPU when nothing else needs it — it just yields to the DE
 /// and other interactive processes.
@@ -3603,7 +3619,7 @@ async fn check_memory_pressure(
             if let Some(orig) = cur {
                 if let Some(target) = oom_bias_target(orig) {
                     if fs::write(&adj_path, format!("{target}\n")).is_ok() {
-                        let known_descendants = process_descendant_samples(&all_processes, p.pid)
+                        let known_descendants = process_descendant_samples(all_processes, p.pid)
                             .into_iter()
                             .map(|child| (child.pid, child.starttime))
                             .collect();
@@ -3656,7 +3672,7 @@ async fn check_memory_pressure(
     // A child forked after its parent was biased inherits oom_score_adj=250,
     // but is not present in `oom_biased_pids`. Sweep those descendants on
     // every pass, including before a tracked parent is released or removed.
-    let sweep = sweep_stranded_oom_descendants(Path::new("/proc"), &all_processes, state, &exempt);
+    let sweep = sweep_stranded_oom_descendants(Path::new("/proc"), all_processes, state, &exempt);
     if sweep.deferred > 0 {
         eprintln!(
             "⚠️ retaining {} pending descendant OOM restorations",
@@ -4026,7 +4042,10 @@ fn manage_sync_freeze(guard: &GuardPolicy, used: u8, dstate: &str, sync_frozen: 
                 ));
             }
         }
-    } else if *sync_frozen && used <= guard.unfreeze_below_percent {
+    } else if *sync_frozen
+        && used <= guard.unfreeze_below_percent
+        && guard_owns_sync_freeze_marker(&marker)
+    {
         if let Err(e) = fs::remove_file(&marker) {
             eprintln!("failed to remove freeze marker: {}", e);
         } else {
