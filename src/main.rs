@@ -3460,6 +3460,7 @@ async fn check_rapid_disk_fill(
 async fn check_memory_pressure(
     guard: &GuardPolicy,
     state: &mut GuardRuntimeState,
+    all_processes: &[ProcSample],
 ) -> Option<MemoryReport> {
     if !guard.monitor_memory {
         return None;
@@ -3510,7 +3511,6 @@ async fn check_memory_pressure(
 
     // Top RSS offenders (skipping kernel threads and exempt names).
     let exempt = parse_kinds(&guard.process_exempt_names);
-    let all_processes = process_samples().await.unwrap_or_default();
     let top_rss: Vec<ProcSample> = all_processes
         .iter()
         .filter(|p| !exempt.contains(&p.command) && !is_kernel_process(&p.command))
@@ -3522,7 +3522,10 @@ async fn check_memory_pressure(
                 acc.truncate(5);
             }
             acc
-        });
+        })
+        .into_iter()
+        .map(load_process_cmdline)
+        .collect();
 
     // ── Limiting (ADDED 2026-08-10, v0.112.36) ──────────────────
     // Deprioritize (never kill) the offenders while pressure lasts;
@@ -4365,9 +4368,9 @@ async fn check_disk_state_change(
 async fn check_heavy_processes(
     guard: &GuardPolicy,
     state: &mut GuardRuntimeState,
+    samples: &[ProcSample],
 ) -> Result<Vec<GuardProcessAlert>> {
     let exempt = parse_kinds(&guard.process_exempt_names);
-    let samples = process_samples().await?;
     let can_restore_nice = if guard.auto_renice || !state.reniced_pids.is_empty() {
         nice_restore_capability_available(state)
     } else {
@@ -4385,6 +4388,7 @@ async fn check_heavy_processes(
         if !heavy {
             continue;
         }
+        let p = load_process_cmdline(p.clone());
         current_heavy.insert(p.pid);
         let report_key = format!("heavy-process-{}-{}", p.pid, p.starttime);
         current_report_keys.insert(report_key.clone());
@@ -4984,13 +4988,17 @@ pub(crate) async fn run_guard_once(
 
     check_disk_state_change(guard, state, used, &dstate).await;
 
-    let alerts = check_heavy_processes(guard, state).await?;
+    // One bounded metadata scan is shared by heavy-process and memory
+    // pressure checks. The old implementation ran `ps ... args` twice per
+    // pass, doubling both the untrusted argv payload and transient Vecs.
+    let samples = process_samples().await?;
+    let alerts = check_heavy_processes(guard, state, &samples).await?;
     cleanup_stale_cooldowns(state, guard.notify_cooldown_secs);
 
     check_inode_usage(guard, state).await;
     let zombies = check_zombie_processes(guard, state).await;
     check_large_logs(guard, state).await;
-    let memory = check_memory_pressure(guard, state).await;
+    let memory = check_memory_pressure(guard, state, &samples).await;
 
     Ok(GuardReport {
         enabled: guard.enabled,
