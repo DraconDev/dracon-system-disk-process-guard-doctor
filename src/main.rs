@@ -42,6 +42,15 @@ mod guard_tests;
 #[cfg(test)]
 mod links_tests;
 
+// Memory-leak fix: the unrenice loops used to `continue` forever on renice
+// failure or ProcessIdentityStatus::Unavailable, never removing the entry from
+// `memory_reniced_pids` / `reniced_pids`. That grew the map unboundedly and
+// eventually OOM-killed the daemon inside its 250 MiB cgroup, which in turn
+// dragged the wezterm cgroup down with it. We now bound the deferrals and
+// drop the entry after this many attempts.
+const IDENTITY_UNAVAILABLE_RETRY_LIMIT: u32 = 3;
+const UNRENICE_RETRY_LIMIT: u32 = 3;
+
 #[cfg(test)]
 const TEST_PROTECTED: &[&str] = &[
     "/", "/home", "/etc", "/usr", "/var", "/boot", "/nix", "/run", "/sys", "/dev", "/proc",
@@ -509,6 +518,17 @@ pub(crate) struct GuardRuntimeState {
     /// Last action-level cleanup scan. Even report-only scans are bounded
     /// because they walk large Rust and Node trees.
     pub(crate) last_auto_cleanup: Option<Instant>,
+    /// ADDED 2026-08-30 (memory-leak fix): bounded retry counters for the
+    /// unrenice loops. The loops used to `continue` forever on
+    /// ProcessIdentityStatus::Unavailable or a failed renice, never
+    /// dropping the entry from `memory_reniced_pids` / `reniced_pids`.
+    /// That grew the maps unboundedly and OOM-killed the daemon inside
+    /// its 250 MiB cgroup, dragging wezterm down with it. We now drop
+    /// the entry after IDENTITY_UNAVAILABLE_RETRY_LIMIT / UNRENICE_RETRY_LIMIT.
+    pub(crate) memory_identity_unavailable_attempts: HashMap<i32, u32>,
+    pub(crate) memory_unrenice_failures: HashMap<i32, u32>,
+    pub(crate) legacy_identity_unavailable_attempts: HashMap<i32, u32>,
+    pub(crate) legacy_unrenice_failures: HashMap<i32, u32>,
 }
 
 /// Information about a Rust target directory for cleanup consideration
@@ -3567,21 +3587,60 @@ async fn check_memory_pressure(
                     continue;
                 }
                 ProcessIdentityStatus::Unavailable => {
-                    eprintln!(
-                        "⚠️ mem-unrenice deferred for pid={} — process identity unavailable",
-                        pid
-                    );
+                    // Bounded defer: only retry the identity read a few times.
+                    // Unbounded deferral is what caused the long-running memory
+                    // leak when PIDs are in cgroups we cannot inspect.
+                    let attempts = state
+                        .memory_identity_unavailable_attempts
+                        .entry(pid)
+                        .or_insert(0);
+                    *attempts += 1;
+                    if *attempts >= IDENTITY_UNAVAILABLE_RETRY_LIMIT {
+                        eprintln!(
+                            "⚠️ mem-unrenice dropping pid={} after {} unavailable identity reads (will not retry)",
+                            pid, *attempts
+                        );
+                        state.memory_identity_unavailable_attempts.remove(&pid);
+                        remove_memory_renice(state, pid);
+                    } else {
+                        eprintln!(
+                            "⚠️ mem-unrenice deferred for pid={} — process identity unavailable (attempt {}/{})",
+                            pid, *attempts, IDENTITY_UNAVAILABLE_RETRY_LIMIT
+                        );
+                    }
                     continue;
                 }
             }
+            // Identity was Match (or fell through after dropping) — clear any
+            // prior unavailability counter for this pid.
+            state.memory_identity_unavailable_attempts.remove(&pid);
             if let Err(e) = renice_process(pid, restore_nice).await {
-                eprintln!("⚠️ mem-unrenice failed for pid={}: {}", pid, e);
+                // Bounded defer: a renice that fails with Permission denied will
+                // fail again every cycle. Retrying forever accumulates an entry
+                // per PID in `memory_reniced_pids` and leaks memory until the
+                // cgroup's MemoryMax trips.
+                let attempts = state.memory_unrenice_failures.entry(pid).or_insert(0);
+                *attempts += 1;
+                if *attempts >= UNRENICE_RETRY_LIMIT {
+                    eprintln!(
+                        "⚠️ mem-unrenice dropping pid={} after {} failed renices: {} (will not retry)",
+                        pid, *attempts, e
+                    );
+                    state.memory_unrenice_failures.remove(&pid);
+                    remove_memory_renice(state, pid);
+                } else {
+                    eprintln!(
+                        "⚠️ mem-unrenice failed for pid={} (attempt {}/{}): {}",
+                        pid, *attempts, UNRENICE_RETRY_LIMIT, e
+                    );
+                }
                 continue;
             }
             eprintln!(
                 "🛡️ mem-unrenice pid={} -> nice {} (pressure released)",
                 pid, restore_nice
             );
+            state.memory_unrenice_failures.remove(&pid);
             remove_memory_renice(state, pid);
         }
         state
@@ -4436,21 +4495,52 @@ async fn check_heavy_processes(
                     continue;
                 }
                 ProcessIdentityStatus::Unavailable => {
-                    eprintln!(
-                        "⚠️ un-renice deferred for pid={} — process identity unavailable",
-                        pid
-                    );
+                    // Bounded defer; see the mem-unrenice path above.
+                    let attempts = state
+                        .legacy_identity_unavailable_attempts
+                        .entry(pid)
+                        .or_insert(0);
+                    *attempts += 1;
+                    if *attempts >= IDENTITY_UNAVAILABLE_RETRY_LIMIT {
+                        eprintln!(
+                            "⚠️ un-renice dropping pid={} after {} unavailable identity reads (will not retry)",
+                            pid, *attempts
+                        );
+                        state.legacy_identity_unavailable_attempts.remove(&pid);
+                        remove_legacy_renice(state, pid);
+                    } else {
+                        eprintln!(
+                            "⚠️ un-renice deferred for pid={} — process identity unavailable (attempt {}/{})",
+                            pid, *attempts, IDENTITY_UNAVAILABLE_RETRY_LIMIT
+                        );
+                    }
                     continue;
                 }
             }
+            state.legacy_identity_unavailable_attempts.remove(&pid);
             if let Err(e) = renice_process(pid, restore_nice).await {
-                eprintln!("⚠️ un-renice failed for pid={}: {}", pid, e);
+                let attempts = state.legacy_unrenice_failures.entry(pid).or_insert(0);
+                *attempts += 1;
+                if *attempts >= UNRENICE_RETRY_LIMIT {
+                    eprintln!(
+                        "⚠️ un-renice dropping pid={} after {} failed renices: {} (will not retry)",
+                        pid, *attempts, e
+                    );
+                    state.legacy_unrenice_failures.remove(&pid);
+                    remove_legacy_renice(state, pid);
+                } else {
+                    eprintln!(
+                        "⚠️ un-renice failed for pid={} (attempt {}/{}): {}",
+                        pid, *attempts, UNRENICE_RETRY_LIMIT, e
+                    );
+                }
                 continue;
             }
             eprintln!(
                 "🔧 un-renice pid={} -> nice {} (pressure released)",
                 pid, restore_nice
             );
+            state.legacy_unrenice_failures.remove(&pid);
             remove_legacy_renice(state, pid);
         }
         state
