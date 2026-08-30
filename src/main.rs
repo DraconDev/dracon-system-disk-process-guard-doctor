@@ -4,8 +4,10 @@ use fs2::FileExt;
 use print as dr_print;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
 use std::fs::{self, File};
-use std::io::Write;
+use std::io::{Read, Write};
+use std::process::Stdio;
 #[cfg(test)]
 use std::os::unix::fs::symlink;
 #[cfg(unix)]
@@ -14,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::time::sleep;
 
@@ -594,6 +597,123 @@ async fn disk_details_for(path: &str) -> Result<DiskDetails> {
     parse_df_details(&text).ok_or_else(|| anyhow::anyhow!("failed parsing df output"))
 }
 
+/// Keep the untrusted process-table payload comfortably below the guard's
+/// 250 MiB cgroup limit. This is deliberately a cap on the *transport*, not
+/// just on the parsed rows: `Command::output()` would otherwise retain an
+/// attacker-controlled or pathological process list before parsing it.
+const MAX_PROCESS_SAMPLE_OUTPUT_BYTES: usize = 8 * 1024 * 1024;
+/// `/proc/<pid>/cmdline` is only read for selected heavy/top-RSS processes,
+/// never for the whole process table. Keep even those diagnostic strings
+/// bounded because argv is controlled by the process being inspected.
+const MAX_PROCESS_CMDLINE_BYTES: usize = 4096;
+
+/// Read `ps` stdout incrementally and fail closed if it exceeds the bounded
+/// metadata-only process-table budget. Killing the child on overflow prevents
+/// a giant process population from continuing to consume the pipe/cgroup.
+async fn bounded_process_table_output() -> Result<Vec<u8>> {
+    let mut child = Command::new("ps")
+        // Do not request `args` here. A process can make argv arbitrarily
+        // large, and `ps ... args` plus `Command::output()` was the direct
+        // path to the guard's 250 MiB OOM incident. Command lines are loaded
+        // later, bounded, and only for the few selected candidates.
+        .args(["-eo", "pid=,ppid=,pcpu=,rss=,ni=,comm=", "--no-headers"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("ps spawn failed: {} (is /run/current-system/sw/bin on PATH?)", e))?;
+
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("ps stdout pipe was not captured"))?;
+    let mut output = Vec::with_capacity(MAX_PROCESS_SAMPLE_OUTPUT_BYTES.min(64 * 1024));
+    let mut chunk = [0u8; 16 * 1024];
+    loop {
+        let read = match stdout.read(&mut chunk).await {
+            Ok(read) => read,
+            Err(error) => {
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+                return Err(error.into());
+            }
+        };
+        if read == 0 {
+            break;
+        }
+        if output.len().saturating_add(read) > MAX_PROCESS_SAMPLE_OUTPUT_BYTES {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            return Err(anyhow::anyhow!(
+                "ps metadata output exceeded {} MiB; process sample skipped",
+                MAX_PROCESS_SAMPLE_OUTPUT_BYTES / (1024 * 1024)
+            ));
+        }
+        output.extend_from_slice(&chunk[..read]);
+    }
+
+    let status = child.wait().await?;
+    if !status.success() {
+        return Err(anyhow::anyhow!(
+            "ps command failed (exit {}): metadata output was {} bytes",
+            status.code().unwrap_or(-1),
+            output.len()
+        ));
+    }
+    Ok(output)
+}
+
+/// Escape command-line control characters before putting them in journal or
+/// JSON output. In particular, argv may contain newlines; never let a process
+/// forge additional log records.
+fn sanitize_process_cmdline(raw: &[u8], truncated: bool) -> String {
+    let text = String::from_utf8_lossy(raw);
+    let mut sanitized = String::with_capacity(text.len().min(MAX_PROCESS_CMDLINE_BYTES));
+    for ch in text.chars() {
+        match ch {
+            '\0' => sanitized.push(' '),
+            '\n' => sanitized.push_str("\\n"),
+            '\r' => sanitized.push_str("\\r"),
+            '\t' => sanitized.push_str("\\t"),
+            ch if ch.is_control() => {
+                let _ = write!(&mut sanitized, "\\u{{{:04x}}}", ch as u32);
+            }
+            ch => sanitized.push(ch),
+        }
+    }
+    let sanitized = sanitized.trim_end().to_string();
+    if truncated {
+        if sanitized.is_empty() {
+            "[truncated]".to_string()
+        } else {
+            format!("{} [truncated]", sanitized)
+        }
+    } else {
+        sanitized
+    }
+}
+
+fn read_process_cmdline_from(root: &Path, pid: i32) -> String {
+    let path = root.join(pid.to_string()).join("cmdline");
+    let Ok(file) = File::open(path) else {
+        return String::new();
+    };
+    let mut reader = file.take((MAX_PROCESS_CMDLINE_BYTES + 1) as u64);
+    let mut raw = Vec::with_capacity(MAX_PROCESS_CMDLINE_BYTES + 1);
+    if reader.read_to_end(&mut raw).is_err() {
+        return String::new();
+    }
+    let truncated = raw.len() > MAX_PROCESS_CMDLINE_BYTES;
+    if truncated {
+        raw.truncate(MAX_PROCESS_CMDLINE_BYTES);
+    }
+    sanitize_process_cmdline(&raw, truncated)
+}
+
+fn load_process_cmdline(mut sample: ProcSample) -> ProcSample {
+    sample.args = read_process_cmdline_from(Path::new("/proc"), sample.pid);
+    sample
+}
+
 pub(crate) fn parse_ps_output(output: &str) -> Vec<ProcSample> {
     output
         .lines()
@@ -881,35 +1001,21 @@ async fn disk_use_percent_for(path: &str) -> Result<u8> {
 }
 
 async fn process_samples() -> Result<Vec<ProcSample>> {
-    let out = Command::new("ps")
-        .args(["-eo", "pid,ppid,pcpu,rss,ni,comm,args", "--no-headers"])
-        .output()
-        .await
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "ps spawn failed: {} (is /run/current-system/sw/bin on PATH?)",
-                e
-            )
-        })?;
-    if !out.status.success() {
-        return Err(anyhow::anyhow!(
-            "ps command failed (exit {}): {}",
-            out.status.code().unwrap_or(-1),
-            String::from_utf8_lossy(&out.stderr)
-        ));
-    }
-    let parsed = parse_ps_output(&String::from_utf8_lossy(&out.stdout));
+    let output = bounded_process_table_output().await?;
+    let parsed = parse_ps_output(&String::from_utf8_lossy(&output));
     // ADDED 2026-07-21 (v0.112.33, audit M34/F4.8): verify each
     // sample's pid/comm pair out-of-band via /proc/<pid>/comm. A
-    // process can embed `\n` in its argv, and `ps -eo ... args`
-    // prints argv raw — `parse_ps_output` then treats the injected
-    // text as additional rows, letting a local process FABRICATE a
-    // heavy-process sample for an arbitrary victim PID (which the
-    // guard would then renice). The injected row's pid/comm pair
-    // doesn't match a real process, so this filter kills it. Rows
-    // for just-exited PIDs are dropped the same way. Preserve the
-    // verified starttime in the sample so any later adjustment is
-    // tied to this exact PID incarnation.
+    // process can embed `\n` in its comm value, and `ps` then prints
+    // it raw — `parse_ps_output` could treat the injected text as
+    // additional rows, letting a local process FABRICATE a heavy
+    // sample for an arbitrary victim PID (which the guard would then
+    // renice). The injected row's pid/comm pair doesn't match a real
+    // process, so this filter kills it. Rows for just-exited PIDs are
+    // dropped the same way. Preserve the verified starttime in the
+    // sample so any later adjustment is tied to this exact PID
+    // incarnation. Command lines are intentionally not part of this
+    // broad scan; `load_process_cmdline` reads a bounded value only
+    // after a row has been selected for diagnostics.
     Ok(parsed
         .into_iter()
         .filter_map(
