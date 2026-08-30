@@ -999,6 +999,23 @@ fn parse_ps_output_extracts_all_fields() {
 }
 
 #[test]
+fn process_cmdline_is_sanitized_for_logs() {
+    let raw = b"python3\0worker.py\0line\nwith\tcontrol\0";
+    assert_eq!(
+        sanitize_process_cmdline(raw, false),
+        "python3 worker.py line\\nwith\\tcontrol"
+    );
+}
+
+#[test]
+fn process_cmdline_is_bounded() {
+    let raw = vec![b'x'; MAX_PROCESS_CMDLINE_BYTES + 1];
+    let output = sanitize_process_cmdline(&raw, true);
+    assert!(output.ends_with(" [truncated]"));
+    assert!(output.len() <= MAX_PROCESS_CMDLINE_BYTES + " [truncated]".len());
+}
+
+#[test]
 fn disk_state_transitions_at_thresholds() {
     let guard = GuardPolicy {
         disk_warn_percent: 70,
