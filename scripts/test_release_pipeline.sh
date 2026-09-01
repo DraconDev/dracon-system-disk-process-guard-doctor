@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Regression test for the release pipeline's gates, fixture, rerun branches,
-# and mirror-tag reminder. All external release commands are local stubs.
+# Regression test for the monorepo release pipeline's gates, fixture, rerun
+# branches, and mirror-tag reminder. All external release commands are stubs.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,7 +8,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/dracon-system-release-pipeline-XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
 repo="$work/repo"
-mkdir -p "$repo/scripts" "$work/bin" "$work/home/.cargo"
+mkdir -p "$repo/dracon-system/scripts" "$work/bin" "$work/home/.cargo"
 git init -q -b main "$repo"
 git -C "$repo" config core.hooksPath /dev/null
 git -C "$repo" config user.name fixture
@@ -19,22 +19,35 @@ git init -q --bare "$work/gitlab.git"
 git -C "$repo" remote add origin "$work/origin.git"
 git -C "$repo" remote add gitlab "$work/gitlab.git"
 
-cp "$SCRIPT_DIR/release.sh" "$repo/scripts/release.sh"
-cp "$SCRIPT_DIR/close-changelog.py" "$repo/scripts/close-changelog.py"
-cp "$SCRIPT_DIR/verify-install.sh" "$repo/scripts/verify-install.sh"
-chmod +x "$repo/scripts"/*.sh "$repo/scripts"/*.py
+cp "$SCRIPT_DIR/release.sh" "$repo/dracon-system/scripts/release.sh"
+cp "$SCRIPT_DIR/close-changelog.py" "$repo/dracon-system/scripts/close-changelog.py"
+cp "$SCRIPT_DIR/verify-install.sh" "$repo/dracon-system/scripts/verify-install.sh"
+chmod +x "$repo/dracon-system/scripts"/*
 cat > "$repo/.gitignore" <<'EOF'
 target/
+dracon-system/
 .publish-count
 .gh-release
 EOF
 cat > "$repo/Cargo.toml" <<'EOF'
+[workspace]
+members = ["dracon-system"]
+resolver = "2"
+EOF
+cat > "$repo/dracon-system/Cargo.toml" <<'EOF'
 [package]
 name = "dracon-system"
 version = "0.0.0"
 edition = "2021"
 EOF
-cat > "$repo/CHANGELOG.md" <<'EOF'
+cat > "$repo/Cargo.lock" <<'EOF'
+version = 4
+
+[[package]]
+name = "dracon-system"
+version = "0.0.0"
+EOF
+cat > "$repo/dracon-system/CHANGELOG.md" <<'EOF'
 # Changelog
 
 ## [Unreleased]
@@ -45,6 +58,7 @@ cat > "$repo/CHANGELOG.md" <<'EOF'
 EOF
 
 git -C "$repo" add .
+git -C "$repo" add -f -- dracon-system
 git -C "$repo" commit -qm init
 
 cat > "$work/bin/cargo" <<'EOF'
@@ -55,6 +69,10 @@ package="$root/target/package/dracon-system-0.1.0"
 case "${1:-}" in
     metadata)
         printf '{"workspace_root":"%s"}\n' "$root"
+        ;;
+    check)
+        version=$(awk -F'"' '/^version[[:space:]]*=/{print $2; exit}' "$root/dracon-system/Cargo.toml")
+        sed -i "/^name = \"dracon-system\"$/{n;s/^version = .*/version = \"$version\"/;}" "$root/Cargo.lock"
         ;;
     publish)
         mkdir -p "$package"
@@ -95,17 +113,6 @@ BIN
         chmod +x "$install_root/bin/dracon-system"
         ;;
     test|build|clippy)
-        ;;
-    deny)
-        ;;
-    generate-lockfile)
-        cat > Cargo.lock <<'LOCK'
-version = 4
-
-[[package]]
-name = "dracon-system"
-version = "0.1.0"
-LOCK
         ;;
     *)
         echo "unexpected cargo invocation: $*" >&2
@@ -151,7 +158,7 @@ touch "$work/home/.cargo/credentials.toml"
 
 run_release() {
     DRACON_FIXTURE_ROOT="$repo" HOME="$work/home" PATH="$work/bin:$PATH" \
-        timeout 180 "$repo/scripts/release.sh" 0.1.0 --yes
+        timeout 180 "$repo/dracon-system/scripts/release.sh" 0.1.0 --yes
 }
 
 first_output="$work/first.out"
