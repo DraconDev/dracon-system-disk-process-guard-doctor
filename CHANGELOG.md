@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > is the canonical record.
 
 ## [Unreleased]
+## [0.112.40] - 2026-09-01
 
 - **`clean_node_modules` policy knob added** (audit M3, 2026-08-21):
   node_modules cleanup was the only auto-cleanup kind with no feature
