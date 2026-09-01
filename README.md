@@ -2,6 +2,8 @@
 
 Disk, process, guard, doctor — local machine diagnostics and watchdog for Dracon workspaces.
 
+![`dracon-system status` output](docs/status-output.png)
+
 This repository is the **canonical standalone source** for `dracon-system` on
 GitHub, GitLab, and Codeberg. It contains the source code, `Cargo.toml`, tests,
 examples, and release metadata.
