@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # scripts/release.sh — cut a dracon-system release end-to-end.
 #
-# This is the single command that updates every release surface for the
-# standalone dracon-system repo (own Cargo.toml + own CHANGELOG.md + own
-# release-notes file + own GitHub release + own crates.io publish + own
-# git tag) so a new release is consistent across all surfaces.
+# This command releases the dracon-system package from the dracon-utilities
+# monorepo: it updates the utility's Cargo.toml/CHANGELOG/release notes,
+# the monorepo lockfile, crates.io, the monorepo tag, and its GitHub release.
 #
 # Hard rules baked into this script:
 #   - The git tag is created only AFTER successful crates.io publish.
 #     The tag is the contract that "this version is on crates.io".
-#   - The working tree must be clean before starting. No half-done releases.
+#   - The parent monorepo working tree must be clean before starting. Run
+#     this through `dracon-sync maintenance -- ...` to avoid daemon races.
 #   - Every step is idempotent: re-running with the same version is a no-op
 #     or a clear "already done" message.
 #   - `--dry-run` runs every step without mutating remote state (no push,
@@ -56,19 +56,19 @@ set -euo pipefail
 
 # ----- paths ---------------------------------------------------------------
 # FIXED 2026-09-01 (post-monorepo conversion 2026-08-22): the previous
-# `REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"` walked
-# up to the monorepo root and `cd`-ed there, so `Cargo.toml` resolved
-# to the workspace `[workspace]` manifest (no `version` line) and step
-# 2 failed with "no version found in Cargo.toml". The release script
-# operates on a single utility crate, so anchor on the crate's own
-# gitdir instead: BASH_SOURCE[0] is `dracon-system/scripts/release.sh`,
-# so dirname's parent is the crate dir, which is also the standalone
-# repo's git toplevel (each utility was converted via subtree merge
-# onto its own nested gitdir).
+# version of this script treated the utility directory as a standalone Git
+# repository. The utility directories are now tracked inside the parent
+# monorepo and are intentionally ignored for ordinary `git add`, so resolve
+# both roots explicitly and force-stage only the release paths below.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CRATE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO_ROOT="$CRATE_DIR"
+REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
+CRATE_REL="${CRATE_DIR#"$REPO_ROOT"/}"
 cd "$REPO_ROOT"
+
+CRATE_TOML="$CRATE_DIR/Cargo.toml"
+CHANGELOG="$CRATE_DIR/CHANGELOG.md"
+LOCKFILE="$REPO_ROOT/Cargo.lock"
 
 # ----- defaults ------------------------------------------------------------
 DRY_RUN=0
@@ -140,7 +140,8 @@ run() {
 
 require_clean_tree() {
     if ! git diff --quiet HEAD 2>/dev/null || \
-       [[ -n "$(git status --porcelain)" ]]; then
+       [[ -n "$(git ls-files --others --exclude-standard)" ]] || \
+       [[ -n "$(release_note_files)" ]]; then
         die_pre "working tree is dirty; commit or stash before releasing"
     fi
 }
@@ -157,40 +158,84 @@ require_credentials() {
         || die_pre "missing ~/.cargo/credentials.toml; run 'cargo login <token>' first"
 }
 
+is_release_surface() {
+    local path=$1
+    [[ "$path" == "$CRATE_REL/Cargo.toml" ||
+       "$path" == "$CRATE_REL/CHANGELOG.md" ||
+       "$path" == "Cargo.lock" ||
+       "$path" == "$CRATE_REL"/release-notes-v*.md ]]
+}
+
+release_note_files() {
+    # The parent .gitignore intentionally ignores the utility directory, so
+    # include ignored-but-untracked release notes when handling --abort.
+    git ls-files --others --ignored --exclude-standard -- \
+        "$CRATE_REL/release-notes-v*.md" 2>/dev/null || true
+}
+
+confirm_remote_mutation() {
+    [[ "$DRY_RUN" -eq 1 || "$ASSUME_YES" -eq 1 ]] && return 0
+    if [[ ! -t 0 ]]; then
+        die_pre "--yes is required for a non-interactive real release"
+    fi
+    local answer
+    if ! read -r -p "Publish ${CRATE_NAME}@${VERSION}, tag ${TAG}, and push to ${REMOTE}? [y/N] " answer; then
+        die_pre "release confirmation was not provided"
+    fi
+    case "${answer,,}" in
+        y|yes) ;;
+        *) die_pre "release cancelled" ;;
+    esac
+}
+
+refresh_workspace_lock() {
+    # A package version is part of the workspace lockfile. Cargo updates only
+    # the affected local package entry here; unlike generate-lockfile this
+    # does not discard the monorepo's intentionally pinned dependency graph.
+    if ! cargo check -p "$CRATE_NAME" --quiet; then
+        die_pre "failed to synchronize the workspace Cargo.lock for $CRATE_NAME@$VERSION"
+    fi
+    [[ -s "$LOCKFILE" ]] || die_pre "workspace Cargo.lock is missing after cargo check"
+    ok "  Cargo.lock synchronized for $CRATE_NAME@$VERSION"
+}
+
 # ----- abort path ----------------------------------------------------------
 if [[ $ABORT -eq 1 ]]; then
     log "Reverting local modifications from a previous --dry-run..."
-    # Dirty-at-start guard (audit MEDIUM 2026-08-11): a --dry-run touches
-    # ONLY Cargo.toml, Cargo.lock, CHANGELOG.md and untracked
-    # release-notes-v*.md, so any other modified/untracked file can only be
-    # pre-existing operator work.
-    # Refuse rather than risk reverting (or removing) it.
+    # Refuse to touch operator work outside this crate's release surfaces.
     other_modified=()
     while IFS= read -r f; do
-        other_modified+=("$f")
-    done < <(git ls-files --modified --exclude-standard \
-        | grep -vE '^(Cargo\.toml|Cargo\.lock|CHANGELOG\.md)$' || true)
+        [[ -z "$f" ]] && continue
+        if ! is_release_surface "$f"; then
+            other_modified+=("$f")
+        fi
+    done < <(git diff --name-only HEAD 2>/dev/null || true)
     other_untracked=()
     while IFS= read -r f; do
-        other_untracked+=("$f")
-    done < <(git ls-files --others --exclude-standard \
-        | grep -vE '^release-notes-v[0-9][^/]*\.md$' || true)
+        [[ -z "$f" ]] && continue
+        if ! is_release_surface "$f"; then
+            other_untracked+=("$f")
+        fi
+    done < <({ git ls-files --others --exclude-standard; release_note_files; } | sort -u)
     if [[ ${#other_modified[@]} -gt 0 || ${#other_untracked[@]} -gt 0 ]]; then
         die_pre "working tree dirty outside the release surfaces (${#other_modified[@]} modified, ${#other_untracked[@]} untracked); commit or stash first — --abort only reverts dry-run changes"
     fi
     abort_tracked=()
     while IFS= read -r f; do
-        abort_tracked+=("$f")
-    done < <(git ls-files --modified --exclude-standard \
-        -- 'Cargo.toml' 'Cargo.lock' 'CHANGELOG.md' 2>/dev/null || true)
+        [[ -z "$f" ]] && continue
+        if is_release_surface "$f"; then
+            abort_tracked+=("$f")
+        fi
+    done < <(git diff --name-only HEAD 2>/dev/null || true)
     abort_untracked=()
     while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
         abort_untracked+=("$f")
-    done < <(git ls-files --others --exclude-standard -- 'release-notes-v*.md' 2>/dev/null || true)
+    done < <(release_note_files)
     if [[ ${#abort_tracked[@]} -gt 0 || ${#abort_untracked[@]} -gt 0 ]]; then
         set +e
         if [[ ${#abort_tracked[@]} -gt 0 ]]; then
-            git checkout -- "${abort_tracked[@]}" 2>/dev/null
+            git restore --source=HEAD --staged --worktree -- "${abort_tracked[@]}" 2>/dev/null
         fi
         if [[ ${#abort_untracked[@]} -gt 0 ]]; then
             rm -f -- "${abort_untracked[@]}" 2>/dev/null
