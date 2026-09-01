@@ -275,8 +275,7 @@ run_gate cargo clippy --workspace --locked -- -D warnings
 ok "  all gates passed"
 
 # ----- step 2: bump Cargo.toml version ------------------------------------
-log "step 2/${TOTAL_STEPS}: bumping Cargo.toml to ${VERSION}"
-CRATE_TOML="Cargo.toml"
+log "step 2/${TOTAL_STEPS}: bumping ${CRATE_REL}/Cargo.toml to ${VERSION}"
 current=$(awk -F'"' '/^version[[:space:]]*=/{print $2; exit}' "$CRATE_TOML" 2>/dev/null || true)
 if [[ -z "$current" ]]; then
     die_pre "no version found in $CRATE_TOML"
@@ -288,46 +287,24 @@ else
     ok "  $CRATE_TOML: $current → $VERSION"
 fi
 
-# Cargo.lock is a release surface too: after the manifest version changes,
-# generate it from the standalone manifest outside any enclosing monorepo
-# workspace. Running from a nested checkout would otherwise update the
-# parent's lockfile and leave the standalone release stale.
-refresh_standalone_lock() {
-    local lock_tmp
-    lock_tmp=$(mktemp -d "${TMPDIR:-/tmp}/dracon-system-lock-XXXXXX")
-    cp "$CRATE_TOML" "$lock_tmp/Cargo.toml"
-    mkdir -p "$lock_tmp/src"
-    : > "$lock_tmp/src/main.rs"
-    if ! (cd "$lock_tmp" && timeout 300 cargo generate-lockfile); then
-        rm -rf "$lock_tmp"
-        die_pre "failed to regenerate standalone Cargo.lock"
-    fi
-    if [[ ! -s "$lock_tmp/Cargo.lock" ]]; then
-        rm -rf "$lock_tmp"
-        die_pre "cargo generate-lockfile produced no Cargo.lock"
-    fi
-    cp "$lock_tmp/Cargo.lock" Cargo.lock
-    rm -rf "$lock_tmp"
-    ok "  Cargo.lock synchronized for dracon-system@$VERSION"
-}
-refresh_standalone_lock
+refresh_workspace_lock
 
 # ----- step 3: close CHANGELOG [Unreleased] -------------------------------
-log "step 3/${TOTAL_STEPS}: closing CHANGELOG.md [Unreleased] → [${VERSION}]"
-CHANGELOG="CHANGELOG.md"
+log "step 3/${TOTAL_STEPS}: closing ${CRATE_REL}/CHANGELOG.md [Unreleased] → [${VERSION}]"
 DATE=$(date -u +%Y-%m-%d)
 # FIXED 2026-08-11 (audit HIGH): extracted the inline closer into the
 # tested idempotent helper. Re-running after a partial release now leaves an
 # existing version header byte-identical instead of duplicating it. A dry-run
 # deliberately writes the local release surface so --abort has real work.
 python3 "$SCRIPT_DIR/close-changelog.py" "$CHANGELOG" "$VERSION" "$DATE"
-ok "  CHANGELOG.md: [Unreleased] closed as [${VERSION}] - ${DATE} (or already closed)"
+ok "  $CHANGELOG: [Unreleased] closed as [${VERSION}] - ${DATE} (or already closed)"
 
 # ----- step 4: create release-notes file ----------------------------------
-log "step 4/${TOTAL_STEPS}: creating release-notes-v${VERSION}.md"
-NOTES="release-notes-v${VERSION}.md"
+log "step 4/${TOTAL_STEPS}: creating ${CRATE_REL}/release-notes-v${VERSION}.md"
+NOTES_REL="$CRATE_REL/release-notes-v${VERSION}.md"
+NOTES="$REPO_ROOT/$NOTES_REL"
 if [[ -f "$NOTES" ]]; then
-    ok "  $NOTES already exists"
+    ok "  $NOTES_REL already exists"
 else
     cat > "$NOTES" <<EOF
 # dracon-system v${VERSION} (${DATE})
@@ -349,15 +326,15 @@ cargo install dracon-system --version ${VERSION}
 
 \`\`\`bash
 # systemd unit (Linux)
-curl -fsSL https://raw.githubusercontent.com/DraconDev/dracon-system-disk-process-guard-doctor/main/dracon-system-guard.service \\
+curl -fsSL https://raw.githubusercontent.com/DraconDev/dracon-utilities/main/dracon-system/dracon-system-guard.service \\
     -o ~/.config/systemd/user/dracon-system-guard.service
 systemctl --user daemon-reload
 systemctl --user enable --now dracon-system-guard.service
 \`\`\`
 
-**Full Changelog**: https://github.com/DraconDev/dracon-system-disk-process-guard-doctor/compare/$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")...v${VERSION}
+**Full Changelog**: https://github.com/DraconDev/dracon-utilities/compare/$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")...v${VERSION}
 EOF
-    ok "  $NOTES created"
+    ok "  $NOTES_REL created"
 fi
 
 # ----- step 5: cargo publish --dry-run (sanity) ---------------------------
@@ -368,6 +345,7 @@ run cargo publish -p "$CRATE_NAME" --dry-run --allow-dirty
 log "step 6/${TOTAL_STEPS}: cargo publish -p $CRATE_NAME"
 # Idempotent re-run path: an already-published version is success when a
 # previous run failed after the crates.io upload.
+confirm_remote_mutation
 if [[ $DRY_RUN -eq 1 ]]; then
     run cargo publish -p "$CRATE_NAME" --allow-dirty
 else
@@ -408,7 +386,9 @@ fi
 
 # ----- step 8: commit, tag, push, gh release ------------------------------
 log "step 8/${TOTAL_STEPS}: commit, tag, push, gh release"
-run git add Cargo.toml Cargo.lock CHANGELOG.md "$NOTES"
+# The utility directory is parent-gitignored by design; force staging is
+# scoped to the exact release surfaces and never uses `git add .`.
+run git add -f -- "$CRATE_REL/Cargo.toml" "Cargo.lock" "$CRATE_REL/CHANGELOG.md" "$NOTES_REL"
 # Idempotent re-run path: skip already-completed commit, tag, and GitHub
 # release operations when a previous run failed later in the pipeline.
 if [[ $DRY_RUN -eq 1 ]]; then
@@ -467,15 +447,15 @@ ok ""
 ok "════════════════════════════════════════════"
 ok "✓ dracon-system v${VERSION} released"
 ok "  crates.io:  https://crates.io/crates/dracon-system"
-ok "  github:     https://github.com/DraconDev/dracon-system-disk-process-guard-doctor/releases/tag/${TAG}"
+ok "  github:     https://github.com/DraconDev/dracon-utilities/releases/tag/${TAG}"
 ok "════════════════════════════════════════════"
 
 warn ""
 warn "after 'cargo install dracon-system --version ${VERSION}', run the fixture check:"
-warn "    scripts/verify-install.sh"
+warn "    ${CRATE_REL}/scripts/verify-install.sh"
 
 if [[ $DRY_RUN -eq 1 ]]; then
     echo ""
     warn "This was a --dry-run. Local release surfaces were modified but no remote state was changed."
-    warn "Run 'scripts/release.sh ${VERSION} --abort' to revert, or 'scripts/release.sh ${VERSION} --yes' to execute for real."
+    warn "Run '${CRATE_REL}/scripts/release.sh --abort' to revert, or '${CRATE_REL}/scripts/release.sh ${VERSION} --yes' to execute for real."
 fi
