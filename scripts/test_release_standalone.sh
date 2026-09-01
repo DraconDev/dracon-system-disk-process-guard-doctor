@@ -58,16 +58,20 @@ baseline_commit=$(git rev-parse HEAD)
 baseline_toml_sha=$(sha256sum dracon-system/Cargo.toml | awk '{print $1}')
 baseline_lock_sha=$(sha256sum Cargo.lock | awk '{print $1}')
 baseline_changelog_sha=$(sha256sum dracon-system/CHANGELOG.md | awk '{print $1}')
-mkdir -p "$work/bin" "$work/home/.cargo"
+mkdir -p "$work/bin"
 cat > "$work/bin/gh" <<'GH'
 #!/usr/bin/env bash
 [[ "${1:-}" == auth && "${2:-}" == status ]]
 GH
 chmod +x "$work/bin/gh"
-touch "$work/home/.cargo/credentials.toml"
 
 preview_out="$work/dry-run.out"
-HOME="$work/home" CARGO_HOME="$host_cargo_home" RUSTUP_HOME="$host_rustup_home" \
+# The dry-run exercises `cargo test --workspace --locked`, which for
+# dracon-system includes dracon-security tests that require master
+# identities from the real HOME (see lib.rs load_master_identities).
+# Preserve the operator HOME for that step; gh is stubbed via PATH
+# and cargo credentials are already present in the real HOME.
+CARGO_HOME="$host_cargo_home" RUSTUP_HOME="$host_rustup_home" \
 PATH="$work/bin:$PATH" CARGO_TARGET_DIR="$work/target" \
 timeout 1200 "$clone/dracon-system/scripts/release.sh" "$next_version" --dry-run \
     >"$preview_out" 2>"$work/dry-run.err"
@@ -86,7 +90,7 @@ test "$changed_paths" = "$expected_paths"
 # succeed.
 run_gate post-test cargo test --workspace --locked
 
-HOME="$work/home" CARGO_HOME="$host_cargo_home" RUSTUP_HOME="$host_rustup_home" \
+CARGO_HOME="$host_cargo_home" RUSTUP_HOME="$host_rustup_home" \
 PATH="$work/bin:$PATH" CARGO_TARGET_DIR="$work/target" \
 timeout 120 "$clone/dracon-system/scripts/release.sh" --abort \
     >"$work/abort.out" 2>"$work/abort.err"
