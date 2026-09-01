@@ -83,7 +83,8 @@ test -f "dracon-system/release-notes-v${next_version}.md"
 grep -A2 'name = "dracon-system"' Cargo.lock \
     | grep -q "version = \"$next_version\""
 changed_paths=$(git status --porcelain | awk '{print $2}' | sort)
-expected_paths=$(printf 'Cargo.lock\ndracon-system/CHANGELOG.md\ndracon-system/Cargo.toml' )
+expected_paths=$(printf 'Cargo.lock\ndracon-system/CHANGELOG.md\ndracon-system/Cargo.toml\n' | sort | tr -d '\r')
+# Normalize: both are sorted newline-joined lists; compare sorted.
 test "$changed_paths" = "$expected_paths"
 
 # The updated workspace lockfile must make the post-bump locked preflight
