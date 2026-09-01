@@ -112,7 +112,7 @@ fi
 BIN
         chmod +x "$install_root/bin/dracon-system"
         ;;
-    test|build|clippy)
+    test|build|clippy|deny)
         ;;
     *)
         echo "unexpected cargo invocation: $*" >&2

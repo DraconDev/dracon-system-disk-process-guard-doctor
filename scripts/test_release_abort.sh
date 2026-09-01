@@ -51,7 +51,7 @@ if (cd "$guarded" && dracon-system/scripts/release.sh --abort \
 fi
 grep -F 'working tree dirty outside the release surfaces' "$work/guarded.stderr" >/dev/null
 test "$(cat "$guarded/unrelated.txt")" = 'operator edit'
-test "$(git -C "$guarded" show HEAD:dracon-system/Cargo.toml)" = "$(cat "$guarded/dracon-system/Cargo.toml")"
+test "$(cat "$guarded/dracon-system/Cargo.toml")" = 'version = "0.2.0"'
 test "$(cat "$guarded/Cargo.lock")" = 'broken lock'
 test -f "$guarded/dracon-system/release-notes-v0.2.0.md"
 
