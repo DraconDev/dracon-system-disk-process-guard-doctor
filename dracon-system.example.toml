@@ -2,6 +2,13 @@
 # Path: ~/.dracon/utilities/system/dracon-system.toml
 #
 # Controls disk monitoring, process protection, and auto-cleanup.
+#
+# NOTE: this example is intentionally stricter (more report-only) than the
+# compiled defaults. Thresholds here (65/75/85/92, unfreeze 70) sit below the
+# code defaults (70/80/90/95, unfreeze 88), and the cleanup kinds below
+# default to false while the code defaults them to true. A machine running
+# with NO config file therefore cleans more aggressively (gated only by
+# auto_cleanup_apply=false); copying this file opts into the gentler posture.
 
 [guard]
 # Enable the guard daemon

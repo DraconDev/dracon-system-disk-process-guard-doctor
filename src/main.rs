@@ -188,7 +188,8 @@ enum Commands {
         /// Also remove directories tracked by git (target/, node_modules/).
         #[arg(long)]
         allow_tracked: bool,
-        /// Minimum file size to consider (MiB). [default: 50]
+        /// Minimum file size to consider (MiB). Unset falls back to the policy
+    /// `storage.min_size_mb` (built-in default 512).
         #[arg(long)]
         min_size_mb: Option<u64>,
         /// Comma-separated kinds to clean (targets, trash, nix, caches, node_modules, docker).
