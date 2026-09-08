@@ -4,10 +4,11 @@ Disk, process, guard, doctor — local machine diagnostics and watchdog for Drac
 
 ![`dracon-system status` output](docs/status-output.png)
 
-This repository is the **canonical standalone source** for `dracon-system` on
-GitHub, GitLab, and Codeberg. It contains the source code, `Cargo.toml`, tests,
-examples, and release metadata.
-You can build and install this utility directly from this repo.
+This page is the standalone guide for `dracon-system` (also rendered on
+crates.io). The canonical source is the `dracon-system/` directory of the
+[`dracon-utilities`](https://github.com/DraconDev/dracon-utilities) monorepo
+on `main`; the standalone GitHub/GitLab/Codeberg repos are frozen mirrors.
+You can build and install this utility directly from either checkout.
 
 ## Quick start (standalone build)
 
@@ -16,11 +17,14 @@ You can build and install this utility directly from this repo.
 git clone https://github.com/DraconDev/dracon-system-disk-process-guard-doctor.git
 cd dracon-system-disk-process-guard-doctor
 
-# Build
-cargo build --release
+# Build (locked: workspace discipline requires --locked)
+cargo build --release --locked -p dracon-system
 
-# Install (binary lands in target/release/)
-sudo cp target/release/dracon-system /usr/local/bin/
+# Install where the shipped guard unit looks
+# (dracon-system-guard.service runs %h/.local/bin/dracon-system);
+# or run ./install.sh at the monorepo root to install everything.
+install -d "$HOME/.local/bin"
+install -m 0755 target/release/dracon-system "$HOME/.local/bin/dracon-system"
 ```
 
 ## What is in this repo
@@ -39,8 +43,8 @@ sudo cp target/release/dracon-system /usr/local/bin/
 
 | Boundary | Decision |
 |----------|----------|
-| Source code | This repository's `main` branch |
-| Source of truth | This standalone repository |
+| Source code | The `dracon-system/` directory of the `dracon-utilities` monorepo (`main` branch) |
+| Source of truth | The `dracon-utilities` monorepo; the standalone repos are frozen mirrors |
 | Workspace integration | Included by the `dracon-utilities` meta workspace when checked out under `dracon-system/` |
 | Shared libraries | Published `dracon-system-lib` crate from crates.io |
 | Operational policy | `~/.dracon/utilities/` TOML files |
@@ -60,9 +64,17 @@ Protects machines from disk/process pressure and provides deterministic diagnost
 ## Runtime
 
 - Binary: `dracon-system`
-- Service: dracon-system-guard.service
-- Example policy: `dracon-system/dracon-system.example.toml`
-- Common commands: `dracon-system status · dracon-system doctor · dracon-system storage · dracon-system guard daemon`
+- Service: dracon-system-guard.service (`systemctl --user enable --now dracon-system-guard.service`)
+- Example policy: `dracon-system.example.toml` in this repo
+  (`dracon-system/dracon-system.example.toml` from the `dracon-utilities` monorepo root);
+  the live config lives at `~/.dracon/utilities/system/dracon-system.toml`
+  (override with `DRACON_SYSTEM_POLICY`)
+- Common commands: `dracon-system status · dracon-system doctor · dracon-system storage · dracon-system guard daemon`;
+  also `events`, `link` (`status`/`doctor`/`apply`), `symlinks`, `zram`,
+  `guard once` (one pass, `--json` for machines), `guard prune`, `guard clean`
+  (dry-run unless `--apply`) — full list at `dracon-system --help`.
+  Destructive flags (`storage --cleanup --apply`, `guard clean --apply`,
+  `link apply --force-replace`) only act when the operator opts in.
 
 ## Guard behavior (observation-first)
 
@@ -96,9 +108,8 @@ machine-readable snapshot (disk state, memory `observed` vs stabilized
 
 ## Maintenance
 
-Changes are made in this standalone repository. The `dracon-system` tooling
-runs locally on each node; the parent meta workspace does not mirror source
-files into it.
+Changes are made in the `dracon-utilities` monorepo (`dracon-system/` on `main`).
+The standalone repos are frozen mirrors of that tree.
 
 ## License
 
