@@ -2913,7 +2913,18 @@ async fn clean_package_caches(
 ) -> Result<(u64, Vec<String>)> {
     let active = detect_active_package_manager_operations().await?;
     let home = dirs::home_dir().context("cannot determine home directory for package caches")?;
-    clean_package_caches_at(&home, cargo, npm, pip, go, apply, protected_paths, &active).await
+    clean_package_caches_at(
+        &home,
+        cargo,
+        npm,
+        pip,
+        go,
+        apply,
+        protected_paths,
+        &active,
+        true,
+    )
+    .await
 }
 
 /// Clean package manager caches below `home`.
