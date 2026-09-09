@@ -2311,7 +2311,10 @@ fn is_package_process_wrapper(comm: &str) -> bool {
     name == "node"
         || name == "python"
         || name.starts_with("python3")
-        || matches!(name, "sh" | "bash" | "dash" | "zsh" | "fish" | "env" | "sudo")
+        || matches!(
+            name,
+            "sh" | "bash" | "dash" | "zsh" | "fish" | "env" | "sudo"
+        )
 }
 
 fn detect_active_package_manager_operations_from(
@@ -2926,11 +2929,9 @@ async fn try_remove_cache_dir(
     // observed. There is no lock shared with arbitrary package managers, so
     // this final check is the narrowest safe coordination available here.
     if recheck_active {
-        let active = detect_active_package_manager_operations_with(
-            detector.ps_bin,
-            detector.proc_root,
-        )
-        .await?;
+        let active =
+            detect_active_package_manager_operations_with(detector.ps_bin, detector.proc_root)
+                .await?;
         if active.contains(&kind) {
             eprintln!(
                 "🛡️ keeping {name} cache: active {} operation detected",
