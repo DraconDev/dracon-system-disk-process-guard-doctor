@@ -5139,6 +5139,31 @@ fn resolve_system_policy_path() -> Option<PathBuf> {
     candidates.into_iter().find(|p| p.exists())
 }
 
+const CONFIG_ERROR_EXIT_STATUS: i32 = 78; // sysexits.h EX_CONFIG
+
+#[derive(Debug)]
+struct PolicyLoadError(anyhow::Error);
+
+impl std::fmt::Display for PolicyLoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for PolicyLoadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.0.as_ref())
+    }
+}
+
+fn exit_status_for_error(error: &anyhow::Error) -> i32 {
+    if error.downcast_ref::<PolicyLoadError>().is_some() {
+        CONFIG_ERROR_EXIT_STATUS
+    } else {
+        1
+    }
+}
+
 pub(crate) fn load_system_policy() -> Result<(Option<PathBuf>, SystemPolicy)> {
     let Some(path) = resolve_system_policy_path() else {
         return Ok((None, SystemPolicy::default()));
@@ -6424,7 +6449,8 @@ async fn cmd_guard_clean(
 }
 
 async fn cmd_guard(cmd: GuardCommands) -> Result<()> {
-    let (_, policy) = load_system_policy()?;
+    let (_, policy) = load_system_policy()
+        .map_err(|error| anyhow::Error::new(PolicyLoadError(error)))?;
     let mut guard = policy.guard;
     normalize_guard_policy(&mut guard);
     match cmd {
@@ -6462,8 +6488,7 @@ async fn cmd_guard(cmd: GuardCommands) -> Result<()> {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+async fn run() -> Result<()> {
     let cli = Cli::parse();
     VERBOSITY.store(cli.verbose, Ordering::SeqCst);
 
@@ -6510,5 +6535,13 @@ async fn main() -> Result<()> {
             memory_percent,
             algorithm,
         } => cmd_zram(status, gen_config, memory_percent, algorithm),
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    if let Err(error) = run().await {
+        eprintln!("Error: {error:#}");
+        std::process::exit(exit_status_for_error(&error));
     }
 }
