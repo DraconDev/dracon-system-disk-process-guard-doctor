@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed (audit pass 2026-09-09, F36–F48, F58–F63)
+### Fixed (audit pass 2026-09-09, F36–F48, F58–F64)
 
 - **Package-cache cleanup is race-safe by refusing uncoordinated apply deletion**
   (F63): process inspection detects cargo/rustc, npm, pip, and go operations,
@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   diagnostics. Apply never recursively deletes package caches because external
   package managers provide no shared lock; failed or incomplete process
   metadata also fails closed.
+- **Tmp cleanup protects process working directories** (F64): `/proc/*/cwd`
+  targets are included alongside open file descriptors, so an old top-level
+  tmp directory containing a live process's current working directory is not
+  recursively removed.
 - **Auto-renice respects a process's current nice value** (F62): graduated
   targets are now floors, so a process already at nice 10 is never raised to
   priority by resetting it to a lower tier such as nice 5.
