@@ -13,6 +13,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > is the canonical record.
 
 ## [Unreleased]
+
+### Fixed (audit pass 2026-09-09, F36–F48)
+
+- **`--kinds` help lists real cleanup kinds** (F36): `(targets, trash,
+  nix...)` → `(rust-build, node-deps, build-output, cache)`.
+- **`storage --json --cleanup` no longer silently drops cleanup**
+  (F37): the combination now errors instead of ignoring the flag.
+- **`.git` backstop covers subpaths** (F38): `/repo/.git/objects` is
+  now refused, not just paths ending in `.git`.
+- **Log truncation uses the guarded deletion check** (F39) so
+  `protected_paths` apply.
+- **Tmp symlink pruning races safely** (F40): `file_type()` pre-filter
+  instead of a TOCTOU-prone `metadata()` call.
+- **No more underflow panic on huge `--older-than`** (F41): cutoff uses
+  `checked_sub` with a delete-nothing fallback.
+- **SIGHUP message no longer claims defaults** (F42): keeps the
+  previous policy, message says so.
+- **`disk_early_warn_percent` clamped to `disk_warn_percent`** (F43)
+  so the early band cannot be configured empty.
+- **`guard clean --all` prunes all Docker images** (F44): the flag
+  combination is plumbed through.
+- **`prune --json` emits pure JSON** (F45): no-flag invocations no
+  longer print human text before the report.
+- **zram `--algorithm` help lists all 7 accepted values** (F46);
+  **events `--severity` help drops `critical`** (F47), which no emitted
+  event can match.
+- **Example policy documents 9 previously undocumented knobs** (F48),
+  including the default-true `clean_node_modules` / `clean_tmp`.
+
 ## [0.112.40] - 2026-09-01
 
 - **`clean_node_modules` policy knob added** (audit M3, 2026-08-21):
