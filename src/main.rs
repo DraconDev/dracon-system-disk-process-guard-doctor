@@ -290,6 +290,7 @@ enum GuardCommands {
         apply: bool,
     },
     /// Clean all reclaimable space (rust, trash, nix, caches, node_modules, docker).
+    /// A bare invocation selects every target; use target flags for a subset.
     Clean {
         #[arg(long)]
         json: bool,
@@ -307,6 +308,7 @@ enum GuardCommands {
         node_modules: bool,
         #[arg(long)]
         docker: bool,
+        /// Select every target and enable Docker's aggressive all-unused-images mode.
         #[arg(long)]
         all: bool,
         #[arg(long)]
@@ -6210,26 +6212,29 @@ struct CleanTargets {
 }
 
 impl CleanTargets {
-    /// Returns true if no targets are enabled.
-    fn is_empty(&self) -> bool {
-        !self.rust && !self.trash && !self.nix && !self.caches && !self.node_modules && !self.docker
-    }
-}
-
-fn resolve_clean_targets(all: bool, targets: &CleanTargets) -> Option<CleanTargets> {
-    if all {
-        Some(CleanTargets {
+    fn all() -> Self {
+        Self {
             rust: true,
             trash: true,
             nix: true,
             caches: true,
             node_modules: true,
             docker: true,
-        })
-    } else if targets.is_empty() {
-        None
+        }
+    }
+
+    /// Returns true if no targets are enabled.
+    fn is_empty(&self) -> bool {
+        !self.rust && !self.trash && !self.nix && !self.caches && !self.node_modules && !self.docker
+    }
+}
+
+/// Resolve target selection, defaulting a bare `guard clean` to all targets.
+fn resolve_clean_targets(all: bool, targets: &CleanTargets) -> CleanTargets {
+    if all || targets.is_empty() {
+        CleanTargets::all()
     } else {
-        Some(targets.clone())
+        targets.clone()
     }
 }
 
@@ -6241,10 +6246,7 @@ async fn cmd_guard_clean(
     targets: CleanTargets,
     min_size_mb: Option<u64>,
 ) -> Result<()> {
-    let Some(targets) = resolve_clean_targets(all, &targets) else {
-        eprintln!("⚠️ No cleanup targets specified. Use --all to clean everything, or specify individual flags (--rust, --trash, --nix, --caches, --node-modules, --docker).");
-        return Ok(());
-    };
+    let targets = resolve_clean_targets(all, &targets);
     let do_rust = targets.rust;
     let do_trash = targets.trash;
     let do_nix = targets.nix;

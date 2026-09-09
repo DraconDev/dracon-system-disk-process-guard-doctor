@@ -14,8 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed (audit pass 2026-09-09, F36–F48, F58–F59)
+### Fixed (audit pass 2026-09-09, F36–F48, F58–F60)
 
+- **Bare `guard clean` selects all cleanup targets** (F60): a no-flag
+  invocation now previews or applies Rust, Trash, Nix, cache,
+  `node_modules`, and Docker cleanup instead of succeeding as a no-op.
+  Explicit target flags remain selective; `--all` additionally enables
+  Docker's all-unused-images mode.
 - **Host `/tmp` cleanup matches the guard service namespace** (F59):
   the shipped unit and Home Manager-generated service now set
   `PrivateTmp=false` and grant `/tmp` as a narrow `ReadWritePaths`

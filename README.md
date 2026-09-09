@@ -221,6 +221,10 @@ dracon-system zram --gen-config
 
 Destructive flags (`storage --cleanup --apply`, `guard clean --apply`,
 `link apply --force-replace`) only act when the operator opts in.
+`guard clean` with no target flags selects all six cleanup targets; target
+flags select a subset. `--all` also requests Docker's aggressive mode for all
+unused images, while a Docker-only selection uses Docker's dangling-resource
+mode.
 
 ### Systemd Service Management
 
@@ -436,6 +440,8 @@ Protects machines from disk/process pressure and provides deterministic diagnost
   also `events`, `link` (`status`/`doctor`/`apply`), `symlinks`, `zram`,
   `guard once` (one pass, `--json` for machines), `guard prune`, `guard clean`
   (dry-run unless `--apply`) — full list at `dracon-system --help`.
+  Bare `guard clean` selects all six cleanup targets; target flags select a
+  subset, and `--all` additionally enables Docker's all-unused-images mode.
   Destructive flags (`storage --cleanup --apply`, `guard clean --apply`,
   `link apply --force-replace`) only act when the operator opts in.
 

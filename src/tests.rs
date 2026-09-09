@@ -78,18 +78,61 @@ exit 0"#
 }
 
 #[test]
-fn guard_clean_all_flag_is_explicit() {
+fn guard_clean_bare_command_selects_all_targets() {
+    let cli = Cli::try_parse_from(["dracon-system", "guard", "clean"])
+        .expect("bare guard clean should parse");
+    let Commands::Guard {
+        cmd:
+            GuardCommands::Clean {
+                all,
+                rust,
+                trash,
+                nix,
+                caches,
+                node_modules,
+                docker,
+                ..
+            },
+    } = cli.cmd
+    else {
+        panic!("expected guard clean command");
+    };
+    assert!(!all, "the bare command should not need an explicit --all flag");
+
+    let targets = resolve_clean_targets(
+        all,
+        &CleanTargets {
+            rust,
+            trash,
+            nix,
+            caches,
+            node_modules,
+            docker,
+        },
+    );
+    assert!(
+        targets.rust
+            && targets.trash
+            && targets.nix
+            && targets.caches
+            && targets.node_modules
+            && targets.docker,
+        "bare guard clean must resolve every cleanup target"
+    );
+}
+
+#[test]
+fn guard_clean_target_flags_remain_selective_and_all_overrides_them() {
     let rust_only = CleanTargets {
         rust: true,
         ..CleanTargets::default()
     };
-    let resolved = resolve_clean_targets(false, &rust_only).expect("rust target");
+    let resolved = resolve_clean_targets(false, &rust_only);
     assert!(resolved.rust);
     assert!(!resolved.trash);
 
-    let resolved_all = resolve_clean_targets(true, &rust_only).expect("all targets");
+    let resolved_all = resolve_clean_targets(true, &rust_only);
     assert!(resolved_all.rust && resolved_all.trash && resolved_all.docker);
-    assert!(resolve_clean_targets(false, &CleanTargets::default()).is_none());
 }
 
 #[cfg(unix)]
