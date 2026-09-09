@@ -351,7 +351,8 @@ When disk hits action level:
 3. Protect target dirs in active build working directories
 4. Delete unprotected target dirs ≥ `cleanup_min_size_mb`
 5. Detect active cargo/npm/pip/go operations and skip their corresponding cache estimates in dry-run; apply refuses package-cache deletion without a shared lock
-6. Also clean safe trash, Nix garbage, stale `node_modules/`, and Docker resources when those policy toggles are enabled
+6. Clean aged top-level entries only below explicitly safe `/tmp` or `/var/tmp` roots; invalid `tmp_search_paths` entries are refused
+7. Also clean safe trash, Nix garbage, stale `node_modules/`, and Docker resources when those policy toggles are enabled
 7. Send notification with cleanup summary
 
 ### Proactive Cleanup
@@ -382,9 +383,11 @@ The guard never directly kills processes. Process mitigation is limited to
 reversible `renice`, optional `oom_score_adj` biasing, and optional CPUQuota
 throttling; OOM bias can only influence which process the kernel chooses if
 its last-resort OOM killer fires. Destructive cleanup paths are canonicalized
-first, symlinks are rejected, and configured protected paths are honored. Log
-truncation uses the same safety check before modifying files, so
-system-protected or user-protected log paths are skipped.
+first, symlinks are rejected, and configured protected paths are honored.
+`clean_tmp` accepts only canonical descendants of `/tmp` or `/var/tmp`, never
+an arbitrary home-root such as `~`. Log truncation uses the same safety check
+before modifying files, so system-protected or user-protected log paths are
+skipped.
 
 ## Guard Behavior (Observation-First)
 
