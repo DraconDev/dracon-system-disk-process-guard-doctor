@@ -106,7 +106,9 @@ pub(crate) fn cmd_events(
 
     let path = events_path();
     if !path.exists() {
-        println!("No events found ({} does not exist)", path.display());
+        if !json_output {
+            println!("No events found ({} does not exist)", path.display());
+        }
         return Ok(());
     }
     let contents = std::fs::read_to_string(&path)
@@ -151,11 +153,10 @@ pub(crate) fn cmd_events(
     }
 
     if json_output {
+        // JSONL represents an empty result as an empty stream. Keep the
+        // human-only no-match sentinel out of machine-readable output.
         for ev in &parsed {
             println!("{}", serde_json::to_string(ev).unwrap_or_default());
-        }
-        if parsed.is_empty() {
-            println!("(no matching events)");
         }
         return Ok(());
     }
