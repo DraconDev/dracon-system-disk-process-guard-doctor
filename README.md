@@ -232,7 +232,8 @@ dracon-system zram --gen-config
 
 Destructive flags (`storage --cleanup --apply`, `guard clean --apply`,
 `link apply --force-replace`) only act when the operator opts in.
-`guard clean` with no target flags selects all six cleanup targets; target
+`storage --cleanup --apply` also retains all `cache` hotspots because no
+shared package-manager/guard lock exists. `guard clean` with no target flags selects all six cleanup targets; target
 flags select a subset. `--all` also requests Docker's aggressive mode for all
 unused images, while a Docker-only selection uses Docker's dangling-resource
 mode.

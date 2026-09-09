@@ -6009,7 +6009,13 @@ async fn cmd_storage(
                 }
             }
             if cleanup_failures.is_empty() {
-                println!("✅ Cleanup complete.");
+                if package_cache_skipped {
+                    println!(
+                        "✅ Cleanup complete; cache hotspots were retained for lifecycle safety."
+                    );
+                } else {
+                    println!("✅ Cleanup complete.");
+                }
             } else {
                 eprintln!("⚠️ {} cleanup path(s) failed:", cleanup_failures.len());
                 for failure in &cleanup_failures {
