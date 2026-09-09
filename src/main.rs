@@ -2303,6 +2303,17 @@ fn package_cache_kind_for_process(comm: &str, cmdline: &str) -> Option<PackageCa
     })
 }
 
+fn is_package_process_wrapper(comm: &str) -> bool {
+    let name = Path::new(comm)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(comm);
+    name == "node"
+        || name == "python"
+        || name.starts_with("python3")
+        || matches!(name, "sh" | "bash" | "dash" | "zsh" | "fish" | "env" | "sudo")
+}
+
 fn detect_active_package_manager_operations_from(
     ps_output: &str,
     proc_root: &Path,
@@ -2339,6 +2350,13 @@ fn detect_active_package_manager_operations_from(
         let Some(cmdline) = read_package_process_cmdline(proc_root, pid)? else {
             continue;
         };
+        if cmdline.is_empty() && is_package_process_wrapper(comm) {
+            anyhow::bail!(
+                "empty command line for possible package-manager wrapper PID {} ({})",
+                pid,
+                comm
+            );
+        }
         if let Some(kind) = package_cache_kind_for_process(comm, &cmdline) {
             active.insert(kind);
         }
