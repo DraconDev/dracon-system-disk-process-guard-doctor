@@ -2340,7 +2340,14 @@ fn detect_active_package_manager_operations_from(
 /// A failed process listing is an error: cache cleanup must fail closed rather
 /// than recursively delete a cache while process protection is unavailable.
 async fn detect_active_package_manager_operations() -> Result<HashSet<PackageCacheKind>> {
-    let out = Command::new("ps")
+    detect_active_package_manager_operations_with(Path::new("ps"), Path::new("/proc")).await
+}
+
+async fn detect_active_package_manager_operations_with(
+    ps_bin: &Path,
+    proc_root: &Path,
+) -> Result<HashSet<PackageCacheKind>> {
+    let out = Command::new(ps_bin)
         .args(["-eo", "pid=,comm="])
         .output()
         .await
@@ -2355,7 +2362,7 @@ async fn detect_active_package_manager_operations() -> Result<HashSet<PackageCac
 
     detect_active_package_manager_operations_from(
         &String::from_utf8_lossy(&out.stdout),
-        Path::new("/proc"),
+        proc_root,
     )
 }
 
