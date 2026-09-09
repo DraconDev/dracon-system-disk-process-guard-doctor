@@ -981,6 +981,8 @@ fn guard_log_writes_and_rotates_expanded_tilde_path() {
     guard.guard_log_file = format!("~/{relative}");
     guard.guard_log_max_mb = 1;
 
+    fs::create_dir_all(path.parent().expect("guard log parent"))
+        .expect("create guard log parent");
     fs::write(&path, vec![b'x'; 1024 * 1024 + 1]).expect("seed oversized guard log");
     log_guard_event(&guard, "f66-test", "expanded path");
 
