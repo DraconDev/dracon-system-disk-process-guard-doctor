@@ -192,7 +192,14 @@ enum Commands {
     /// `storage.min_size_mb` (built-in default 512).
         #[arg(long)]
         min_size_mb: Option<u64>,
-        /// Comma-separated kinds to clean (targets, trash, nix, caches, node_modules, docker).
+        // CHANGED 2026-09-09 (audit F36): the old help named kinds
+        // (targets, trash, nix, caches, node_modules, docker) that match
+        // NOTHING — the real vocabulary comes from the analyzer
+        // (dracon-system-lib hotspot_kind) and the policy default:
+        // rust-build, node-deps, build-output, cache (plus report-only
+        // git-db, which is never deletable). A user-passed `--kinds
+        // node_modules` silently selected zero hotspots.
+        /// Comma-separated kinds to clean (rust-build, node-deps, build-output, cache).
         #[arg(long)]
         kinds: Option<String>,
     },
@@ -278,7 +285,7 @@ enum GuardCommands {
         #[arg(long)]
         apply: bool,
     },
-    /// Clean all reclaimable space (targets, trash, nix, caches, node_modules).
+    /// Clean all reclaimable space (rust, trash, nix, caches, node_modules, docker).
     Clean {
         #[arg(long)]
         json: bool,
@@ -4128,8 +4135,20 @@ async fn clean_tmp_paths(
         while let Ok(Some(entry)) = rd.next_entry().await {
             let path = entry.path();
             // Never follow or remove symlinks in tmp roots.
+            // CHANGED 2026-09-09 (audit F40): `entry.metadata()`
+            // FOLLOWS symlinks, so `is_symlink()` was never true and
+            // every symlink fell through to the target-typed path.
+            // `file_type()` does not follow — skip links up front.
+            // (The downstream guard check also refuses symlinks, so this
+            // was defense-in-depth theater plus scary log spam, not a
+            // live deletion hole.)
+            match entry.file_type().await {
+                Ok(t) if t.is_symlink() => continue,
+                Err(_) => continue,
+                _ => {}
+            }
             let meta = match entry.metadata().await {
-                Ok(m) if !m.file_type().is_symlink() => m,
+                Ok(m) => m,
                 _ => continue,
             };
             let modified = match meta.modified() {
@@ -4856,7 +4875,15 @@ async fn check_large_logs(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
                 let preserve = guard.log_preserve_header_lines;
                 let mut total_reclaimed = 0u64;
                 for (path, original_size) in &logs {
-                    let safe_path = match check_safe_to_delete(path, &guard.protected_paths) {
+                    // CHANGED 2026-09-09 (audit F39): the strict variant
+                    // rejects every descendant of /home and /var, so the
+                    // example's own log_dirs (/var/log, ~/.local/share)
+                    // could NEVER be truncated — the feature was dead.
+                    // The guard variant still refuses exact system roots,
+                    // user-protected paths, symlinks, and uncanonicalizable
+                    // paths, which is the right posture for truncating
+                    // known log files in standard locations.
+                    let safe_path = match check_safe_to_delete_guard(path, &guard.protected_paths) {
                         Ok(p) => p,
                         Err(e) => {
                             eprintln!("⚠️ skipping log truncate {}: {}", path.display(), e);
@@ -5347,6 +5374,13 @@ async fn cmd_storage(
     let (effective_kinds, non_cleanup_requested) =
         filter_selectable_cleanup_kinds(parse_kinds(&requested_kinds));
 
+    // ADDED 2026-09-09 (audit F37): `--json --cleanup` used to return
+    // here, silently ignoring --cleanup/--apply with exit 0. Refuse the
+    // combo up front instead of pretending to clean.
+    if json && cleanup {
+        anyhow::bail!("storage --json cannot be combined with --cleanup (JSON mode is report-only); run without --json to clean");
+    }
+
     let report = analyze_workspace_storage(&root, 15, 25).await?;
 
     if json {
@@ -5626,7 +5660,10 @@ fn validate_storage_cleanup_path(path: &Path, user_protected: &[String]) -> Resu
     // never tracks its own database). Kind-level filtering keeps it out of
     // the candidate list; this refuses it even if a future caller passes it
     // through directly.
-    if path.file_name().is_some_and(|name| name == ".git") {
+    // CHANGED 2026-09-09 (audit F38): the old check matched only
+    // `file_name() == ".git"`, so `/repo/.git/objects` sailed through.
+    // Refuse any path with a `.git` component.
+    if path.components().any(|c| c.as_os_str() == ".git") {
         anyhow::bail!(
             "refusing to delete git database (project history, not an artifact): {}",
             path.display()
