@@ -2315,12 +2315,19 @@ fn detect_active_package_manager_operations_from(
     })?;
 
     let mut active = HashSet::new();
+    let mut saw_process = false;
     for line in ps_output.lines() {
         let mut parts = line.split_whitespace();
-        let Some(pid) = parts.next().and_then(|value| value.parse::<i32>().ok()) else {
-            continue;
-        };
-        let comm = parts.next().unwrap_or("");
+        let pid_text = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("malformed ps output line: {line:?}"))?;
+        let pid = pid_text.parse::<i32>().map_err(|error| {
+            anyhow::anyhow!("malformed ps PID {pid_text:?} in output line {line:?}: {error}")
+        })?;
+        let comm = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("malformed ps output line: {line:?}"))?;
+        saw_process = true;
         if let Some(kind) = package_cache_kind_for_command_name(comm) {
             active.insert(kind);
             continue;
@@ -2332,6 +2339,9 @@ fn detect_active_package_manager_operations_from(
         if let Some(kind) = package_cache_kind_for_process(comm, &cmdline) {
             active.insert(kind);
         }
+    }
+    if !saw_process {
+        anyhow::bail!("ps returned no process records for package-cache protection");
     }
     Ok(active)
 }

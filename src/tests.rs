@@ -1991,7 +1991,10 @@ async fn package_cache_rechecks_processes_before_apply_delete() {
     .await
     .expect("cache recheck");
     assert_eq!(result.0, 0, "the newly active cache must not be reclaimed");
-    assert!(npm_cache.exists(), "the final process check must protect npm");
+    assert!(
+        npm_cache.exists(),
+        "the final process check must protect npm"
+    );
 
     let _ = fs::remove_dir_all(home);
     let _ = fs::remove_dir_all(proc_root);
