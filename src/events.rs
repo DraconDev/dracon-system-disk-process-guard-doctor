@@ -5,7 +5,7 @@ use fs2::FileExt;
 use serde::Serialize;
 use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -137,6 +137,15 @@ fn rotate_event_log(path: &Path) -> std::io::Result<()> {
     }
 }
 
+fn discard_oversized_segment(path: &Path) -> std::io::Result<()> {
+    match fs::metadata(path) {
+        Ok(metadata) if metadata.len() > MAX_EVENT_LOG_BYTES => fs::remove_file(path),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
 fn persist_event(path: &Path, json: &str) -> std::io::Result<()> {
     if json.len() > MAX_EVENT_RECORD_BYTES {
         return Err(std::io::Error::new(
@@ -157,6 +166,9 @@ fn persist_event(path: &Path, json: &str) -> std::io::Result<()> {
     lock_file.lock_exclusive()?;
 
     let result = (|| {
+        // Clean up files created by the pre-rotation implementation before
+        // deciding whether the current segment can be retained.
+        discard_oversized_segment(&rotated_event_path(path))?;
         let current_size = match fs::metadata(path) {
             Ok(metadata) => metadata.len(),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
@@ -165,7 +177,12 @@ fn persist_event(path: &Path, json: &str) -> std::io::Result<()> {
         let append_size = u64::try_from(json.len())
             .unwrap_or(u64::MAX)
             .saturating_add(1);
-        if current_size > 0 && current_size.saturating_add(append_size) > MAX_EVENT_LOG_BYTES {
+        if current_size > MAX_EVENT_LOG_BYTES {
+            // Do not move an unbounded legacy log into the retained segment.
+            fs::remove_file(path)?;
+        } else if current_size > 0
+            && current_size.saturating_add(append_size) > MAX_EVENT_LOG_BYTES
+        {
             rotate_event_log(path)?;
         }
 
