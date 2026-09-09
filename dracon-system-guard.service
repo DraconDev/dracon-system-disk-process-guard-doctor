@@ -29,8 +29,11 @@ TasksMax=64
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.dracon %h/Dev %h/.local/state/dracon %h/.local/share/Trash %h/.cargo %h/.cache %h/.npm
-PrivateTmp=true
+# clean_tmp targets the host /tmp (the policy default), so do not create a
+# service-private temporary namespace. ProtectSystem remains strict; /tmp is
+# the explicit writable exception needed for age-based top-level cleanup.
+ReadWritePaths=%h/.dracon %h/Dev %h/.local/state/dracon %h/.local/share/Trash %h/.cargo %h/.cache %h/.npm /tmp
+PrivateTmp=false
 
 # Kernel-level sandboxing (all certain — these daemons never use these privileges)
 PrivateDevices=true
