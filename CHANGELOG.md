@@ -14,8 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed (audit pass 2026-09-09, F36–F48, F58–F66)
+### Fixed (audit pass 2026-09-09, F36–F48, F58–F67)
 
+- **Status reports the effective system policy path** (F67): `status` now
+  honors `DRACON_SYSTEM_POLICY` in both human and `--json` output, including
+  an accurate existence flag for an overridden path. Without an override it
+  reports the first discovered policy path, or the canonical default when no
+  policy exists.
 - **Guard log paths expand `~` consistently** (F66): logging and startup
   rotation now resolve `guard_log_file` through one shared path resolver, so
   the shipped `~/.local/state/dracon/dracon-system-guard.log` configuration

@@ -5553,8 +5553,7 @@ pub(crate) fn load_system_policy() -> Result<(Option<PathBuf>, SystemPolicy)> {
 fn effective_system_policy_path() -> Result<PathBuf> {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/home"));
     let fallback = home.join(".dracon/utilities/system/dracon-system.toml");
-    let resolved =
-        resolve_system_policy_path_with(std::env::var_os("DRACON_SYSTEM_POLICY"), home)?;
+    let resolved = resolve_system_policy_path_with(std::env::var_os("DRACON_SYSTEM_POLICY"), home)?;
     Ok(resolved.unwrap_or(fallback))
 }
 
