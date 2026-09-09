@@ -723,6 +723,45 @@ fn read_process_cmdline_from(root: &Path, pid: i32) -> String {
     sanitize_process_cmdline(&raw, truncated)
 }
 
+/// Read command-line metadata for cache protection without treating an
+/// unavailable `/proc` entry as proof that an unknown process is harmless.
+/// ENOENT is expected when a process exits during the snapshot; all other
+/// failures abort cache cleanup so interpreter/script wrappers fail closed.
+fn read_package_process_cmdline(root: &Path, pid: i32) -> Result<Option<String>> {
+    let path = root.join(pid.to_string()).join("cmdline");
+    let file = match File::open(&path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(error).with_context(|| {
+                format!(
+                    "cannot inspect process {} command line for package-cache protection",
+                    pid
+                )
+            })
+        }
+    };
+
+    let mut reader = file.take((MAX_PROCESS_CMDLINE_BYTES + 1) as u64);
+    let mut raw = Vec::with_capacity(MAX_PROCESS_CMDLINE_BYTES + 1);
+    if let Err(error) = reader.read_to_end(&mut raw) {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            return Ok(None);
+        }
+        return Err(error).with_context(|| {
+            format!(
+                "cannot read process {} command line for package-cache protection",
+                pid
+            )
+        });
+    }
+    let truncated = raw.len() > MAX_PROCESS_CMDLINE_BYTES;
+    if truncated {
+        raw.truncate(MAX_PROCESS_CMDLINE_BYTES);
+    }
+    Ok(Some(sanitize_process_cmdline(&raw, truncated)))
+}
+
 fn load_process_cmdline(mut sample: ProcSample) -> ProcSample {
     sample.args = read_process_cmdline_from(Path::new("/proc"), sample.pid);
     sample
@@ -2267,7 +2306,14 @@ fn package_cache_kind_for_process(comm: &str, cmdline: &str) -> Option<PackageCa
 fn detect_active_package_manager_operations_from(
     ps_output: &str,
     proc_root: &Path,
-) -> HashSet<PackageCacheKind> {
+) -> Result<HashSet<PackageCacheKind>> {
+    fs::metadata(proc_root.join("self")).with_context(|| {
+        format!(
+            "cannot inspect process metadata at {} for package-cache protection",
+            proc_root.display()
+        )
+    })?;
+
     let mut active = HashSet::new();
     for line in ps_output.lines() {
         let mut parts = line.split_whitespace();
@@ -2275,12 +2321,19 @@ fn detect_active_package_manager_operations_from(
             continue;
         };
         let comm = parts.next().unwrap_or("");
-        let cmdline = read_process_cmdline_from(proc_root, pid);
+        if let Some(kind) = package_cache_kind_for_command_name(comm) {
+            active.insert(kind);
+            continue;
+        }
+
+        let Some(cmdline) = read_package_process_cmdline(proc_root, pid)? else {
+            continue;
+        };
         if let Some(kind) = package_cache_kind_for_process(comm, &cmdline) {
             active.insert(kind);
         }
     }
-    active
+    Ok(active)
 }
 
 /// Return the cache classes currently used by package-manager/build processes.
@@ -2300,10 +2353,10 @@ async fn detect_active_package_manager_operations() -> Result<HashSet<PackageCac
         );
     }
 
-    Ok(detect_active_package_manager_operations_from(
+    detect_active_package_manager_operations_from(
         &String::from_utf8_lossy(&out.stdout),
         Path::new("/proc"),
-    ))
+    )
 }
 
 async fn detect_active_rust_builds() -> Result<HashSet<i32>> {
@@ -2808,25 +2861,44 @@ fn parse_docker_size(s: &str) -> u64 {
 async fn try_remove_cache_dir(
     path: &Path,
     name: &str,
+    kind: PackageCacheKind,
     apply: bool,
     protected_paths: &[String],
-) -> bool {
+    recheck_active: bool,
+) -> Result<bool> {
     if !apply {
-        return true;
+        return Ok(true);
     }
-    match check_safe_to_delete_guard(path, protected_paths) {
-        Ok(ref safe_path) => {
-            if let Err(e) = tokio::fs::remove_dir_all(safe_path).await {
-                eprintln!("⚠️ failed to remove {name} cache: {e}");
-                false
-            } else {
-                true
-            }
-        }
+
+    let safe_path = match check_safe_to_delete_guard(path, protected_paths) {
+        Ok(path) => path,
         Err(e) => {
             eprintln!("⚠️ skipping {name} cache: {e}");
-            false
+            return Ok(false);
         }
+    };
+
+    // The initial process snapshot prevents scanning/removing a cache that is
+    // already in use. Recheck after canonicalization and immediately before
+    // remove_dir_all so an operation that starts during the size scan is also
+    // observed. There is no lock shared with arbitrary package managers, so
+    // this final check is the narrowest safe coordination available here.
+    if recheck_active {
+        let active = detect_active_package_manager_operations().await?;
+        if active.contains(&kind) {
+            eprintln!(
+                "🛡️ keeping {name} cache: active {} operation detected",
+                kind.name()
+            );
+            return Ok(false);
+        }
+    }
+
+    if let Err(e) = tokio::fs::remove_dir_all(safe_path).await {
+        eprintln!("⚠️ failed to remove {name} cache: {e}");
+        Ok(false)
+    } else {
+        Ok(true)
     }
 }
 
@@ -2859,6 +2931,7 @@ async fn clean_package_caches_at(
     apply: bool,
     protected_paths: &[String],
     active: &HashSet<PackageCacheKind>,
+    recheck_active: bool,
 ) -> Result<(u64, Vec<String>)> {
     let mut reclaimed = 0u64;
     let mut cleaned = Vec::new();
@@ -2900,7 +2973,16 @@ async fn clean_package_caches_at(
         if size == 0 {
             continue;
         }
-        if try_remove_cache_dir(&cache_path, label, apply, protected_paths).await {
+        if try_remove_cache_dir(
+            &cache_path,
+            label,
+            kind,
+            apply,
+            protected_paths,
+            recheck_active,
+        )
+        .await?
+        {
             cleaned.push(format!("{label} ({})", human_bytes(size)));
             reclaimed += size;
         }
