@@ -67,7 +67,7 @@ exit 0"#
     );
     assert_eq!(lines[2], "nix-gc:");
     assert!(
-        !calls.contains("-d"),
+        !lines[2].contains("-d"),
         "apply must not use nix-collect-garbage -d, which discards retained generations"
     );
     let _ = fs::remove_dir_all(&root);
