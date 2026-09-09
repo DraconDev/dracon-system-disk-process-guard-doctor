@@ -1372,6 +1372,20 @@ fn guard_startup_config_errors_use_non_restarting_status() {
     assert_eq!(exit_status_for_error(&anyhow::anyhow!("runtime failure")), 1);
 }
 
+#[cfg(unix)]
+#[test]
+fn non_unicode_policy_override_is_authoritative() {
+    use std::os::unix::ffi::OsStringExt;
+
+    let custom = std::ffi::OsString::from_vec(b"/tmp/policy-\xff.toml".to_vec());
+    let resolved = resolve_system_policy_path_with(
+        Some(custom.clone()),
+        PathBuf::from("/nowhere"),
+    );
+
+    assert_eq!(resolved.unwrap(), Some(PathBuf::from(custom)));
+}
+
 #[test]
 fn shipped_guard_service_exposes_host_tmp_for_clean_tmp() {
     let service = include_str!("../dracon-system-guard.service");

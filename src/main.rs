@@ -5121,14 +5121,23 @@ pub(crate) struct LinkStatusReport {
 }
 
 fn resolve_system_policy_path() -> Result<Option<PathBuf>> {
-    if let Ok(custom) = std::env::var("DRACON_SYSTEM_POLICY") {
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/home"));
+    resolve_system_policy_path_with(std::env::var_os("DRACON_SYSTEM_POLICY"), home)
+}
+
+fn resolve_system_policy_path_with(
+    custom: Option<std::ffi::OsString>,
+    home: PathBuf,
+) -> Result<Option<PathBuf>> {
+    if let Some(custom) = custom {
         // An explicit override is authoritative. Do not fall back to a
         // default policy when the override is missing or inaccessible: that
         // would turn a configuration error into an unexpected default run.
+        // var_os is intentional so non-Unicode paths cannot be mistaken for
+        // an unset override.
         return Ok(Some(PathBuf::from(custom)));
     }
 
-    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/home"));
     let candidates = [
         home.join(".dracon/utilities/system/dracon-system.toml"),
         home.join(".dracon/utilities/system/config.toml"),
