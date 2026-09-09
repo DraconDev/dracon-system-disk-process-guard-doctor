@@ -1964,17 +1964,10 @@ async fn package_cache_apply_refuses_all_cache_deletion() {
         active.insert(kind);
     }
 
-    let (reclaimed, cleaned) = clean_package_caches_at(
-        &home,
-        true,
-        true,
-        true,
-        true,
-        true,
-        &active,
-    )
-    .await
-    .expect("protected cache cleanup");
+    let (reclaimed, cleaned) =
+        clean_package_caches_at(&home, true, true, true, true, true, &active)
+            .await
+            .expect("protected cache cleanup");
     assert_eq!(
         reclaimed, 0,
         "apply cache deletion is disabled, so caches must not be counted as reclaimed"
@@ -2023,17 +2016,9 @@ async fn package_cache_apply_refuses_uncoordinated_start_after_snapshot() {
 
     // Apply refuses all package-cache deletion because no lock shared with
     // external package managers can make this lifecycle-safe.
-    let result = clean_package_caches_at(
-        &home,
-        false,
-        true,
-        false,
-        false,
-        true,
-        &initial,
-    )
-    .await
-    .expect("uncoordinated apply must be a safe no-op");
+    let result = clean_package_caches_at(&home, false, true, false, false, true, &initial)
+        .await
+        .expect("uncoordinated apply must be a safe no-op");
     assert_eq!(result, (0, Vec::new()));
     assert!(
         npm_cache.exists(),

@@ -743,9 +743,7 @@ fn read_package_process_cmdline(root: &Path, pid: i32) -> Result<Option<String>>
                         pid
                     ));
                 }
-                Err(directory_error)
-                    if directory_error.kind() == std::io::ErrorKind::NotFound =>
-                {
+                Err(directory_error) if directory_error.kind() == std::io::ErrorKind::NotFound => {
                     return Ok(None);
                 }
                 Err(directory_error) => {
@@ -777,9 +775,7 @@ fn read_package_process_cmdline(root: &Path, pid: i32) -> Result<Option<String>>
                     "process {} command line disappeared while inspecting package-cache protection",
                     pid
                 )),
-                Err(directory_error)
-                    if directory_error.kind() == std::io::ErrorKind::NotFound =>
-                {
+                Err(directory_error) if directory_error.kind() == std::io::ErrorKind::NotFound => {
                     Ok(None)
                 }
                 Err(directory_error) => Err(directory_error).with_context(|| {
