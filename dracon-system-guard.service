@@ -17,6 +17,9 @@ RestartSec=10
 # 78 = EX_CONFIG for malformed/unreadable startup policy; 2 = CLI usage error.
 RestartPreventExitStatus=2 78
 
+# Keep any intentionally relative policy paths stable for the user service.
+WorkingDirectory=%h
+
 # Run as the user who owns the service
 # For system-wide deployment, create a dedicated user
 # User=dracon-guard

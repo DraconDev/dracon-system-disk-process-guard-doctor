@@ -963,29 +963,48 @@ fn guard_log_path_expands_the_example_configuration() {
     );
     assert!(!resolved.to_string_lossy().contains('~'));
     assert!(resolve_guard_log_path("  ").is_none());
+    assert_eq!(
+        resolve_guard_log_path("logs/guard.log"),
+        Some(PathBuf::from("logs/guard.log"))
+    );
 }
 
 #[test]
-fn guard_log_writes_and_rotates_expanded_tilde_path() {
-    let home = dirs::home_dir().expect("home directory");
-    let relative = format!(
-        ".local/state/dracon/dracon-system-f66-test-{}-{}.log",
+fn guard_log_example_path_writes_and_startup_rotates_in_isolated_home() {
+    let policy: SystemPolicy = toml::from_str(include_str!("../dracon-system.example.toml"))
+        .expect("shipped example policy should parse");
+    assert_eq!(
+        policy.guard.guard_log_file,
+        "~/.local/state/dracon/dracon-system-guard.log"
+    );
+
+    let home = std::env::temp_dir().join(format!(
+        "dracon_system_guard_log_home_{}_{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock after Unix epoch")
             .as_nanos()
-    );
-    let path = home.join(&relative);
-    let mut guard = GuardPolicy::default();
-    guard.guard_log_file = format!("~/{relative}");
+    ));
+    let mut guard = policy.guard;
     guard.guard_log_max_mb = 1;
+    let path = resolve_guard_log_path_with_home(&guard.guard_log_file, Some(&home))
+        .expect("example guard log path should be enabled");
+    assert_eq!(
+        path,
+        home.join(".local/state/dracon/dracon-system-guard.log")
+    );
 
     fs::create_dir_all(path.parent().expect("guard log parent"))
         .expect("create guard log parent");
     fs::write(&path, vec![b'x'; 1024 * 1024 + 1]).expect("seed oversized guard log");
-    log_guard_event(&guard, "f66-test", "expanded path");
+    rotate_guard_log_for_policy_with_home(&guard, true, Some(&home));
+    assert!(
+        !path.exists(),
+        "startup rotation must use the expanded advertised log path"
+    );
 
+    log_guard_event_with_home(&guard, "f66-test", "expanded path", Some(&home));
     let contents = fs::read_to_string(&path).expect("expanded guard log should be written");
     let record: serde_json::Value =
         serde_json::from_str(contents.trim()).expect("guard log should contain JSONL");
@@ -993,14 +1012,10 @@ fn guard_log_writes_and_rotates_expanded_tilde_path() {
     assert_eq!(record["details"], "expanded path");
     assert!(
         fs::metadata(&path).expect("guard log metadata").len() < 1024 * 1024,
-        "oversized expanded guard log should be rotated before append"
-    );
-    assert!(
-        !PathBuf::from(&guard.guard_log_file).exists(),
-        "a literal tilde path must not be used"
+        "guard log should remain below the configured limit after rotation"
     );
 
-    fs::remove_file(&path).expect("remove guard log test file");
+    fs::remove_dir_all(&home).expect("remove isolated guard log home");
 }
 
 #[test]
