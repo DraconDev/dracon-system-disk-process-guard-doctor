@@ -4439,6 +4439,24 @@ fn path_has_open_ancestor(path: &Path, open: &std::collections::HashSet<PathBuf>
 /// Removes TOP-LEVEL entries of each root whose mtime is older than
 /// `min_age_hours`, skipping symlinks, protected paths, and anything
 /// currently held open by a process. Dry-run only measures.
+fn resolve_safe_tmp_roots(roots: &[String]) -> Result<Vec<PathBuf>> {
+    let mut resolved = Vec::new();
+    for configured in roots {
+        let configured = configured.trim();
+        if configured.is_empty() {
+            continue;
+        }
+        let requested = expand_tilde(configured);
+        let safe_root = check_safe_tmp_root(&requested).with_context(|| {
+            format!("invalid tmp_search_paths entry {:?}", configured)
+        })?;
+        if !resolved.contains(&safe_root) {
+            resolved.push(safe_root);
+        }
+    }
+    Ok(resolved)
+}
+
 async fn clean_tmp_paths(
     apply: bool,
     roots: &[String],
@@ -4461,7 +4479,10 @@ async fn clean_tmp_paths_with_proc(
     if roots.is_empty() || min_age_hours == 0 {
         return Ok((0, cleaned));
     }
-    let root_paths: Vec<PathBuf> = roots.iter().map(|r| expand_tilde(r)).collect();
+    let root_paths = resolve_safe_tmp_roots(roots)?;
+    if root_paths.is_empty() {
+        return Ok((0, cleaned));
+    }
     let open_paths = collect_open_paths_under_from(proc_root, &root_paths).await;
     // CHANGED 2026-09-09 (audit F41): same underflow hardening as the
     // trash cutoff above — absurd min_age_hours saturates to "delete
@@ -4503,7 +4524,7 @@ async fn clean_tmp_paths_with_proc(
             if path_has_open_ancestor(&path, &open_paths) {
                 continue; // held open by a live process
             }
-            if let Err(e) = check_safe_to_delete_guard(&path, protected_paths) {
+            if let Err(e) = check_safe_to_delete_tmp_entry(&path, root, protected_paths) {
                 eprintln!("🛡️ keeping protected tmp entry {}: {}", path.display(), e);
                 continue;
             }

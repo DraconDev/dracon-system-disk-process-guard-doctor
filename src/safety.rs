@@ -72,6 +72,62 @@ pub(crate) fn check_safe_to_delete(path: &Path, user_protected: &[String]) -> Re
     Ok(canon)
 }
 
+/// Temporary roots accepted by the age-based `clean_tmp` cleanup.
+///
+/// These are deliberately an explicit allowlist rather than a generic
+/// "anything below the current user's home" rule. Paths below either root
+/// are allowed, but the configured root must resolve to one of them and may
+/// not itself be a symlink.
+pub(crate) const SAFE_TMP_ROOTS: &[&str] = &["/tmp", "/var/tmp"];
+
+/// Validate a configured `clean_tmp` search root and return its canonical path.
+///
+/// Missing, non-directory, symlink, and non-temporary roots are rejected so a
+/// bad configuration cannot turn the top-level age scan into home-directory
+/// cleanup. Callers should use the returned canonical path for both scanning
+/// and containment checks on deletion candidates.
+pub(crate) fn check_safe_tmp_root(path: &Path) -> Result<PathBuf> {
+    let metadata = std::fs::symlink_metadata(path).map_err(|e| {
+        anyhow::anyhow!(
+            "cannot inspect configured tmp root {}: {} — refusing to scan",
+            path.display(),
+            e
+        )
+    })?;
+    if metadata.file_type().is_symlink() {
+        anyhow::bail!(
+            "refusing configured tmp root {} because it is a symlink",
+            path.display()
+        );
+    }
+    if !metadata.is_dir() {
+        anyhow::bail!(
+            "refusing configured tmp root {} because it is not a directory",
+            path.display()
+        );
+    }
+
+    let canon = path.canonicalize().map_err(|e| {
+        anyhow::anyhow!(
+            "cannot canonicalize configured tmp root {}: {} — refusing to scan",
+            path.display(),
+            e
+        )
+    })?;
+    let canon_str = canon.display().to_string();
+    if !SAFE_TMP_ROOTS
+        .iter()
+        .any(|root| is_protected_ancestor(&canon_str, root))
+    {
+        anyhow::bail!(
+            "refusing configured tmp root {}: it must be /tmp or /var/tmp (or a descendant)",
+            canon.display()
+        );
+    }
+
+    Ok(canon)
+}
+
 /// Guard-specific safety check — skips descendant checks for SYSTEM_PROTECTED
 /// because the guard only deletes known artifact/cache directories (~/Dev/*/target,
 /// ~/.cache/*, ~/.local/share/Trash/*) which are legitimately under /home.
@@ -134,6 +190,26 @@ pub(crate) fn check_safe_to_delete_guard(
         }
     }
 
+    Ok(canon)
+}
+
+/// Validate a tmp cleanup candidate against the already validated tmp root in
+/// addition to the guard's normal protected-path and symlink checks. The
+/// containment check prevents a root-directory redirection from making a
+/// candidate outside the approved temporary namespace deletable.
+pub(crate) fn check_safe_to_delete_tmp_entry(
+    path: &Path,
+    tmp_root: &Path,
+    user_protected: &[String],
+) -> Result<PathBuf> {
+    let canon = check_safe_to_delete_guard(path, user_protected)?;
+    if !canon.starts_with(tmp_root) {
+        anyhow::bail!(
+            "refusing to delete tmp entry {}: resolved path is outside validated tmp root {}",
+            canon.display(),
+            tmp_root.display()
+        );
+    }
     Ok(canon)
 }
 
