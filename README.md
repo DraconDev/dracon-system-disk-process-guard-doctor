@@ -268,7 +268,8 @@ if systemd recorded a failed unit, then restart it.
 The live config lives at `~/.dracon/utilities/system/dracon-system.toml`
 (override with `DRACON_SYSTEM_POLICY`). `dracon-system status` reports the
 same effective policy path in both human and `--json` output, including
-whether that path exists. The annotated template is `dracon-system.example.toml` in this repo
+whether that path exists. The annotated template is
+`dracon-system.example.toml` in this repo
 (`dracon-system/dracon-system.example.toml` from the monorepo root).
 Note: the shipped example is intentionally stricter (more report-only)
 than the compiled defaults — see the header comment in the template:
