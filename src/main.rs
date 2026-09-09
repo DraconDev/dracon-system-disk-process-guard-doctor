@@ -162,7 +162,10 @@ enum Commands {
         /// Filter by source domain (e.g. system, warden, sync).
         #[arg(long)]
         source: Option<String>,
-        /// Filter by severity (info, warn, error, critical).
+        // CHANGED 2026-09-09 (audit F47): help advertised `critical`,
+        // but EventSeverity has only Info/Warn/Error — nothing this
+        // binary emits could ever match a critical filter.
+        /// Filter by severity (info, warn, error).
         #[arg(short, long)]
         severity: Option<String>,
         /// Deduplicate consecutive identical events.
@@ -230,7 +233,8 @@ enum Commands {
         /// Target memory percent for zram (e.g., 200 for 2x RAM).
         #[arg(long)]
         memory_percent: Option<u32>,
-        /// Compression algorithm (lzo, lz4, lz4hc, zstd).
+        // CHANGED 2026-09-09 (audit F46): help listed 4 algos, code accepts 7.
+        /// Compression algorithm (lzo, lzo-rle, lz4, lz4hc, zstd, deflate, 842).
         #[arg(long)]
         algorithm: Option<String>,
     },
@@ -2932,9 +2936,13 @@ async fn purge_aged_trash_entries(
     protected_paths: &[String],
     apply: bool,
 ) -> Result<(u64, u64)> {
-    let cutoff = SystemTime::now().duration_since(UNIX_EPOCH)?
-        - Duration::from_secs(min_age_days.saturating_mul(86_400));
-    let cutoff = UNIX_EPOCH + cutoff;
+    // CHANGED 2026-09-09 (audit F41): `now - age` panicked (debug) on
+    // absurd min_age configs. checked_sub falls back to the epoch, so an
+    // older-than-epoch cutoff matches nothing (every real mtime is newer)
+    // instead of crashing the pass — the safe direction.
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
+    let age = Duration::from_secs(min_age_days.saturating_mul(86_400));
+    let cutoff = UNIX_EPOCH + now.checked_sub(age).unwrap_or(Duration::ZERO);
     let mut reclaimed = 0u64;
     let mut count = 0u64;
     let mut rd = tokio::fs::read_dir(trash_files).await?;
@@ -4124,9 +4132,12 @@ async fn clean_tmp_paths(
     }
     let root_paths: Vec<PathBuf> = roots.iter().map(|r| expand_tilde(r)).collect();
     let open_paths = collect_open_paths_under(&root_paths).await;
-    let cutoff = SystemTime::now().duration_since(UNIX_EPOCH)?
-        - Duration::from_secs(min_age_hours.saturating_mul(3_600));
-    let cutoff = UNIX_EPOCH + cutoff;
+    // CHANGED 2026-09-09 (audit F41): same underflow hardening as the
+    // trash cutoff above — absurd min_age_hours saturates to "delete
+    // nothing" instead of panicking.
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
+    let age = Duration::from_secs(min_age_hours.saturating_mul(3_600));
+    let cutoff = UNIX_EPOCH + now.checked_sub(age).unwrap_or(Duration::ZERO);
     for root in &root_paths {
         let mut rd = match tokio::fs::read_dir(root).await {
             Ok(rd) => rd,
@@ -5150,6 +5161,12 @@ async fn build_status_report() -> Result<StatusReport> {
 pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) {
     policy.interval_secs = policy.interval_secs.max(5);
     policy.disk_warn_percent = policy.disk_warn_percent.clamp(1, 100);
+    // ADDED 2026-09-09 (audit F43): an early-warn above warn made the
+    // early band (`used >= early && used < warn`) permanently empty —
+    // the operator's early-warning config silently did nothing.
+    policy.disk_early_warn_percent = policy
+        .disk_early_warn_percent
+        .min(policy.disk_warn_percent);
     policy.disk_action_percent = policy
         .disk_action_percent
         .max(policy.disk_warn_percent)
@@ -6008,15 +6025,19 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
                     );
                 }
                 Err(e) => {
+                    // CHANGED 2026-09-09 (audit F42): the old message
+                    // claimed "using defaults" but this arm assigns
+                    // nothing — the previous (known-good) policy stays
+                    // live, which is the safer behavior. Say so.
                     eprintln!(
-                        "system: SIGHUP reload warning: corrupted policy file, using defaults: {}",
+                        "system: SIGHUP reload warning: corrupted policy file, keeping previous policy: {}",
                         e
                     );
                     emit_event(&DraconEvent::new(
                         "system",
                         EventSeverity::Error,
                         "guard/policy-reload",
-                        format!("SIGHUP reload: policy corrupted, using defaults: {}", e),
+                        format!("SIGHUP reload: policy corrupted, keeping previous policy: {}", e),
                     ));
                 }
             }
@@ -6090,6 +6111,21 @@ async fn cmd_guard_prune(
     }
 
     if !docker && !docker_volumes && !package_caches {
+        // ADDED 2026-09-09 (audit F45): this branch printed human-readable
+        // disk text even with --json, and execution then fell through to
+        // the JSON report below — mixed output. Emit a zeroed JSON report
+        // instead.
+        if json {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "reclaimed_bytes": 0,
+                    "reclaimed_human": human_bytes(0),
+                    "actions": Vec::<String>::new(),
+                })
+            );
+            return Ok(());
+        }
         let disk = disk_use_percent_for(&guard.disk_mount_path).await?;
         println!("Disk usage: {}% (mount: {})", disk, guard.disk_mount_path);
 
@@ -6292,7 +6328,13 @@ async fn cmd_guard_clean(
     }
 
     if do_docker {
-        match docker_prune(apply, apply, guard_clone.docker_prune_volumes).await {
+        // CHANGED 2026-09-09 (audit F44): the old call passed `apply`
+        // as docker's `--all`, so EVERY `--docker --apply` deleted ALL
+        // unused images with no opt-out, while the prune path tied
+        // `--all` to its own flag. Tie docker `--all` to clean's `--all`
+        // targets flag instead: `clean --all --apply` prunes aggressively,
+        // `clean --docker --apply` prunes dangling-only.
+        match docker_prune(apply, all, guard_clone.docker_prune_volumes).await {
             Ok(bytes) => {
                 total_reclaimed += bytes;
                 if bytes > 0 {
