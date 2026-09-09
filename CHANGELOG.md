@@ -14,8 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed (audit pass 2026-09-09, F36–F48, F58)
+### Fixed (audit pass 2026-09-09, F36–F48, F58–F59)
 
+- **Host `/tmp` cleanup matches the guard service namespace** (F59):
+  the shipped unit now sets `PrivateTmp=false` and grants `/tmp` as its
+  narrow `ReadWritePaths` exception, allowing `clean_tmp` to reclaim the
+  host filesystem while retaining the rest of the sandbox.
 - **Nix generation retention honors `nix_keep_generations`** (F58):
   cleanup now passes `+N` to `nix-env --delete-generations` and avoids
   `nix-collect-garbage -d`, so applying cleanup keeps the newest configured

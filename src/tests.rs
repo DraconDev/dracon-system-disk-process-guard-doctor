@@ -1322,6 +1322,39 @@ fn guard_policy_defaults_cover_tmp_and_trash_age_fields() {
     assert_eq!(guard.trash_min_age_days, 7);
 }
 
+#[test]
+fn shipped_guard_service_exposes_host_tmp_for_clean_tmp() {
+    let service = include_str!("../dracon-system-guard.service");
+    assert!(
+        service
+            .lines()
+            .any(|line| line.trim() == "PrivateTmp=false"),
+        "the shipped guard must share the host temporary namespace"
+    );
+    assert!(
+        !service
+            .lines()
+            .any(|line| line.trim() == "PrivateTmp=true"),
+        "the shipped guard must not use a private temporary namespace"
+    );
+
+    let writable_paths = service
+        .lines()
+        .find_map(|line| line.strip_prefix("ReadWritePaths="))
+        .expect("the guard service must declare writable paths");
+    assert!(
+        writable_paths.split_whitespace().any(|path| path == "/tmp"),
+        "host /tmp must be writable despite ProtectSystem=strict"
+    );
+
+    let guard = GuardPolicy::default();
+    assert!(guard.clean_tmp, "the production default must enable clean_tmp");
+    assert_eq!(
+        guard.tmp_search_paths, "/tmp",
+        "the policy and service must target the same host namespace"
+    );
+}
+
 #[tokio::test]
 async fn guard_report_completes_for_ok_disk() {
     let mut state = GuardRuntimeState::default();
