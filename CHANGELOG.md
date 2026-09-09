@@ -19,8 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Package-cache cleanup protects active package-manager operations** (F63):
   apply cleanup now detects cargo/rustc, npm, pip, and go processes (including
   common script/interpreter wrappers) and skips the corresponding cache;
-  process-list failures fail closed instead of allowing an unprotected
-  recursive deletion.
+  unavailable process metadata and process-list failures fail closed, and a
+  last-moment process recheck runs immediately before each recursive delete.
 - **Auto-renice respects a process's current nice value** (F62): graduated
   targets are now floors, so a process already at nice 10 is never raised to
   priority by resetting it to a lower tier such as nice 5.

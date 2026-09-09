@@ -76,6 +76,8 @@ defaults are 70/80/90/95 — see Configuration.)
 - Protects their target directories from cleanup
 - Detects active cargo/npm/pip/go operations (including common wrappers)
 - Protects the corresponding package caches from recursive apply cleanup
+- Rechecks process activity immediately before each cache deletion
+- Fails closed when process metadata cannot be inspected
 - Prevents breaking active compilation or cache writes
 
 ### Disk Space Trend Prediction
