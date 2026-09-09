@@ -3026,18 +3026,33 @@ fn resolve_bin(name: &str) -> String {
     result
 }
 
-/// Run nix-collect-garbage
-async fn clean_nix_garbage(keep_generations: u32, apply: bool) -> Result<(u64, Vec<String>)> {
+/// Return the `nix-env --delete-generations` argument that retains the newest
+/// `keep_generations` generations. Nix interprets a bare number as one
+/// specific generation to delete; the leading `+` is what means "keep the
+/// newest N generations".
+fn nix_delete_generations_arg(keep_generations: u32) -> Option<String> {
+    (keep_generations > 0).then(|| format!("+{keep_generations}"))
+}
+
+/// Run Nix profile and store cleanup with explicit binary paths.
+///
+/// The binary parameters keep the command construction testable without
+/// depending on the host's Nix installation. Applying profile retention must
+/// not pass `-d` to `nix-collect-garbage`: that flag deletes all old profile
+/// generations, bypassing `nix_keep_generations`.
+async fn clean_nix_garbage_with_bins(
+    keep_generations: u32,
+    apply: bool,
+    nix_env: &Path,
+    nix_gc: &Path,
+) -> Result<(u64, Vec<String>)> {
     let reclaimed = 0u64;
     let mut cleaned = Vec::new();
     let mut errs = Vec::new();
 
-    if apply && keep_generations > 0 {
-        let gen_arg = keep_generations.to_string();
-        let nix_env = resolve_bin("nix-env");
-        match Command::new(&nix_env)
-            .arg("--delete-generations")
-            .arg(&gen_arg)
+    if let Some(gen_arg) = nix_delete_generations_arg(keep_generations).filter(|_| apply) {
+        match Command::new(nix_env)
+            .args(["--delete-generations", &gen_arg])
             .output()
             .await
         {
@@ -3050,9 +3065,8 @@ async fn clean_nix_garbage(keep_generations: u32, apply: bool) -> Result<(u64, V
             Err(e) => errs.push(format!("nix-env delete generations: {}", e)),
         }
 
-        match Command::new(&nix_env)
-            .arg("--delete-generations")
-            .arg(&gen_arg)
+        match Command::new(nix_env)
+            .args(["--delete-generations", &gen_arg])
             .arg("-p")
             .arg("/nix/var/nix/profiles/default")
             .output()
@@ -3068,16 +3082,14 @@ async fn clean_nix_garbage(keep_generations: u32, apply: bool) -> Result<(u64, V
         }
     }
 
-    let mut args: Vec<&str> = Vec::new();
-    if apply {
-        args.push("-d");
-    } else {
-        args.push("--dry-run");
-    }
-
-    let nix_gc = resolve_bin("nix-collect-garbage");
-    let out = Command::new(&nix_gc)
-        .args(&args)
+    // Do not use `-d` here. It deletes every old profile generation, which
+    // would make nix_keep_generations ineffective. The explicit nix-env
+    // commands above perform only the configured retention pruning; ordinary
+    // garbage collection then removes store paths no longer rooted by the
+    // retained generations.
+    let args: &[&str] = if apply { &[] } else { &["--dry-run"] };
+    let out = Command::new(nix_gc)
+        .args(args)
         .output()
         .await
         .map_err(|e| anyhow::anyhow!("failed to run nix-collect-garbage: {}", e))?;
@@ -3107,6 +3119,20 @@ async fn clean_nix_garbage(keep_generations: u32, apply: bool) -> Result<(u64, V
     }
 
     Ok((reclaimed, cleaned))
+}
+
+/// Run nix-collect-garbage and retain the configured number of profile
+/// generations.
+async fn clean_nix_garbage(keep_generations: u32, apply: bool) -> Result<(u64, Vec<String>)> {
+    let nix_env = resolve_bin("nix-env");
+    let nix_gc = resolve_bin("nix-collect-garbage");
+    clean_nix_garbage_with_bins(
+        keep_generations,
+        apply,
+        Path::new(&nix_env),
+        Path::new(&nix_gc),
+    )
+    .await
 }
 
 /// Clean old node_modules directories
