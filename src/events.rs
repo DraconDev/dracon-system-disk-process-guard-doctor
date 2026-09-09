@@ -384,10 +384,6 @@ fn read_tail_segments(paths: &[&Path], tail: usize) -> Result<(Vec<String>, usiz
     }
 }
 
-fn read_tail_lines(path: &Path, tail: usize) -> Result<(Vec<String>, usize)> {
-    read_tail_segments(&[path], tail)
-}
-
 /// Returns the path to the shared events JSONL file.
 pub(crate) fn events_path() -> PathBuf {
     dirs::home_dir()
@@ -672,7 +668,8 @@ mod tests {
             }
         });
 
-        let (lines, total) = read_tail_lines(&path, 100).expect("read concurrent event log");
+        let (lines, total) =
+            read_tail_segments(&[path.as_path()], 100).expect("read concurrent event log");
         assert_eq!(total, 100);
         assert_eq!(lines.len(), 100);
         for line in lines {
@@ -715,7 +712,7 @@ mod tests {
             .collect::<String>();
         fs::write(&path, content).expect("write event log");
 
-        let (lines, total) = read_tail_lines(&path, 2).expect("read event tail");
+        let (lines, total) = read_tail_segments(&[path.as_path()], 2).expect("read event tail");
 
         assert_eq!(total, 5);
         assert_eq!(lines, vec![r#"{"index":3}"#, r#"{"index":4}"#]);
@@ -730,7 +727,7 @@ mod tests {
         content.extend_from_slice(b"\n{\"kept\":true}\n");
         fs::write(&path, content).expect("write oversized event log");
 
-        let (lines, total) = read_tail_lines(&path, 2).expect("read event tail");
+        let (lines, total) = read_tail_segments(&[path.as_path()], 2).expect("read event tail");
 
         assert_eq!(total, 2);
         assert_eq!(lines, vec![r#"{"kept":true}"#]);
