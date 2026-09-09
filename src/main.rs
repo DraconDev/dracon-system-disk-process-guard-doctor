@@ -2937,58 +2937,13 @@ fn parse_docker_size(s: &str) -> u64 {
     (value * multiplier) as u64
 }
 
-#[derive(Clone, Copy)]
-struct PackageProcessDetector<'a> {
-    ps_bin: &'a Path,
-    proc_root: &'a Path,
-}
+/// There is no lock protocol shared by the guard and arbitrary package
+/// managers.  Keep apply cache cleanup disabled until one exists; a process
+/// snapshot cannot make a later `remove_dir_all` lifecycle-safe.
+const PACKAGE_CACHE_APPLY_COORDINATION_AVAILABLE: bool = false;
 
-/// Try to remove a cache directory, returning whether it succeeded.
-async fn try_remove_cache_dir(
-    path: &Path,
-    name: &str,
-    kind: PackageCacheKind,
-    apply: bool,
-    protected_paths: &[String],
-    recheck_active: bool,
-    detector: PackageProcessDetector<'_>,
-) -> Result<bool> {
-    if !apply {
-        return Ok(true);
-    }
-
-    let safe_path = match check_safe_to_delete_guard(path, protected_paths) {
-        Ok(path) => path,
-        Err(e) => {
-            eprintln!("⚠️ skipping {name} cache: {e}");
-            return Ok(false);
-        }
-    };
-
-    // The initial process snapshot prevents scanning/removing a cache that is
-    // already in use. Recheck after canonicalization and immediately before
-    // remove_dir_all so an operation that starts during the size scan is also
-    // observed. There is no lock shared with arbitrary package managers, so
-    // this final check is the narrowest safe coordination available here.
-    if recheck_active {
-        let active =
-            detect_active_package_manager_operations_with(detector.ps_bin, detector.proc_root)
-                .await?;
-        if active.contains(&kind) {
-            eprintln!(
-                "🛡️ keeping {name} cache: active {} operation detected",
-                kind.name()
-            );
-            return Ok(false);
-        }
-    }
-
-    if let Err(e) = tokio::fs::remove_dir_all(safe_path).await {
-        eprintln!("⚠️ failed to remove {name} cache: {e}");
-        Ok(false)
-    } else {
-        Ok(true)
-    }
+fn package_cache_apply_is_disabled() -> bool {
+    !PACKAGE_CACHE_APPLY_COORDINATION_AVAILABLE
 }
 
 /// Clean package manager caches using the real home directory.
@@ -2998,34 +2953,28 @@ async fn clean_package_caches(
     pip: bool,
     go: bool,
     apply: bool,
-    protected_paths: &[String],
+    _protected_paths: &[String],
 ) -> Result<(u64, Vec<String>)> {
+    if apply && package_cache_apply_is_disabled() {
+        eprintln!(
+            "🛡️ keeping package caches: apply deletion is disabled because no shared package-manager lock is available"
+        );
+        return Ok((0, Vec::new()));
+    }
+
     let active = detect_active_package_manager_operations().await?;
     let home = dirs::home_dir().context("cannot determine home directory for package caches")?;
-    clean_package_caches_at(
-        &home,
-        cargo,
-        npm,
-        pip,
-        go,
-        apply,
-        protected_paths,
-        &active,
-        true,
-        PackageProcessDetector {
-            ps_bin: Path::new("ps"),
-            proc_root: Path::new("/proc"),
-        },
-    )
-    .await
+    clean_package_caches_at(&home, cargo, npm, pip, go, apply, &active).await
 }
 
 /// Clean package manager caches below `home`.
 ///
-/// `active` is supplied separately so the deletion path can be tested without
-/// depending on the host process table.  Every cache has its own protection
+/// `active` is supplied separately so dry-run behavior can be tested without
+/// depending on the host process table. Every cache has its own protection
 /// class: an active npm operation skips `.npm`, while an unrelated active Go
-/// operation does not prevent cargo-cache cleanup.
+/// operation does not prevent cargo-cache estimates. Apply deletion is
+/// intentionally refused until a lock shared with external package managers
+/// can be acquired; a process snapshot cannot close the start-after-check race.
 async fn clean_package_caches_at(
     home: &Path,
     cargo: bool,
@@ -3033,11 +2982,15 @@ async fn clean_package_caches_at(
     pip: bool,
     go: bool,
     apply: bool,
-    protected_paths: &[String],
     active: &HashSet<PackageCacheKind>,
-    recheck_active: bool,
-    detector: PackageProcessDetector<'_>,
 ) -> Result<(u64, Vec<String>)> {
+    if apply && package_cache_apply_is_disabled() {
+        eprintln!(
+            "🛡️ keeping package caches: apply deletion is disabled because no shared package-manager lock is available"
+        );
+        return Ok((0, Vec::new()));
+    }
+
     let mut reclaimed = 0u64;
     let mut cleaned = Vec::new();
 
@@ -3078,20 +3031,8 @@ async fn clean_package_caches_at(
         if size == 0 {
             continue;
         }
-        if try_remove_cache_dir(
-            &cache_path,
-            label,
-            kind,
-            apply,
-            protected_paths,
-            recheck_active,
-            detector,
-        )
-        .await?
-        {
-            cleaned.push(format!("{label} ({})", human_bytes(size)));
-            reclaimed += size;
-        }
+        cleaned.push(format!("{label} ({})", human_bytes(size)));
+        reclaimed += size;
     }
 
     Ok((reclaimed, cleaned))
