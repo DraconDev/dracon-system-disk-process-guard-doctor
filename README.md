@@ -250,9 +250,8 @@ prints `guard disabled in policy` and exits 0, so systemd leaves it stopped.
 Malformed or unreadable startup policy exits with status 78 (`EX_CONFIG`),
 which is listed in `RestartPreventExitStatus=2 78` and therefore does not
 restart-loop. Crashes, signal termination, and other nonzero failures remain
-restartable. After fixing a policy, run `systemctl --user reset-failed
- dracon-system-guard.service` if systemd recorded a failed unit, then restart
-it.
+restartable. After fixing a policy, run `systemctl --user reset-failed dracon-system-guard.service`
+if systemd recorded a failed unit, then restart it.
 
 ## Configuration
 

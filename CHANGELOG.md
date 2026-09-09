@@ -14,8 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed (audit pass 2026-09-09, F36–F48, F58–F60)
+### Fixed (audit pass 2026-09-09, F36–F48, F58–F61)
 
+- **Guard service restart policy distinguishes disablement, config errors,
+  and crashes** (F61): the shipped and generated units use
+  `Restart=on-failure`; valid `enabled = false` exits 0 without restarting,
+  malformed/unreadable startup policy exits 78 (`EX_CONFIG`) and is prevented
+  by `RestartPreventExitStatus=2 78`, while crashes remain restartable.
 - **Bare `guard clean` selects all cleanup targets** (F60): a no-flag
   invocation now previews or applies Rust, Trash, Nix, cache,
   `node_modules`, and Docker cleanup instead of succeeding as a no-op.
