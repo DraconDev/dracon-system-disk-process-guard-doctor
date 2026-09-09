@@ -2095,6 +2095,13 @@ fn storage_cleanup_apply_accepts_home_artifact_dirs_and_refuses_system_roots() {
 }
 
 #[test]
+fn storage_cache_hotspots_share_package_apply_safety_gate() {
+    assert!(storage_hotspot_apply_is_blocked("cache", true));
+    assert!(!storage_hotspot_apply_is_blocked("cache", false));
+    assert!(!storage_hotspot_apply_is_blocked("node-deps", true));
+}
+
+#[test]
 fn filter_selectable_cleanup_kinds_drops_git_db_and_keeps_artifact_kinds() {
     // Audit M2 (2026-08-21): git-db is report-only — it must be filtered
     // out of every cleanup selection source.

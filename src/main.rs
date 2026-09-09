@@ -2942,6 +2942,10 @@ fn package_cache_apply_is_disabled() -> bool {
     !PACKAGE_CACHE_APPLY_COORDINATION_AVAILABLE
 }
 
+fn storage_hotspot_apply_is_blocked(kind: &str, apply: bool) -> bool {
+    apply && kind == "cache" && package_cache_apply_is_disabled()
+}
+
 /// Clean package manager caches using the real home directory.
 async fn clean_package_caches(
     cargo: bool,
@@ -5917,9 +5921,20 @@ async fn cmd_storage(
 
         let mut total = 0u64;
         let mut actionable = Vec::new();
+        let mut package_cache_skipped = false;
         // Per-kind reclaim tracking
         let mut reclaim_by_kind: HashMap<String, u64> = HashMap::new();
         for item in &selected {
+            if storage_hotspot_apply_is_blocked(&item.kind, cfg.apply) {
+                package_cache_skipped = true;
+                table.add_row(vec![
+                    Cell::new(human_bytes(item.bytes)),
+                    Cell::new(&item.kind),
+                    Cell::new(item.path.display().to_string()),
+                    Cell::new("SKIP package-cache coordination").fg(Color::Yellow),
+                ]);
+                continue;
+            }
             let tracked = is_git_tracked_dir(&item.path).await.unwrap_or(true);
             if tracked && !cfg.allow_tracked {
                 table.add_row(vec![
@@ -5958,6 +5973,11 @@ async fn cmd_storage(
         }
 
         println!("Estimated reclaimed: {}", human_bytes(total));
+        if package_cache_skipped {
+            eprintln!(
+                "🛡️ storage: refusing cache-hotspot deletion because no shared package-manager lock is available"
+            );
+        }
 
         // ── Disk % projection ──
         if let Some(ref d) = disk {
