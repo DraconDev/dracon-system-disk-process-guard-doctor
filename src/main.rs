@@ -1336,7 +1336,10 @@ fn log_guard_event(guard: &GuardPolicy, event: &str, details: &str) {
     let Some(path) = resolve_guard_log_path(&guard.guard_log_file) else {
         return;
     };
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
         if let Err(e) = fs::create_dir_all(parent) {
             eprintln!("⚠️ failed to create log dir: {}", e);
             return;
