@@ -16,9 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed (audit pass 2026-09-09, F36–F48, F58–F65)
 
-- **Tmp cleanup accepts only explicit temporary roots** (F65):
-  `tmp_search_paths` is canonicalized and restricted to `/tmp` or `/var/tmp`
-  (or descendants) before scanning, and each candidate must remain under its
+- **Tmp cleanup accepts only the explicit temporary root** (F65):
+  `tmp_search_paths` is canonicalized and restricted to `/tmp` (or a
+  descendant) before scanning, and each candidate must remain under its
   validated root, so apply cannot recursively remove old top-level home data.
 - **Package-cache cleanup is race-safe by refusing uncoordinated apply deletion**
   (F63): process inspection detects cargo/rustc, npm, pip, and go operations,

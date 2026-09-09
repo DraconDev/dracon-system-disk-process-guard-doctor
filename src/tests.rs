@@ -1680,7 +1680,7 @@ fn safe_tmp_root_policy_allows_tmp_descendants_and_rejects_home() {
 
     let home = dirs::home_dir().expect("home directory");
     let error = check_safe_tmp_root(&home).expect_err("home must not be a tmp root");
-    assert!(error.to_string().contains("/tmp or /var/tmp"));
+    assert!(error.to_string().contains("must be /tmp (or a descendant)"));
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
