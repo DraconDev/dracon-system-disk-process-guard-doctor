@@ -14,8 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed (audit pass 2026-09-09, F36–F48, F58–F68)
+### Fixed (audit pass 2026-09-09, F36–F48, F58–F69)
 
+- **Persistent event storage is bounded** (F69): the JSONL event log keeps a
+  10 MiB active segment plus one rotated segment, caps individual records, and
+  streams bounded tails instead of loading the whole file into memory.
 - **Empty event JSONL results stay machine-readable** (F68): `events --json`
   emits no human-only no-match sentinel when the log is missing, empty, or
   filtered to zero records; human output retains its existing message.

@@ -150,6 +150,7 @@ fn persist_event(path: &Path, json: &str) -> std::io::Result<()> {
     }
     let lock_file = OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(event_lock_path(path))?;
@@ -164,12 +165,8 @@ fn persist_event(path: &Path, json: &str) -> std::io::Result<()> {
         let append_size = u64::try_from(json.len())
             .unwrap_or(u64::MAX)
             .saturating_add(1);
-        if current_size > MAX_EVENT_LOG_BYTES
-            || current_size.saturating_add(append_size) > MAX_EVENT_LOG_BYTES
-        {
-            if current_size > 0 {
-                rotate_event_log(path)?;
-            }
+        if current_size > 0 && current_size.saturating_add(append_size) > MAX_EVENT_LOG_BYTES {
+            rotate_event_log(path)?;
         }
 
         let mut file = OpenOptions::new().create(true).append(true).open(path)?;

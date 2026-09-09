@@ -219,6 +219,8 @@ dracon-system guard clean --apply
 dracon-system events
 dracon-system events -t 50
 dracon-system events -s guard -s severity
+# Raw JSONL (empty results emit no sentinel)
+dracon-system events --json
 
 # Manage symlinks
 dracon-system link status
