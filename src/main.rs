@@ -2360,10 +2360,7 @@ async fn detect_active_package_manager_operations_with(
         );
     }
 
-    detect_active_package_manager_operations_from(
-        &String::from_utf8_lossy(&out.stdout),
-        proc_root,
-    )
+    detect_active_package_manager_operations_from(&String::from_utf8_lossy(&out.stdout), proc_root)
 }
 
 async fn detect_active_rust_builds() -> Result<HashSet<i32>> {

@@ -1884,15 +1884,15 @@ fn package_cache_process_detection_fails_closed_on_unreadable_cmdline() {
     fs::create_dir_all(proc_root.join("self")).expect("create proc fixture");
     fs::create_dir_all(&process_dir).expect("create process fixture");
     let cmdline = process_dir.join("cmdline");
-    fs::write(&cmdline, b"/usr/bin/node\0/usr/lib/npm/npm-cli.js\0install\0")
-        .expect("write cmdline fixture");
+    fs::write(
+        &cmdline,
+        b"/usr/bin/node\0/usr/lib/npm/npm-cli.js\0install\0",
+    )
+    .expect("write cmdline fixture");
     fs::set_permissions(&cmdline, fs::Permissions::from_mode(0o000))
         .expect("make cmdline unreadable");
 
-    let result = detect_active_package_manager_operations_from(
-        "201 node\n",
-        &proc_root,
-    );
+    let result = detect_active_package_manager_operations_from("201 node\n", &proc_root);
     assert!(
         result.is_err(),
         "an unreadable wrapper command line must abort cache protection"
@@ -1918,22 +1918,21 @@ async fn active_package_operations_protect_all_package_caches_on_apply() {
         active.insert(kind);
     }
 
-    let (reclaimed, cleaned) =
-        clean_package_caches_at(
-            &home,
-            true,
-            true,
-            true,
-            true,
-            true,
-            &[],
-            &active,
-            false,
-            Path::new("ps"),
-            Path::new("/proc"),
-        )
-        .await
-            .expect("protected cache cleanup");
+    let (reclaimed, cleaned) = clean_package_caches_at(
+        &home,
+        true,
+        true,
+        true,
+        true,
+        true,
+        &[],
+        &active,
+        false,
+        Path::new("ps"),
+        Path::new("/proc"),
+    )
+    .await
+    .expect("protected cache cleanup");
     assert_eq!(
         reclaimed, 0,
         "active caches must not be counted as reclaimed"
