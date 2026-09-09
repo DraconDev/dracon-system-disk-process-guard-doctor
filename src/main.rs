@@ -4383,12 +4383,20 @@ fn manage_sync_freeze(guard: &GuardPolicy, used: u8, dstate: &str, sync_frozen: 
 }
 
 /// Collect the set of paths under any of `roots` that are currently held
-/// open by a running process (/proc/*/fd readlink targets). Bounded by
-/// the fd tables of live processes; entries in this set are skipped by
-/// tmp cleanup even when old, because an open file may still be written.
+/// open by a running process (`/proc/*/fd` readlink targets and
+/// `/proc/*/cwd`). Bounded by the process and descriptor tables visible in
+/// procfs; entries in this set are skipped by tmp cleanup even when old,
+/// because an open file or process working directory may still be in use.
 async fn collect_open_paths_under(roots: &[PathBuf]) -> std::collections::HashSet<PathBuf> {
+    collect_open_paths_under_from(Path::new("/proc"), roots).await
+}
+
+async fn collect_open_paths_under_from(
+    proc_root: &Path,
+    roots: &[PathBuf],
+) -> std::collections::HashSet<PathBuf> {
     let mut open = std::collections::HashSet::new();
-    let mut proc_rd = match tokio::fs::read_dir("/proc").await {
+    let mut proc_rd = match tokio::fs::read_dir(proc_root).await {
         Ok(rd) => rd,
         Err(_) => return open,
     };
@@ -4398,19 +4406,29 @@ async fn collect_open_paths_under(roots: &[PathBuf]) -> std::collections::HashSe
         if !name.bytes().all(|b| b.is_ascii_digit()) {
             continue;
         }
-        let fd_dir = pid_entry.path().join("fd");
-        let mut fd_rd = match tokio::fs::read_dir(&fd_dir).await {
-            Ok(rd) => rd,
-            Err(_) => continue,
-        };
-        while let Ok(Some(fd_entry)) = fd_rd.next_entry().await {
-            if let Ok(target) = tokio::fs::read_link(fd_entry.path()).await {
-                let target: PathBuf = target;
-                if roots.iter().any(|r| target.starts_with(r)) {
-                    // Remember the deepest ancestor we saw so cleanup can
-                    // check "is any prefix of this entry open" cheaply.
-                    open.insert(target);
+        let process_dir = pid_entry.path();
+        let fd_dir = process_dir.join("fd");
+        if let Ok(mut fd_rd) = tokio::fs::read_dir(&fd_dir).await {
+            while let Ok(Some(fd_entry)) = fd_rd.next_entry().await {
+                if let Ok(target) = tokio::fs::read_link(fd_entry.path()).await {
+                    let target: PathBuf = target;
+                    if roots.iter().any(|r| target.starts_with(r)) {
+                        // Remember the deepest ancestor we saw so cleanup can
+                        // check "is any prefix of this entry open" cheaply.
+                        open.insert(target);
+                    }
                 }
+            }
+        }
+
+        // A process cwd is a directory reference, not an open fd entry. It
+        // must be collected even when the fd table cannot be read, otherwise
+        // cleanup can recursively remove an old directory that a live process
+        // is still using as its working directory.
+        if let Ok(target) = tokio::fs::read_link(process_dir.join("cwd")).await {
+            let target: PathBuf = target;
+            if roots.iter().any(|r| target.starts_with(r)) {
+                open.insert(target);
             }
         }
     }
@@ -4431,13 +4449,24 @@ async fn clean_tmp_paths(
     min_age_hours: u64,
     protected_paths: &[String],
 ) -> Result<(u64, Vec<String>)> {
+    clean_tmp_paths_with_proc(apply, roots, min_age_hours, protected_paths, Path::new("/proc"))
+        .await
+}
+
+async fn clean_tmp_paths_with_proc(
+    apply: bool,
+    roots: &[String],
+    min_age_hours: u64,
+    protected_paths: &[String],
+    proc_root: &Path,
+) -> Result<(u64, Vec<String>)> {
     let mut reclaimed = 0u64;
     let mut cleaned = Vec::new();
     if roots.is_empty() || min_age_hours == 0 {
         return Ok((0, cleaned));
     }
     let root_paths: Vec<PathBuf> = roots.iter().map(|r| expand_tilde(r)).collect();
-    let open_paths = collect_open_paths_under(&root_paths).await;
+    let open_paths = collect_open_paths_under_from(proc_root, &root_paths).await;
     // CHANGED 2026-09-09 (audit F41): same underflow hardening as the
     // trash cutoff above — absurd min_age_hours saturates to "delete
     // nothing" instead of panicking.
