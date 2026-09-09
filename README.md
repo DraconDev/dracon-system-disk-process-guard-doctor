@@ -378,10 +378,12 @@ The guard monitors processes using ≥`process_cpu_percent`% CPU or
 ≥`process_rss_mb` MiB RSS for >`process_sustain_secs` seconds:
 
 1. All heavy processes are logged to persistent JSONL file
-2. When `auto_renice = true`, heavy processes are reniced with graduated values
-3. Higher CPU/memory usage = higher nice value (lower priority)
-4. Process still gets full CPU when nothing else needs it
-5. Un-reniced after `release_after_secs` of being non-heavy
+2. The event file is capped at a 10 MiB active segment plus one rotated segment;
+   oversized records are truncated and tail queries retain only bounded data
+3. When `auto_renice = true`, heavy processes are reniced with graduated values
+4. Higher CPU/memory usage = higher nice value (lower priority)
+5. Process still gets full CPU when nothing else needs it
+6. Un-reniced after `release_after_secs` of being non-heavy
 
 ### Trend Prediction
 
