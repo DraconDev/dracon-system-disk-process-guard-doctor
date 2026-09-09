@@ -2953,7 +2953,6 @@ async fn clean_package_caches(
     pip: bool,
     go: bool,
     apply: bool,
-    _protected_paths: &[String],
 ) -> Result<(u64, Vec<String>)> {
     if apply && package_cache_apply_is_disabled() {
         eprintln!(
@@ -4638,7 +4637,7 @@ async fn run_auto_cleanup(
     }
 
     if guard.clean_package_caches {
-        match clean_package_caches(true, true, true, true, apply, &guard.protected_paths).await {
+        match clean_package_caches(true, true, true, true, apply).await {
             Ok((bytes, cleaned)) => {
                 total_reclaimed += bytes;
                 all_cleaned.extend(cleaned.iter().map(|s| format!("Cache: {}", s)));
@@ -6453,7 +6452,7 @@ async fn cmd_guard_prune(
     }
 
     if package_caches {
-        match clean_package_caches(true, true, true, true, apply, &guard.protected_paths).await {
+        match clean_package_caches(true, true, true, true, apply).await {
             Ok((bytes, cleaned)) => {
                 for c in cleaned {
                     actions.push(format!("Package cache: {}", c));
@@ -6670,8 +6669,7 @@ async fn cmd_guard_clean(
     }
 
     if do_caches {
-        match clean_package_caches(true, true, true, true, apply, &guard_clone.protected_paths)
-            .await
+        match clean_package_caches(true, true, true, true, apply).await
         {
             Ok((bytes, cleaned)) => {
                 total_reclaimed += bytes;
