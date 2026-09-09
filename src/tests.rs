@@ -946,6 +946,62 @@ fn expand_tilde_with_home_unset_falls_back_to_dot() {
 }
 
 #[test]
+fn guard_log_path_expands_the_example_configuration() {
+    let policy: SystemPolicy = toml::from_str(include_str!("../dracon-system.example.toml"))
+        .expect("shipped example policy should parse");
+    assert_eq!(
+        policy.guard.guard_log_file,
+        "~/.local/state/dracon/dracon-system-guard.log"
+    );
+
+    let home = dirs::home_dir().expect("home directory");
+    let resolved = resolve_guard_log_path(&policy.guard.guard_log_file)
+        .expect("example guard log path should be enabled");
+    assert_eq!(
+        resolved,
+        home.join(".local/state/dracon/dracon-system-guard.log")
+    );
+    assert!(!resolved.to_string_lossy().contains('~'));
+    assert!(resolve_guard_log_path("  ").is_none());
+}
+
+#[test]
+fn guard_log_writes_and_rotates_expanded_tilde_path() {
+    let home = dirs::home_dir().expect("home directory");
+    let relative = format!(
+        ".local/state/dracon/dracon-system-f66-test-{}-{}.log",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock after Unix epoch")
+            .as_nanos()
+    );
+    let path = home.join(&relative);
+    let mut guard = GuardPolicy::default();
+    guard.guard_log_file = format!("~/{relative}");
+    guard.guard_log_max_mb = 1;
+
+    fs::write(&path, vec![b'x'; 1024 * 1024 + 1]).expect("seed oversized guard log");
+    log_guard_event(&guard, "f66-test", "expanded path");
+
+    let contents = fs::read_to_string(&path).expect("expanded guard log should be written");
+    let record: serde_json::Value =
+        serde_json::from_str(contents.trim()).expect("guard log should contain JSONL");
+    assert_eq!(record["event"], "f66-test");
+    assert_eq!(record["details"], "expanded path");
+    assert!(
+        fs::metadata(&path).expect("guard log metadata").len() < 1024 * 1024,
+        "oversized expanded guard log should be rotated before append"
+    );
+    assert!(
+        !PathBuf::from(&guard.guard_log_file).exists(),
+        "a literal tilde path must not be used"
+    );
+
+    fs::remove_file(&path).expect("remove guard log test file");
+}
+
+#[test]
 fn build_link_report_counts_states() {
     let policy = SystemPolicy {
         storage: StoragePolicy::default(),

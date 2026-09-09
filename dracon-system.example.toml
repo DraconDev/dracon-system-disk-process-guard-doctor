@@ -61,7 +61,7 @@ notify_cooldown_secs = 300
 # Repeat unchanged structured reports no more often than every 30 minutes.
 report_repeat_secs = 1800
 
-# Persistent logging of heavy processes
+# Persistent logging of heavy processes (`~` expands to the service user's home)
 guard_log_file = "~/.local/state/dracon/dracon-system-guard.log"
 guard_log_max_mb = 1
 

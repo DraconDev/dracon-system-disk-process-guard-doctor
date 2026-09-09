@@ -329,6 +329,10 @@ clean_nix_garbage = false
 notify = true
 notify_command = "/usr/bin/notify-send"
 notify_cooldown_secs = 300
+
+# Persistent heavy-process events; `~` expands to the service user's home.
+guard_log_file = "~/.local/state/dracon/dracon-system-guard.log"
+guard_log_max_mb = 1
 ```
 
 ## How It Works
