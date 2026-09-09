@@ -1356,6 +1356,51 @@ async fn clean_tmp_paths_respects_age_dry_run_and_open_fds() {
     let _ = fs::remove_dir_all(&root);
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn clean_tmp_paths_keeps_old_process_cwd_directory() {
+    let root = unique_test_home("tmp_cwd");
+    let proc_root = unique_test_home("proc_cwd");
+    let cwd_dir = root.join("stale-working-directory");
+    let unheld_file = root.join("stale-unheld-file");
+    fs::create_dir_all(&cwd_dir).expect("create cwd fixture");
+    write_file_with_mtime(&unheld_file, b"unheld", 2 * 86_400);
+
+    // A directory's mtime determines whether it is a tmp cleanup candidate.
+    // Use an open directory handle so the fixture models an old process cwd,
+    // rather than relying on the current time when the directory is created.
+    let cwd_handle = File::open(&cwd_dir).expect("open cwd fixture for mtime");
+    cwd_handle
+        .set_modified(SystemTime::now() - Duration::from_secs(2 * 86_400))
+        .expect("set cwd fixture mtime");
+    drop(cwd_handle);
+
+    // Model /proc/4242/cwd without changing this test process's real cwd.
+    let process_dir = proc_root.join("4242");
+    fs::create_dir_all(process_dir.join("fd")).expect("create proc fixture");
+    symlink(&cwd_dir, process_dir.join("cwd")).expect("create cwd proc link");
+
+    let roots = vec![root.display().to_string()];
+    let unheld_bytes = unheld_file.metadata().expect("unheld metadata").len();
+    let open_paths = collect_open_paths_under_from(&proc_root, &[root.clone()]).await;
+    assert!(
+        open_paths.contains(&cwd_dir),
+        "process cwd must be included in open-path protection"
+    );
+
+    let (reclaimed, cleaned) =
+        clean_tmp_paths_with_proc(true, &roots, 24, &[], &proc_root)
+            .await
+            .expect("tmp cleanup");
+    assert_eq!(reclaimed, unheld_bytes);
+    assert_eq!(cleaned.len(), 1, "only the unheld old entry is removed");
+    assert!(cwd_dir.exists(), "an old process cwd must remain protected");
+    assert!(!unheld_file.exists(), "an old unheld entry remains removable");
+
+    let _ = fs::remove_dir_all(&root);
+    let _ = fs::remove_dir_all(&proc_root);
+}
+
 #[test]
 fn guard_policy_defaults_cover_tmp_and_trash_age_fields() {
     let guard = GuardPolicy::default();
