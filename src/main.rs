@@ -2408,9 +2408,9 @@ fn detect_active_package_manager_operations_from(
     Ok(active)
 }
 
-/// Return the cache classes currently used by package-manager/build processes.
-/// A failed process listing is an error: cache cleanup must fail closed rather
-/// than recursively delete a cache while process protection is unavailable.
+/// Return the cache classes currently used by package-manager/build processes
+/// for dry-run estimates and diagnostics. A failed process listing is an error:
+/// inspection must fail closed rather than report an unprotected cache as safe.
 async fn detect_active_package_manager_operations() -> Result<HashSet<PackageCacheKind>> {
     detect_active_package_manager_operations_with(Path::new("ps"), Path::new("/proc")).await
 }

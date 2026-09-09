@@ -117,8 +117,9 @@ log_preserve_header_lines = 0   # Lines to preserve when truncating logs
 docker_prune = false
 docker_prune_volumes = false
 
-# Package cache cleanup. Apply cleanup skips the corresponding cache while
-# cargo/rustc, npm, pip, or go (including common wrappers) is active.
+# Package cache cleanup. Dry-run estimates skip caches used by active
+# cargo/rustc, npm, pip, or go (including common wrappers). Apply intentionally
+# refuses package-cache deletion until a shared manager/guard lock exists.
 clean_package_caches = false
 clean_trash = false
 clean_nix_garbage = false

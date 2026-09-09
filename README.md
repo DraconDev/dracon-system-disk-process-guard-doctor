@@ -349,8 +349,8 @@ When disk hits action level:
 2. Detect active `cargo`/`rustc` processes
 3. Protect target dirs in active build working directories
 4. Delete unprotected target dirs ≥ `cleanup_min_size_mb`
-5. Detect active cargo/npm/pip/go operations and skip their corresponding caches
-6. Also clean safe trash, package caches, Nix garbage, stale `node_modules/`, and Docker resources when those policy toggles are enabled
+5. Detect active cargo/npm/pip/go operations and skip their corresponding cache estimates in dry-run; apply refuses package-cache deletion without a shared lock
+6. Also clean safe trash, Nix garbage, stale `node_modules/`, and Docker resources when those policy toggles are enabled
 7. Send notification with cleanup summary
 
 ### Proactive Cleanup
