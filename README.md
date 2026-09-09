@@ -74,7 +74,9 @@ defaults are 70/80/90/95 — see Configuration.)
 ### Build-Aware Monitoring
 - Detects active Rust build processes
 - Protects their target directories from cleanup
-- Prevents breaking active compilation
+- Detects active cargo/npm/pip/go operations (including common wrappers)
+- Protects the corresponding package caches from recursive apply cleanup
+- Prevents breaking active compilation or cache writes
 
 ### Disk Space Trend Prediction
 - Tracks disk usage history over time
@@ -343,8 +345,9 @@ When disk hits action level:
 2. Detect active `cargo`/`rustc` processes
 3. Protect target dirs in active build working directories
 4. Delete unprotected target dirs ≥ `cleanup_min_size_mb`
-5. Also clean safe trash, package caches, Nix garbage, stale `node_modules/`, and Docker resources when those policy toggles are enabled
-6. Send notification with cleanup summary
+5. Detect active cargo/npm/pip/go operations and skip their corresponding caches
+6. Also clean safe trash, package caches, Nix garbage, stale `node_modules/`, and Docker resources when those policy toggles are enabled
+7. Send notification with cleanup summary
 
 ### Proactive Cleanup
 

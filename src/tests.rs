@@ -1845,6 +1845,75 @@ fn rust_build_process_detection_covers_long_lived_tooling() {
 }
 
 #[test]
+fn package_cache_process_detection_covers_direct_and_wrapped_tools() {
+    let proc_root = unique_test_home("package_proc");
+    fs::create_dir_all(proc_root.join("self")).expect("create proc fixture");
+
+    for (pid, cmdline) in [
+        (101, b"/usr/bin/python3\0-m\0pip\0install\0".as_slice()),
+        (102, b"/usr/bin/node\0/usr/lib/npm/npm-cli.js\0install\0".as_slice()),
+        (103, b"/bin/sh\0-c\0go\0build\0./...\0".as_slice()),
+    ] {
+        let process_dir = proc_root.join(pid.to_string());
+        fs::create_dir_all(&process_dir).expect("create process fixture");
+        fs::write(process_dir.join("cmdline"), cmdline).expect("write cmdline fixture");
+    }
+
+    let active = detect_active_package_manager_operations_from(
+        "100 cargo\n101 python3\n102 node\n103 sh\n104 firefox\n",
+        &proc_root,
+    );
+    assert_eq!(active.len(), 4);
+    assert!(active.contains(&PackageCacheKind::Cargo));
+    assert!(active.contains(&PackageCacheKind::Npm));
+    assert!(active.contains(&PackageCacheKind::Pip));
+    assert!(active.contains(&PackageCacheKind::Go));
+
+    let _ = fs::remove_dir_all(proc_root);
+}
+
+#[tokio::test]
+async fn active_package_operations_protect_all_package_caches_on_apply() {
+    let home = unique_test_home("package_cache_protection");
+    let targets = [
+        (PackageCacheKind::Cargo, ".cargo/registry/cache"),
+        (PackageCacheKind::Npm, ".npm"),
+        (PackageCacheKind::Pip, ".cache/pip"),
+        (PackageCacheKind::Go, ".cache/go-build"),
+    ];
+    let mut active = HashSet::new();
+    for (kind, relative) in targets {
+        let cache = home.join(relative);
+        fs::create_dir_all(&cache).expect("create cache fixture");
+        fs::write(cache.join("in-use.bin"), b"must survive").expect("write cache fixture");
+        active.insert(kind);
+    }
+
+    let (reclaimed, cleaned) = clean_package_caches_at(
+        &home,
+        true,
+        true,
+        true,
+        true,
+        true,
+        &[],
+        &active,
+    )
+    .await
+    .expect("protected cache cleanup");
+    assert_eq!(reclaimed, 0, "active caches must not be counted as reclaimed");
+    assert!(cleaned.is_empty(), "active caches must not be reported cleaned");
+    for (_, relative) in targets {
+        assert!(
+            home.join(relative).exists(),
+            "active package cache {relative} must survive apply"
+        );
+    }
+
+    let _ = fs::remove_dir_all(home);
+}
+
+#[test]
 fn storage_cleanup_apply_accepts_home_artifact_dirs_and_refuses_system_roots() {
     // Regression (2026-08-21): `storage --cleanup --apply` used the strict
     // classifier, refusing EVERY path under /home ("under system root
