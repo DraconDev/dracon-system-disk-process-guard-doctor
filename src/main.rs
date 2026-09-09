@@ -4387,10 +4387,6 @@ fn manage_sync_freeze(guard: &GuardPolicy, used: u8, dstate: &str, sync_frozen: 
 /// `/proc/*/cwd`). Bounded by the process and descriptor tables visible in
 /// procfs; entries in this set are skipped by tmp cleanup even when old,
 /// because an open file or process working directory may still be in use.
-async fn collect_open_paths_under(roots: &[PathBuf]) -> std::collections::HashSet<PathBuf> {
-    collect_open_paths_under_from(Path::new("/proc"), roots).await
-}
-
 async fn collect_open_paths_under_from(
     proc_root: &Path,
     roots: &[PathBuf],
