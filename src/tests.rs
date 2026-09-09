@@ -1405,6 +1405,29 @@ fn shipped_guard_service_exposes_host_tmp_for_clean_tmp() {
     );
 }
 
+#[test]
+fn shipped_guard_service_restart_policy_handles_disabled_and_bad_config() {
+    let service = include_str!("../dracon-system-guard.service");
+    assert!(
+        service
+            .lines()
+            .any(|line| line.trim() == "Restart=on-failure"),
+        "clean enabled=false exits must not restart the guard"
+    );
+    assert!(
+        !service
+            .lines()
+            .any(|line| line.trim() == "Restart=always"),
+        "the guard must not restart after a clean policy-disabled exit"
+    );
+    assert!(
+        service
+            .lines()
+            .any(|line| line.trim() == "RestartPreventExitStatus=2 78"),
+        "usage errors and EX_CONFIG policy errors must remain stopped"
+    );
+}
+
 #[tokio::test]
 async fn guard_report_completes_for_ok_disk() {
     let mut state = GuardRuntimeState::default();

@@ -150,8 +150,11 @@ After=network.target
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/dracon-system guard daemon
-Restart=always
+# Do not restart clean policy disablement; restart crashes/failures.
+Restart=on-failure
 RestartSec=10
+# 78 (EX_CONFIG) is used for malformed/unreadable startup policy.
+RestartPreventExitStatus=2 78
 User=root
 # Or use dedicated user with appropriate permissions
 # User=dracon-guard
@@ -241,6 +244,15 @@ systemctl --user status dracon-system-guard
 # View logs
 journalctl --user -u dracon-system-guard -f
 ```
+
+The guard service uses `Restart=on-failure`: a valid `enabled = false` policy
+prints `guard disabled in policy` and exits 0, so systemd leaves it stopped.
+Malformed or unreadable startup policy exits with status 78 (`EX_CONFIG`),
+which is listed in `RestartPreventExitStatus=2 78` and therefore does not
+restart-loop. Crashes, signal termination, and other nonzero failures remain
+restartable. After fixing a policy, run `systemctl --user reset-failed
+ dracon-system-guard.service` if systemd recorded a failed unit, then restart
+it.
 
 ## Configuration
 
