@@ -1356,6 +1356,34 @@ async fn clean_tmp_paths_respects_age_dry_run_and_open_fds() {
     let _ = fs::remove_dir_all(&root);
 }
 
+#[tokio::test]
+async fn clean_tmp_paths_rejects_home_search_root_before_apply() {
+    let home = dirs::home_dir().expect("home directory");
+    let sentinel = home.join(format!(
+        ".dracon_system_f65_home_sentinel_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    write_file_with_mtime(&sentinel, b"must survive", 2 * 86_400);
+
+    let result = clean_tmp_paths(true, &["~".to_string()], 24, &[]).await;
+    let sentinel_survived = sentinel.exists();
+    let _ = fs::remove_file(&sentinel);
+
+    let error = result.expect_err("home must not be accepted as a tmp root");
+    assert!(
+        error.to_string().contains("invalid tmp_search_paths entry"),
+        "invalid root should be reported, got: {error:#}"
+    );
+    assert!(
+        sentinel_survived,
+        "an apply config targeting ~ must not delete home data"
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn clean_tmp_paths_keeps_old_process_cwd_directory() {

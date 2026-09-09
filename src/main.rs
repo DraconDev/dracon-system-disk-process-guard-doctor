@@ -4435,10 +4435,6 @@ fn path_has_open_ancestor(path: &Path, open: &std::collections::HashSet<PathBuf>
     open.iter().any(|o| o.starts_with(path) || path.starts_with(o))
 }
 
-/// Age-based top-level /tmp cleanup (ADDED 2026-08-25, v0.112.39).
-/// Removes TOP-LEVEL entries of each root whose mtime is older than
-/// `min_age_hours`, skipping symlinks, protected paths, and anything
-/// currently held open by a process. Dry-run only measures.
 fn resolve_safe_tmp_roots(roots: &[String]) -> Result<Vec<PathBuf>> {
     let mut resolved = Vec::new();
     for configured in roots {
@@ -4457,6 +4453,10 @@ fn resolve_safe_tmp_roots(roots: &[String]) -> Result<Vec<PathBuf>> {
     Ok(resolved)
 }
 
+/// Age-based top-level /tmp cleanup (ADDED 2026-08-25, v0.112.39).
+/// Removes TOP-LEVEL entries of each root whose mtime is older than
+/// `min_age_hours`, skipping symlinks, protected paths, and anything
+/// currently held open by a process. Dry-run only measures.
 async fn clean_tmp_paths(
     apply: bool,
     roots: &[String],
