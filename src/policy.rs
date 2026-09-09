@@ -225,7 +225,9 @@ pub(crate) struct GuardPolicy {
     // puppeteer/playwright profiles, pi-bash logs, stale audit clones)
     // that no existing cleanup kind covers; rust-target cleanup never
     // looks outside ~/Dev. Age-based TOP-LEVEL entry cleanup with
-    // open-fd protection (entries held open by any process are skipped).
+    // open-path protection (entries held open by any process, or used as a
+    // process cwd, are skipped). Configured roots are restricted to explicit
+    // temporary namespaces by check_safe_tmp_root before scanning.
     #[serde(default = "default_true")]
     pub(crate) clean_tmp: bool,
     #[serde(default = "default_tmp_search_paths")]

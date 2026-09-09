@@ -1671,6 +1671,21 @@ fn guard_test_tmp(name: &str) -> std::path::PathBuf {
 }
 
 #[test]
+fn safe_tmp_root_policy_allows_tmp_descendants_and_rejects_home() {
+    let tmp = guard_test_tmp("safe_tmp_root");
+    std::fs::create_dir_all(&tmp).expect("tmp root");
+
+    let resolved = check_safe_tmp_root(&tmp).expect("tmp descendant should be allowed");
+    assert!(resolved.starts_with("/tmp"));
+
+    let home = dirs::home_dir().expect("home directory");
+    let error = check_safe_tmp_root(&home).expect_err("home must not be a tmp root");
+    assert!(error.to_string().contains("/tmp or /var/tmp"));
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
 fn guard_safe_delete_allows_paths_under_system_protected() {
     let tmp = guard_test_tmp("guard_safe_1");
     let target = tmp.join("target");
