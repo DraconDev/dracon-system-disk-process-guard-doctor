@@ -1366,6 +1366,13 @@ fn guard_policy_defaults_cover_tmp_and_trash_age_fields() {
 }
 
 #[test]
+fn guard_startup_config_errors_use_non_restarting_status() {
+    let wrapped = anyhow::Error::new(PolicyLoadError(anyhow::anyhow!("invalid policy")));
+    assert_eq!(exit_status_for_error(&wrapped), CONFIG_ERROR_EXIT_STATUS);
+    assert_eq!(exit_status_for_error(&anyhow::anyhow!("runtime failure")), 1);
+}
+
+#[test]
 fn shipped_guard_service_exposes_host_tmp_for_clean_tmp() {
     let service = include_str!("../dracon-system-guard.service");
     assert!(
