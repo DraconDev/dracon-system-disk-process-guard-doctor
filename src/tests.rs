@@ -1544,6 +1544,12 @@ fn shipped_guard_service_exposes_host_tmp_for_clean_tmp() {
         !service.lines().any(|line| line.trim() == "PrivateTmp=true"),
         "the shipped guard must not use a private temporary namespace"
     );
+    assert!(
+        service
+            .lines()
+            .any(|line| line.trim() == "WorkingDirectory=%h"),
+        "relative policy paths need a stable user-service working directory"
+    );
 
     let writable_paths = service
         .lines()
