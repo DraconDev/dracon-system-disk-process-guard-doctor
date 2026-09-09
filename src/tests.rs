@@ -1948,7 +1948,7 @@ async fn package_cache_process_listing_failure_is_an_error() {
 }
 
 #[tokio::test]
-async fn active_package_operations_protect_all_package_caches_on_apply() {
+async fn package_cache_apply_refuses_all_cache_deletion() {
     let home = unique_test_home("package_cache_protection");
     let targets = [
         (PackageCacheKind::Cargo, ".cargo/registry/cache"),
@@ -1977,16 +1977,16 @@ async fn active_package_operations_protect_all_package_caches_on_apply() {
     .expect("protected cache cleanup");
     assert_eq!(
         reclaimed, 0,
-        "active caches must not be counted as reclaimed"
+        "apply cache deletion is disabled, so caches must not be counted as reclaimed"
     );
     assert!(
         cleaned.is_empty(),
-        "active caches must not be reported cleaned"
+        "apply cache deletion is disabled, so caches must not be reported cleaned"
     );
     for (_, relative) in targets {
         assert!(
             home.join(relative).exists(),
-            "active package cache {relative} must survive apply"
+            "package cache {relative} must survive apply"
         );
     }
 
