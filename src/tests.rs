@@ -10,6 +10,70 @@ fn defaults_are_expected() {
 }
 
 #[test]
+fn nix_delete_generations_arg_means_keep_last_n() {
+    assert_eq!(nix_delete_generations_arg(5), Some("+5".to_string()));
+    assert_eq!(nix_delete_generations_arg(1), Some("+1".to_string()));
+    assert_eq!(nix_delete_generations_arg(0), None);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn nix_cleanup_apply_preserves_configured_profile_generations() {
+    fn shell_quote(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
+
+    let root = std::env::temp_dir().join(format!(
+        "dracon_system_nix_cleanup_test_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&root).expect("create temp dir");
+    let log = root.join("calls.log");
+    let quoted_log = shell_quote(log.to_str().expect("log path"));
+    let nix_env = root.join("nix-env");
+    let nix_gc = root.join("nix-collect-garbage");
+    write_test_script(
+        &nix_env,
+        &format!("echo \"nix-env:$*\" >> {quoted_log}\nexit 0"),
+    );
+    write_test_script(
+        &nix_gc,
+        &format!(
+            r#"echo "nix-gc:$*" >> {quoted_log}
+if [ "$1" = "-d" ]; then
+    echo 'would delete retained profile generations' >&2
+    exit 99
+fi
+exit 0"#
+        ),
+    );
+
+    let result = clean_nix_garbage_with_bins(5, true, &nix_env, &nix_gc)
+        .await
+        .expect("Nix cleanup should succeed without destructive garbage mode");
+    assert_eq!(result, (0, Vec::new()));
+
+    let calls = fs::read_to_string(&log).expect("read command log");
+    let lines: Vec<&str> = calls.lines().collect();
+    assert_eq!(lines.len(), 3, "two profile prunes and one store GC expected");
+    assert_eq!(lines[0], "nix-env:--delete-generations +5");
+    assert_eq!(
+        lines[1],
+        "nix-env:--delete-generations +5 -p /nix/var/nix/profiles/default"
+    );
+    assert_eq!(lines[2], "nix-gc:");
+    assert!(
+        !calls.contains("-d"),
+        "apply must not use nix-collect-garbage -d, which discards retained generations"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn guard_clean_all_flag_is_explicit() {
     let rust_only = CleanTargets {
         rust: true,
