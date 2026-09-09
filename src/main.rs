@@ -5550,6 +5550,14 @@ pub(crate) fn load_system_policy() -> Result<(Option<PathBuf>, SystemPolicy)> {
     Ok((Some(path), parsed))
 }
 
+fn effective_system_policy_path() -> Result<PathBuf> {
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/home"));
+    let fallback = home.join(".dracon/utilities/system/dracon-system.toml");
+    let resolved =
+        resolve_system_policy_path_with(std::env::var_os("DRACON_SYSTEM_POLICY"), home)?;
+    Ok(resolved.unwrap_or(fallback))
+}
+
 async fn is_user_service_active(service: &str) -> bool {
     let output = Command::new("systemctl")
         .args(["--user", "is-active", service])
@@ -5564,7 +5572,7 @@ async fn is_user_service_active(service: &str) -> bool {
 
 async fn build_status_report() -> Result<StatusReport> {
     let root = canonical_system_root();
-    let system_policy_path = root.join("utilities/system/dracon-system.toml");
+    let system_policy_path = effective_system_policy_path()?;
     Ok(StatusReport {
         system_root: root.display().to_string(),
         nixos_root: root.join("nixos").display().to_string(),
