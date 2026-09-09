@@ -995,8 +995,7 @@ fn guard_log_example_path_writes_and_startup_rotates_in_isolated_home() {
         home.join(".local/state/dracon/dracon-system-guard.log")
     );
 
-    fs::create_dir_all(path.parent().expect("guard log parent"))
-        .expect("create guard log parent");
+    fs::create_dir_all(path.parent().expect("guard log parent")).expect("create guard log parent");
     fs::write(&path, vec![b'x'; 1024 * 1024 + 1]).expect("seed oversized guard log");
     rotate_guard_log_for_policy_with_home(&guard, true, Some(&home));
     assert!(

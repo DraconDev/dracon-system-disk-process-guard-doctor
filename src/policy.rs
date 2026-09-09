@@ -607,10 +607,7 @@ pub(crate) fn resolve_guard_log_path(raw: &str) -> Option<PathBuf> {
     resolve_guard_log_path_with_home(raw, dirs::home_dir().as_deref())
 }
 
-pub(crate) fn resolve_guard_log_path_with_home(
-    raw: &str,
-    home: Option<&Path>,
-) -> Option<PathBuf> {
+pub(crate) fn resolve_guard_log_path_with_home(raw: &str, home: Option<&Path>) -> Option<PathBuf> {
     let raw = raw.trim();
     if raw.is_empty() {
         return None;
