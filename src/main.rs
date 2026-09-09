@@ -2203,6 +2203,109 @@ fn is_rust_build_process(comm: &str) -> bool {
         || matches!(comm, "clippy-driver" | "rust-analyzer" | "cargo-watch")
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum PackageCacheKind {
+    Cargo,
+    Npm,
+    Pip,
+    Go,
+}
+
+impl PackageCacheKind {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Cargo => "cargo",
+            Self::Npm => "npm",
+            Self::Pip => "pip",
+            Self::Go => "go",
+        }
+    }
+}
+
+fn package_cache_kind_for_command_name(name: &str) -> Option<PackageCacheKind> {
+    let name = Path::new(name)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(name);
+
+    if name == "cargo"
+        || name.starts_with("cargo-")
+        || name == "rustc"
+        || name.starts_with("rustc-")
+        || matches!(name, "clippy-driver" | "rust-analyzer")
+    {
+        return Some(PackageCacheKind::Cargo);
+    }
+    if name == "npm" || name == "npm-cli.js" || name.starts_with("npm-") {
+        return Some(PackageCacheKind::Npm);
+    }
+    if name == "pip" || name.starts_with("pip3") || name.starts_with("pip-") {
+        return Some(PackageCacheKind::Pip);
+    }
+    if name == "go" {
+        return Some(PackageCacheKind::Go);
+    }
+    None
+}
+
+/// Classify a process using both `comm` and the first few argv entries.
+///
+/// Most package-manager processes have a useful `comm` (`cargo`, `npm`,
+/// `pip3`, or `go`).  The argv fallback covers interpreter/script wrappers
+/// such as `python -m pip`, `node .../npm-cli.js`, and `/bin/sh npm ...`.
+/// A false positive only defers cache cleanup, so unknown wrappers are
+/// intentionally handled conservatively.
+fn package_cache_kind_for_process(comm: &str, cmdline: &str) -> Option<PackageCacheKind> {
+    package_cache_kind_for_command_name(comm).or_else(|| {
+        cmdline
+            .split_whitespace()
+            .take(8)
+            .find_map(package_cache_kind_for_command_name)
+    })
+}
+
+fn detect_active_package_manager_operations_from(
+    ps_output: &str,
+    proc_root: &Path,
+) -> HashSet<PackageCacheKind> {
+    let mut active = HashSet::new();
+    for line in ps_output.lines() {
+        let mut parts = line.split_whitespace();
+        let Some(pid) = parts.next().and_then(|value| value.parse::<i32>().ok()) else {
+            continue;
+        };
+        let comm = parts.next().unwrap_or("");
+        let cmdline = read_process_cmdline_from(proc_root, pid);
+        if let Some(kind) = package_cache_kind_for_process(comm, &cmdline) {
+            active.insert(kind);
+        }
+    }
+    active
+}
+
+/// Return the cache classes currently used by package-manager/build processes.
+/// A failed process listing is an error: cache cleanup must fail closed rather
+/// than recursively delete a cache while process protection is unavailable.
+async fn detect_active_package_manager_operations() -> Result<HashSet<PackageCacheKind>> {
+    let out = Command::new("ps")
+        .args(["-eo", "pid=,comm="])
+        .output()
+        .await
+        .context("failed to invoke ps for package-cache protection")?;
+
+    if !out.status.success() {
+        anyhow::bail!(
+            "ps failed for package-cache protection (exit {})",
+            out.status.code().unwrap_or(-1)
+        );
+    }
+
+    Ok(detect_active_package_manager_operations_from(
+        &String::from_utf8_lossy(&out.stdout),
+        Path::new("/proc"),
+    ))
+}
+
 async fn detect_active_rust_builds() -> Result<HashSet<i32>> {
     let out = Command::new("ps")
         .args(["-eo", "pid=,comm="])
@@ -2727,7 +2830,7 @@ async fn try_remove_cache_dir(
     }
 }
 
-/// Clean package manager caches
+/// Clean package manager caches using the real home directory.
 async fn clean_package_caches(
     cargo: bool,
     npm: bool,
@@ -2736,21 +2839,69 @@ async fn clean_package_caches(
     apply: bool,
     protected_paths: &[String],
 ) -> Result<(u64, Vec<String>)> {
+    let active = detect_active_package_manager_operations().await?;
+    let home = dirs::home_dir().unwrap_or_default();
+    clean_package_caches_at(
+        &home,
+        cargo,
+        npm,
+        pip,
+        go,
+        apply,
+        protected_paths,
+        &active,
+    )
+    .await
+}
+
+/// Clean package manager caches below `home`.
+///
+/// `active` is supplied separately so the deletion path can be tested without
+/// depending on the host process table.  Every cache has its own protection
+/// class: an active npm operation skips `.npm`, while an unrelated active Go
+/// operation does not prevent cargo-cache cleanup.
+async fn clean_package_caches_at(
+    home: &Path,
+    cargo: bool,
+    npm: bool,
+    pip: bool,
+    go: bool,
+    apply: bool,
+    protected_paths: &[String],
+    active: &HashSet<PackageCacheKind>,
+) -> Result<(u64, Vec<String>)> {
     let mut reclaimed = 0u64;
     let mut cleaned = Vec::new();
 
-    let home = dirs::home_dir().unwrap_or_default();
-    let targets: Vec<(&str, bool, &str)> = vec![
-        ("cargo registry cache", cargo, ".cargo/registry/cache"),
-        ("npm cache", npm, ".npm"),
-        ("pip cache", pip, ".cache/pip"),
-        ("go build cache", go, ".cache/go-build"),
+    let targets: Vec<(&str, bool, &str, PackageCacheKind)> = vec![
+        (
+            "cargo registry cache",
+            cargo,
+            ".cargo/registry/cache",
+            PackageCacheKind::Cargo,
+        ),
+        ("npm cache", npm, ".npm", PackageCacheKind::Npm),
+        ("pip cache", pip, ".cache/pip", PackageCacheKind::Pip),
+        (
+            "go build cache",
+            go,
+            ".cache/go-build",
+            PackageCacheKind::Go,
+        ),
     ];
 
-    for (label, enabled, rel_path) in targets {
+    for (label, enabled, rel_path, kind) in targets {
         if !enabled {
             continue;
         }
+        if active.contains(&kind) {
+            eprintln!(
+                "🛡️ keeping {label}: active {} operation detected",
+                kind.name()
+            );
+            continue;
+        }
+
         let cache_path = home.join(rel_path);
         if !cache_path.exists() {
             continue;
