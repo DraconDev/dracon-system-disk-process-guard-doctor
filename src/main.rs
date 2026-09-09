@@ -4443,9 +4443,8 @@ fn resolve_safe_tmp_roots(roots: &[String]) -> Result<Vec<PathBuf>> {
             continue;
         }
         let requested = expand_tilde(configured);
-        let safe_root = check_safe_tmp_root(&requested).with_context(|| {
-            format!("invalid tmp_search_paths entry {:?}", configured)
-        })?;
+        let safe_root = check_safe_tmp_root(&requested)
+            .with_context(|| format!("invalid tmp_search_paths entry {:?}", configured))?;
         if !resolved.contains(&safe_root) {
             resolved.push(safe_root);
         }
