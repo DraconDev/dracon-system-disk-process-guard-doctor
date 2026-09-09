@@ -66,6 +66,129 @@ impl DraconEvent {
     }
 }
 
+fn truncate_utf8(value: &str, max_bytes: usize) -> String {
+    if value.len() <= max_bytes {
+        return value.to_string();
+    }
+
+    let suffix = "…";
+    if max_bytes < suffix.len() {
+        let mut end = max_bytes;
+        while end > 0 && !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        return value[..end].to_string();
+    }
+
+    let mut end = max_bytes - suffix.len();
+    while end > 0 && !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{}", &value[..end], suffix)
+}
+
+fn serialize_event_for_storage(event: &DraconEvent) -> Option<String> {
+    let json = serde_json::to_string(event).ok()?;
+    if json.len() <= MAX_EVENT_RECORD_BYTES {
+        return Some(json);
+    }
+
+    // Error messages and paths are normally short, but they can contain
+    // command output supplied by another process. Preserve a valid, useful
+    // record without allowing one event to defeat rotation.
+    let bounded = DraconEvent {
+        domain: truncate_utf8(&event.domain, 512),
+        severity: event.severity,
+        path: truncate_utf8(&event.path, 2_048),
+        message: truncate_utf8(&event.message, 4_096),
+        timestamp: truncate_utf8(&event.timestamp, 128),
+    };
+    let json = serde_json::to_string(&bounded).ok()?;
+    (json.len() <= MAX_EVENT_RECORD_BYTES).then_some(json)
+}
+
+fn event_lock_path(path: &Path) -> PathBuf {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("events.jsonl");
+    path.with_file_name(format!("{name}.lock"))
+}
+
+fn rotated_event_path(path: &Path) -> PathBuf {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("events.jsonl");
+    path.with_file_name(format!("{name}.1"))
+}
+
+fn rotate_event_log(path: &Path) -> std::io::Result<()> {
+    let rotated = rotated_event_path(path);
+    match fs::rename(path, &rotated) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            // `rename` replaces an existing file on Unix, while Windows needs
+            // the destination removed first. The caller holds the lock file.
+            fs::remove_file(&rotated)?;
+            fs::rename(path, rotated)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn persist_event(path: &Path, json: &str) -> std::io::Result<()> {
+    if json.len() > MAX_EVENT_RECORD_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "serialized event exceeds the record limit",
+        ));
+    }
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let lock_file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(event_lock_path(path))?;
+    lock_file.lock_exclusive()?;
+
+    let result = (|| {
+        let current_size = match fs::metadata(path) {
+            Ok(metadata) => metadata.len(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
+            Err(error) => return Err(error),
+        };
+        let append_size = u64::try_from(json.len())
+            .unwrap_or(u64::MAX)
+            .saturating_add(1);
+        if current_size > MAX_EVENT_LOG_BYTES
+            || current_size.saturating_add(append_size) > MAX_EVENT_LOG_BYTES
+        {
+            if current_size > 0 {
+                rotate_event_log(path)?;
+            }
+        }
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?;
+        file.write_all(json.as_bytes())?;
+        file.write_all(b"\\n")?;
+        file.flush()
+    })();
+    let unlock_result = lock_file.unlock();
+
+    match (result, unlock_result) {
+        (Err(error), _) => Err(error),
+        (Ok(()), Err(error)) => Err(error),
+        (Ok(()), Ok(())) => Ok(()),
+    }
+}
+
 /// Emit an event: log to the rolling buffer, print to stderr, and persist to JSONL.
 pub fn emit_event(event: &DraconEvent) {
     if let Ok(mut log) = get_log().lock() {
@@ -91,6 +214,96 @@ pub fn emit_event(event: &DraconEvent) {
             );
         }
     }
+}
+
+fn append_bounded_line_bytes(line: &mut Vec<u8>, too_long: &mut bool, bytes: &[u8]) {
+    if *too_long {
+        return;
+    }
+    let remaining = MAX_EVENT_RECORD_BYTES.saturating_sub(line.len());
+    if bytes.len() > remaining {
+        line.extend_from_slice(&bytes[..remaining]);
+        *too_long = true;
+    } else {
+        line.extend_from_slice(bytes);
+    }
+}
+
+fn retain_event_line(
+    retained: &mut VecDeque<String>,
+    retained_bytes: &mut usize,
+    line: String,
+    tail: usize,
+) {
+    if tail == 0 {
+        return;
+    }
+    *retained_bytes = retained_bytes.saturating_add(line.len());
+    retained.push_back(line);
+    while retained.len() > tail || *retained_bytes > MAX_EVENT_TAIL_BYTES {
+        if let Some(old) = retained.pop_front() {
+            *retained_bytes = retained_bytes.saturating_sub(old.len());
+        }
+    }
+}
+
+/// Stream the event file while retaining only the requested bounded tail.
+fn read_tail_lines(path: &Path, tail: usize) -> Result<(Vec<String>, usize)> {
+    let file = File::open(path).with_context(|| format!("failed to read {}", path.display()))?;
+    let mut reader = BufReader::new(file);
+    let tail = tail.min(MAX_EVENT_TAIL_LINES);
+    let mut retained = VecDeque::new();
+    let mut retained_bytes = 0usize;
+    let mut current = Vec::new();
+    let mut current_too_long = false;
+    let mut total_lines = 0usize;
+
+    loop {
+        let buffer = reader.fill_buf()?;
+        if buffer.is_empty() {
+            break;
+        }
+        if let Some(newline) = buffer.iter().position(|byte| *byte == b'\\n') {
+            append_bounded_line_bytes(
+                &mut current,
+                &mut current_too_long,
+                &buffer[..newline],
+            );
+            reader.consume(newline + 1);
+            total_lines = total_lines.saturating_add(1);
+
+            if !current_too_long {
+                let mut line = std::mem::take(&mut current);
+                if line.last() == Some(&b'\\r') {
+                    line.pop();
+                }
+                if let Ok(line) = String::from_utf8(line) {
+                    retain_event_line(&mut retained, &mut retained_bytes, line, tail);
+                }
+            } else {
+                current.clear();
+            }
+            current_too_long = false;
+        } else {
+            let length = buffer.len();
+            append_bounded_line_bytes(&mut current, &mut current_too_long, buffer);
+            reader.consume(length);
+        }
+    }
+
+    if !current.is_empty() || current_too_long {
+        total_lines = total_lines.saturating_add(1);
+        if !current_too_long {
+            if let Some(&b'\\r') = current.last() {
+                current.pop();
+            }
+            if let Ok(line) = String::from_utf8(current) {
+                retain_event_line(&mut retained, &mut retained_bytes, line, tail);
+            }
+        }
+    }
+
+    Ok((retained.into_iter().collect(), total_lines))
 }
 
 /// Returns the path to the shared events JSONL file.
