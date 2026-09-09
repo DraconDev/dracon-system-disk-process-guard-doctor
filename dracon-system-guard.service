@@ -11,8 +11,10 @@ StandardError=journal
 # PassEnvironment=PATH after running `systemctl --user import-environment PATH`.
 Environment=PATH=%h/.local/bin:/run/wrappers/bin:%h/.local/share/flatpak/exports/bin:/var/lib/flatpak/exports/bin:%h/.nix-profile/bin:/nix/profile/bin:%h/.local/state/nix/profile/bin:/etc/profiles/per-user/%u/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin
 ExecStart=%h/.local/bin/dracon-system guard daemon
-Restart=always
+# Do not restart clean policy-disabled exits; restart crashes and failures.
+Restart=on-failure
 RestartSec=10
+# 78 = EX_CONFIG for malformed/unreadable startup policy; 2 = CLI usage error.
 RestartPreventExitStatus=2 78
 
 # Run as the user who owns the service
