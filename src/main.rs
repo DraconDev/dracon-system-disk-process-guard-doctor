@@ -738,10 +738,10 @@ fn read_package_process_cmdline(root: &Path, pid: i32) -> Result<Option<String>>
             // incomplete/uninspectable record and must fail closed.
             match fs::metadata(&process_dir) {
                 Ok(_) => {
-                    anyhow::bail!(
+                    return Err(anyhow::anyhow!(
                         "process {} has no command line for package-cache protection",
                         pid
-                    )
+                    ));
                 }
                 Err(directory_error)
                     if directory_error.kind() == std::io::ErrorKind::NotFound =>
@@ -773,10 +773,10 @@ fn read_package_process_cmdline(root: &Path, pid: i32) -> Result<Option<String>>
     if let Err(error) = reader.read_to_end(&mut raw) {
         if error.kind() == std::io::ErrorKind::NotFound {
             return match fs::metadata(&process_dir) {
-                Ok(_) => anyhow::bail!(
+                Ok(_) => Err(anyhow::anyhow!(
                     "process {} command line disappeared while inspecting package-cache protection",
                     pid
-                ),
+                )),
                 Err(directory_error)
                     if directory_error.kind() == std::io::ErrorKind::NotFound =>
                 {

@@ -78,7 +78,9 @@ defaults are 70/80/90/95 — see Configuration.)
 - Protects the corresponding package caches from recursive apply cleanup
 - Rechecks process activity immediately before each cache deletion
 - Fails closed when process metadata cannot be inspected
-- Prevents breaking active compilation or cache writes
+- Prevents breaking active compilation or cache writes (the final check is a
+  process snapshot, not a lock shared with external package managers, so a
+  process started after that check cannot be blocked by this guard)
 
 ### Disk Space Trend Prediction
 - Tracks disk usage history over time

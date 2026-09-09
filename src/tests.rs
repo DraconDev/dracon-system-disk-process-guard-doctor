@@ -1902,6 +1902,21 @@ fn package_cache_process_detection_fails_closed_on_unreadable_cmdline() {
 }
 
 #[test]
+fn package_cache_process_detection_fails_closed_on_missing_cmdline() {
+    let proc_root = unique_test_home("package_proc_missing_cmdline");
+    fs::create_dir_all(proc_root.join("self")).expect("create proc fixture");
+    fs::create_dir_all(proc_root.join("202")).expect("create process fixture");
+
+    let result = detect_active_package_manager_operations_from("202 node\n", &proc_root);
+    assert!(
+        result.is_err(),
+        "an existing process without cmdline metadata must abort cache protection"
+    );
+
+    let _ = fs::remove_dir_all(proc_root);
+}
+
+#[test]
 fn package_cache_process_detection_rejects_malformed_ps_output() {
     let proc_root = unique_test_home("package_proc_malformed");
     fs::create_dir_all(proc_root.join("self")).expect("create proc fixture");
