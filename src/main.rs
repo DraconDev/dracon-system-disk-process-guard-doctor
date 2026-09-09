@@ -1393,11 +1393,19 @@ fn guard_owns_sync_freeze_marker(marker: &Path) -> bool {
 /// The process still gets full CPU when nothing else needs it — it just yields to the DE
 /// and other interactive processes.
 ///
+/// `current_nice` is part of the target calculation so an externally nicer process is
+/// never raised in priority merely because its current tier maps to a smaller value.
+///
 /// Process mitigation is limited to reversible renice, optional `oom_score_adj`
 /// biasing, and optional CPUQuota capping. The guard never invokes `kill`:
 /// OOM biasing only influences the kernel's last-resort choice if an OOM occurs,
 /// while CPUQuota throttles the process without killing it.
-pub(crate) fn graduated_nice_value(cpu_percent: f32, rss_mb: u64, base_nice: i32) -> i32 {
+pub(crate) fn graduated_nice_value(
+    cpu_percent: f32,
+    rss_mb: u64,
+    base_nice: i32,
+    current_nice: i32,
+) -> i32 {
     let cpu_tiers: &[(f32, i32)] = &[(500.0, 15), (300.0, 10), (180.0, 5)];
     let mem_tiers: &[(u64, i32)] = &[(8192, 10), (4096, 5)];
     let cpu_nice = cpu_tiers
@@ -1410,7 +1418,7 @@ pub(crate) fn graduated_nice_value(cpu_percent: f32, rss_mb: u64, base_nice: i32
         .find(|(threshold, _)| rss_mb >= *threshold)
         .map(|(_, nice)| *nice)
         .unwrap_or(0);
-    cpu_nice.max(mem_nice).clamp(0, 19)
+    cpu_nice.max(mem_nice).clamp(0, 19).max(current_nice)
 }
 
 async fn renice_process_with_bin(bin: &Path, pid: i32, value: i32) -> Result<()> {
@@ -3606,7 +3614,8 @@ async fn check_memory_pressure(
             }
             let current_identity = process_sample_identity(p);
             drop_stale_nice_adjustments(state, p.pid, &current_identity);
-            let nice_val = graduated_nice_value(p.cpu_percent, p.rss_mb, guard.renice_value);
+            let nice_val =
+                graduated_nice_value(p.cpu_percent, p.rss_mb, guard.renice_value, p.nice);
             let applied_nice = state
                 .memory_reniced_pids
                 .get(&p.pid)
@@ -4543,7 +4552,8 @@ async fn check_heavy_processes(
                 .reniced_pids
                 .get(&p.pid)
                 .map(|entry| entry.applied_nice);
-            let nice_val = graduated_nice_value(p.cpu_percent, p.rss_mb, guard.renice_value);
+            let nice_val =
+                graduated_nice_value(p.cpu_percent, p.rss_mb, guard.renice_value, p.nice);
             if already_niced != Some(nice_val) {
                 match renice_process(p.pid, nice_val).await {
                     Ok(()) => {

@@ -212,52 +212,60 @@ fn guard_report_can_be_created_with_alerts() {
 #[test]
 fn graduated_nice_value_cpu_tier_180_percent() {
     // CPU >= 180% → nice 5
-    assert_eq!(crate::graduated_nice_value(180.0, 0, 5), 5);
-    assert_eq!(crate::graduated_nice_value(200.0, 0, 5), 5);
+    assert_eq!(crate::graduated_nice_value(180.0, 0, 5, 0), 5);
+    assert_eq!(crate::graduated_nice_value(200.0, 0, 5, 0), 5);
 }
 
 #[test]
 fn graduated_nice_value_cpu_tier_300_percent() {
     // CPU >= 300% → nice 10
-    assert_eq!(crate::graduated_nice_value(300.0, 0, 5), 10);
-    assert_eq!(crate::graduated_nice_value(350.0, 0, 5), 10);
+    assert_eq!(crate::graduated_nice_value(300.0, 0, 5, 0), 10);
+    assert_eq!(crate::graduated_nice_value(350.0, 0, 5, 0), 10);
 }
 
 #[test]
 fn graduated_nice_value_cpu_tier_500_percent() {
     // CPU >= 500% → nice 15
-    assert_eq!(crate::graduated_nice_value(500.0, 0, 5), 15);
-    assert_eq!(crate::graduated_nice_value(600.0, 0, 5), 15);
+    assert_eq!(crate::graduated_nice_value(500.0, 0, 5, 0), 15);
+    assert_eq!(crate::graduated_nice_value(600.0, 0, 5, 0), 15);
 }
 
 #[test]
 fn graduated_nice_value_memory_4gb() {
     // 4 GB in MB = 4096
-    assert_eq!(crate::graduated_nice_value(0.0, 4096, 5), 5);
+    assert_eq!(crate::graduated_nice_value(0.0, 4096, 5, 0), 5);
 }
 
 #[test]
 fn graduated_nice_value_memory_8gb() {
     // 8 GB in MB = 8192
-    assert_eq!(crate::graduated_nice_value(0.0, 8192, 10), 10);
+    assert_eq!(crate::graduated_nice_value(0.0, 8192, 10, 0), 10);
 }
 
 #[test]
 fn graduated_nice_value_below_all_tiers_uses_base() {
     // Below all thresholds → base nice value
-    assert_eq!(crate::graduated_nice_value(50.0, 100, 3), 3);
-    assert_eq!(crate::graduated_nice_value(100.0, 500, 7), 7);
+    assert_eq!(crate::graduated_nice_value(50.0, 100, 3, 0), 3);
+    assert_eq!(crate::graduated_nice_value(100.0, 500, 7, 0), 7);
+}
+
+#[test]
+fn graduated_nice_value_preserves_current_nice() {
+    // A process already at a lower priority must not be raised to a tier's
+    // smaller absolute nice value.
+    assert_eq!(crate::graduated_nice_value(180.0, 0, 5, 10), 10);
+    assert_eq!(crate::graduated_nice_value(50.0, 100, 5, 10), 10);
 }
 
 #[test]
 fn graduated_nice_value_negative_base_clamped_to_zero() {
-    assert_eq!(crate::graduated_nice_value(0.0, 0, -5), 0);
+    assert_eq!(crate::graduated_nice_value(0.0, 0, -5, 0), 0);
 }
 
 #[test]
 fn graduated_nice_value_high_base_clamped_to_max() {
     // Nice values are capped at 19
-    assert_eq!(crate::graduated_nice_value(0.0, 0, 20), 19);
+    assert_eq!(crate::graduated_nice_value(0.0, 0, 20, 0), 19);
 }
 
 // ---------------------------------------------------------------------------
