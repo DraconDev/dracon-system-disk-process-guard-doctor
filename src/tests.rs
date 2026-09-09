@@ -1971,13 +1971,7 @@ async fn active_package_operations_protect_all_package_caches_on_apply() {
         true,
         true,
         true,
-        &[],
         &active,
-        false,
-        PackageProcessDetector {
-            ps_bin: Path::new("ps"),
-            proc_root: Path::new("/proc"),
-        },
     )
     .await
     .expect("protected cache cleanup");
@@ -1999,30 +1993,36 @@ async fn active_package_operations_protect_all_package_caches_on_apply() {
     let _ = fs::remove_dir_all(home);
 }
 
-#[cfg(unix)]
 #[tokio::test]
-async fn package_cache_rechecks_processes_before_apply_delete() {
-    let home = unique_test_home("package_cache_recheck");
-    let proc_root = unique_test_home("package_proc_recheck");
-    let bin_root = unique_test_home("package_ps_recheck");
+async fn package_cache_apply_refuses_uncoordinated_start_after_snapshot() {
+    let home = unique_test_home("package_cache_adversarial_start");
+    let proc_root = unique_test_home("package_proc_adversarial_start");
     fs::create_dir_all(proc_root.join("self")).expect("create proc fixture");
-    let process_dir = proc_root.join("301");
-    fs::create_dir_all(&process_dir).expect("create process fixture");
+    let initial_process = proc_root.join("400");
+    fs::create_dir_all(&initial_process).expect("create initial process fixture");
+    fs::write(initial_process.join("cmdline"), b"/usr/bin/sleep\0").expect("write initial cmdline");
+
+    // The first snapshot sees no package operation.
+    let initial = detect_active_package_manager_operations_from("400 sleep\n", &proc_root)
+        .expect("initial process snapshot");
+    assert!(initial.is_empty());
+
+    // An npm operation starts after that snapshot, exactly in the window the
+    // old detector-then-remove implementation could not coordinate.
+    let new_process = proc_root.join("401");
+    fs::create_dir_all(&new_process).expect("create adversarial process fixture");
     fs::write(
-        process_dir.join("cmdline"),
+        new_process.join("cmdline"),
         b"/usr/bin/node\0/usr/lib/npm/npm-cli.js\0install\0",
     )
-    .expect("write cmdline fixture");
-    fs::create_dir_all(&bin_root).expect("create bin fixture");
-    let ps = bin_root.join("ps");
-    write_test_script(&ps, "printf '301 node\\n'");
+    .expect("write adversarial cmdline");
 
     let npm_cache = home.join(".npm");
     fs::create_dir_all(&npm_cache).expect("create npm cache fixture");
     fs::write(npm_cache.join("in-use.bin"), b"must survive").expect("write cache fixture");
 
-    // Model an operation that starts after the initial snapshot: the injected
-    // snapshot is empty, while the final pre-remove check sees npm.
+    // Apply refuses all package-cache deletion because no lock shared with
+    // external package managers can make this lifecycle-safe.
     let result = clean_package_caches_at(
         &home,
         false,
@@ -2030,25 +2030,40 @@ async fn package_cache_rechecks_processes_before_apply_delete() {
         false,
         false,
         true,
-        &[],
-        &HashSet::new(),
-        true,
-        PackageProcessDetector {
-            ps_bin: &ps,
-            proc_root: &proc_root,
-        },
+        &initial,
     )
     .await
-    .expect("cache recheck");
-    assert_eq!(result.0, 0, "the newly active cache must not be reclaimed");
+    .expect("uncoordinated apply must be a safe no-op");
+    assert_eq!(result, (0, Vec::new()));
     assert!(
         npm_cache.exists(),
-        "the final process check must protect npm"
+        "an operation starting after detection must not race deletion"
     );
 
     let _ = fs::remove_dir_all(home);
     let _ = fs::remove_dir_all(proc_root);
-    let _ = fs::remove_dir_all(bin_root);
+}
+
+#[tokio::test]
+async fn active_package_operations_skip_matching_cache_estimates_in_dry_run() {
+    let home = unique_test_home("package_cache_dry_run");
+    let cargo_cache = home.join(".cargo/registry/cache");
+    let npm_cache = home.join(".npm");
+    fs::create_dir_all(&cargo_cache).expect("create cargo cache fixture");
+    fs::create_dir_all(&npm_cache).expect("create npm cache fixture");
+    fs::write(cargo_cache.join("cargo.bin"), b"cargo").expect("write cargo fixture");
+    fs::write(npm_cache.join("npm.bin"), b"npm").expect("write npm fixture");
+    let active = HashSet::from([PackageCacheKind::Npm]);
+
+    let result = clean_package_caches_at(&home, true, true, false, false, false, &active)
+        .await
+        .expect("dry-run cache estimate");
+    assert_eq!(result.0, 5);
+    assert!(result.1.iter().any(|entry| entry.contains("cargo")));
+    assert!(!result.1.iter().any(|entry| entry.contains("npm")));
+    assert!(cargo_cache.exists() && npm_cache.exists());
+
+    let _ = fs::remove_dir_all(home);
 }
 
 #[test]

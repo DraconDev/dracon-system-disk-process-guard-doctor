@@ -74,13 +74,13 @@ defaults are 70/80/90/95 — see Configuration.)
 ### Build-Aware Monitoring
 - Detects active Rust build processes
 - Protects their target directories from cleanup
-- Detects active cargo/npm/pip/go operations (including common wrappers)
-- Protects the corresponding package caches from recursive apply cleanup
-- Rechecks process activity immediately before each cache deletion
+- Detects active cargo/npm/pip/go operations (including common wrappers) for
+  diagnostics and dry-run protection
+- Refuses recursive package-cache deletion during apply because external
+  package managers provide no shared lock with the guard
 - Fails closed when process metadata cannot be inspected
-- Prevents breaking active compilation or cache writes (the final check is a
-  process snapshot, not a lock shared with external package managers, so a
-  process started after that check cannot be blocked by this guard)
+- Prevents breaking active compilation or cache writes by never deleting
+  package caches without lifecycle-safe coordination
 
 ### Disk Space Trend Prediction
 - Tracks disk usage history over time
