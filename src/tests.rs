@@ -1686,6 +1686,24 @@ fn safe_tmp_root_policy_allows_tmp_descendants_and_rejects_home() {
 }
 
 #[test]
+fn tmp_entry_must_remain_under_validated_root() {
+    let root = guard_test_tmp("tmp_root_containment");
+    let outside = guard_test_tmp("tmp_outside_containment");
+    std::fs::create_dir_all(&root).expect("tmp root");
+    std::fs::create_dir_all(&outside).expect("outside root");
+
+    let validated = check_safe_tmp_root(&root).expect("tmp root should be valid");
+    let result = check_safe_to_delete_tmp_entry(&outside, &validated, &[]);
+    assert!(
+        result.is_err(),
+        "a candidate outside the validated tmp root must be rejected"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&outside);
+}
+
+#[test]
 fn guard_safe_delete_allows_paths_under_system_protected() {
     let tmp = guard_test_tmp("guard_safe_1");
     let target = tmp.join("target");
