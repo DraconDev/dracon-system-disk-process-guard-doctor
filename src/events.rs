@@ -180,8 +180,7 @@ fn persist_event(path: &Path, json: &str) -> std::io::Result<()> {
         if current_size > MAX_EVENT_LOG_BYTES {
             // Do not move an unbounded legacy log into the retained segment.
             fs::remove_file(path)?;
-        } else if current_size > 0
-            && current_size.saturating_add(append_size) > MAX_EVENT_LOG_BYTES
+        } else if current_size > 0 && current_size.saturating_add(append_size) > MAX_EVENT_LOG_BYTES
         {
             rotate_event_log(path)?;
         }
@@ -616,6 +615,82 @@ mod tests {
         let _ = fs::remove_file(&path);
         let _ = fs::remove_file(&rotated);
         let _ = fs::remove_file(event_lock_path(&path));
+    }
+
+    #[test]
+    fn oversized_legacy_segments_are_discarded_before_new_events() {
+        let path = temp_event_path("legacy");
+        let rotated = rotated_event_path(&path);
+        fs::write(&path, vec![b'x'; MAX_EVENT_LOG_BYTES as usize + 1])
+            .expect("write oversized active log");
+        fs::write(&rotated, vec![b'y'; MAX_EVENT_LOG_BYTES as usize + 1])
+            .expect("write oversized rotated log");
+
+        persist_event(&path, r#"{"message":"new"}"#).expect("replace legacy logs");
+
+        assert_eq!(
+            fs::read_to_string(&path).expect("read active log"),
+            "{\"message\":\"new\"}\n"
+        );
+        assert!(
+            !rotated.exists(),
+            "oversized legacy backup must not survive"
+        );
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(event_lock_path(&path));
+    }
+
+    #[test]
+    fn rotated_segment_is_included_in_chronological_tail() {
+        let path = temp_event_path("rotated-tail");
+        let rotated = rotated_event_path(&path);
+        fs::write(&rotated, "{\"index\":1}\n").expect("write rotated log");
+        fs::write(&path, "{\"index\":2}\n").expect("write active log");
+
+        let (lines, total) =
+            read_tail_segments(&[rotated.as_path(), path.as_path()], 2).expect("read event tail");
+
+        assert_eq!(total, 2);
+        assert_eq!(lines, vec![r#"{"index":1}"#, r#"{"index":2}"#]);
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(&rotated);
+        let _ = fs::remove_file(event_lock_path(&path));
+    }
+
+    #[test]
+    fn concurrent_persistence_keeps_each_record_as_a_json_line() {
+        let path = temp_event_path("concurrent");
+        std::thread::scope(|scope| {
+            let path = path.as_path();
+            for worker in 0..4 {
+                scope.spawn(move || {
+                    for sequence in 0..25 {
+                        let json = format!(r#"{{"worker":{worker},"sequence":{sequence}}}"#);
+                        persist_event(path, &json).expect("persist concurrent event");
+                    }
+                });
+            }
+        });
+
+        let (lines, total) = read_tail_lines(&path, 100).expect("read concurrent event log");
+        assert_eq!(total, 100);
+        assert_eq!(lines.len(), 100);
+        for line in lines {
+            let _: serde_json::Value = serde_json::from_str(&line).expect("valid JSON line");
+        }
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(event_lock_path(&path));
+    }
+
+    #[test]
+    fn persistence_failure_is_reported_without_writing_outside_the_log() {
+        let blocker = temp_event_path("failure");
+        fs::write(&blocker, b"not a directory").expect("write blocker");
+        let path = blocker.join("events.jsonl");
+
+        assert!(persist_event(&path, r#"{"message":"event"}"#).is_err());
+
+        let _ = fs::remove_file(&blocker);
     }
 
     #[test]
