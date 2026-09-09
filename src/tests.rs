@@ -1952,6 +1952,53 @@ async fn active_package_operations_protect_all_package_caches_on_apply() {
     let _ = fs::remove_dir_all(home);
 }
 
+#[cfg(unix)]
+#[tokio::test]
+async fn package_cache_rechecks_processes_before_apply_delete() {
+    let home = unique_test_home("package_cache_recheck");
+    let proc_root = unique_test_home("package_proc_recheck");
+    let bin_root = unique_test_home("package_ps_recheck");
+    fs::create_dir_all(proc_root.join("self")).expect("create proc fixture");
+    let process_dir = proc_root.join("301");
+    fs::create_dir_all(&process_dir).expect("create process fixture");
+    fs::write(
+        process_dir.join("cmdline"),
+        b"/usr/bin/node\0/usr/lib/npm/npm-cli.js\0install\0",
+    )
+    .expect("write cmdline fixture");
+    fs::create_dir_all(&bin_root).expect("create bin fixture");
+    let ps = bin_root.join("ps");
+    write_test_script(&ps, "printf '301 node\\n'");
+
+    let npm_cache = home.join(".npm");
+    fs::create_dir_all(&npm_cache).expect("create npm cache fixture");
+    fs::write(npm_cache.join("in-use.bin"), b"must survive").expect("write cache fixture");
+
+    // Model an operation that starts after the initial snapshot: the injected
+    // snapshot is empty, while the final pre-remove check sees npm.
+    let result = clean_package_caches_at(
+        &home,
+        false,
+        true,
+        false,
+        false,
+        true,
+        &[],
+        &HashSet::new(),
+        true,
+        &ps,
+        &proc_root,
+    )
+    .await
+    .expect("cache recheck");
+    assert_eq!(result.0, 0, "the newly active cache must not be reclaimed");
+    assert!(npm_cache.exists(), "the final process check must protect npm");
+
+    let _ = fs::remove_dir_all(home);
+    let _ = fs::remove_dir_all(proc_root);
+    let _ = fs::remove_dir_all(bin_root);
+}
+
 #[test]
 fn storage_cleanup_apply_accepts_home_artifact_dirs_and_refuses_system_roots() {
     // Regression (2026-08-21): `storage --cleanup --apply` used the strict
