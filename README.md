@@ -247,10 +247,11 @@ journalctl --user -u dracon-system-guard -f
 
 The guard service uses `Restart=on-failure`: a valid `enabled = false` policy
 prints `guard disabled in policy` and exits 0, so systemd leaves it stopped.
-Malformed or unreadable startup policy exits with status 78 (`EX_CONFIG`),
-which is listed in `RestartPreventExitStatus=2 78` and therefore does not
-restart-loop. Crashes, signal termination, and other nonzero failures remain
-restartable. After fixing a policy, run `systemctl --user reset-failed dracon-system-guard.service`
+A missing, malformed, or unreadable explicit startup policy exits with status
+78 (`EX_CONFIG`), which is listed in `RestartPreventExitStatus=2 78` and
+therefore does not restart-loop. Crashes, abnormal signal termination, and other nonzero failures
+remain restartable; deliberate SIGTERM/SIGINT shutdown is handled cleanly.
+After fixing a policy, run `systemctl --user reset-failed dracon-system-guard.service`
 if systemd recorded a failed unit, then restart it.
 
 ## Configuration
