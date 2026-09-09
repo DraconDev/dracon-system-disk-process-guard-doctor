@@ -1333,9 +1333,23 @@ fn rotate_guard_log_if_oversized(path: &Path, max_bytes: u64, startup: bool) {
 }
 
 fn log_guard_event(guard: &GuardPolicy, event: &str, details: &str) {
-    let Some(path) = resolve_guard_log_path(&guard.guard_log_file) else {
+    log_guard_event_with_home(
+        guard,
+        event,
+        details,
+        dirs::home_dir().as_deref(),
+    );
+}
+
+fn log_guard_event_with_home(
+    guard: &GuardPolicy,
+    event: &str,
+    details: &str,
+    home: Option<&Path>,
+) {
+    let Some(path) = resolve_guard_log_path_with_home(&guard.guard_log_file, home) else {
         return;
-    };
+    };;
     if let Some(parent) = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -6344,6 +6358,21 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
     Ok(())
 }
 
+fn rotate_guard_log_for_policy(guard: &GuardPolicy, startup: bool) {
+    rotate_guard_log_for_policy_with_home(guard, startup, dirs::home_dir().as_deref());
+}
+
+fn rotate_guard_log_for_policy_with_home(
+    guard: &GuardPolicy,
+    startup: bool,
+    home: Option<&Path>,
+) {
+    if let Some(log_path) = resolve_guard_log_path_with_home(&guard.guard_log_file, home) {
+        let max_bytes = guard.guard_log_max_mb.saturating_mul(1024 * 1024);
+        rotate_guard_log_if_oversized(&log_path, max_bytes, startup);
+    }
+}
+
 async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
     if !guard.enabled {
         println!("guard disabled in policy");
@@ -6355,10 +6384,7 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
     // ── Startup cleanup: rotate the configured guard log if oversized ──
     // Use the same resolver as event logging; a blank path disables both
     // logging and rotation rather than silently targeting /tmp.
-    if let Some(log_path) = resolve_guard_log_path(&guard.guard_log_file) {
-        let max_bytes = guard.guard_log_max_mb.saturating_mul(1024 * 1024);
-        rotate_guard_log_if_oversized(&log_path, max_bytes, true);
-    }
+    rotate_guard_log_for_policy(guard, true);
 
     let shutdown = Arc::new(AtomicBool::new(false));
     let shutdown_sigterm = shutdown.clone();

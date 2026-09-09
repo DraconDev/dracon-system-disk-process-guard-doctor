@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // ---------------------------------------------------------------------------
 // Policy structs
@@ -580,27 +580,42 @@ pub(crate) fn canonical_system_root() -> PathBuf {
         .join(".dracon")
 }
 
-pub(crate) fn expand_tilde(raw: &str) -> PathBuf {
+fn expand_tilde_with_home(raw: &str, home: Option<&Path>) -> PathBuf {
     if raw == "~" {
-        return dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        return home
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
     }
     if let Some(rest) = raw.strip_prefix("~/") {
-        return dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(rest);
+        return home
+            .map(|home| home.join(rest))
+            .unwrap_or_else(|| PathBuf::from(".").join(rest));
     }
     PathBuf::from(raw)
 }
 
+pub(crate) fn expand_tilde(raw: &str) -> PathBuf {
+    expand_tilde_with_home(raw, dirs::home_dir().as_deref())
+}
+
 /// Resolve the optional guard event-log path using the same config-path
 /// semantics at every call site. A blank value disables persistent logging;
-/// `~` and `~/...` refer to the service user's home directory.
+/// `~` and `~/...` refer to the service user's home directory. Non-empty
+/// relative paths remain relative to the process working directory; the
+/// shipped user service pins that directory to the user's home.
 pub(crate) fn resolve_guard_log_path(raw: &str) -> Option<PathBuf> {
+    resolve_guard_log_path_with_home(raw, dirs::home_dir().as_deref())
+}
+
+pub(crate) fn resolve_guard_log_path_with_home(
+    raw: &str,
+    home: Option<&Path>,
+) -> Option<PathBuf> {
     let raw = raw.trim();
     if raw.is_empty() {
         return None;
     }
-    Some(expand_tilde(raw))
+    Some(expand_tilde_with_home(raw, home))
 }
 
 pub(crate) fn parse_kinds(csv: &str) -> HashSet<String> {
