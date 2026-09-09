@@ -1755,3 +1755,35 @@ fn storage_cleanup_apply_refuses_git_database_dirs() {
         "refusal must name the reason, got: {msg}"
     );
 }
+
+#[test]
+fn storage_cleanup_apply_refuses_git_database_subpaths() {
+    // ADDED 2026-09-09 (audit F38): the M2 backstop matched only
+    // `file_name() == ".git"`, so `/repo/.git/objects` passed. Any
+    // path with a `.git` component must be refused.
+    let err = validate_storage_cleanup_path(
+        Path::new("/home/user/Dev/project/.git/objects"),
+        &[],
+    )
+    .expect_err("apply must refuse paths under a .git directory");
+    assert!(format!("{err:#}").contains("git database"));
+}
+
+#[test]
+fn normalize_early_warn_clamped_to_warn() {
+    // ADDED 2026-09-09 (audit F43): early > warn made the early band
+    // (`used >= early && used < warn`) permanently empty.
+    let policy = GuardPolicy {
+        disk_early_warn_percent: 95,
+        disk_warn_percent: 75,
+        ..Default::default()
+    };
+    let mut policy = policy;
+    normalize_guard_policy(&mut policy);
+    assert!(
+        policy.disk_early_warn_percent <= policy.disk_warn_percent,
+        "early warn must not exceed warn, got early={} warn={}",
+        policy.disk_early_warn_percent,
+        policy.disk_warn_percent
+    );
+}

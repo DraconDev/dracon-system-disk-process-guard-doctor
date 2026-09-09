@@ -122,6 +122,29 @@ clean_trash = false
 clean_nix_garbage = false
 nix_keep_generations = 5
 
+# ADDED 2026-09-09 (audit F48): knobs that exist in code with live defaults
+# but were undocumented here. Several default TRUE — copying this file
+# without setting them leaves those cleanups armed (gated only by
+# auto_cleanup_apply=false above). Commented lines show code defaults.
+# node_modules age cleanup (default TRUE — see M3 note in policy.rs).
+clean_node_modules = false
+# /tmp top-level age hygiene (code default TRUE; v0.112.39 — 207 GiB
+# incident). False here to match this file's gentler posture.
+clean_tmp = false
+# tmp_search_paths = "/tmp"          # comma-separated tmp roots
+# tmp_min_age_hours = 24              # only entries older than this
+# Trash recovery window (default 7 — 0 restores empty-everything).
+# trash_min_age_days = 7
+# Refuse to purge trash entries whose names look credential-bearing
+# (default TRUE).
+# trash_credential_guard = true
+# Stuck-process threshold (default 600s; must be >= process_sustain_secs).
+# process_stuck_after_secs = 600
+# Rapid-fill trip rate in GiB/hour (default 20.0).
+# disk_rapid_fill_gbph = 20.0
+# Rust target age gate (default 14 days).
+# rust_target_max_age_days = 14
+
 # Disk trend prediction
 track_trends = true
 trend_warn_hours = 24
