@@ -14,8 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed (audit pass 2026-09-09, F36–F48, F58–F67)
+### Fixed (audit pass 2026-09-09, F36–F48, F58–F68)
 
+- **Empty event JSONL results stay machine-readable** (F68): `events --json`
+  emits no human-only no-match sentinel when the log is missing, empty, or
+  filtered to zero records; human output retains its existing message.
 - **Status reports the effective system policy path** (F67): `status` now
   honors `DRACON_SYSTEM_POLICY` in both human and `--json` output, including
   an accurate existence flag for an overridden path. Without an override it
