@@ -63,6 +63,8 @@ defaults are 70/80/90/95 — see Configuration.)
   - ≥500% CPU → nice 15 (strong deprio)
   - RSS ≥4 GiB → nice 5 (memory hog deprio)
   - RSS ≥8 GiB → nice 10 (heavy memory deprio)
+  - Targets are floors: an already nicer process is never raised to a
+    higher priority by a smaller tier value
 - **Never directly kills processes** — mitigation can renice heavy jobs,
   bias `oom_score_adj` during critical pressure, and optionally throttle
   CPU with a reversible `CPUQuota`; OOM bias only influences the kernel's

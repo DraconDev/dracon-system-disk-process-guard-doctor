@@ -45,6 +45,7 @@ process_exempt_names = "systemd,dbus-daemon,Xorg,kwin_wayland,plasmashell,dracon
 # Auto-renice heavy processes (graduated: higher CPU/memory = higher nice value)
 # CPU tiers: >=180% → nice 5, >=300% → nice 10, >=500% → nice 15
 # Memory tiers: >=4GB → nice 5, >=8GB → nice 10
+# Tier values are floors: an already nicer process is never raised in priority.
 # renice_value is the fallback nice when no CPU/memory tier threshold is met
 # Report sustained CPU-heavy processes; do not change priorities by default.
 auto_renice = false
