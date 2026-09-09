@@ -1,6 +1,6 @@
 //! Event system for dracon-system — structured event logging and persistence.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use fs2::FileExt;
 use serde::Serialize;
 use std::collections::VecDeque;
@@ -378,8 +378,8 @@ fn read_tail_segments(paths: &[&Path], tail: usize) -> Result<(Vec<String>, usiz
     let unlock_result = lock_file.unlock();
 
     match (result, unlock_result) {
-        (Err(error), _) => Err(error),
-        (Ok(_), Err(error)) => Err(error),
+        (Err(error), _) => Err(error.into()),
+        (Ok(_), Err(error)) => Err(error.into()),
         (Ok(value), Ok(())) => Ok(value),
     }
 }
