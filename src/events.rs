@@ -258,13 +258,27 @@ fn retain_event_line(
     }
 }
 
-/// Stream the event file while retaining only the requested bounded tail.
-fn read_tail_lines(path: &Path, tail: usize) -> Result<(Vec<String>, usize)> {
-    let file = File::open(path).with_context(|| format!("failed to read {}", path.display()))?;
-    let mut reader = BufReader::new(file);
-    let tail = tail.min(MAX_EVENT_TAIL_LINES);
-    let mut retained = VecDeque::new();
-    let mut retained_bytes = 0usize;
+fn discard_partial_line<R: BufRead>(reader: &mut R) -> std::io::Result<()> {
+    loop {
+        let buffer = reader.fill_buf()?;
+        if buffer.is_empty() {
+            return Ok(());
+        }
+        if let Some(newline) = buffer.iter().position(|byte| *byte == b'\n') {
+            reader.consume(newline + 1);
+            return Ok(());
+        }
+        let length = buffer.len();
+        reader.consume(length);
+    }
+}
+
+fn read_tail_from_reader<R: BufRead>(
+    reader: &mut R,
+    tail: usize,
+    retained: &mut VecDeque<String>,
+    retained_bytes: &mut usize,
+) -> std::io::Result<usize> {
     let mut current = Vec::new();
     let mut current_too_long = false;
     let mut total_lines = 0usize;
@@ -285,7 +299,7 @@ fn read_tail_lines(path: &Path, tail: usize) -> Result<(Vec<String>, usize)> {
                     line.pop();
                 }
                 if let Ok(line) = String::from_utf8(line) {
-                    retain_event_line(&mut retained, &mut retained_bytes, line, tail);
+                    retain_event_line(retained, retained_bytes, line, tail);
                 }
             } else {
                 current.clear();
@@ -305,12 +319,74 @@ fn read_tail_lines(path: &Path, tail: usize) -> Result<(Vec<String>, usize)> {
                 current.pop();
             }
             if let Ok(line) = String::from_utf8(current) {
-                retain_event_line(&mut retained, &mut retained_bytes, line, tail);
+                retain_event_line(retained, retained_bytes, line, tail);
             }
         }
     }
 
-    Ok((retained.into_iter().collect(), total_lines))
+    Ok(total_lines)
+}
+
+/// Stream the event segments while retaining only a bounded recent tail.
+fn read_tail_segments(paths: &[&Path], tail: usize) -> Result<(Vec<String>, usize)> {
+    let Some(lock_target) = paths.last() else {
+        return Ok((Vec::new(), 0));
+    };
+    let lock_file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(event_lock_path(lock_target))?;
+    lock_file.lock_shared()?;
+
+    let result = (|| {
+        let tail = tail.min(MAX_EVENT_TAIL_LINES);
+        let mut retained = VecDeque::new();
+        let mut retained_bytes = 0usize;
+        let mut total_lines = 0usize;
+
+        for path in paths {
+            let file_len = match fs::metadata(path) {
+                Ok(metadata) => metadata.len(),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error),
+            };
+            let mut file = match File::open(path) {
+                Ok(file) => file,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error),
+            };
+            let read_bytes = file_len.min(MAX_EVENT_TAIL_BYTES as u64);
+            let start = file_len.saturating_sub(read_bytes);
+            file.seek(SeekFrom::Start(start))?;
+            let mut reader = BufReader::new(file.take(read_bytes));
+            if start > 0 {
+                // A bounded window may begin in the middle of a JSONL record;
+                // discard that partial record rather than parsing corrupt JSON.
+                discard_partial_line(&mut reader)?;
+            }
+            total_lines = total_lines.saturating_add(read_tail_from_reader(
+                &mut reader,
+                tail,
+                &mut retained,
+                &mut retained_bytes,
+            )?);
+        }
+
+        Ok((retained.into_iter().collect(), total_lines))
+    })();
+    let unlock_result = lock_file.unlock();
+
+    match (result, unlock_result) {
+        (Err(error), _) => Err(error),
+        (Ok(_), Err(error)) => Err(error),
+        (Ok(value), Ok(())) => Ok(value),
+    }
+}
+
+fn read_tail_lines(path: &Path, tail: usize) -> Result<(Vec<String>, usize)> {
+    read_tail_segments(&[path], tail)
 }
 
 /// Returns the path to the shared events JSONL file.
@@ -333,13 +409,17 @@ pub(crate) fn cmd_events(
     };
 
     let path = events_path();
-    if !path.exists() {
+    let rotated_path = rotated_event_path(&path);
+    if !path.exists() && !rotated_path.exists() {
         if !json_output {
             println!("No events found ({} does not exist)", path.display());
         }
         return Ok(());
     }
-    let (lines, total_lines) = read_tail_lines(&path, tail)?;
+    // Rotation moves the older active segment to `.1`; read it first so the
+    // combined tail remains chronological, then read the current segment.
+    let segment_paths = [rotated_path.as_path(), path.as_path()];
+    let (lines, total_lines) = read_tail_segments(&segment_paths, tail)?;
 
     let mut parsed: Vec<serde_json::Value> = Vec::new();
     for line in &lines {
