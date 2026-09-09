@@ -62,6 +62,32 @@ fn events_json_with_empty_log_emits_empty_jsonl() {
 }
 
 #[test]
+fn events_json_includes_rotated_segment_before_active_segment() {
+    let home = unique_home_path();
+    let event_dir = home.join(".dracon");
+    fs::create_dir_all(&event_dir).expect("create event directory");
+    fs::write(
+        event_dir.join("events.jsonl.1"),
+        r#"{"domain":"system","severity":"Info","path":"/old","message":"old event","timestamp":"2026-01-01T00:00:00Z"}
+"#,
+    )
+    .expect("write rotated event log");
+    fs::write(
+        event_dir.join("events.jsonl"),
+        r#"{"domain":"system","severity":"Warn","path":"/new","message":"new event","timestamp":"2026-01-01T00:00:01Z"}
+"#,
+    )
+    .expect("write active event log");
+
+    let events = parse_jsonl(run_events(&home, &[]));
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0]["message"], "old event");
+    assert_eq!(events[1]["message"], "new event");
+
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[test]
 fn events_json_with_filter_matching_nothing_emits_empty_jsonl() {
     let home = unique_home_path();
     let event_dir = home.join(".dracon");

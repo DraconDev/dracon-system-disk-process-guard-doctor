@@ -87,23 +87,36 @@ fn truncate_utf8(value: &str, max_bytes: usize) -> String {
     format!("{}{}", &value[..end], suffix)
 }
 
-fn serialize_event_for_storage(event: &DraconEvent) -> Option<String> {
-    let json = serde_json::to_string(event).ok()?;
-    if json.len() <= MAX_EVENT_RECORD_BYTES {
-        return Some(json);
-    }
-
-    // Error messages and paths are normally short, but they can contain
-    // command output supplied by another process. Preserve a valid, useful
-    // record without allowing one event to defeat rotation.
-    let bounded = DraconEvent {
+fn bounded_event(event: &DraconEvent) -> DraconEvent {
+    DraconEvent {
         domain: truncate_utf8(&event.domain, 512),
         severity: event.severity,
         path: truncate_utf8(&event.path, 2_048),
         message: truncate_utf8(&event.message, 4_096),
         timestamp: truncate_utf8(&event.timestamp, 128),
+    }
+}
+
+fn serialize_event_for_storage(event: &DraconEvent) -> Option<String> {
+    // Avoid first serializing an unbounded command output string. The normal
+    // field limits are well below the record cap even after JSON escaping.
+    let candidate = if event.domain.len() > 512
+        || event.path.len() > 2_048
+        || event.message.len() > 4_096
+        || event.timestamp.len() > 128
+    {
+        bounded_event(event)
+    } else {
+        event.clone()
     };
-    let json = serde_json::to_string(&bounded).ok()?;
+    let json = serde_json::to_string(&candidate).ok()?;
+    if json.len() <= MAX_EVENT_RECORD_BYTES {
+        return Some(json);
+    }
+
+    // Preserve a valid, useful record if unusual escaping still exceeds the
+    // cap after the field limits above.
+    let json = serde_json::to_string(&bounded_event(&candidate)).ok()?;
     (json.len() <= MAX_EVENT_RECORD_BYTES).then_some(json)
 }
 
