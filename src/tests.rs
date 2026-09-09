@@ -1959,8 +1959,10 @@ async fn active_package_operations_protect_all_package_caches_on_apply() {
         &[],
         &active,
         false,
-        Path::new("ps"),
-        Path::new("/proc"),
+        PackageProcessDetector {
+            ps_bin: Path::new("ps"),
+            proc_root: Path::new("/proc"),
+        },
     )
     .await
     .expect("protected cache cleanup");
@@ -2016,8 +2018,10 @@ async fn package_cache_rechecks_processes_before_apply_delete() {
         &[],
         &HashSet::new(),
         true,
-        &ps,
-        &proc_root,
+        PackageProcessDetector {
+            ps_bin: &ps,
+            proc_root: &proc_root,
+        },
     )
     .await
     .expect("cache recheck");

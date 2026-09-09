@@ -2892,6 +2892,12 @@ fn parse_docker_size(s: &str) -> u64 {
     (value * multiplier) as u64
 }
 
+#[derive(Clone, Copy)]
+struct PackageProcessDetector<'a> {
+    ps_bin: &'a Path,
+    proc_root: &'a Path,
+}
+
 /// Try to remove a cache directory, returning whether it succeeded.
 async fn try_remove_cache_dir(
     path: &Path,
@@ -2900,8 +2906,7 @@ async fn try_remove_cache_dir(
     apply: bool,
     protected_paths: &[String],
     recheck_active: bool,
-    ps_bin: &Path,
-    proc_root: &Path,
+    detector: PackageProcessDetector<'_>,
 ) -> Result<bool> {
     if !apply {
         return Ok(true);
@@ -2921,7 +2926,11 @@ async fn try_remove_cache_dir(
     // observed. There is no lock shared with arbitrary package managers, so
     // this final check is the narrowest safe coordination available here.
     if recheck_active {
-        let active = detect_active_package_manager_operations_with(ps_bin, proc_root).await?;
+        let active = detect_active_package_manager_operations_with(
+            detector.ps_bin,
+            detector.proc_root,
+        )
+        .await?;
         if active.contains(&kind) {
             eprintln!(
                 "🛡️ keeping {name} cache: active {} operation detected",
@@ -2960,8 +2969,10 @@ async fn clean_package_caches(
         protected_paths,
         &active,
         true,
-        Path::new("ps"),
-        Path::new("/proc"),
+        PackageProcessDetector {
+            ps_bin: Path::new("ps"),
+            proc_root: Path::new("/proc"),
+        },
     )
     .await
 }
@@ -2982,8 +2993,7 @@ async fn clean_package_caches_at(
     protected_paths: &[String],
     active: &HashSet<PackageCacheKind>,
     recheck_active: bool,
-    ps_bin: &Path,
-    proc_root: &Path,
+    detector: PackageProcessDetector<'_>,
 ) -> Result<(u64, Vec<String>)> {
     let mut reclaimed = 0u64;
     let mut cleaned = Vec::new();
@@ -3032,8 +3042,7 @@ async fn clean_package_caches_at(
             apply,
             protected_paths,
             recheck_active,
-            ps_bin,
-            proc_root,
+            detector,
         )
         .await?
         {
