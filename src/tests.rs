@@ -59,7 +59,11 @@ exit 0"#
 
     let calls = fs::read_to_string(&log).expect("read command log");
     let lines: Vec<&str> = calls.lines().collect();
-    assert_eq!(lines.len(), 3, "two profile prunes and one store GC expected");
+    assert_eq!(
+        lines.len(),
+        3,
+        "two profile prunes and one store GC expected"
+    );
     assert_eq!(lines[0], "nix-env:--delete-generations +5");
     assert_eq!(
         lines[1],
