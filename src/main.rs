@@ -2324,6 +2324,9 @@ fn detect_active_package_manager_operations_from(
         let pid = pid_text.parse::<i32>().map_err(|error| {
             anyhow::anyhow!("malformed ps PID {pid_text:?} in output line {line:?}: {error}")
         })?;
+        if pid <= 0 {
+            anyhow::bail!("malformed non-positive ps PID {pid} in output line {line:?}");
+        }
         let comm = parts
             .next()
             .ok_or_else(|| anyhow::anyhow!("malformed ps output line: {line:?}"))?;

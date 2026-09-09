@@ -1901,6 +1901,37 @@ fn package_cache_process_detection_fails_closed_on_unreadable_cmdline() {
     let _ = fs::remove_dir_all(proc_root);
 }
 
+#[test]
+fn package_cache_process_detection_rejects_malformed_ps_output() {
+    let proc_root = unique_test_home("package_proc_malformed");
+    fs::create_dir_all(proc_root.join("self")).expect("create proc fixture");
+
+    let result = detect_active_package_manager_operations_from("not-a-process\n", &proc_root);
+    assert!(
+        result.is_err(),
+        "partial process metadata must abort cache protection"
+    );
+
+    let _ = fs::remove_dir_all(proc_root);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn package_cache_process_listing_failure_is_an_error() {
+    let proc_root = unique_test_home("package_proc_failed_ps");
+    let bin_root = unique_test_home("package_ps_failed");
+    fs::create_dir_all(proc_root.join("self")).expect("create proc fixture");
+    fs::create_dir_all(&bin_root).expect("create bin fixture");
+    let ps = bin_root.join("ps");
+    write_test_script(&ps, "exit 7");
+
+    let result = detect_active_package_manager_operations_with(&ps, &proc_root).await;
+    assert!(result.is_err(), "a failed ps command must fail closed");
+
+    let _ = fs::remove_dir_all(proc_root);
+    let _ = fs::remove_dir_all(bin_root);
+}
+
 #[tokio::test]
 async fn active_package_operations_protect_all_package_caches_on_apply() {
     let home = unique_test_home("package_cache_protection");
