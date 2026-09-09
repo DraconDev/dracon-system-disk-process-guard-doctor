@@ -114,10 +114,9 @@ pub(crate) fn check_safe_tmp_root(path: &Path) -> Result<PathBuf> {
             e
         )
     })?;
-    let canon_str = canon.display().to_string();
     if !SAFE_TMP_ROOTS
         .iter()
-        .any(|root| is_protected_ancestor(&canon_str, root))
+        .any(|root| canon.starts_with(Path::new(root)))
     {
         anyhow::bail!(
             "refusing configured tmp root {}: it must be /tmp or /var/tmp (or a descendant)",
