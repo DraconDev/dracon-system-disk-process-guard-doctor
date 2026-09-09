@@ -1,11 +1,20 @@
 //! Event system for dracon-system — structured event logging and persistence.
 
 use anyhow::{Context, Result};
+use fs2::FileExt;
 use serde::Serialize;
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::path::PathBuf;
+use std::collections::VecDeque;
+use std::fs::{self, File, OpenOptions};
+use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+
+// Keep one active segment and one rotated segment. The record cap also keeps a
+// single unusually large error message from defeating the storage bound.
+const MAX_EVENT_LOG_BYTES: u64 = 10 * 1024 * 1024;
+const MAX_EVENT_RECORD_BYTES: usize = 64 * 1024;
+const MAX_EVENT_TAIL_LINES: usize = 1_000;
+const MAX_EVENT_TAIL_BYTES: usize = MAX_EVENT_LOG_BYTES as usize;
 
 static ROLLING_LOG: std::sync::OnceLock<Mutex<Vec<String>>> = std::sync::OnceLock::new();
 
@@ -72,15 +81,14 @@ pub fn emit_event(event: &DraconEvent) {
         "[{}] {:?}: {} - {}",
         event.timestamp, event.severity, event.path, event.message
     );
-    if let Some(events_path) = dirs::home_dir().map(|h| h.join(".dracon/events.jsonl")) {
-        if let Ok(mut file) = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&events_path)
-        {
-            if let Ok(json) = serde_json::to_string(event) {
-                let _ = writeln!(file, "{}", json);
-            }
+    let events_path = events_path();
+    if let Some(json) = serialize_event_for_storage(event) {
+        if let Err(error) = persist_event(&events_path, &json) {
+            eprintln!(
+                "⚠️ failed to persist event to {}: {}",
+                events_path.display(),
+                error
+            );
         }
     }
 }
@@ -111,17 +119,10 @@ pub(crate) fn cmd_events(
         }
         return Ok(());
     }
-    let contents = std::fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
-    let lines: Vec<&str> = contents.lines().collect();
-    let start = if lines.len() > tail {
-        lines.len() - tail
-    } else {
-        0
-    };
+    let (lines, total_lines) = read_tail_lines(&path, tail)?;
 
     let mut parsed: Vec<serde_json::Value> = Vec::new();
-    for line in &lines[start..] {
+    for line in &lines {
         if let Ok(val) = serde_json::from_str::<serde_json::Value>(line) {
             if let Some(ref s) = source {
                 if val.get("domain").and_then(|v| v.as_str()) != Some(s.as_str()) {
@@ -191,8 +192,7 @@ pub(crate) fn cmd_events(
 
     // ---- Summary line (one-liner with count + severity mix) ----
     let filter_note = if source.is_some() || severity.is_some() {
-        let total_all = lines.len();
-        format!(" (showing {} of {} events)", total, total_all)
+        format!(" (showing {} of {} events)", total, total_lines)
     } else {
         String::new()
     };
