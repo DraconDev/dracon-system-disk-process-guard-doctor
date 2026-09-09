@@ -172,10 +172,7 @@ fn persist_event(path: &Path, json: &str) -> std::io::Result<()> {
             }
         }
 
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?;
+        let mut file = OpenOptions::new().create(true).append(true).open(path)?;
         file.write_all(json.as_bytes())?;
         file.write_all(b"\n")?;
         file.flush()
@@ -264,11 +261,7 @@ fn read_tail_lines(path: &Path, tail: usize) -> Result<(Vec<String>, usize)> {
             break;
         }
         if let Some(newline) = buffer.iter().position(|byte| *byte == b'\n') {
-            append_bounded_line_bytes(
-                &mut current,
-                &mut current_too_long,
-                &buffer[..newline],
-            );
+            append_bounded_line_bytes(&mut current, &mut current_too_long, &buffer[..newline]);
             reader.consume(newline + 1);
             total_lines = total_lines.saturating_add(1);
 
@@ -491,5 +484,88 @@ pub(crate) fn shorten_event_time(ts: &str) -> String {
         ts.chars().take(19).collect()
     } else {
         ts.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_event_path(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before Unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "dracon-system-events-{label}-{}-{nanos}.jsonl",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn persistent_event_log_rotates_before_append() {
+        let path = temp_event_path("rotation");
+        let rotated = rotated_event_path(&path);
+        fs::write(&path, vec![b'x'; MAX_EVENT_LOG_BYTES as usize]).expect("write full log");
+
+        persist_event(&path, r#"{"message":"new"}"#).expect("rotate and append");
+
+        assert_eq!(
+            fs::read_to_string(&path).expect("read active log"),
+            "{\"message\":\"new\"}\n"
+        );
+        assert_eq!(
+            fs::metadata(&rotated).expect("rotated log").len(),
+            MAX_EVENT_LOG_BYTES
+        );
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(&rotated);
+        let _ = fs::remove_file(event_lock_path(&path));
+    }
+
+    #[test]
+    fn oversized_event_is_truncated_to_a_valid_bounded_record() {
+        let event = DraconEvent::new(
+            "domain".repeat(10_000),
+            EventSeverity::Error,
+            "/tmp/".to_string() + &"path".repeat(10_000),
+            "failure ".repeat(50_000),
+        );
+
+        let json = serialize_event_for_storage(&event).expect("serialize bounded event");
+        assert!(json.len() <= MAX_EVENT_RECORD_BYTES);
+        let _: serde_json::Value = serde_json::from_str(&json).expect("valid JSON record");
+    }
+
+    #[test]
+    fn tail_reader_retains_requested_lines_without_loading_the_file() {
+        let path = temp_event_path("tail");
+        let content = (0..5)
+            .map(|index| format!("{{\"index\":{index}}}\n"))
+            .collect::<String>();
+        fs::write(&path, content).expect("write event log");
+
+        let (lines, total) = read_tail_lines(&path, 2).expect("read event tail");
+
+        assert_eq!(total, 5);
+        assert_eq!(lines, vec![r#"{"index":3}"#, r#"{"index":4}"#]);
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(event_lock_path(&path));
+    }
+
+    #[test]
+    fn tail_reader_skips_oversized_lines_and_keeps_memory_bounded() {
+        let path = temp_event_path("oversized-line");
+        let mut content = vec![b'x'; MAX_EVENT_RECORD_BYTES + 1];
+        content.extend_from_slice(b"\n{\"kept\":true}\n");
+        fs::write(&path, content).expect("write oversized event log");
+
+        let (lines, total) = read_tail_lines(&path, 2).expect("read event tail");
+
+        assert_eq!(total, 2);
+        assert_eq!(lines, vec![r#"{"kept":true}"#]);
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(event_lock_path(&path));
     }
 }
