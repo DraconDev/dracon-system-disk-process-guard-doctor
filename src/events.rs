@@ -5,7 +5,7 @@ use fs2::FileExt;
 use serde::Serialize;
 use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
-use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -177,7 +177,7 @@ fn persist_event(path: &Path, json: &str) -> std::io::Result<()> {
             .append(true)
             .open(path)?;
         file.write_all(json.as_bytes())?;
-        file.write_all(b"\\n")?;
+        file.write_all(b"\n")?;
         file.flush()
     })();
     let unlock_result = lock_file.unlock();
@@ -263,7 +263,7 @@ fn read_tail_lines(path: &Path, tail: usize) -> Result<(Vec<String>, usize)> {
         if buffer.is_empty() {
             break;
         }
-        if let Some(newline) = buffer.iter().position(|byte| *byte == b'\\n') {
+        if let Some(newline) = buffer.iter().position(|byte| *byte == b'\n') {
             append_bounded_line_bytes(
                 &mut current,
                 &mut current_too_long,
@@ -274,7 +274,7 @@ fn read_tail_lines(path: &Path, tail: usize) -> Result<(Vec<String>, usize)> {
 
             if !current_too_long {
                 let mut line = std::mem::take(&mut current);
-                if line.last() == Some(&b'\\r') {
+                if line.last() == Some(&b'\r') {
                     line.pop();
                 }
                 if let Ok(line) = String::from_utf8(line) {
@@ -294,7 +294,7 @@ fn read_tail_lines(path: &Path, tail: usize) -> Result<(Vec<String>, usize)> {
     if !current.is_empty() || current_too_long {
         total_lines = total_lines.saturating_add(1);
         if !current_too_long {
-            if let Some(&b'\\r') = current.last() {
+            if let Some(&b'\r') = current.last() {
                 current.pop();
             }
             if let Ok(line) = String::from_utf8(current) {
