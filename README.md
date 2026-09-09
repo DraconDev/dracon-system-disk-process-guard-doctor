@@ -331,6 +331,8 @@ notify_command = "/usr/bin/notify-send"
 notify_cooldown_secs = 300
 
 # Persistent heavy-process events; `~` expands to the service user's home.
+# Non-empty relative paths resolve from the process working directory; the
+# shipped user service sets WorkingDirectory=%h for a stable relative base.
 guard_log_file = "~/.local/state/dracon/dracon-system-guard.log"
 guard_log_max_mb = 1
 ```

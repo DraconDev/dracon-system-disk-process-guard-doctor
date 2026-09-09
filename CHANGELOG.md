@@ -19,7 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Guard log paths expand `~` consistently** (F66): logging and startup
   rotation now resolve `guard_log_file` through one shared path resolver, so
   the shipped `~/.local/state/dracon/dracon-system-guard.log` configuration
-  writes and rotates the intended state file. Blank paths disable both.
+  writes and rotates the intended state file. Blank paths disable both;
+  relative paths are documented as process-working-directory paths, with the
+  shipped user service anchored at `%h`.
 - **Tmp cleanup accepts only the explicit temporary root** (F65):
   `tmp_search_paths` is canonicalized and restricted to `/tmp` (or a
   descendant) before scanning, and each candidate must remain under its
