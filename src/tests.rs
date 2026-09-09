@@ -1851,7 +1851,10 @@ fn package_cache_process_detection_covers_direct_and_wrapped_tools() {
 
     for (pid, cmdline) in [
         (101, b"/usr/bin/python3\0-m\0pip\0install\0".as_slice()),
-        (102, b"/usr/bin/node\0/usr/lib/npm/npm-cli.js\0install\0".as_slice()),
+        (
+            102,
+            b"/usr/bin/node\0/usr/lib/npm/npm-cli.js\0install\0".as_slice(),
+        ),
         (103, b"/bin/sh\0-c\0go\0build\0./...\0".as_slice()),
     ] {
         let process_dir = proc_root.join(pid.to_string());
@@ -1889,20 +1892,18 @@ async fn active_package_operations_protect_all_package_caches_on_apply() {
         active.insert(kind);
     }
 
-    let (reclaimed, cleaned) = clean_package_caches_at(
-        &home,
-        true,
-        true,
-        true,
-        true,
-        true,
-        &[],
-        &active,
-    )
-    .await
-    .expect("protected cache cleanup");
-    assert_eq!(reclaimed, 0, "active caches must not be counted as reclaimed");
-    assert!(cleaned.is_empty(), "active caches must not be reported cleaned");
+    let (reclaimed, cleaned) =
+        clean_package_caches_at(&home, true, true, true, true, true, &[], &active)
+            .await
+            .expect("protected cache cleanup");
+    assert_eq!(
+        reclaimed, 0,
+        "active caches must not be counted as reclaimed"
+    );
+    assert!(
+        cleaned.is_empty(),
+        "active caches must not be reported cleaned"
+    );
     for (_, relative) in targets {
         assert!(
             home.join(relative).exists(),

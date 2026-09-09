@@ -2236,11 +2236,7 @@ fn package_cache_kind_for_command_name(name: &str) -> Option<PackageCacheKind> {
     {
         return Some(PackageCacheKind::Cargo);
     }
-    if name == "npm"
-        || name == "npx"
-        || name == "npm-cli.js"
-        || name.starts_with("npm-")
-    {
+    if name == "npm" || name == "npx" || name == "npm-cli.js" || name.starts_with("npm-") {
         return Some(PackageCacheKind::Npm);
     }
     if name == "pip" || name.starts_with("pip3") || name.starts_with("pip-") {
@@ -2845,17 +2841,7 @@ async fn clean_package_caches(
 ) -> Result<(u64, Vec<String>)> {
     let active = detect_active_package_manager_operations().await?;
     let home = dirs::home_dir().context("cannot determine home directory for package caches")?;
-    clean_package_caches_at(
-        &home,
-        cargo,
-        npm,
-        pip,
-        go,
-        apply,
-        protected_paths,
-        &active,
-    )
-    .await
+    clean_package_caches_at(&home, cargo, npm, pip, go, apply, protected_paths, &active).await
 }
 
 /// Clean package manager caches below `home`.
