@@ -214,6 +214,8 @@ pub(crate) struct GuardPolicy {
     // pauses lose deps mid-session since node_modules mtimes are idle).
     #[serde(default = "default_true")]
     pub(crate) clean_node_modules: bool,
+    // Keep the newest N generations in each Nix profile when cleanup is
+    // applied. Zero leaves profile generations untouched.
     #[serde(default = "default_nix_keep_generations")]
     pub(crate) nix_keep_generations: u32,
     #[serde(default = "default_node_modules_max_age_days")]

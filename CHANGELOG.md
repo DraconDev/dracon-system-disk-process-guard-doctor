@@ -14,8 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed (audit pass 2026-09-09, F36–F48)
+### Fixed (audit pass 2026-09-09, F36–F48, F58)
 
+- **Nix generation retention honors `nix_keep_generations`** (F58):
+  cleanup now passes `+N` to `nix-env --delete-generations` and avoids
+  `nix-collect-garbage -d`, so applying cleanup keeps the newest configured
+  profile generations instead of deleting all older generations.
 - **`--kinds` help lists real cleanup kinds** (F36): `(targets, trash,
   nix...)` → `(rust-build, node-deps, build-output, cache)`.
 - **`storage --json --cleanup` no longer silently drops cleanup**
