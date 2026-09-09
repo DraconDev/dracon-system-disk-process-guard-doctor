@@ -1310,27 +1310,40 @@ async fn send_notification(guard: &GuardPolicy, title: &str, body: &str) {
     }
 }
 
-fn log_guard_event(guard: &GuardPolicy, event: &str, details: &str) {
-    if guard.guard_log_file.is_empty() {
+fn rotate_guard_log_if_oversized(path: &Path, max_bytes: u64, startup: bool) {
+    if max_bytes == 0 {
         return;
     }
-    let path = PathBuf::from(&guard.guard_log_file);
-    if let Some(parent) = path.parent() {
+    let Ok(meta) = fs::metadata(path) else {
+        return;
+    };
+    if meta.len() <= max_bytes {
+        return;
+    }
+
+    if let Err(e) = fs::remove_file(path) {
+        if startup {
+            eprintln!("⚠️ startup: failed to rotate guard log: {}", e);
+        } else {
+            eprintln!("⚠️ failed to rotate guard log: {}", e);
+        }
+    } else if startup {
+        eprintln!("🧹 startup: rotated guard log (was {} bytes)", meta.len());
+    }
+}
+
+fn log_guard_event(guard: &GuardPolicy, event: &str, details: &str) {
+    let Some(path) = resolve_guard_log_path(&guard.guard_log_file) else {
+        return;
+    };
+    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
         if let Err(e) = fs::create_dir_all(parent) {
             eprintln!("⚠️ failed to create log dir: {}", e);
             return;
         }
     }
     let max_bytes = guard.guard_log_max_mb.saturating_mul(1024 * 1024);
-    if max_bytes > 0 {
-        if let Ok(meta) = fs::metadata(&path) {
-            if meta.len() > max_bytes {
-                if let Err(e) = fs::remove_file(&path) {
-                    eprintln!("⚠️ failed to rotate guard log: {}", e);
-                }
-            }
-        }
-    }
+    rotate_guard_log_if_oversized(&path, max_bytes, false);
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -6336,25 +6349,12 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
     let _lock = acquire_daemon_lock("dracon-system-guard")
         .with_context(|| "failed to acquire guard daemon lock")?;
 
-    // ── Startup cleanup: rotate guard log if oversized ──
-    {
-        let log_path = if guard.guard_log_file.is_empty() {
-            PathBuf::from("/tmp/dracon-system-guard.log")
-        } else {
-            PathBuf::from(&guard.guard_log_file)
-        };
+    // ── Startup cleanup: rotate the configured guard log if oversized ──
+    // Use the same resolver as event logging; a blank path disables both
+    // logging and rotation rather than silently targeting /tmp.
+    if let Some(log_path) = resolve_guard_log_path(&guard.guard_log_file) {
         let max_bytes = guard.guard_log_max_mb.saturating_mul(1024 * 1024);
-        if max_bytes > 0 {
-            if let Ok(meta) = std::fs::metadata(&log_path) {
-                if meta.len() > max_bytes {
-                    if let Err(e) = std::fs::remove_file(&log_path) {
-                        eprintln!("⚠️ startup: failed to rotate guard log: {}", e);
-                    } else {
-                        eprintln!("🧹 startup: rotated guard log (was {} bytes)", meta.len());
-                    }
-                }
-            }
-        }
+        rotate_guard_log_if_oversized(&log_path, max_bytes, true);
     }
 
     let shutdown = Arc::new(AtomicBool::new(false));

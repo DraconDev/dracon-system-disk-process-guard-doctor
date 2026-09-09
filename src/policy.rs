@@ -592,6 +592,17 @@ pub(crate) fn expand_tilde(raw: &str) -> PathBuf {
     PathBuf::from(raw)
 }
 
+/// Resolve the optional guard event-log path using the same config-path
+/// semantics at every call site. A blank value disables persistent logging;
+/// `~` and `~/...` refer to the service user's home directory.
+pub(crate) fn resolve_guard_log_path(raw: &str) -> Option<PathBuf> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    Some(expand_tilde(raw))
+}
+
 pub(crate) fn parse_kinds(csv: &str) -> HashSet<String> {
     csv.split(',')
         .map(|s| s.trim())
