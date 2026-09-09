@@ -1369,7 +1369,10 @@ fn guard_policy_defaults_cover_tmp_and_trash_age_fields() {
 fn guard_startup_config_errors_use_non_restarting_status() {
     let wrapped = anyhow::Error::new(PolicyLoadError(anyhow::anyhow!("invalid policy")));
     assert_eq!(exit_status_for_error(&wrapped), CONFIG_ERROR_EXIT_STATUS);
-    assert_eq!(exit_status_for_error(&anyhow::anyhow!("runtime failure")), 1);
+    assert_eq!(
+        exit_status_for_error(&anyhow::anyhow!("runtime failure")),
+        1
+    );
 }
 
 #[cfg(unix)]
@@ -1378,10 +1381,7 @@ fn non_unicode_policy_override_is_authoritative() {
     use std::os::unix::ffi::OsStringExt;
 
     let custom = std::ffi::OsString::from_vec(b"/tmp/policy-\xff.toml".to_vec());
-    let resolved = resolve_system_policy_path_with(
-        Some(custom.clone()),
-        PathBuf::from("/nowhere"),
-    );
+    let resolved = resolve_system_policy_path_with(Some(custom.clone()), PathBuf::from("/nowhere"));
 
     assert_eq!(resolved.unwrap(), Some(PathBuf::from(custom)));
 }
@@ -1396,9 +1396,7 @@ fn shipped_guard_service_exposes_host_tmp_for_clean_tmp() {
         "the shipped guard must share the host temporary namespace"
     );
     assert!(
-        !service
-            .lines()
-            .any(|line| line.trim() == "PrivateTmp=true"),
+        !service.lines().any(|line| line.trim() == "PrivateTmp=true"),
         "the shipped guard must not use a private temporary namespace"
     );
 
@@ -1412,7 +1410,10 @@ fn shipped_guard_service_exposes_host_tmp_for_clean_tmp() {
     );
 
     let guard = GuardPolicy::default();
-    assert!(guard.clean_tmp, "the production default must enable clean_tmp");
+    assert!(
+        guard.clean_tmp,
+        "the production default must enable clean_tmp"
+    );
     assert_eq!(
         guard.tmp_search_paths, "/tmp",
         "the policy and service must target the same host namespace"
@@ -1429,9 +1430,7 @@ fn shipped_guard_service_restart_policy_handles_disabled_and_bad_config() {
         "clean enabled=false exits must not restart the guard"
     );
     assert!(
-        !service
-            .lines()
-            .any(|line| line.trim() == "Restart=always"),
+        !service.lines().any(|line| line.trim() == "Restart=always"),
         "the guard must not restart after a clean policy-disabled exit"
     );
     assert!(

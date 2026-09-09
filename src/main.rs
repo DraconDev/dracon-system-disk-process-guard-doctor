@@ -6472,8 +6472,8 @@ async fn cmd_guard_clean(
 }
 
 async fn cmd_guard(cmd: GuardCommands) -> Result<()> {
-    let (_, policy) = load_system_policy()
-        .map_err(|error| anyhow::Error::new(PolicyLoadError(error)))?;
+    let (_, policy) =
+        load_system_policy().map_err(|error| anyhow::Error::new(PolicyLoadError(error)))?;
     let mut guard = policy.guard;
     normalize_guard_policy(&mut guard);
     match cmd {
