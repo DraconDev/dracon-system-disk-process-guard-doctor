@@ -728,10 +728,36 @@ fn read_process_cmdline_from(root: &Path, pid: i32) -> String {
 /// ENOENT is expected when a process exits during the snapshot; all other
 /// failures abort cache cleanup so interpreter/script wrappers fail closed.
 fn read_package_process_cmdline(root: &Path, pid: i32) -> Result<Option<String>> {
-    let path = root.join(pid.to_string()).join("cmdline");
+    let process_dir = root.join(pid.to_string());
+    let path = process_dir.join("cmdline");
     let file = match File::open(&path) {
         Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // A missing PID directory means the process exited during the
+            // snapshot. An existing PID directory without cmdline is an
+            // incomplete/uninspectable record and must fail closed.
+            match fs::metadata(&process_dir) {
+                Ok(_) => {
+                    anyhow::bail!(
+                        "process {} has no command line for package-cache protection",
+                        pid
+                    )
+                }
+                Err(directory_error)
+                    if directory_error.kind() == std::io::ErrorKind::NotFound =>
+                {
+                    return Ok(None);
+                }
+                Err(directory_error) => {
+                    return Err(directory_error).with_context(|| {
+                        format!(
+                            "cannot inspect process {} for package-cache protection",
+                            pid
+                        )
+                    })
+                }
+            }
+        }
         Err(error) => {
             return Err(error).with_context(|| {
                 format!(
@@ -746,7 +772,23 @@ fn read_package_process_cmdline(root: &Path, pid: i32) -> Result<Option<String>>
     let mut raw = Vec::with_capacity(MAX_PROCESS_CMDLINE_BYTES + 1);
     if let Err(error) = reader.read_to_end(&mut raw) {
         if error.kind() == std::io::ErrorKind::NotFound {
-            return Ok(None);
+            return match fs::metadata(&process_dir) {
+                Ok(_) => anyhow::bail!(
+                    "process {} command line disappeared while inspecting package-cache protection",
+                    pid
+                ),
+                Err(directory_error)
+                    if directory_error.kind() == std::io::ErrorKind::NotFound =>
+                {
+                    Ok(None)
+                }
+                Err(directory_error) => Err(directory_error).with_context(|| {
+                    format!(
+                        "cannot inspect process {} after command-line read failure",
+                        pid
+                    )
+                }),
+            };
         }
         return Err(error).with_context(|| {
             format!(
