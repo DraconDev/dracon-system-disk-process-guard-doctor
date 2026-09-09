@@ -134,8 +134,8 @@ clean_node_modules = false
 # /tmp top-level age hygiene (code default TRUE; v0.112.39 — 207 GiB
 # incident). False here to match this file's gentler posture.
 clean_tmp = false
-# tmp_search_paths = "/tmp"          # comma-separated roots; only /tmp or
-                                      # /var/tmp (or descendants) are accepted
+# tmp_search_paths = "/tmp"          # comma-separated roots; only /tmp
+                                      # (or descendants) are accepted
 # tmp_min_age_hours = 24              # only entries older than this
 # Trash recovery window (default 7 — 0 restores empty-everything).
 # trash_min_age_days = 7

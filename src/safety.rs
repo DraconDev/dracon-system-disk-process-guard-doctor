@@ -74,11 +74,11 @@ pub(crate) fn check_safe_to_delete(path: &Path, user_protected: &[String]) -> Re
 
 /// Temporary roots accepted by the age-based `clean_tmp` cleanup.
 ///
-/// These are deliberately an explicit allowlist rather than a generic
-/// "anything below the current user's home" rule. Paths below either root
-/// are allowed, but the configured root must resolve to one of them and may
-/// not itself be a symlink.
-pub(crate) const SAFE_TMP_ROOTS: &[&str] = &["/tmp", "/var/tmp"];
+/// This is deliberately an explicit allowlist rather than a generic
+/// "anything below the current user's home" rule. Paths below `/tmp` are
+/// allowed, but the configured root must resolve there and may not itself be
+/// a symlink.
+pub(crate) const SAFE_TMP_ROOTS: &[&str] = &["/tmp"];
 
 /// Validate a configured `clean_tmp` search root and return its canonical path.
 ///
@@ -119,7 +119,7 @@ pub(crate) fn check_safe_tmp_root(path: &Path) -> Result<PathBuf> {
         .any(|root| canon.starts_with(Path::new(root)))
     {
         anyhow::bail!(
-            "refusing configured tmp root {}: it must be /tmp or /var/tmp (or a descendant)",
+            "refusing configured tmp root {}: it must be /tmp (or a descendant)",
             canon.display()
         );
     }
