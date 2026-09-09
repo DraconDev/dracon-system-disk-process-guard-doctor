@@ -1919,8 +1919,20 @@ async fn active_package_operations_protect_all_package_caches_on_apply() {
     }
 
     let (reclaimed, cleaned) =
-        clean_package_caches_at(&home, true, true, true, true, true, &[], &active, false)
-            .await
+        clean_package_caches_at(
+            &home,
+            true,
+            true,
+            true,
+            true,
+            true,
+            &[],
+            &active,
+            false,
+            Path::new("ps"),
+            Path::new("/proc"),
+        )
+        .await
             .expect("protected cache cleanup");
     assert_eq!(
         reclaimed, 0,
