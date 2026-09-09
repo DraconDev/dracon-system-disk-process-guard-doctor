@@ -14,8 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed (audit pass 2026-09-09, F36–F48, F58–F61)
+### Fixed (audit pass 2026-09-09, F36–F48, F58–F62)
 
+- **Auto-renice respects a process's current nice value** (F62): graduated
+  targets are now floors, so a process already at nice 10 is never raised to
+  priority by resetting it to a lower tier such as nice 5.
 - **Guard service restart policy distinguishes disablement, config errors,
   and crashes** (F61): the shipped and generated units use
   `Restart=on-failure`; valid `enabled = false` exits 0 without restarting,

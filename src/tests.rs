@@ -1536,53 +1536,53 @@ fn guard_removes_only_its_own_freeze_marker() {
 
 #[test]
 fn test_graduated_nice_value_cpu_tiers() {
-    assert_eq!(graduated_nice_value(100.0, 0, 5), 5);
-    assert_eq!(graduated_nice_value(180.0, 0, 5), 5);
-    assert_eq!(graduated_nice_value(250.0, 0, 5), 5);
-    assert_eq!(graduated_nice_value(300.0, 0, 5), 10);
-    assert_eq!(graduated_nice_value(450.0, 0, 5), 10);
-    assert_eq!(graduated_nice_value(500.0, 0, 5), 15);
-    assert_eq!(graduated_nice_value(900.0, 0, 5), 15);
+    assert_eq!(graduated_nice_value(100.0, 0, 5, 0), 5);
+    assert_eq!(graduated_nice_value(180.0, 0, 5, 0), 5);
+    assert_eq!(graduated_nice_value(250.0, 0, 5, 0), 5);
+    assert_eq!(graduated_nice_value(300.0, 0, 5, 0), 10);
+    assert_eq!(graduated_nice_value(450.0, 0, 5, 0), 10);
+    assert_eq!(graduated_nice_value(500.0, 0, 5, 0), 15);
+    assert_eq!(graduated_nice_value(900.0, 0, 5, 0), 15);
 }
 
 #[test]
 fn test_graduated_nice_value_memory_tiers() {
-    assert_eq!(graduated_nice_value(0.0, 2000, 5), 5);
-    assert_eq!(graduated_nice_value(0.0, 4096, 5), 5);
-    assert_eq!(graduated_nice_value(0.0, 5000, 5), 5);
-    assert_eq!(graduated_nice_value(0.0, 8192, 5), 10);
-    assert_eq!(graduated_nice_value(0.0, 16000, 5), 10);
+    assert_eq!(graduated_nice_value(0.0, 2000, 5, 0), 5);
+    assert_eq!(graduated_nice_value(0.0, 4096, 5, 0), 5);
+    assert_eq!(graduated_nice_value(0.0, 5000, 5, 0), 5);
+    assert_eq!(graduated_nice_value(0.0, 8192, 5, 0), 10);
+    assert_eq!(graduated_nice_value(0.0, 16000, 5, 0), 10);
 }
 
 #[test]
 fn test_graduated_nice_value_cpu_plus_memory() {
-    assert_eq!(graduated_nice_value(300.0, 8192, 5), 10);
-    assert_eq!(graduated_nice_value(500.0, 4096, 5), 15);
-    assert_eq!(graduated_nice_value(180.0, 8192, 5), 10);
+    assert_eq!(graduated_nice_value(300.0, 8192, 5, 0), 10);
+    assert_eq!(graduated_nice_value(500.0, 4096, 5, 0), 15);
+    assert_eq!(graduated_nice_value(180.0, 8192, 5, 0), 10);
 }
 
 #[test]
 fn test_graduated_nice_value_clamped() {
-    assert_eq!(graduated_nice_value(0.0, 0, 5), 5);
-    assert_eq!(graduated_nice_value(0.0, 0, 0), 0);
+    assert_eq!(graduated_nice_value(0.0, 0, 5, 0), 5);
+    assert_eq!(graduated_nice_value(0.0, 0, 0, 0), 0);
 }
 
 #[test]
 fn test_graduated_nice_value_negative_base_clamped() {
-    assert_eq!(graduated_nice_value(0.0, 0, -5), 0);
+    assert_eq!(graduated_nice_value(0.0, 0, -5, 0), 0);
 }
 
 #[test]
 fn test_graduated_nice_value_high_base_clamped() {
-    assert_eq!(graduated_nice_value(0.0, 0, 20), 19);
+    assert_eq!(graduated_nice_value(0.0, 0, 20, 0), 19);
 }
 
 #[test]
 fn test_graduated_nice_value_memory_boundary() {
-    assert_eq!(graduated_nice_value(0.0, 4095, 0), 0);
-    assert_eq!(graduated_nice_value(0.0, 4096, 0), 5);
-    assert_eq!(graduated_nice_value(0.0, 8191, 0), 5);
-    assert_eq!(graduated_nice_value(0.0, 8192, 0), 10);
+    assert_eq!(graduated_nice_value(0.0, 4095, 0, 0), 0);
+    assert_eq!(graduated_nice_value(0.0, 4096, 0, 0), 5);
+    assert_eq!(graduated_nice_value(0.0, 8191, 0, 0), 5);
+    assert_eq!(graduated_nice_value(0.0, 8192, 0, 0), 10);
 }
 
 fn guard_test_tmp(name: &str) -> std::path::PathBuf {
