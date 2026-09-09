@@ -274,7 +274,7 @@ enum GuardCommands {
         #[arg(long)]
         json: bool,
     },
-    /// Run continuous guard loop.
+    /// Run continuous guard loop. A disabled policy exits 0; invalid startup policy exits 78 (EX_CONFIG).
     Daemon,
     /// Prune system caches and Docker resources.
     Prune {
@@ -5120,12 +5120,12 @@ pub(crate) struct LinkStatusReport {
     pub(crate) missing_link: usize,
 }
 
-fn resolve_system_policy_path() -> Option<PathBuf> {
+fn resolve_system_policy_path() -> Result<Option<PathBuf>> {
     if let Ok(custom) = std::env::var("DRACON_SYSTEM_POLICY") {
-        let p = PathBuf::from(custom);
-        if p.exists() {
-            return Some(p);
-        }
+        // An explicit override is authoritative. Do not fall back to a
+        // default policy when the override is missing or inaccessible: that
+        // would turn a configuration error into an unexpected default run.
+        return Ok(Some(PathBuf::from(custom)));
     }
 
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/home"));
@@ -5136,7 +5136,21 @@ fn resolve_system_policy_path() -> Option<PathBuf> {
         home.join(".dracon/system/config.toml"),
     ];
 
-    candidates.into_iter().find(|p| p.exists())
+    for path in candidates {
+        match std::fs::metadata(&path) {
+            Ok(_) => return Ok(Some(path)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(anyhow::anyhow!(
+                    "failed to inspect policy {}: {}",
+                    path.display(),
+                    error
+                ));
+            }
+        }
+    }
+
+    Ok(None)
 }
 
 const CONFIG_ERROR_EXIT_STATUS: i32 = 78; // sysexits.h EX_CONFIG
@@ -5165,7 +5179,7 @@ fn exit_status_for_error(error: &anyhow::Error) -> i32 {
 }
 
 pub(crate) fn load_system_policy() -> Result<(Option<PathBuf>, SystemPolicy)> {
-    let Some(path) = resolve_system_policy_path() else {
+    let Some(path) = resolve_system_policy_path()? else {
         return Ok((None, SystemPolicy::default()));
     };
     // FIXED 2026-07-21 (v0.112.33, audit F4.12): read errors are now
