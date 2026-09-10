@@ -1482,7 +1482,7 @@ async fn clean_tmp_paths_keeps_old_process_cwd_directory() {
 
     let roots = vec![root.display().to_string()];
     let unheld_bytes = unheld_file.metadata().expect("unheld metadata").len();
-    let open_paths = collect_open_paths_under_from(&proc_root, &[root.clone()]).await;
+    let open_paths = collect_open_paths_under_from(&proc_root, std::slice::from_ref(&root)).await;
     assert!(
         open_paths.contains(&cwd_dir),
         "process cwd must be included in open-path protection"
