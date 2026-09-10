@@ -5765,6 +5765,20 @@ async fn cmd_status(json: bool) -> Result<()> {
             Cell::new("⚙️ system policy"),
             Cell::new(&report.system_policy),
         ]);
+        let (policy_icon, policy_color) = if report.system_policy_exists {
+            ("\u{2705}", Color::Green)
+        } else {
+            ("\u{274c}", Color::Red)
+        };
+        table.add_row(vec![
+            Cell::new(policy_icon).fg(policy_color),
+            Cell::new("system policy exists"),
+            Cell::new(if report.system_policy_exists {
+                "yes"
+            } else {
+                "no"
+            }),
+        ]);
 
         // ---- Section: Services ----
         let (icon, color) = if report.sync_service_active {

@@ -40,6 +40,17 @@ fn run_status_with_home(home: &Path, json: bool) -> Output {
     command.output().expect("run status")
 }
 
+fn assert_human_policy_existence(output: &Output, expected: bool) {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let expected_value = if expected { "yes" } else { "no" };
+    assert!(
+        stdout.lines().any(|line| {
+            line.contains("system policy exists") && line.contains(expected_value)
+        }),
+        "human status should report system policy exists={expected}:\n{stdout}"
+    );
+}
+
 fn unique_policy_path() -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -90,6 +101,7 @@ fn status_reports_explicit_policy_override_in_human_and_json_modes() {
         String::from_utf8_lossy(&human.stdout).contains(&expected),
         "human status should report the explicit policy path"
     );
+    assert_human_policy_existence(&human, true);
 
     let json = run_status_at(&path, true);
     assert_eq!(json.status.code(), Some(0));
@@ -112,6 +124,7 @@ fn status_reports_missing_explicit_policy_override() {
         String::from_utf8_lossy(&human.stdout).contains(&expected),
         "human status should report a missing explicit policy path"
     );
+    assert_human_policy_existence(&human, false);
 
     let json = run_status_at(&path, true);
     assert_eq!(json.status.code(), Some(0));
@@ -135,6 +148,7 @@ fn status_reports_first_discovered_policy_in_human_and_json_modes() {
         String::from_utf8_lossy(&human.stdout).contains(&expected),
         "human status should report the first discovered policy path"
     );
+    assert_human_policy_existence(&human, true);
 
     let json = run_status_with_home(&home, true);
     assert_eq!(json.status.code(), Some(0));
@@ -159,6 +173,7 @@ fn status_reports_canonical_fallback_when_no_policy_exists() {
         String::from_utf8_lossy(&human.stdout).contains(&expected),
         "human status should report the canonical fallback policy path"
     );
+    assert_human_policy_existence(&human, false);
 
     let json = run_status_with_home(&home, true);
     assert_eq!(json.status.code(), Some(0));
