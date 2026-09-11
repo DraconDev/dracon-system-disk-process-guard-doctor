@@ -2,12 +2,14 @@
 
 **Proactive disk space monitoring and automatic cleanup.** Disk, process, guard, doctor — local machine diagnostics and watchdog. Prevents "disk full" emergencies on development machines and servers.
 
-![`dracon-system status` output](https://raw.githubusercontent.com/DraconDev/dracon-utilities/main/dracon-system/docs/status-output.png)
+![`dracon-system status` output](https://raw.githubusercontent.com/DraconDev/dracon-system-disk-process-guard-doctor/main/docs/status-output.png)
 
 This page is the user guide for `dracon-system` (also rendered on
-crates.io). The canonical source is the `dracon-system/` directory of the
-[`dracon-utilities`](https://github.com/DraconDev/dracon-utilities) monorepo
-on `main`; the standalone GitHub/GitLab/Codeberg repos are frozen mirrors.
+crates.io). This repo is the canonical, live source on `main`
+(mirrored to GitLab and Codeberg). For workspace builds it is also
+checked out as a nested standalone repo under `dracon-system/` in the
+[`dracon-utilities`](https://github.com/DraconDev/dracon-utilities)
+parent repo — a regular nested repo, not a submodule.
 
 ## Install
 
@@ -17,23 +19,24 @@ cargo install dracon-system
 
 The binary lands at `~/.cargo/bin/dracon-system` (version 0.112.40 on
 crates.io). The shipped guard unit runs `%h/.local/bin/dracon-system`, so
-for service use either copy it there or install via the monorepo:
+for service use either copy it there or install from a checkout:
 
 ```bash
-# Clone the monorepo
-git clone https://github.com/DraconDev/dracon-utilities.git
-cd dracon-utilities
+# Clone the repo
+git clone https://github.com/DraconDev/dracon-system-disk-process-guard-doctor.git
+cd dracon-system-disk-process-guard-doctor
 
-# Build (locked: workspace discipline requires --locked)
-cargo build --release --locked -p dracon-system
+# Build (locked)
+cargo build --release --locked
 
 # Install where the guard unit looks
 install -d "$HOME/.local/bin"
 install -m 0755 target/release/dracon-system "$HOME/.local/bin/dracon-system"
 ```
 
-Or run `./install.sh` at the monorepo root to install all three utilities
-plus services and hooks in one pass.
+Or, from a full `dracon-utilities` checkout, run `./install.sh` at the
+parent root to install all three utilities plus services and hooks in
+one pass.
 
 ## Features
 
@@ -272,7 +275,7 @@ The live config lives at `~/.dracon/utilities/system/dracon-system.toml`
 same effective policy path in both human and `--json` output, including
 whether that path exists. The annotated template is
 `dracon-system.example.toml` in this repo
-(`dracon-system/dracon-system.example.toml` from the monorepo root).
+(`dracon-system.example.toml` at the repo root; `dracon-system/dracon-system.example.toml` from a `dracon-utilities` checkout).
 Note: the shipped example is intentionally stricter (more report-only)
 than the compiled defaults — see the header comment in the template:
 
@@ -442,16 +445,16 @@ machine-readable snapshot (disk state, memory `observed` vs stabilized
 - `dracon-system.example.toml` — example config
 - `dracon-system-guard.service` — systemd user-service unit
 - `LICENSE`, `SECURITY.md`, `.gitignore`, `.github/` — repo metadata
-- Architecture + invariants: [`docs/SOURCE_OF_TRUTH.md`](https://github.com/DraconDev/dracon-utilities/blob/main/dracon-system/docs/SOURCE_OF_TRUTH.md)
-- Design notes: [`BLUEPRINT.md`](https://github.com/DraconDev/dracon-utilities/blob/main/dracon-system/BLUEPRINT.md)
+- Architecture + invariants: [`docs/SOURCE_OF_TRUTH.md`](https://github.com/DraconDev/dracon-system-disk-process-guard-doctor/blob/main/docs/SOURCE_OF_TRUTH.md)
+- Design notes: [`BLUEPRINT.md`](https://github.com/DraconDev/dracon-system-disk-process-guard-doctor/blob/main/BLUEPRINT.md)
 
 ## Relationship to the Monorepo
 
 | Boundary | Decision |
 |----------|----------|
-| Source code | The `dracon-system/` directory of the `dracon-utilities` monorepo (`main` branch) |
-| Source of truth | The `dracon-utilities` monorepo; the standalone repos are frozen mirrors |
-| Workspace integration | Included by the `dracon-utilities` meta workspace when checked out under `dracon-system/` |
+| Source code | This repo (`main` branch) |
+| Source of truth | This repo; mirrored to GitLab and Codeberg; nested checkout under `dracon-system/` in the `dracon-utilities` parent |
+| Workspace integration | Builds standalone, or as a `dracon-utilities` workspace member when nested under `dracon-system/` |
 | Shared libraries | Published `dracon-system-lib` crate from crates.io |
 | Operational policy | `~/.dracon/utilities/` TOML files |
 
@@ -486,8 +489,8 @@ Protects machines from disk/process pressure and provides deterministic diagnost
 
 ## Maintenance
 
-Changes are made in the `dracon-utilities` monorepo (`dracon-system/` on `main`).
-The standalone repos are frozen mirrors of that tree.
+Changes are made here, on `main`. The GitLab/Codeberg mirrors follow
+automatically, as does the nested checkout in the `dracon-utilities` parent.
 
 ## Binary Size
 
