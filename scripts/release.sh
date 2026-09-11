@@ -397,8 +397,8 @@ fi
 
 # ----- step 8: commit, tag, push, gh release ------------------------------
 log "step 8/${TOTAL_STEPS}: commit, tag, push, gh release"
-# The utility directory is parent-gitignored by design; force staging is
-# scoped to the exact release surfaces and never uses `git add .`.
+# Force staging is scoped to the exact release surfaces (also covers
+# ignored release-note paths) and never uses `git add .`.
 run git add -f -- "${RELPFX}Cargo.toml" "Cargo.lock" "${RELPFX}CHANGELOG.md" "$NOTES_REL"
 # Idempotent re-run path: skip already-completed commit, tag, and GitHub
 # release operations when a previous run failed later in the pipeline.
