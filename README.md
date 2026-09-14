@@ -374,7 +374,9 @@ When disk hits action level:
 When disk usage is above `proactive_cleanup_percent` (80% in the shipped
 example) but below `disk_action_percent`, stale reclaim candidates are
 removed on a bounded cadence. Active builds (running cargo/rustc) are
-always protected.
+always protected. Since 2026-09-14 the action tier applies the same
+lingering idea via `rust_target_action_min_age_days` (default 7 days),
+so a target rebuilt hours ago is never deleted at any pressure level.
 
 ### Process Monitoring
 

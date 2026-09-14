@@ -14,6 +14,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (target-cleanup eagerness, 2026-09-14)
+
+- **Action-level Rust target cleanup is age-gated** (new
+  `rust_target_action_min_age_days`, default 7 days): targets touched
+  within the window are never candidates at any pressure level, not just
+  in the proactive tier. Previously the action tier deleted ANY target
+  above `cleanup_min_size_mb` (only a 60s mtime backstop), which thrashed
+  daily-driver projects — `dracon-platform/target` was deleted ~20x in
+  2 days with each rebuild regrowing 4–8 GiB straight back over the
+  action line. A just-rebuilt target is fresh by definition, so the gate
+  doubles as a re-clean cooldown. `0` disables the gate and restores the
+  old delete-anything posture.
+
 ### Fixed (audit pass 2026-09-09, F36–F48, F58–F69)
 
 - **Persistent event storage is bounded** (F69): the JSONL event log keeps a
