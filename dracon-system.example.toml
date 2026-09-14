@@ -148,8 +148,15 @@ clean_tmp = false
 # process_stuck_after_secs = 600
 # Rapid-fill trip rate in GiB/hour (default 20.0).
 # disk_rapid_fill_gbph = 20.0
-# Rust target age gate (default 14 days).
+# Rust target age gates (2026-09-14: action tier used to delete ANY target
+# above min size with only a 60s mtime backstop, thrashing daily drivers).
+# Proactive tier (disk >= proactive_cleanup_percent): only targets older
+# than this.
 # rust_target_max_age_days = 14
+# Action/critical tier: only targets untouched for this long (default 7
+# days). A just-rebuilt target is fresh by definition, so this doubles as
+# a re-clean cooldown. 0 disables the gate (old delete-anything posture).
+# rust_target_action_min_age_days = 7
 
 # Disk trend prediction
 track_trends = true

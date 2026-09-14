@@ -360,9 +360,10 @@ guard_log_max_mb = 1
 When disk hits action level:
 
 1. Scan configured directories for Rust `target/` dirs
-2. Detect active `cargo`/`rustc` processes
-3. Protect target dirs in active build working directories
-4. Delete unprotected target dirs ≥ `cleanup_min_size_mb`
+2. Skip targets touched within `rust_target_action_min_age_days` (default 7 days) — active projects are never candidates
+3. Detect active `cargo`/`rustc` processes
+4. Protect target dirs in active build working directories
+5. Delete unprotected, lingering target dirs ≥ `cleanup_min_size_mb`
 5. Detect active cargo/npm/pip/go operations and skip their corresponding cache estimates in dry-run; apply refuses package-cache deletion without a shared lock
 6. Clean aged top-level entries only below the explicitly safe `/tmp` root or its descendants; invalid `tmp_search_paths` entries are refused
 7. Also clean safe trash, Nix garbage, stale `node_modules/`, and Docker resources when those policy toggles are enabled

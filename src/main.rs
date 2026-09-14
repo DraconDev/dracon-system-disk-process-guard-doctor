@@ -2576,6 +2576,20 @@ async fn get_dir_size(path: &Path) -> Result<u64> {
     Ok(bytes)
 }
 
+/// Action-level lingering gate for Rust target cleanup (2026-09-14).
+///
+/// A target dir touched within `min_age_days` is an active project, not a
+/// cleanup candidate — even when disk pressure is at action/critical level.
+/// `min_age_days == 0` disables the gate (the pre-fix delete-anything
+/// posture). Pure so the guard loop and unit tests share one definition.
+pub(crate) fn rust_target_old_enough_for_action_cleanup(
+    mtime_secs_ago: u64,
+    min_age_days: u64,
+) -> bool {
+    min_age_days == 0
+        || mtime_secs_ago >= min_age_days.saturating_mul(24).saturating_mul(3600)
+}
+
 /// Perform automatic cleanup of Rust target directories
 async fn auto_cleanup_rust_targets(
     guard: &GuardPolicy,
@@ -2614,8 +2628,9 @@ async fn auto_cleanup_rust_targets(
     // Find all target directories
     let targets = find_rust_target_dirs(&roots).await?;
 
-    // Detect active builds - ONLY protection mechanism
-    // We protect target dirs where cargo/rustc is actively running
+    // Detect active builds — one of TWO protection mechanisms (the other is
+    // the lingering age gate below). We protect target dirs where
+    // cargo/rustc is actively running.
     let active_builds = detect_active_rust_builds().await?;
     state.active_build_pids = active_builds.clone();
 
@@ -2649,6 +2664,27 @@ async fn auto_cleanup_rust_targets(
     for target in targets {
         // Skip if too small
         if target.bytes < min_size_bytes {
+            continue;
+        }
+
+        // CHANGED 2026-09-14: lingering gate — a target touched within
+        // rust_target_action_min_age_days (default 7) belongs to an active
+        // project and is never an action-level candidate, no matter how big
+        // it is. The old code deleted anything above min_size (modulo the
+        // 60s backstop), which thrashed daily drivers: each deleted target
+        // was rebuilt within hours, pushing disk straight back over the
+        // action line for the next cycle. Bonus: a just-rebuilt target is
+        // fresh by definition, so the gate doubles as a re-clean cooldown.
+        if !rust_target_old_enough_for_action_cleanup(
+            target.mtime_secs_ago,
+            guard.rust_target_action_min_age_days,
+        ) {
+            result.protected_paths.push(format!(
+                "{} (touched {}d ago, under action min-age {}d)",
+                target.path.display(),
+                target.mtime_secs_ago / 86400,
+                guard.rust_target_action_min_age_days
+            ));
             continue;
         }
 

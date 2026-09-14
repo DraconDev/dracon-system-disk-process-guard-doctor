@@ -246,6 +246,14 @@ pub(crate) struct GuardPolicy {
     pub(crate) proactive_cleanup_percent: u8,
     #[serde(default = "default_rust_target_max_age_days")]
     pub(crate) rust_target_max_age_days: u64,
+    // CHANGED 2026-09-14: action-level Rust target cleanup now has its own
+    // lingering gate (default 7 days). Previously the action tier deleted ANY
+    // target above cleanup_min_size_mb (only a 60s mtime backstop), which
+    // thrashed daily-driver projects (dracon-platform/target deleted ~20x in
+    // 2 days, each rebuild regrowing 4-8 GiB straight back over the action
+    // line). 0 disables the gate and restores the old delete-anything posture.
+    #[serde(default = "default_rust_target_action_min_age_days")]
+    pub(crate) rust_target_action_min_age_days: u64,
     #[serde(default = "default_proactive_cleanup_interval_cycles")]
     pub(crate) proactive_cleanup_interval_cycles: u64,
 }
@@ -320,6 +328,7 @@ impl Default for GuardPolicy {
             protected_paths: Vec::new(),
             proactive_cleanup_percent: default_proactive_cleanup_percent(),
             rust_target_max_age_days: default_rust_target_max_age_days(),
+            rust_target_action_min_age_days: default_rust_target_action_min_age_days(),
             proactive_cleanup_interval_cycles: default_proactive_cleanup_interval_cycles(),
         }
     }
@@ -553,6 +562,10 @@ pub(crate) fn default_auto_cleanup_interval_secs() -> u64 {
 
 pub(crate) fn default_rust_target_max_age_days() -> u64 {
     14
+}
+
+pub(crate) fn default_rust_target_action_min_age_days() -> u64 {
+    7
 }
 
 pub(crate) fn default_proactive_cleanup_interval_cycles() -> u64 {

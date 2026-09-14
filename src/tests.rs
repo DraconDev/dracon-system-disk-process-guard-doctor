@@ -1865,7 +1865,36 @@ fn proactive_cleanup_defaults() {
     assert_eq!(default_proactive_cleanup_percent(), 80);
     assert_eq!(default_auto_cleanup_interval_secs(), 1800);
     assert_eq!(default_rust_target_max_age_days(), 14);
+    assert_eq!(default_rust_target_action_min_age_days(), 7);
     assert_eq!(default_proactive_cleanup_interval_cycles(), 120);
+}
+
+#[test]
+fn action_cleanup_age_gate_lingering_definition() {
+    // 2026-09-14: action-level cleanup must not touch active projects.
+    const DAY: u64 = 86400;
+    // Freshly built (hours old) is never a candidate.
+    assert!(!rust_target_old_enough_for_action_cleanup(3600, 7));
+    // Touched yesterday is still active.
+    assert!(!rust_target_old_enough_for_action_cleanup(DAY, 7));
+    // Exactly at the boundary counts as lingering.
+    assert!(rust_target_old_enough_for_action_cleanup(7 * DAY, 7));
+    // Untouched for weeks is a candidate.
+    assert!(rust_target_old_enough_for_action_cleanup(30 * DAY, 7));
+}
+
+#[test]
+fn action_cleanup_age_gate_zero_disables() {
+    // 0 restores the pre-fix delete-anything posture for operators who
+    // want it; normalize must not clamp it away.
+    assert!(rust_target_old_enough_for_action_cleanup(0, 0));
+    let policy = GuardPolicy {
+        rust_target_action_min_age_days: 0,
+        ..Default::default()
+    };
+    let mut policy = policy;
+    normalize_guard_policy(&mut policy);
+    assert_eq!(policy.rust_target_action_min_age_days, 0);
 }
 
 #[test]
