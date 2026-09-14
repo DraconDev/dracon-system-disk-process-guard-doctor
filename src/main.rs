@@ -2586,8 +2586,7 @@ pub(crate) fn rust_target_old_enough_for_action_cleanup(
     mtime_secs_ago: u64,
     min_age_days: u64,
 ) -> bool {
-    min_age_days == 0
-        || mtime_secs_ago >= min_age_days.saturating_mul(24).saturating_mul(3600)
+    min_age_days == 0 || mtime_secs_ago >= min_age_days.saturating_mul(24).saturating_mul(3600)
 }
 
 /// Perform automatic cleanup of Rust target directories
