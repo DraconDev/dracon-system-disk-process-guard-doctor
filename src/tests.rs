@@ -1617,21 +1617,48 @@ fn shipped_guard_service_restart_policy_handles_disabled_and_bad_config() {
 
 #[tokio::test]
 async fn guard_report_completes_for_ok_disk() {
+    let fixture = tempfile::tempdir().unwrap();
     let mut state = GuardRuntimeState::default();
+    // This is a report-assembly smoke test, not a cleanup integration test.
+    // The host disk may be full. Force the OK branch and explicitly disable
+    // every mutating/expensive subsystem instead of inheriting live defaults.
+    // 101 is a test-only unreachable threshold for a percentage (0..=100).
     let guard = GuardPolicy {
-        disk_warn_percent: 70,
-        disk_action_percent: 85,
-        disk_critical_percent: 95,
-        disk_mount_path: "/".into(),
+        disk_early_warn_percent: 101,
+        disk_warn_percent: 101,
+        disk_action_percent: 101,
+        disk_critical_percent: 101,
+        proactive_cleanup_percent: 101,
+        disk_mount_path: fixture.path().display().to_string(),
+        sync_freeze_marker: fixture.path().join("freeze").display().to_string(),
+        guard_log_file: fixture.path().join("guard.log").display().to_string(),
         freeze_sync_at_action: false,
         track_trends: false,
+        notify: false,
+        auto_cleanup_apply: false,
+        auto_cleanup_rust: false,
+        docker_prune: false,
+        clean_package_caches: false,
+        clean_trash: false,
+        clean_nix_garbage: false,
+        clean_node_modules: false,
+        clean_tmp: false,
+        monitor_inodes: false,
+        monitor_zombies: false,
+        monitor_memory: false,
+        monitor_logs: false,
+        auto_renice: false,
+        auto_renice_on_memory: false,
+        bias_oom_on_pressure: false,
         ..GuardPolicy::default()
     };
-    let report = run_guard_once(&guard, &mut state).await;
-    assert!(
-        report.is_ok(),
-        "guard should complete successfully with default policy on ok disk"
-    );
+    let report = tokio::time::timeout(
+        Duration::from_secs(10),
+        run_guard_once(&guard, &mut state),
+    ).await.expect("report assembly must be bounded").expect("report succeeds");
+    assert_eq!(report.disk_state, "ok");
+    assert!(!report.sync_frozen);
+    assert!(!fixture.path().join("freeze").exists());
 }
 
 #[test]
