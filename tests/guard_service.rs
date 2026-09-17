@@ -44,9 +44,9 @@ fn assert_human_policy_existence(output: &Output, expected: bool) {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let expected_value = if expected { "yes" } else { "no" };
     assert!(
-        stdout.lines().any(|line| {
-            line.contains("system policy exists") && line.contains(expected_value)
-        }),
+        stdout
+            .lines()
+            .any(|line| { line.contains("system policy exists") && line.contains(expected_value) }),
         "human status should report system policy exists={expected}:\n{stdout}"
     );
 }

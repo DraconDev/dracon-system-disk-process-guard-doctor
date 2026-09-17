@@ -97,7 +97,10 @@ fn guard_clean_bare_command_selects_all_targets() {
     else {
         panic!("expected guard clean command");
     };
-    assert!(!all, "the bare command should not need an explicit --all flag");
+    assert!(
+        !all,
+        "the bare command should not need an explicit --all flag"
+    );
 
     let targets = resolve_clean_targets(
         all,
@@ -1354,10 +1357,12 @@ async fn empty_trash_min_age_keeps_recent_entries() {
     let recent = trash_files.join("recent-stuff.txt");
     write_file_with_mtime(&old, b"old", 30 * 86_400);
     write_file_with_mtime(&recent, b"new", 3_600);
-    fs::write(trash_info.join("old-stuff.txt.trashinfo"), b"[Trash Info]")
-        .expect("info old");
-    fs::write(trash_info.join("recent-stuff.txt.trashinfo"), b"[Trash Info]")
-        .expect("info recent");
+    fs::write(trash_info.join("old-stuff.txt.trashinfo"), b"[Trash Info]").expect("info old");
+    fs::write(
+        trash_info.join("recent-stuff.txt.trashinfo"),
+        b"[Trash Info]",
+    )
+    .expect("info recent");
 
     let (reclaimed, cleaned) = empty_trash_at(&home, true, &[], false, 7)
         .await
@@ -1366,8 +1371,14 @@ async fn empty_trash_min_age_keeps_recent_entries() {
     assert_eq!(cleaned.len(), 1, "exactly one cleanup line expected");
     assert!(!old.exists(), "old entry must be removed");
     assert!(recent.exists(), "recent entry must be kept");
-    assert!(!trash_info.join("old-stuff.txt.trashinfo").exists(), "paired .trashinfo for the old entry must be removed");
-    assert!(trash_info.join("recent-stuff.txt.trashinfo").exists(), "paired .trashinfo for the kept entry must survive");
+    assert!(
+        !trash_info.join("old-stuff.txt.trashinfo").exists(),
+        "paired .trashinfo for the old entry must be removed"
+    );
+    assert!(
+        trash_info.join("recent-stuff.txt.trashinfo").exists(),
+        "paired .trashinfo for the kept entry must survive"
+    );
 
     let _ = fs::remove_dir_all(&home);
 }
@@ -1411,17 +1422,27 @@ async fn clean_tmp_paths_respects_age_dry_run_and_open_fds() {
         .expect("dry run");
     assert!(dry_bytes > 0, "dry run should report reclaimable bytes");
     assert!(old_file.exists(), "dry run must not delete");
-    assert!(!dry_lines.iter().any(|l| l.contains("active-session")), "young entries are not candidates");
-    assert!(!dry_lines.iter().any(|l| l.contains("held-open")), "open-held entries are skipped even when old");
+    assert!(
+        !dry_lines.iter().any(|l| l.contains("active-session")),
+        "young entries are not candidates"
+    );
+    assert!(
+        !dry_lines.iter().any(|l| l.contains("held-open")),
+        "open-held entries are skipped even when old"
+    );
 
     // Apply removes only aged, unheld entries.
-    let (bytes, lines) = clean_tmp_paths(true, &roots, 24, &[])
-        .await
-        .expect("apply");
-    assert_eq!(bytes, dry_bytes, "apply should reclaim exactly what dry-run measured");
+    let (bytes, lines) = clean_tmp_paths(true, &roots, 24, &[]).await.expect("apply");
+    assert_eq!(
+        bytes, dry_bytes,
+        "apply should reclaim exactly what dry-run measured"
+    );
     assert!(!old_file.exists(), "aged unheld entry must be removed");
     assert!(new_file.exists(), "young entry must be kept");
-    assert!(held.exists(), "entry held open by a live process must be kept");
+    assert!(
+        held.exists(),
+        "entry held open by a live process must be kept"
+    );
     assert_eq!(lines.len(), 1);
 
     drop(handle);
@@ -1488,14 +1509,16 @@ async fn clean_tmp_paths_keeps_old_process_cwd_directory() {
         "process cwd must be included in open-path protection"
     );
 
-    let (reclaimed, cleaned) =
-        clean_tmp_paths_with_proc(true, &roots, 24, &[], &proc_root)
-            .await
-            .expect("tmp cleanup");
+    let (reclaimed, cleaned) = clean_tmp_paths_with_proc(true, &roots, 24, &[], &proc_root)
+        .await
+        .expect("tmp cleanup");
     assert_eq!(reclaimed, unheld_bytes);
     assert_eq!(cleaned.len(), 1, "only the unheld old entry is removed");
     assert!(cwd_dir.exists(), "an old process cwd must remain protected");
-    assert!(!unheld_file.exists(), "an old unheld entry remains removable");
+    assert!(
+        !unheld_file.exists(),
+        "an old unheld entry remains removable"
+    );
 
     let _ = fs::remove_dir_all(&root);
     let _ = fs::remove_dir_all(&proc_root);
@@ -2324,7 +2347,10 @@ fn filter_selectable_cleanup_kinds_drops_git_db_and_keeps_artifact_kinds() {
         .collect();
     let (kept, excluded) = filter_selectable_cleanup_kinds(requested);
     assert!(kept.contains("rust-build") && kept.contains("node-deps"));
-    assert!(!kept.contains("git-db"), "git-db must never survive filtering");
+    assert!(
+        !kept.contains("git-db"),
+        "git-db must never survive filtering"
+    );
     assert_eq!(excluded, vec!["git-db".to_string()]);
 
     // Absent kind → no exclusions reported; empty request stays empty.
@@ -2375,11 +2401,8 @@ fn storage_cleanup_apply_refuses_git_database_subpaths() {
     // ADDED 2026-09-09 (audit F38): the M2 backstop matched only
     // `file_name() == ".git"`, so `/repo/.git/objects` passed. Any
     // path with a `.git` component must be refused.
-    let err = validate_storage_cleanup_path(
-        Path::new("/home/user/Dev/project/.git/objects"),
-        &[],
-    )
-    .expect_err("apply must refuse paths under a .git directory");
+    let err = validate_storage_cleanup_path(Path::new("/home/user/Dev/project/.git/objects"), &[])
+        .expect_err("apply must refuse paths under a .git directory");
     assert!(format!("{err:#}").contains("git database"));
 }
 

@@ -7,12 +7,12 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::process::Stdio;
 #[cfg(test)]
 use std::os::unix::fs::symlink;
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -192,7 +192,7 @@ enum Commands {
         #[arg(long)]
         allow_tracked: bool,
         /// Minimum file size to consider (MiB). Unset falls back to the policy
-    /// `storage.min_size_mb` (built-in default 512).
+        /// `storage.min_size_mb` (built-in default 512).
         #[arg(long)]
         min_size_mb: Option<u64>,
         // CHANGED 2026-09-09 (audit F36): the old help named kinds
@@ -634,7 +634,12 @@ async fn bounded_process_table_output() -> Result<Vec<u8>> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|e| anyhow::anyhow!("ps spawn failed: {} (is /run/current-system/sw/bin on PATH?)", e))?;
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "ps spawn failed: {} (is /run/current-system/sw/bin on PATH?)",
+                e
+            )
+        })?;
 
     let mut stdout = child
         .stdout
@@ -3107,7 +3112,14 @@ async fn empty_trash(
     let Some(home) = dirs::home_dir() else {
         return Ok((0, Vec::new()));
     };
-    empty_trash_at(&home, apply, protected_paths, credential_guard, min_age_days).await
+    empty_trash_at(
+        &home,
+        apply,
+        protected_paths,
+        credential_guard,
+        min_age_days,
+    )
+    .await
 }
 
 async fn empty_trash_at(
@@ -4487,7 +4499,8 @@ async fn collect_open_paths_under_from(
 }
 
 fn path_has_open_ancestor(path: &Path, open: &std::collections::HashSet<PathBuf>) -> bool {
-    open.iter().any(|o| o.starts_with(path) || path.starts_with(o))
+    open.iter()
+        .any(|o| o.starts_with(path) || path.starts_with(o))
 }
 
 fn resolve_safe_tmp_roots(roots: &[String]) -> Result<Vec<PathBuf>> {
@@ -4517,8 +4530,14 @@ async fn clean_tmp_paths(
     min_age_hours: u64,
     protected_paths: &[String],
 ) -> Result<(u64, Vec<String>)> {
-    clean_tmp_paths_with_proc(apply, roots, min_age_hours, protected_paths, Path::new("/proc"))
-        .await
+    clean_tmp_paths_with_proc(
+        apply,
+        roots,
+        min_age_hours,
+        protected_paths,
+        Path::new("/proc"),
+    )
+    .await
 }
 
 async fn clean_tmp_paths_with_proc(
@@ -4589,7 +4608,11 @@ async fn clean_tmp_paths_with_proc(
             };
             if !apply {
                 reclaimed += entry_size;
-                cleaned.push(format!("{} ({}, dry-run)", path.display(), human_bytes(entry_size)));
+                cleaned.push(format!(
+                    "{} ({}, dry-run)",
+                    path.display(),
+                    human_bytes(entry_size)
+                ));
                 continue;
             }
             let removed = if meta.is_dir() {
@@ -4666,7 +4689,14 @@ async fn run_auto_cleanup(
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-        match clean_tmp_paths(apply, &roots, guard.tmp_min_age_hours, &guard.protected_paths).await {
+        match clean_tmp_paths(
+            apply,
+            &roots,
+            guard.tmp_min_age_hours,
+            &guard.protected_paths,
+        )
+        .await
+        {
             Ok((bytes, cleaned)) => {
                 total_reclaimed += bytes;
                 all_cleaned.extend(cleaned.iter().map(|s| format!("Tmp: {}", s)));
@@ -5626,9 +5656,7 @@ pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) {
     // ADDED 2026-09-09 (audit F43): an early-warn above warn made the
     // early band (`used >= early && used < warn`) permanently empty —
     // the operator's early-warning config silently did nothing.
-    policy.disk_early_warn_percent = policy
-        .disk_early_warn_percent
-        .min(policy.disk_warn_percent);
+    policy.disk_early_warn_percent = policy.disk_early_warn_percent.min(policy.disk_warn_percent);
     policy.disk_action_percent = policy
         .disk_action_percent
         .max(policy.disk_warn_percent)
@@ -6534,7 +6562,10 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
                         "system",
                         EventSeverity::Error,
                         "guard/policy-reload",
-                        format!("SIGHUP reload: policy corrupted, keeping previous policy: {}", e),
+                        format!(
+                            "SIGHUP reload: policy corrupted, keeping previous policy: {}",
+                            e
+                        ),
                     ));
                 }
             }
@@ -6811,8 +6842,7 @@ async fn cmd_guard_clean(
     }
 
     if do_caches {
-        match clean_package_caches(true, true, true, true, apply).await
-        {
+        match clean_package_caches(true, true, true, true, apply).await {
             Ok((bytes, cleaned)) => {
                 total_reclaimed += bytes;
                 for c in cleaned {

@@ -784,8 +784,7 @@ fn clean_node_modules_flag_defaults_true_and_gates_toml_off() {
     // preserved) and parse false from TOML; run_auto_cleanup consults it
     // exactly like its clean_trash / clean_nix_garbage siblings, while
     // explicit `guard clean --node-modules` stays ungated.
-    let policy: crate::GuardPolicy =
-        toml::from_str("").expect("empty policy parses with defaults");
+    let policy: crate::GuardPolicy = toml::from_str("").expect("empty policy parses with defaults");
     assert!(policy.clean_node_modules);
     let policy: crate::GuardPolicy =
         toml::from_str("clean_node_modules = false\n").expect("flag-off parses");
