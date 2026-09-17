@@ -1617,7 +1617,8 @@ fn shipped_guard_service_restart_policy_handles_disabled_and_bad_config() {
 
 #[tokio::test]
 async fn guard_report_completes_for_ok_disk() {
-    let fixture = tempfile::tempdir().unwrap();
+    let fixture = unique_test_home("guard_report");
+    fs::create_dir(&fixture).expect("create report fixture");
     let mut state = GuardRuntimeState::default();
     // This is a report-assembly smoke test, not a cleanup integration test.
     // The host disk may be full. Force the OK branch and explicitly disable
@@ -1629,9 +1630,9 @@ async fn guard_report_completes_for_ok_disk() {
         disk_action_percent: 101,
         disk_critical_percent: 101,
         proactive_cleanup_percent: 101,
-        disk_mount_path: fixture.path().display().to_string(),
-        sync_freeze_marker: fixture.path().join("freeze").display().to_string(),
-        guard_log_file: fixture.path().join("guard.log").display().to_string(),
+        disk_mount_path: fixture.display().to_string(),
+        sync_freeze_marker: fixture.join("freeze").display().to_string(),
+        guard_log_file: fixture.join("guard.log").display().to_string(),
         freeze_sync_at_action: false,
         track_trends: false,
         notify: false,
@@ -1652,13 +1653,14 @@ async fn guard_report_completes_for_ok_disk() {
         bias_oom_on_pressure: false,
         ..GuardPolicy::default()
     };
-    let report = tokio::time::timeout(
-        Duration::from_secs(10),
-        run_guard_once(&guard, &mut state),
-    ).await.expect("report assembly must be bounded").expect("report succeeds");
+    let report = tokio::time::timeout(Duration::from_secs(10), run_guard_once(&guard, &mut state))
+        .await
+        .expect("report assembly must be bounded")
+        .expect("report succeeds");
     assert_eq!(report.disk_state, "ok");
     assert!(!report.sync_frozen);
-    assert!(!fixture.path().join("freeze").exists());
+    assert!(!fixture.join("freeze").exists());
+    fs::remove_dir_all(fixture).expect("remove report fixture");
 }
 
 #[test]
