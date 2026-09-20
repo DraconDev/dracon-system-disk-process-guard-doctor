@@ -37,7 +37,13 @@ ProtectHome=read-only
 # clean_tmp targets the host /tmp (the policy default), so do not create a
 # service-private temporary namespace. ProtectSystem remains strict; /tmp is
 # the explicit writable exception needed for age-based top-level cleanup.
-ReadWritePaths=%h/.dracon %h/Dev %h/.local/state/dracon %h/.local/share/Trash %h/.cargo %h/.cache %h/.npm /tmp
+# CHANGED 2026-09-20 (space audit): %h/.local/state/nix is writable so
+# nix-env can lock the user profile for generation pruning (without it
+# every nix cleanup failed with "Read-only file system" under
+# ProtectHome=read-only). Deployed units predating the PrivateTmp=false
+# fix MUST be reinstalled — with PrivateTmp=true the guard "cleans" an
+# empty private namespace while host /tmp (86 GiB on 2026-09-20) grows.
+ReadWritePaths=%h/.dracon %h/Dev %h/.local/state/dracon %h/.local/share/Trash %h/.cargo %h/.cache %h/.npm %h/.local/state/nix /tmp
 PrivateTmp=false
 
 # Kernel-level sandboxing (all certain — these daemons never use these privileges)
@@ -52,7 +58,14 @@ MemoryDenyWriteExecute=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
 RemoveIPC=true
-CapabilityBoundingSet=
+# CHANGED 2026-08-25 (v0.112.39): grant CAP_SYS_NICE so
+# auto_renice_on_memory actually runs — without it the guard could lower
+# an offender's priority but never restore it, so it emitted
+# "renice mitigation disabled" and did nothing during pressure.
+# Scoped to exactly this one capability; NoNewPrivileges stays on.
+# (Adopted into the repo 2026-09-20; previously live-only edit.)
+AmbientCapabilities=CAP_SYS_NICE
+CapabilityBoundingSet=CAP_SYS_NICE
 RestrictNamespaces=true
 
 # Syscall allowlist — returns EPERM instead of SIGSYS for safe discovery
