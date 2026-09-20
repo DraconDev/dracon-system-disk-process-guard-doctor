@@ -3306,13 +3306,15 @@ async fn empty_trash_at(
 /// `min_age_days`, together with their paired `.trashinfo` metadata.
 /// Works for both apply and dry-run (dry-run only measures). Protected
 /// paths are skipped with a note; removal failures keep the entry and
-/// do not abort the pass.
+/// do not abort the pass. `skip_names` holds top-level entry names the
+/// credential guard flagged: they are kept unconditionally.
 async fn purge_aged_trash_entries(
     trash_files: &Path,
     trash_info: &Path,
     min_age_days: u64,
     protected_paths: &[String],
     apply: bool,
+    skip_names: &std::collections::HashSet<String>,
 ) -> Result<(u64, u64)> {
     // CHANGED 2026-09-09 (audit F41): `now - age` panicked (debug) on
     // absurd min_age configs. checked_sub falls back to the epoch, so an
@@ -3326,6 +3328,12 @@ async fn purge_aged_trash_entries(
     let mut rd = tokio::fs::read_dir(trash_files).await?;
     while let Some(entry) = rd.next_entry().await? {
         let path = entry.path();
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            if skip_names.contains(name) {
+                eprintln!("🛡️ keeping credential-flagged trash entry {}", path.display());
+                continue;
+            }
+        }
         let meta = match entry.metadata().await {
             Ok(m) => m,
             Err(_) => continue,
