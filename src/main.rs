@@ -2534,7 +2534,8 @@ async fn find_rust_target_dirs(roots: &[PathBuf]) -> Result<Vec<TargetDirInfo>> 
                 continue;
             }
 
-            // Get directory size using du
+            // Get directory size (in-process walk; unreadable trees measure 0
+            // and fall out at the min-size gate below).
             let bytes = match get_dir_size(&path).await {
                 Ok(b) => b,
                 Err(_) => continue,
