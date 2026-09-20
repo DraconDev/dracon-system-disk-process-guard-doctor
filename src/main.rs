@@ -3434,8 +3434,15 @@ async fn clean_nix_garbage_with_bins(
 ) -> Result<(u64, Vec<String>)> {
     let reclaimed = 0u64;
     let mut cleaned = Vec::new();
-    let mut errs = Vec::new();
 
+    // CHANGED 2026-09-20 (space audit): generation-prune failures are
+    // warnings, not fatal. The old code returned Err when either nix-env
+    // call failed, which discarded the store-GC results collected below
+    // and surfaced "Nix cleanup failed" every cycle — while the valuable
+    // step (nix-collect-garbage) may have succeeded. A user-session guard
+    // can also never prune /nix/var/nix/profiles/default (root-owned),
+    // so that failure is expected, not exceptional; the per-profile note
+    // keeps it visible without failing the pass.
     if let Some(gen_arg) = nix_delete_generations_arg(keep_generations).filter(|_| apply) {
         match Command::new(nix_env)
             .args(["--delete-generations", &gen_arg])
@@ -3443,12 +3450,12 @@ async fn clean_nix_garbage_with_bins(
             .await
         {
             Ok(output) if output.status.success() => {}
-            Ok(output) => errs.push(format!(
-                "nix-env delete generations exited {}: {}",
+            Ok(output) => eprintln!(
+                "⚠️ nix-env user-profile generation prune failed ({}): {}",
                 output.status,
                 String::from_utf8_lossy(&output.stderr).trim()
-            )),
-            Err(e) => errs.push(format!("nix-env delete generations: {}", e)),
+            ),
+            Err(e) => eprintln!("⚠️ nix-env user-profile generation prune failed: {}", e),
         }
 
         match Command::new(nix_env)
@@ -3459,12 +3466,15 @@ async fn clean_nix_garbage_with_bins(
             .await
         {
             Ok(output) if output.status.success() => {}
-            Ok(output) => errs.push(format!(
-                "nix-env delete user profile generations exited {}: {}",
+            Ok(output) => eprintln!(
+                "⚠️ nix-env system-profile generation prune failed ({}): {} (needs root; user GC still runs)",
                 output.status,
                 String::from_utf8_lossy(&output.stderr).trim()
-            )),
-            Err(e) => errs.push(format!("nix-env delete user profile generations: {}", e)),
+            ),
+            Err(e) => eprintln!(
+                "⚠️ nix-env system-profile generation prune failed: {} (needs root; user GC still runs)",
+                e
+            ),
         }
     }
 
@@ -3494,14 +3504,6 @@ async fn clean_nix_garbage_with_bins(
         // nix-collect-garbage reports paths here, not their byte sizes. Do
         // not turn a path count into a made-up reclaim estimate; callers use
         // `reclaimed` for accounting and a false value is worse than zero.
-    }
-
-    if !errs.is_empty() {
-        return Err(anyhow::anyhow!(
-            "nix cleanup had {} error(s): {}",
-            errs.len(),
-            errs.join("; ")
-        ));
     }
 
     Ok((reclaimed, cleaned))
