@@ -3560,7 +3560,10 @@ async fn clean_old_node_modules(
         }
 
         for entry in WalkDir::new(root)
-            .max_depth(5)
+            // CHANGED 2026-09-20 (space audit): 5 -> 8, same nested-game
+            // reasoning as the rust target scan (depth 6 node_modules were
+            // invisible).
+            .max_depth(8)
             .follow_links(false)
             .into_iter()
             // Once an outer node_modules directory is considered, its
