@@ -1400,6 +1400,153 @@ async fn empty_trash_zero_age_empties_everything() {
     let _ = fs::remove_dir_all(&home);
 }
 
+fn set_mtime_old(path: &std::path::Path, age_secs: u64) {
+    let f = fs::File::open(path).expect("open fixture for mtime set");
+    let mtime = SystemTime::now() - Duration::from_secs(age_secs);
+    f.set_modified(mtime).expect("set_modified");
+}
+
+#[tokio::test]
+async fn empty_trash_credential_guard_skips_flagged_purges_rest() {
+    // 2026-09-20 (space audit): a single flagged entry must not abort the
+    // whole purge. The old all-or-nothing return let one trashed target/
+    // dir (cargo fingerprints named *mint_dev_token*) block 46 GiB of
+    // unrelated trash every cycle at 100% disk.
+    let home = unique_test_home("trash_skip");
+    let trash_files = home.join(".local/share/Trash/files");
+    let trash_info = home.join(".local/share/Trash/info");
+    fs::create_dir_all(&trash_files).expect("create trash fixture");
+    fs::create_dir_all(&trash_info).expect("create info fixture");
+
+    // Flagged OLD entry: nested credential-signal filename inside a dir
+    // whose own mtime is past the age cutoff (so only the skip set keeps
+    // it, not the age gate).
+    let flagged = trash_files.join("target");
+    fs::create_dir_all(flagged.join("debug/.fingerprint/x")).expect("flagged nest");
+    write_file_with_mtime(
+        &flagged.join("debug/.fingerprint/x/example-mint_dev_token"),
+        b"t",
+        30 * 86_400,
+    );
+    set_mtime_old(&flagged, 30 * 86_400);
+    let benign = trash_files.join("old-notes.txt");
+    write_file_with_mtime(&benign, b"notes", 30 * 86_400);
+    fs::write(trash_info.join("target.trashinfo"), b"[Trash Info]").expect("info flagged");
+    fs::write(trash_info.join("old-notes.txt.trashinfo"), b"[Trash Info]")
+        .expect("info benign");
+
+    let (reclaimed, _cleaned) = empty_trash_at(&home, true, &[], true, 7)
+        .await
+        .expect("purge with flagged entry");
+    assert!(reclaimed > 0, "benign entry must be purged despite the flag");
+    assert!(!benign.exists(), "benign old entry must be removed");
+    assert!(flagged.exists(), "flagged entry must be kept");
+    assert!(
+        trash_info.join("target.trashinfo").exists(),
+        "kept entry's .trashinfo must survive"
+    );
+    assert!(
+        !trash_info.join("old-notes.txt.trashinfo").exists(),
+        "purged entry's .trashinfo must be removed"
+    );
+
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[tokio::test]
+async fn empty_trash_zero_age_with_flagged_keeps_flagged() {
+    // Age-0 whole-empty mode must degrade to per-entry purge (not a wipe
+    // and not an abort) when the guard flags entries.
+    let home = unique_test_home("trash_zero_skip");
+    let trash_files = home.join(".local/share/Trash/files");
+    let trash_info = home.join(".local/share/Trash/info");
+    fs::create_dir_all(&trash_files).expect("create trash fixture");
+    fs::create_dir_all(&trash_info).expect("create info fixture");
+    write_file_with_mtime(&trash_files.join("id_ed25519.key"), b"k", 0);
+    write_file_with_mtime(&trash_files.join("a.txt"), b"a", 0);
+    fs::write(trash_info.join("id_ed25519.key.trashinfo"), b"[Trash Info]")
+        .expect("info flagged");
+    fs::write(trash_info.join("a.txt.trashinfo"), b"[Trash Info]").expect("info benign");
+
+    let (reclaimed, _cleaned) = empty_trash_at(&home, true, &[], true, 0)
+        .await
+        .expect("zero-age purge with flagged entry");
+    assert!(reclaimed > 0, "benign entry must be purged");
+    assert!(!trash_files.join("a.txt").exists());
+    assert!(
+        trash_files.join("id_ed25519.key").exists(),
+        "flagged entry must be kept"
+    );
+    assert!(
+        trash_info.join("id_ed25519.key.trashinfo").exists(),
+        "kept entry's .trashinfo must survive the zero-age path"
+    );
+
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn nix_cleanup_gen_prune_failure_still_runs_gc() {
+    // 2026-09-20 (space audit): nix-env prune failures (a user-session
+    // guard can never prune the root-owned system profile) must not fail
+    // the pass or discard store-GC results.
+    let root = unique_test_home("nix_warn");
+    fs::create_dir_all(&root).expect("create temp dir");
+    let nix_env = root.join("nix-env");
+    let nix_gc = root.join("nix-collect-garbage");
+    write_test_script(&nix_env, "echo 'cannot lock profile' >&2\nexit 1");
+    write_test_script(&nix_gc, "echo 'deleting /nix/store/abc'\nexit 0");
+
+    let (_bytes, cleaned) = clean_nix_garbage_with_bins(5, true, &nix_env, &nix_gc)
+        .await
+        .expect("GC success must win over prune failure");
+    assert_eq!(cleaned.len(), 1, "GC results must survive prune failure");
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn critical_tier_bypass_cleans_fresh_target() {
+    // 2026-09-20 (space audit): the lingering age gate must lift at the
+    // critical tier — a fresh 79 GiB workspace target held a 100% disk
+    // hostage. Gated pass protects it; bypass pass (dry-run) candidates it.
+    let root = unique_test_home("critical_rust");
+    let proj = root.join("proj");
+    let target = proj.join("target");
+    fs::create_dir_all(target.join("debug")).expect("target fixture");
+    fs::write(proj.join("Cargo.toml"), b"[package]\nname = \"x\"\n").expect("manifest");
+    fs::write(target.join("debug/blob"), vec![0u8; 1024]).expect("blob");
+    // Fresh (1h: past the 60s active-build backstop, inside the 7d gate).
+    set_mtime_old(&target, 3_600);
+
+    let policy = GuardPolicy {
+        rust_search_roots: root.to_str().expect("utf8 root").to_string(),
+        cleanup_min_size_mb: 0,
+        rust_target_action_min_age_days: 7,
+        ..Default::default()
+    };
+    let mut gated_state = GuardRuntimeState::default();
+    let gated = auto_cleanup_rust_targets(&policy, &mut gated_state, false, false)
+        .await
+        .expect("gated scan");
+    assert_eq!(
+        gated.cleaned_count, 0,
+        "age gate must protect the fresh target on the normal path"
+    );
+    let mut crit_state = GuardRuntimeState::default();
+    let crit = auto_cleanup_rust_targets(&policy, &mut crit_state, false, true)
+        .await
+        .expect("bypass scan");
+    assert_eq!(
+        crit.cleaned_count, 1,
+        "critical bypass must candidate the fresh target"
+    );
+
+    let _ = fs::remove_dir_all(&root);
+}
+
 #[tokio::test]
 async fn clean_tmp_paths_respects_age_dry_run_and_open_fds() {
     let root = unique_test_home("tmp_clean");
