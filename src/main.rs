@@ -3178,8 +3178,10 @@ async fn empty_trash_at(
                                     if looks_credential_like(name) {
                                         match_count += 1;
                                         if let Ok(rel) = e.path().strip_prefix(&trash_files) {
-                                            if let Some(top) =
-                                                rel.components().next().and_then(|c| c.as_os_str().to_str())
+                                            if let Some(top) = rel
+                                                .components()
+                                                .next()
+                                                .and_then(|c| c.as_os_str().to_str())
                                             {
                                                 skip_names.insert(top.to_string());
                                             }
@@ -3348,7 +3350,10 @@ async fn purge_aged_trash_entries(
         let path = entry.path();
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
             if skip_names.contains(name) {
-                eprintln!("🛡️ keeping credential-flagged trash entry {}", path.display());
+                eprintln!(
+                    "🛡️ keeping credential-flagged trash entry {}",
+                    path.display()
+                );
                 continue;
             }
         }
@@ -6837,8 +6842,7 @@ async fn cmd_guard_clean(
 
     if do_rust {
         let mut runtime = GuardRuntimeState::default();
-        let result =
-            auto_cleanup_rust_targets(&guard_clone, &mut runtime, apply, false).await?;
+        let result = auto_cleanup_rust_targets(&guard_clone, &mut runtime, apply, false).await?;
         total_reclaimed += result.reclaimed_bytes;
         for p in result.cleaned_paths {
             actions.push(format!("Rust: {}", p));

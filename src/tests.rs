@@ -1432,13 +1432,15 @@ async fn empty_trash_credential_guard_skips_flagged_purges_rest() {
     let benign = trash_files.join("old-notes.txt");
     write_file_with_mtime(&benign, b"notes", 30 * 86_400);
     fs::write(trash_info.join("target.trashinfo"), b"[Trash Info]").expect("info flagged");
-    fs::write(trash_info.join("old-notes.txt.trashinfo"), b"[Trash Info]")
-        .expect("info benign");
+    fs::write(trash_info.join("old-notes.txt.trashinfo"), b"[Trash Info]").expect("info benign");
 
     let (reclaimed, _cleaned) = empty_trash_at(&home, true, &[], true, 7)
         .await
         .expect("purge with flagged entry");
-    assert!(reclaimed > 0, "benign entry must be purged despite the flag");
+    assert!(
+        reclaimed > 0,
+        "benign entry must be purged despite the flag"
+    );
     assert!(!benign.exists(), "benign old entry must be removed");
     assert!(flagged.exists(), "flagged entry must be kept");
     assert!(
@@ -1464,8 +1466,7 @@ async fn empty_trash_zero_age_with_flagged_keeps_flagged() {
     fs::create_dir_all(&trash_info).expect("create info fixture");
     write_file_with_mtime(&trash_files.join("id_ed25519.key"), b"k", 0);
     write_file_with_mtime(&trash_files.join("a.txt"), b"a", 0);
-    fs::write(trash_info.join("id_ed25519.key.trashinfo"), b"[Trash Info]")
-        .expect("info flagged");
+    fs::write(trash_info.join("id_ed25519.key.trashinfo"), b"[Trash Info]").expect("info flagged");
     fs::write(trash_info.join("a.txt.trashinfo"), b"[Trash Info]").expect("info benign");
 
     let (reclaimed, _cleaned) = empty_trash_at(&home, true, &[], true, 0)
