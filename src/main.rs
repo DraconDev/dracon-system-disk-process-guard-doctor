@@ -2570,14 +2570,19 @@ async fn get_dir_size(path: &Path) -> Result<u64> {
     // /tmp entries that was 580k forks (~34/s under the service's 20%
     // CPUQuota), turning one tmp pass into a multi-hour window with the
     // whole daemon loop (memory mitigation included) blocked behind it.
-    // Apparent-size semantics match `du -sb` closely enough for reclaim
-    // accounting: every entry's own length, links not followed.
+    // File bytes only (directory entries themselves excluded): this is the
+    // established contract — `active_package_operations_...` asserts a
+    // 5-byte fixture measures exactly 5 — and the useful "reclaimable
+    // bytes" semantic for cleanup accounting. Links not followed.
     let mut total = 0u64;
     for entry in walkdir::WalkDir::new(path)
         .follow_links(false)
         .into_iter()
         .filter_map(|e| e.ok())
     {
+        if entry.file_type().is_dir() {
+            continue;
+        }
         if let Ok(meta) = entry.metadata() {
             total = total.saturating_add(meta.len());
         }
