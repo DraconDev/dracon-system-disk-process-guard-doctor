@@ -3139,16 +3139,35 @@ async fn empty_trash_at(
         if trash_files.exists() {
             let size = get_dir_size(&trash_files).await.unwrap_or(0);
             if size > 0 {
+                // CHANGED 2026-09-20 (space audit): the old code aborted the
+                // ENTIRE trash purge when a single credential-signal filename
+                // matched anywhere inside — one trashed `target/` dir with
+                // cargo fingerprint files named `*mint_dev_token*` blocked
+                // 46 GiB of unrelated trash every cycle at 100% disk. The
+                // guard now skips only the flagged top-level entries and
+                // purges the rest. The scan must be exhaustive (no early
+                // break): a capped match list would purge entries the cap
+                // cut off.
+                let mut skip_names: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
                 if credential_guard {
-                    let mut matches = Vec::new();
+                    let mut samples = Vec::new();
+                    let mut match_count = 0u64;
                     for entry in walkdir::WalkDir::new(&trash_files).max_depth(8) {
                         match entry {
                             Ok(e) if e.file_type().is_file() => {
                                 if let Some(name) = e.file_name().to_str() {
                                     if looks_credential_like(name) {
-                                        matches.push(e.path().display().to_string());
-                                        if matches.len() >= 20 {
-                                            break;
+                                        match_count += 1;
+                                        if let Ok(rel) = e.path().strip_prefix(&trash_files) {
+                                            if let Some(top) =
+                                                rel.components().next().and_then(|c| c.as_os_str().to_str())
+                                            {
+                                                skip_names.insert(top.to_string());
+                                            }
+                                        }
+                                        if samples.len() < 3 {
+                                            samples.push(e.path().display().to_string());
                                         }
                                     }
                                 }
@@ -3156,32 +3175,32 @@ async fn empty_trash_at(
                             _ => {}
                         }
                     }
-                    if !matches.is_empty() {
+                    if !skip_names.is_empty() {
                         eprintln!(
-                            "🛡️ trash NOT emptied: {} credential-like entr{} (e.g. {})",
-                            matches.len(),
-                            if matches.len() == 1 { "y" } else { "ies" },
-                            matches
-                                .iter()
-                                .take(3)
-                                .map(|m| m.to_string())
-                                .collect::<Vec<_>>()
-                                .join(", ")
+                            "🛡️ trash: keeping {} flagged entr{} ({} credential-like file(s), e.g. {}), purging the rest",
+                            skip_names.len(),
+                            if skip_names.len() == 1 { "y" } else { "ies" },
+                            match_count,
+                            samples.join(", ")
                         );
                         emit_event(&DraconEvent::new(
                             "system",
                             EventSeverity::Warn,
                             "trash/credential-guard",
                             format!(
-                                "trash emptying blocked: {} credential-like entries",
-                                matches.len()
+                                "trash purge skipping {} flagged entries ({} credential-like files)",
+                                skip_names.len(),
+                                match_count
                             ),
                         ));
-                        return Ok((0, Vec::new()));
                     }
                 }
                 let mut succeeded = true;
-                if min_age_days > 0 {
+                // Flagged entries force the per-entry path even when
+                // min_age_days == 0: the whole-dir wipe below cannot spare
+                // individual entries.
+                let per_entry = min_age_days > 0 || !skip_names.is_empty();
+                if per_entry {
                     // CHANGED 2026-08-25 (v0.112.39): age-based purge — only
                     // entries whose mtime is older than the cutoff are
                     // removed, preserving a recovery window instead of
