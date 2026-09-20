@@ -3213,17 +3213,26 @@ async fn empty_trash_at(
                         min_age_days,
                         protected_paths,
                         apply,
+                        &skip_names,
                     )
                     .await
                     {
                         Ok((bytes, count)) if bytes > 0 => {
                             reclaimed += bytes;
-                            cleaned.push(format!(
-                                "{} trash entries older than {}d ({})",
-                                count,
-                                min_age_days,
-                                human_bytes(bytes)
-                            ));
+                            cleaned.push(if min_age_days > 0 {
+                                format!(
+                                    "{} trash entries older than {}d ({})",
+                                    count,
+                                    min_age_days,
+                                    human_bytes(bytes)
+                                )
+                            } else {
+                                format!(
+                                    "{} trash entries ({}, flagged entries kept)",
+                                    count,
+                                    human_bytes(bytes)
+                                )
+                            });
                         }
                         Ok(_) => {}
                         Err(e) => {
@@ -3247,7 +3256,9 @@ async fn empty_trash_at(
                         }
                     }
                 }
-                if min_age_days == 0 && (!apply || succeeded) {
+                // Skip-set runs already counted per-entry via purge_aged above;
+                // the whole-size accounting below is only for the wipe path.
+                if min_age_days == 0 && skip_names.is_empty() && (!apply || succeeded) {
                     cleaned.push(format!("trash files ({})", human_bytes(size)));
                     reclaimed += size;
                 }
@@ -3256,8 +3267,10 @@ async fn empty_trash_at(
 
         // In aged mode (min_age_days > 0) the .trashinfo files are removed
         // alongside their entries by purge_aged_trash_entries; only the old
-        // empty-everything path wipes the whole info directory.
-        if min_age_days == 0 && trash_info.exists() {
+        // empty-everything path wipes the whole info directory. A non-empty
+        // skip set also takes the per-entry path (whole-dir wipe would
+        // orphan the kept entries' .trashinfo).
+        if min_age_days == 0 && skip_names.is_empty() && trash_info.exists() {
             let info_size = get_dir_size(&trash_info).await.unwrap_or(0);
             if info_size > 0 {
                 let mut succeeded = true;
