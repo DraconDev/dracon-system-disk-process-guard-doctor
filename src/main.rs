@@ -3152,6 +3152,9 @@ async fn empty_trash_at(
     {
         let trash_files = home.join(".local/share/Trash/files");
         let trash_info = home.join(".local/share/Trash/info");
+        // Credential-flagged top-level entries to keep (2026-09-20 space
+        // audit: per-entry skip replaced the all-or-nothing abort).
+        let mut skip_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         if trash_files.exists() {
             let size = get_dir_size(&trash_files).await.unwrap_or(0);
@@ -3165,8 +3168,6 @@ async fn empty_trash_at(
                 // purges the rest. The scan must be exhaustive (no early
                 // break): a capped match list would purge entries the cap
                 // cut off.
-                let mut skip_names: std::collections::HashSet<String> =
-                    std::collections::HashSet::new();
                 if credential_guard {
                     let mut samples = Vec::new();
                     let mut match_count = 0u64;
