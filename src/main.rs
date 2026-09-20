@@ -2505,7 +2505,11 @@ async fn find_rust_target_dirs(roots: &[PathBuf]) -> Result<Vec<TargetDirInfo>> 
         }
 
         for entry in WalkDir::new(root)
-            .max_depth(5) // Don't go too deep
+            // CHANGED 2026-09-20 (space audit): 5 -> 8. Nested game repos
+            // sit at ~/Dev/dracon-platform/web/games/<wip|released>/<name>/
+            // so their target dirs are at depth 6 — the old cap made every
+            // nested-game build cache invisible to the guard.
+            .max_depth(8)
             .follow_links(false)
             .into_iter()
             .filter_map(|e| e.ok())
@@ -4701,7 +4705,16 @@ async fn run_auto_cleanup(
     // proactive tier (>= proactive_cleanup_percent) where the expensive
     // ~/Dev-wide rust-target scan stays on its own cadence.
     if guard.auto_cleanup_rust && include_rust {
-        match auto_cleanup_rust_targets(guard, state, apply).await {
+        // Critical tier lifts the lingering age gate (see
+        // auto_cleanup_rust_targets): rebuildable beats unbootable.
+        let bypass_age_gate = used >= guard.disk_critical_percent;
+        if bypass_age_gate {
+            eprintln!(
+                "🚨 disk at {}% (critical) — rust target age gate lifted for this pass",
+                used
+            );
+        }
+        match auto_cleanup_rust_targets(guard, state, apply, bypass_age_gate).await {
             Ok(result) => {
                 total_reclaimed += result.reclaimed_bytes;
                 if apply {
@@ -6820,7 +6833,8 @@ async fn cmd_guard_clean(
 
     if do_rust {
         let mut runtime = GuardRuntimeState::default();
-        let result = auto_cleanup_rust_targets(&guard_clone, &mut runtime, apply).await?;
+        let result =
+            auto_cleanup_rust_targets(&guard_clone, &mut runtime, apply, false).await?;
         total_reclaimed += result.reclaimed_bytes;
         for p in result.cleaned_paths {
             actions.push(format!("Rust: {}", p));
