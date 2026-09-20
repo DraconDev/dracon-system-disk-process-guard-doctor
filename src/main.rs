@@ -2564,25 +2564,24 @@ async fn find_rust_target_dirs(roots: &[PathBuf]) -> Result<Vec<TargetDirInfo>> 
 
 /// Get directory size using du command
 async fn get_dir_size(path: &Path) -> Result<u64> {
-    let out = Command::new("du")
-        .args(["-sb", "--"])
-        .arg(path)
-        .output()
-        .await?;
-
-    if !out.status.success() {
-        return Err(anyhow::anyhow!("du failed for {}", path.display()));
+    // CHANGED 2026-09-20 (space audit): in-process WalkDir sum. The old
+    // body shelled out to `du -sb` once PER CALL — with 580k top-level
+    // /tmp entries that was 580k forks (~34/s under the service's 20%
+    // CPUQuota), turning one tmp pass into a multi-hour window with the
+    // whole daemon loop (memory mitigation included) blocked behind it.
+    // Apparent-size semantics match `du -sb` closely enough for reclaim
+    // accounting: every entry's own length, links not followed.
+    let mut total = 0u64;
+    for entry in walkdir::WalkDir::new(path)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if let Ok(meta) = entry.metadata() {
+            total = total.saturating_add(meta.len());
+        }
     }
-
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let bytes = stdout
-        .split_whitespace()
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("unexpected du output"))?
-        .parse::<u64>()
-        .context("failed to parse du output as byte count")?;
-
-    Ok(bytes)
+    Ok(total)
 }
 
 /// Action-level lingering gate for Rust target cleanup (2026-09-14).
