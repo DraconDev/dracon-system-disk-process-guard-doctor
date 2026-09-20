@@ -2594,11 +2594,18 @@ pub(crate) fn rust_target_old_enough_for_action_cleanup(
     min_age_days == 0 || mtime_secs_ago >= min_age_days.saturating_mul(24).saturating_mul(3600)
 }
 
-/// Perform automatic cleanup of Rust target directories
+/// Perform automatic cleanup of Rust target directories.
+///
+/// `bypass_age_gate` is true only on the daemon's critical tier (disk at or
+/// above `disk_critical_percent`): at that point a full disk breaks the
+/// machine, so rebuildable targets are candidates even when freshly
+/// touched. Active-build, 60s-mtime and protected-path checks still apply —
+/// only the lingering age gate is lifted.
 async fn auto_cleanup_rust_targets(
     guard: &GuardPolicy,
     state: &mut GuardRuntimeState,
     apply: bool,
+    bypass_age_gate: bool,
 ) -> Result<AutoCleanupResult> {
     let mut result = AutoCleanupResult {
         cleaned_count: 0,
@@ -2679,10 +2686,16 @@ async fn auto_cleanup_rust_targets(
         // was rebuilt within hours, pushing disk straight back over the
         // action line for the next cycle. Bonus: a just-rebuilt target is
         // fresh by definition, so the gate doubles as a re-clean cooldown.
-        if !rust_target_old_enough_for_action_cleanup(
-            target.mtime_secs_ago,
-            guard.rust_target_action_min_age_days,
-        ) {
+        // CHANGED 2026-09-20 (space audit): at the critical tier a full
+        // disk is worse than a rebuild — the gate is lifted (a 79 GiB
+        // freshly-built workspace target held a 100% disk hostage because
+        // every reclaim path deferred to freshness).
+        if !bypass_age_gate
+            && !rust_target_old_enough_for_action_cleanup(
+                target.mtime_secs_ago,
+                guard.rust_target_action_min_age_days,
+            )
+        {
             result.protected_paths.push(format!(
                 "{} (touched {}d ago, under action min-age {}d)",
                 target.path.display(),
