@@ -230,6 +230,16 @@ dracon-system link status
 dracon-system link doctor
 dracon-system link apply
 
+# Relocate a cold dir to another disk, leave a symlink (dry-run unless --apply)
+dracon-system relocate ~/Dev/big-archive --to /mnt/data
+dracon-system relocate ~/Dev/big-archive --to /mnt/data --apply
+
+# Quarantine: hold-then-delete staging with a TTL
+dracon-system quarantine move ~/Dev/stale-stuff --apply
+dracon-system quarantine list
+dracon-system quarantine restore stale-stuff.1729958400000000000
+dracon-system quarantine expire --apply
+
 # Zram stats
 dracon-system zram --status
 dracon-system zram --gen-config

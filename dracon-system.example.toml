@@ -161,3 +161,14 @@ clean_tmp = false
 # Disk trend prediction
 track_trends = true
 trend_warn_hours = 24
+
+# ADDED 2026-09-26 (space tiers, Phase 1): extra mounts reported alongside
+# the primary mount (comma-separated). Visibility only: cleanup and freeze
+# decisions still key off the primary mount.
+# disk_extra_mounts = "/mnt/data"
+
+# ADDED 2026-09-26 (space tiers, Phase 1): quarantine root for
+# hold-then-delete staging (`quarantine move/list/restore/expire`).
+# quarantine_dir = "~/.local/share/dracon/quarantine"
+# Quarantine TTL in days; `expire` deletes older entries, 0 disables expiry.
+# quarantine_ttl_days = 30

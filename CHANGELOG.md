@@ -13,6 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > is the canonical record.
 
 ## [Unreleased]
+
+### Added (space tiers, Phase 1, 2026-09-26)
+
+- **`relocate` command**: move a cold directory to another root (typically
+  the second disk), verify the copy by file count + bytes, remove the
+  source, and leave a symlink. Dry-run by default, `--apply` performs the
+  move; prints a `[[links.entries]]` snippet to keep the link managed.
+- **Per-mount guard visibility** (new `disk_extra_mounts`, comma-separated):
+  `guard once` reports each extra mount's usage + state alongside the
+  primary mount in human and JSON output. Cleanup and freeze decisions
+  still key off the primary mount.
+- **`quarantine` command** (`move`/`list`/`restore`/`expire`): hold-then-delete
+  staging under `quarantine_dir` (default
+  `~/.local/share/dracon/quarantine`) with a TTL (`quarantine_ttl_days`,
+  default 30, 0 disables expiry). Each entry carries a manifest with its
+  origin; `restore` moves it back, `expire` deletes past-TTL entries
+  (dry-run unless `--apply`).
+- Design record: `docs/design/space-tiers-second-disk-2026-09-26.md`.
+
 ## [0.112.41] - 2026-09-14
 
 ### Fixed (target-cleanup eagerness, 2026-09-14)
