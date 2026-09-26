@@ -256,6 +256,17 @@ pub(crate) struct GuardPolicy {
     pub(crate) rust_target_action_min_age_days: u64,
     #[serde(default = "default_proactive_cleanup_interval_cycles")]
     pub(crate) proactive_cleanup_interval_cycles: u64,
+    // ADDED 2026-09-26 (space tiers): extra mounts reported alongside the
+    // primary mount (comma-separated). Visibility only: cleanup and freeze
+    // decisions still key off the primary mount.
+    #[serde(default)]
+    pub(crate) disk_extra_mounts: String,
+    // ADDED 2026-09-26 (space tiers): quarantine root for hold-then-delete.
+    #[serde(default = "default_quarantine_dir")]
+    pub(crate) quarantine_dir: String,
+    // ADDED 2026-09-26 (space tiers): quarantine TTL in days; 0 disables expiry.
+    #[serde(default = "default_quarantine_ttl_days")]
+    pub(crate) quarantine_ttl_days: u64,
 }
 
 impl Default for GuardPolicy {
@@ -330,6 +341,9 @@ impl Default for GuardPolicy {
             rust_target_max_age_days: default_rust_target_max_age_days(),
             rust_target_action_min_age_days: default_rust_target_action_min_age_days(),
             proactive_cleanup_interval_cycles: default_proactive_cleanup_interval_cycles(),
+            disk_extra_mounts: String::new(),
+            quarantine_dir: default_quarantine_dir(),
+            quarantine_ttl_days: default_quarantine_ttl_days(),
         }
     }
 }
@@ -570,6 +584,14 @@ pub(crate) fn default_rust_target_action_min_age_days() -> u64 {
 
 pub(crate) fn default_proactive_cleanup_interval_cycles() -> u64 {
     120
+}
+
+pub(crate) fn default_quarantine_dir() -> String {
+    "~/.local/share/dracon/quarantine".to_string()
+}
+
+pub(crate) fn default_quarantine_ttl_days() -> u64 {
+    30
 }
 
 // ---------------------------------------------------------------------------

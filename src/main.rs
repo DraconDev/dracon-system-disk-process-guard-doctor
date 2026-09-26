@@ -33,6 +33,10 @@ mod links;
 pub(crate) use links::*;
 mod policy;
 pub(crate) use policy::*;
+mod quarantine;
+pub(crate) use quarantine::*;
+mod relocate;
+pub(crate) use relocate::*;
 mod safety;
 pub(crate) use safety::*;
 mod zram;
@@ -44,6 +48,10 @@ mod events_tests;
 mod guard_tests;
 #[cfg(test)]
 mod links_tests;
+#[cfg(test)]
+mod quarantine_tests;
+#[cfg(test)]
+mod relocate_tests;
 
 // Memory-leak fix: the unrenice loops used to `continue` forever on renice
 // failure or ProcessIdentityStatus::Unavailable, never removing the entry from
@@ -243,6 +251,25 @@ enum Commands {
         #[command(subcommand)]
         cmd: GuardCommands,
     },
+    /// Relocate a cold directory to another root and leave a symlink (dry-run unless --apply).
+    Relocate {
+        /// Directory to relocate.
+        path: PathBuf,
+        /// Destination root (must exist, typically on the second disk).
+        #[arg(long)]
+        to: String,
+        /// Perform the move (copy, verify, remove, link).
+        #[arg(long)]
+        apply: bool,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Quarantine: hold-then-delete staging with a TTL.
+    Quarantine {
+        #[command(subcommand)]
+        cmd: QuarantineCommands,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -264,6 +291,38 @@ enum LinkCommands {
         /// Replace non-symlink paths at link locations (backs up existing content first).
         #[arg(long)]
         force_replace: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum QuarantineCommands {
+    /// Move a directory into quarantine (dry-run unless --apply).
+    Move {
+        /// Directory to quarantine.
+        path: PathBuf,
+        #[arg(long)]
+        apply: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// List quarantine entries.
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Restore an entry to its recorded origin.
+    Restore {
+        /// Entry name from `quarantine list`.
+        name: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Delete entries older than the TTL (dry-run unless --apply).
+    Expire {
+        #[arg(long)]
+        apply: bool,
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -370,12 +429,23 @@ struct GuardProcessAlert {
     nice_value: i32,
 }
 
+/// ADDED 2026-09-26 (space tiers): per-mount status for extra mounts.
+#[derive(Debug, Serialize)]
+pub(crate) struct MountStatus {
+    pub(crate) mount: String,
+    pub(crate) use_percent: u8,
+    pub(crate) state: String,
+}
+
 #[derive(Debug, Serialize)]
 pub(crate) struct GuardReport {
     enabled: bool,
     disk_use_percent: u8,
     disk_state: String,
     sync_frozen: bool,
+    /// ADDED 2026-09-26 (space tiers): extra mounts from
+    /// `disk_extra_mounts`. Visibility only; decisions key off primary.
+    extra_mounts: Vec<MountStatus>,
     alerts: Vec<GuardProcessAlert>,
     /// ADDED 2026-08-10 (v0.112.35): memory/swap pressure snapshot.
     memory: Option<MemoryReport>,
@@ -5529,6 +5599,27 @@ pub(crate) async fn run_guard_once(
     let marker = sync_freeze_marker_path(guard);
     let mut sync_frozen = marker.exists();
 
+    // ADDED 2026-09-26 (space tiers): extra mounts are visibility-only;
+    // cleanup and freeze decisions still key off the primary mount.
+    // Unreadable extras are skipped (verbose only) so one bad mount
+    // cannot fail the whole guard pass.
+    let mut extra_mounts = Vec::new();
+    for mount in guard
+        .disk_extra_mounts
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        match disk_details_for(mount).await {
+            Ok(d) => extra_mounts.push(MountStatus {
+                mount: d.mount,
+                use_percent: d.use_percent,
+                state: disk_state(d.use_percent, guard).to_string(),
+            }),
+            Err(e) => veprintln!(1, "extra mount {mount}: {e:#}"),
+        }
+    }
+
     check_disk_trends(guard, state, used).await;
     check_disk_early_warning(guard, state, used).await;
     let fill_gbph = check_rapid_disk_fill(guard, state, details.used_bytes, used).await;
@@ -5582,6 +5673,7 @@ pub(crate) async fn run_guard_once(
         disk_use_percent: used,
         disk_state: dstate,
         sync_frozen,
+        extra_mounts,
         alerts,
         memory,
         zombies,
@@ -5776,6 +5868,9 @@ pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) {
     policy.proactive_cleanup_interval_cycles = policy.proactive_cleanup_interval_cycles.max(1);
     if policy.sync_freeze_marker.trim().is_empty() {
         policy.sync_freeze_marker = default_sync_freeze_marker();
+    }
+    if policy.quarantine_dir.trim().is_empty() {
+        policy.quarantine_dir = default_quarantine_dir();
     }
     if policy.notify_command.trim().is_empty() {
         policy.notify_command = default_notify_command();
@@ -6371,6 +6466,21 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
             Cell::new(state_icon),
             Cell::new("Disk Usage"),
             Cell::new(format!("{}% ({})", report.disk_use_percent, state_label)),
+        ]);
+    }
+
+    for m in &report.extra_mounts {
+        let icon = match m.state.as_str() {
+            "ok" => "✅",
+            "warn" => "⚠️",
+            "action" => "🟠",
+            "critical" => "🔴",
+            _ => "",
+        };
+        table.add_row(vec![
+            Cell::new(icon),
+            Cell::new(format!("Disk {}", m.mount)),
+            Cell::new(format!("{}% ({})", m.use_percent, m.state)),
         ]);
     }
 
@@ -7077,6 +7187,8 @@ async fn run() -> Result<()> {
             max_depth,
         } => crate::links::cmd_symlinks(roots, json, max_depth),
         Commands::Guard { cmd } => cmd_guard(cmd).await,
+        Commands::Relocate { path, to, apply, json } => cmd_relocate(path, to, apply, json),
+        Commands::Quarantine { cmd } => cmd_quarantine(cmd),
         Commands::Events {
             tail,
             source,
