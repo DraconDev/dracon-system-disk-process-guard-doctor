@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   origin; `restore` moves it back, `expire` deletes past-TTL entries
   (dry-run unless `--apply`).
 - Design record: `docs/design/space-tiers-second-disk-2026-09-26.md`.
+- `relocate` refuses git-tracked directories unless `--allow-tracked` is
+  passed (moving one would replace it with a symlink and break the repo).
 
 ## [0.112.41] - 2026-09-14
 
