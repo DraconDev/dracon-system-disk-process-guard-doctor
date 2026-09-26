@@ -106,11 +106,41 @@ fn avail_bytes_for(path: &Path) -> Option<u64> {
     parse_df_details(&String::from_utf8_lossy(&out.stdout)).map(|d| d.avail_bytes)
 }
 
-/// Build a relocation plan. Pure except for the `df` probe; never mutates.
+/// True when `path` holds git-tracked content. Outside a work tree → false.
+/// Inside a work tree, inspection failures bail (fail closed).
+pub(crate) fn is_git_tracked(path: &Path) -> Result<bool> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("/"));
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    match std::process::Command::new("git")
+        .arg("-C")
+        .arg(parent)
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+    {
+        Ok(o) if o.status.success() => {}
+        _ => return Ok(false),
+    }
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(parent)
+        .args(["ls-files", "--", &name])
+        .output()
+        .map_err(|e| anyhow::anyhow!("git ls-files failed: {e}"))?;
+    if !out.status.success() {
+        anyhow::bail!("git ls-files failed for {}", path.display());
+    }
+    Ok(!out.stdout.iter().all(|b| b.is_ascii_whitespace()))
+}
+
+/// Build a relocation plan. Pure except for the `df`/git probes; never mutates.
 pub(crate) fn plan_relocate(
     source: &Path,
     dest_root: &Path,
     user_protected: &[String],
+    allow_tracked: bool,
 ) -> Result<RelocatePlan> {
     let mut issues = Vec::new();
     let meta = fs::symlink_metadata(source).map_err(|e| {
@@ -123,6 +153,13 @@ pub(crate) fn plan_relocate(
         anyhow::bail!("relocate supports directories only: {}", source.display());
     }
     let canon_src = check_safe_to_delete_guard(source, user_protected)?;
+    // Moving a tracked dir replaces it with a symlink and breaks the repo.
+    if !allow_tracked && is_git_tracked(&canon_src)? {
+        anyhow::bail!(
+            "refusing to relocate git-tracked {} — untrack it first or pass --allow-tracked",
+            source.display()
+        );
+    }
 
     let dest_meta = fs::symlink_metadata(dest_root)
         .map_err(|e| anyhow::anyhow!("destination root {}: {}", dest_root.display(), e))?;
@@ -229,12 +266,18 @@ fn display_home(path: &str) -> String {
     path.to_string()
 }
 
-pub(crate) fn cmd_relocate(path: PathBuf, to: String, apply: bool, json: bool) -> Result<()> {
+pub(crate) fn cmd_relocate(
+    path: PathBuf,
+    to: String,
+    apply: bool,
+    allow_tracked: bool,
+    json: bool,
+) -> Result<()> {
     use comfy_table::{presets::UTF8_FULL_CONDENSED, Cell, ContentArrangement, Table};
 
     let (_, policy) = load_system_policy()?;
     let dest_root = expand_tilde(&to);
-    let plan = plan_relocate(&path, &dest_root, &policy.guard.protected_paths)?;
+    let plan = plan_relocate(&path, &dest_root, &policy.guard.protected_paths, allow_tracked)?;
 
     if !apply {
         if json {

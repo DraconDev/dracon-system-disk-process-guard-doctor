@@ -66,7 +66,7 @@ fn plan_relocate_reports_size_and_readiness() {
     let src = fixture_dir(&root);
     let dest_root = root.join("cold");
     fs::create_dir_all(&dest_root).unwrap();
-    let plan = crate::plan_relocate(&src, &dest_root, &[]).unwrap();
+    let plan = crate::plan_relocate(&src, &dest_root, &[], false).unwrap();
     assert_eq!(plan.files, 2);
     assert_eq!(plan.bytes, 11);
     assert!(plan.ready);
@@ -79,7 +79,7 @@ fn plan_relocate_reports_size_and_readiness() {
 fn plan_relocate_refuses_missing_source() {
     let root = test_root("missing");
     fs::create_dir_all(&root).unwrap();
-    let err = crate::plan_relocate(&root.join("nope"), &root, &[]).unwrap_err();
+    let err = crate::plan_relocate(&root.join("nope"), &root, &[], false).unwrap_err();
     assert!(format!("{err:#}").contains("cannot inspect"));
     cleanup(&root);
 }
@@ -92,7 +92,7 @@ fn plan_relocate_refuses_symlink_source() {
     let src = fixture_dir(&root);
     let link = root.join("linkdir");
     symlink(&src, &link).unwrap();
-    let err = crate::plan_relocate(&link, &root, &[]).unwrap_err();
+    let err = crate::plan_relocate(&link, &root, &[], false).unwrap_err();
     assert!(format!("{err:#}").contains("symlink"));
     cleanup(&root);
 }
@@ -103,7 +103,7 @@ fn plan_relocate_refuses_existing_dest() {
     let src = fixture_dir(&root);
     let dest_root = root.join("cold");
     fs::create_dir_all(dest_root.join("src")).unwrap();
-    let err = crate::plan_relocate(&src, &dest_root, &[]).unwrap_err();
+    let err = crate::plan_relocate(&src, &dest_root, &[], false).unwrap_err();
     assert!(format!("{err:#}").contains("already exists"));
     cleanup(&root);
 }
@@ -115,7 +115,7 @@ fn plan_relocate_rejects_protected_source() {
     let dest_root = root.join("cold");
     fs::create_dir_all(&dest_root).unwrap();
     let protected = vec![src.display().to_string()];
-    let err = crate::plan_relocate(&src, &dest_root, &protected).unwrap_err();
+    let err = crate::plan_relocate(&src, &dest_root, &protected, false).unwrap_err();
     assert!(format!("{err:#}").contains("protected"));
     cleanup(&root);
 }
@@ -127,7 +127,7 @@ fn apply_relocate_roundtrip_leaves_symlink() {
     let src = fixture_dir(&root);
     let dest_root = root.join("cold");
     fs::create_dir_all(&dest_root).unwrap();
-    let plan = crate::plan_relocate(&src, &dest_root, &[]).unwrap();
+    let plan = crate::plan_relocate(&src, &dest_root, &[], false).unwrap();
     let report = crate::apply_relocate(&plan).unwrap();
     assert_eq!(report.files, 2);
     assert_eq!(report.bytes, 11);
@@ -140,5 +140,59 @@ fn apply_relocate_roundtrip_leaves_symlink() {
         b"world!"
     );
     assert!(report.policy_snippet.contains("[[links.entries]]"));
+    cleanup(&root);
+}
+
+fn git_repo_with_tracked_subdir(root: &Path) -> PathBuf {
+    use std::process::Command;
+    let repo = root.join("repo");
+    let sub = repo.join("tracked-dir");
+    fs::create_dir_all(&sub).unwrap();
+    fs::write(sub.join("f.txt"), b"data").unwrap();
+    let run = |args: &[&str]| {
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(status.status.success());
+    };
+    run(&["-c", "init.defaultBranch=main", "init", "-q"]);
+    run(&["-c", "user.email=t@t", "-c", "user.name=t", "add", "."]);
+    run(&[
+        "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init",
+    ]);
+    sub
+}
+
+#[test]
+fn plan_relocate_refuses_tracked_unless_allowed() {
+    let root = test_root("tracked");
+    let sub = git_repo_with_tracked_subdir(&root);
+    assert!(crate::is_git_tracked(&sub).unwrap());
+    let dest_root = root.join("cold");
+    fs::create_dir_all(&dest_root).unwrap();
+    let err = crate::plan_relocate(&sub, &dest_root, &[], false).unwrap_err();
+    assert!(format!("{err:#}").contains("git-tracked"));
+    let plan = crate::plan_relocate(&sub, &dest_root, &[], true).unwrap();
+    assert!(plan.ready);
+    cleanup(&root);
+}
+
+#[test]
+fn plan_relocate_allows_untracked_in_repo() {
+    let root = test_root("untracked");
+    let repo = root.join("repo");
+    let sub = git_repo_with_tracked_subdir(&root);
+    let fresh = repo.join("fresh-dir");
+    fs::create_dir_all(&fresh).unwrap();
+    fs::write(fresh.join("new.txt"), b"new").unwrap();
+    assert!(!crate::is_git_tracked(&fresh).unwrap());
+    let dest_root = root.join("cold");
+    fs::create_dir_all(&dest_root).unwrap();
+    let plan = crate::plan_relocate(&fresh, &dest_root, &[], false).unwrap();
+    assert!(plan.ready);
+    let _ = sub;
     cleanup(&root);
 }

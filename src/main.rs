@@ -261,6 +261,10 @@ enum Commands {
         /// Perform the move (copy, verify, remove, link).
         #[arg(long)]
         apply: bool,
+        /// Also relocate git-tracked directories (replaces the dir with a
+        /// symlink, which breaks the repo — untrack first instead).
+        #[arg(long)]
+        allow_tracked: bool,
         /// Emit machine-readable JSON.
         #[arg(long)]
         json: bool,
@@ -7187,7 +7191,9 @@ async fn run() -> Result<()> {
             max_depth,
         } => crate::links::cmd_symlinks(roots, json, max_depth),
         Commands::Guard { cmd } => cmd_guard(cmd).await,
-        Commands::Relocate { path, to, apply, json } => cmd_relocate(path, to, apply, json),
+        Commands::Relocate { path, to, apply, allow_tracked, json } => {
+            cmd_relocate(path, to, apply, allow_tracked, json)
+        }
         Commands::Quarantine { cmd } => cmd_quarantine(cmd),
         Commands::Events {
             tail,
