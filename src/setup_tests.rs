@@ -4,11 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 
 fn test_root(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "dracon-setup-test-{}-{}",
-        std::process::id(),
-        name
-    ))
+    std::env::temp_dir().join(format!("dracon-setup-test-{}-{}", std::process::id(), name))
 }
 
 #[test]

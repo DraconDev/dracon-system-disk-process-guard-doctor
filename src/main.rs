@@ -2870,16 +2870,17 @@ async fn auto_cleanup_rust_targets(
                     }
                 }
             } else {
-                let safe_path = match check_safe_to_delete_guard(&target.path, &guard.protected_paths) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        eprintln!("⚠️ skipping {}: {}", target.path.display(), e);
-                        result
-                            .protected_paths
-                            .push(target.path.display().to_string());
-                        continue;
-                    }
-                };
+                let safe_path =
+                    match check_safe_to_delete_guard(&target.path, &guard.protected_paths) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!("⚠️ skipping {}: {}", target.path.display(), e);
+                            result
+                                .protected_paths
+                                .push(target.path.display().to_string());
+                            continue;
+                        }
+                    };
                 if let Err(e) = tokio::fs::remove_dir_all(&safe_path).await {
                     eprintln!("⚠️ failed to remove {}: {}", target.path.display(), e);
                     continue;
@@ -3026,16 +3027,17 @@ async fn proactive_cleanup_rust_targets(
                     }
                 }
             } else {
-                let safe_path = match check_safe_to_delete_guard(&target.path, &guard.protected_paths) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        eprintln!("⚠️ proactive: skipping {}: {}", target.path.display(), e);
-                        result
-                            .protected_paths
-                            .push(target.path.display().to_string());
-                        continue;
-                    }
-                };
+                let safe_path =
+                    match check_safe_to_delete_guard(&target.path, &guard.protected_paths) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!("⚠️ proactive: skipping {}: {}", target.path.display(), e);
+                            result
+                                .protected_paths
+                                .push(target.path.display().to_string());
+                            continue;
+                        }
+                    };
                 if let Err(e) = tokio::fs::remove_dir_all(&safe_path).await {
                     eprintln!(
                         "⚠️ proactive: failed to remove {}: {}",
@@ -5733,9 +5735,7 @@ async fn run_proactive_cleanup(guard: &GuardPolicy, state: &mut GuardRuntimeStat
 /// drops below action% or candidates/moves run out. Report-only unless
 /// `auto_relocate_apply`. Tracked content is never a candidate.
 /// Returns (moves applied, bytes moved, candidates scanned).
-async fn run_auto_relocate(
-    guard: &GuardPolicy,
-) -> Result<(usize, u64, Vec<ColdCandidate>)> {
+async fn run_auto_relocate(guard: &GuardPolicy) -> Result<(usize, u64, Vec<ColdCandidate>)> {
     let cold_raw = guard.relocate_cold_root.trim();
     if cold_raw.is_empty() {
         return Ok((0, 0, Vec::new()));
@@ -6832,7 +6832,10 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
             table.add_row(vec![
                 Cell::new(""),
                 Cell::new("Cold candidates"),
-                Cell::new(format!("…and {} more", report.relocate_candidates.len() - 5)),
+                Cell::new(format!(
+                    "…and {} more",
+                    report.relocate_candidates.len() - 5
+                )),
             ]);
             break;
         }
@@ -7478,33 +7481,34 @@ async fn cmd_guard_clean(
             apply,
         };
         println!("{}", serde_json::to_string_pretty(&report)?);
+    // FIXED 2026-09-27 (audit rework round 4, F84): the two nested
+    // `else { if .. }` wrappers are `collapsible_else_if` on the pinned
+    // MSRV toolchain. Both collapsed; behaviour is identical.
+    } else if actions.is_empty() && failures.is_empty() {
+        println!("Nothing to clean.");
     } else {
-        if actions.is_empty() && failures.is_empty() {
-            println!("Nothing to clean.");
-        } else {
-            if !failures.is_empty() {
-                eprintln!("⚠️ {} cleanup step(s) failed:", failures.len());
-                for f in &failures {
-                    eprintln!("  • {}", f);
-                }
-                println!();
-            }
-            println!(
-                "Cleanup {}:",
-                if apply {
-                    "results"
-                } else {
-                    "preview (dry-run)"
-                }
-            );
-            for a in &actions {
-                println!("  • {}", a);
+        if !failures.is_empty() {
+            eprintln!("⚠️ {} cleanup step(s) failed:", failures.len());
+            for f in &failures {
+                eprintln!("  • {}", f);
             }
             println!();
-            println!("Total reclaimable: {}", human_bytes(total_reclaimed));
-            if !apply {
-                println!("Add --apply to execute cleanup.");
+        }
+        println!(
+            "Cleanup {}:",
+            if apply {
+                "results"
+            } else {
+                "preview (dry-run)"
             }
+        );
+        for a in &actions {
+            println!("  • {}", a);
+        }
+        println!();
+        println!("Total reclaimable: {}", human_bytes(total_reclaimed));
+        if !apply {
+            println!("Add --apply to execute cleanup.");
         }
     }
 
@@ -7585,9 +7589,13 @@ async fn run() -> Result<()> {
             max_depth,
         } => crate::links::cmd_symlinks(roots, json, max_depth),
         Commands::Guard { cmd } => cmd_guard(cmd).await,
-        Commands::Relocate { path, to, apply, allow_tracked, json } => {
-            cmd_relocate(path, to, apply, allow_tracked, json)
-        }
+        Commands::Relocate {
+            path,
+            to,
+            apply,
+            allow_tracked,
+            json,
+        } => cmd_relocate(path, to, apply, allow_tracked, json),
         Commands::Quarantine { cmd } => cmd_quarantine(cmd),
         Commands::Setup { apply, json } => cmd_setup(apply, json),
         Commands::Events {

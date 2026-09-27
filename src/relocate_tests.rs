@@ -41,7 +41,10 @@ fn copy_tree_preserves_nested_content() {
     let skipped = crate::copy_tree(&src, &dst).unwrap();
     assert_eq!(skipped, 0);
     assert_eq!(fs::read(dst.join("a.txt")).unwrap(), b"hello");
-    assert_eq!(fs::read(dst.join("nested").join("b.txt")).unwrap(), b"world!");
+    assert_eq!(
+        fs::read(dst.join("nested").join("b.txt")).unwrap(),
+        b"world!"
+    );
     cleanup(&root);
 }
 
@@ -161,7 +164,13 @@ fn git_repo_with_tracked_subdir(root: &Path) -> PathBuf {
     run(&["-c", "init.defaultBranch=main", "init", "-q"]);
     run(&["-c", "user.email=t@t", "-c", "user.name=t", "add", "."]);
     run(&[
-        "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init",
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-qm",
+        "init",
     ]);
     sub
 }

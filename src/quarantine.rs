@@ -84,7 +84,9 @@ pub(crate) fn quarantine_first_remove(
     #[cfg(unix)]
     let same_dev = {
         use std::os::unix::fs::MetadataExt;
-        fs::metadata(root).ok().is_some_and(|m| Some(m.dev()) == origin_dev)
+        fs::metadata(root)
+            .ok()
+            .is_some_and(|m| Some(m.dev()) == origin_dev)
     };
     #[cfg(not(unix))]
     let same_dev = false;
@@ -234,7 +236,11 @@ pub(crate) fn quarantine_list(root: &Path, ttl_days: u64) -> Result<QuarantineLi
 /// Restore an entry to its recorded origin. The origin must not exist.
 pub(crate) fn quarantine_restore(root: &Path, name: &str) -> Result<PathBuf> {
     let canon_root = root.canonicalize().map_err(|e| {
-        anyhow::anyhow!("cannot canonicalize quarantine root {}: {}", root.display(), e)
+        anyhow::anyhow!(
+            "cannot canonicalize quarantine root {}: {}",
+            root.display(),
+            e
+        )
     })?;
     let entry_dir = canon_root.join(name);
     if !entry_dir.is_dir() {
@@ -298,9 +304,8 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
     match cmd {
         QuarantineCommands::Move { path, apply, json } => {
             if !apply {
-                let meta = fs::symlink_metadata(&path).map_err(|e| {
-                    anyhow::anyhow!("cannot inspect {}: {}", path.display(), e)
-                })?;
+                let meta = fs::symlink_metadata(&path)
+                    .map_err(|e| anyhow::anyhow!("cannot inspect {}: {}", path.display(), e))?;
                 if !meta.is_dir() || meta.file_type().is_symlink() {
                     anyhow::bail!("quarantine move supports real directories only");
                 }
@@ -409,7 +414,11 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
             } else if expired.is_empty() {
                 println!("No expired entries (TTL {}d)", ttl);
             } else if apply {
-                println!("🗑 Expired {} entries: {}", expired.len(), expired.join(", "));
+                println!(
+                    "🗑 Expired {} entries: {}",
+                    expired.len(),
+                    expired.join(", ")
+                );
             } else {
                 println!(
                     "Would expire {} entries: {}",
