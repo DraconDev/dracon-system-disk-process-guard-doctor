@@ -38,8 +38,7 @@ fn df_avail(path: &Path) -> Option<(u8, u64)> {
     if !out.status.success() {
         return None;
     }
-    parse_df_details(&String::from_utf8_lossy(&out.stdout))
-        .map(|d| (d.use_percent, d.avail_bytes))
+    parse_df_details(&String::from_utf8_lossy(&out.stdout)).map(|d| (d.use_percent, d.avail_bytes))
 }
 
 /// Ensure `dir` exists and is writable (creates it, including parents).
@@ -180,7 +179,9 @@ pub(crate) fn collect_setup_report() -> SetupReport {
         policy_path: path
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "(none — built-in defaults)".to_string()),
-        policy_exists: load_system_policy().map(|(p, _)| p.is_some()).unwrap_or(false),
+        policy_exists: load_system_policy()
+            .map(|(p, _)| p.is_some())
+            .unwrap_or(false),
         checks,
         ready,
     }
@@ -196,10 +197,7 @@ pub(crate) fn cmd_setup(apply: bool, json: bool) -> Result<()> {
             anyhow::bail!("cannot apply: relocate_cold_root is not configured");
         }
         let qdir = crate::quarantine_root(&policy.guard);
-        println!(
-            "cold root: {}",
-            ensure_setup_dir(&expand_tilde(cold_raw))?
-        );
+        println!("cold root: {}", ensure_setup_dir(&expand_tilde(cold_raw))?);
         println!("quarantine: {}", ensure_setup_dir(&qdir)?);
     }
 
@@ -211,7 +209,11 @@ pub(crate) fn cmd_setup(apply: bool, json: bool) -> Result<()> {
         table
             .load_preset(UTF8_FULL_CONDENSED)
             .set_content_arrangement(ContentArrangement::Dynamic)
-            .set_header(vec![Cell::new("STATUS"), Cell::new("CHECK"), Cell::new("DETAIL")]);
+            .set_header(vec![
+                Cell::new("STATUS"),
+                Cell::new("CHECK"),
+                Cell::new("DETAIL"),
+            ]);
         for c in &report.checks {
             let (icon, color) = if c.ok {
                 ("✅", Color::Green)

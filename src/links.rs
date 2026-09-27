@@ -451,38 +451,39 @@ pub(crate) fn cmd_symlinks(roots: Vec<PathBuf>, json: bool, max_depth: usize) ->
             broken: all_broken,
         };
         println!("{}", serde_json::to_string_pretty(&report)?);
+    // FIXED 2026-09-27 (audit rework round 4, F84): `else { if .. }`
+    // is `collapsible_else_if` on the pinned MSRV toolchain. Collapsed;
+    // behaviour is identical.
+    } else if all_broken.is_empty() {
+        println!(
+            "\u{2705} Scanned {} symlinks across {} root(s) — no broken links found",
+            total_scanned,
+            root_strings.len()
+        );
     } else {
-        if all_broken.is_empty() {
-            println!(
-                "\u{2705} Scanned {} symlinks across {} root(s) — no broken links found",
-                total_scanned,
-                root_strings.len()
-            );
-        } else {
-            let mut table = Table::new();
-            table
-                .load_preset(UTF8_FULL_CONDENSED)
-                .set_content_arrangement(ContentArrangement::Dynamic)
-                .set_header(vec![
-                    Cell::new("STATUS"),
-                    Cell::new("BROKEN LINK"),
-                    Cell::new("TARGET"),
-                ]);
-            for item in &all_broken {
-                table.add_row(vec![
-                    Cell::new("\u{274c}").fg(Color::Red),
-                    Cell::new(&item.path),
-                    Cell::new(&item.target),
-                ]);
-            }
-            println!("{table}");
-            println!(
-                "\u{274c} Found {} broken symlink(s) out of {} scanned across {} root(s)",
-                all_broken.len(),
-                total_scanned,
-                root_strings.len()
-            );
+        let mut table = Table::new();
+        table
+            .load_preset(UTF8_FULL_CONDENSED)
+            .set_content_arrangement(ContentArrangement::Dynamic)
+            .set_header(vec![
+                Cell::new("STATUS"),
+                Cell::new("BROKEN LINK"),
+                Cell::new("TARGET"),
+            ]);
+        for item in &all_broken {
+            table.add_row(vec![
+                Cell::new("\u{274c}").fg(Color::Red),
+                Cell::new(&item.path),
+                Cell::new(&item.target),
+            ]);
         }
+        println!("{table}");
+        println!(
+            "\u{274c} Found {} broken symlink(s) out of {} scanned across {} root(s)",
+            all_broken.len(),
+            total_scanned,
+            root_strings.len()
+        );
     }
     Ok(())
 }

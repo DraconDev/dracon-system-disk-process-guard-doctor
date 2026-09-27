@@ -2225,9 +2225,16 @@ async fn clean_old_node_modules_counts_nested_tree_once() {
     std::fs::write(inner.join("inner.bin"), vec![b'i'; 29]).expect("write inner file");
 
     let expected = get_dir_size(&outer).await.expect("measure outer tree");
-    let (reclaimed, cleaned) = clean_old_node_modules(std::slice::from_ref(&td), 0, false, &[], false, std::path::Path::new(""))
-        .await
-        .expect("dry-run node_modules cleanup");
+    let (reclaimed, cleaned) = clean_old_node_modules(
+        std::slice::from_ref(&td),
+        0,
+        false,
+        &[],
+        false,
+        std::path::Path::new(""),
+    )
+    .await
+    .expect("dry-run node_modules cleanup");
 
     assert_eq!(
         cleaned.len(),

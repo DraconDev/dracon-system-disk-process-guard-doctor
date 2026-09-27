@@ -70,9 +70,10 @@ pub(crate) fn copy_tree(src: &Path, dst: &Path) -> Result<u64> {
         .into_iter()
         .filter_map(|e| e.ok())
     {
-        let rel = entry.path().strip_prefix(src).map_err(|e| {
-            anyhow::anyhow!("strip prefix {}: {}", entry.path().display(), e)
-        })?;
+        let rel = entry
+            .path()
+            .strip_prefix(src)
+            .map_err(|e| anyhow::anyhow!("strip prefix {}: {}", entry.path().display(), e))?;
         let target = dst.join(rel);
         let ftype = entry.file_type();
         if ftype.is_dir() {
@@ -144,11 +145,13 @@ pub(crate) fn plan_relocate(
     allow_tracked: bool,
 ) -> Result<RelocatePlan> {
     let mut issues = Vec::new();
-    let meta = fs::symlink_metadata(source).map_err(|e| {
-        anyhow::anyhow!("cannot inspect source {}: {}", source.display(), e)
-    })?;
+    let meta = fs::symlink_metadata(source)
+        .map_err(|e| anyhow::anyhow!("cannot inspect source {}: {}", source.display(), e))?;
     if meta.file_type().is_symlink() {
-        anyhow::bail!("refusing to relocate symlink {} (already relocated?)", source.display());
+        anyhow::bail!(
+            "refusing to relocate symlink {} (already relocated?)",
+            source.display()
+        );
     }
     if !meta.is_dir() {
         anyhow::bail!("relocate supports directories only: {}", source.display());
@@ -170,9 +173,9 @@ pub(crate) fn plan_relocate(
             dest_root.display()
         );
     }
-    let canon_root = dest_root.canonicalize().map_err(|e| {
-        anyhow::anyhow!("cannot canonicalize {}: {}", dest_root.display(), e)
-    })?;
+    let canon_root = dest_root
+        .canonicalize()
+        .map_err(|e| anyhow::anyhow!("cannot canonicalize {}: {}", dest_root.display(), e))?;
 
     let name = canon_src
         .file_name()
@@ -216,13 +219,18 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
     let source = Path::new(&plan.source);
     let dest = Path::new(&plan.dest);
     if fs::symlink_metadata(dest).is_ok() {
-        anyhow::bail!("destination {} appeared since planning — refusing", dest.display());
+        anyhow::bail!(
+            "destination {} appeared since planning — refusing",
+            dest.display()
+        );
     }
-    let meta = fs::symlink_metadata(source).map_err(|e| {
-        anyhow::anyhow!("source {} vanished or changed: {}", source.display(), e)
-    })?;
+    let meta = fs::symlink_metadata(source)
+        .map_err(|e| anyhow::anyhow!("source {} vanished or changed: {}", source.display(), e))?;
     if !meta.is_dir() || meta.file_type().is_symlink() {
-        anyhow::bail!("source {} is no longer a real directory — refusing", source.display());
+        anyhow::bail!(
+            "source {} is no longer a real directory — refusing",
+            source.display()
+        );
     }
 
     let skipped_special = copy_tree(source, dest)?;
@@ -278,7 +286,12 @@ pub(crate) fn cmd_relocate(
 
     let (_, policy) = load_system_policy()?;
     let dest_root = expand_tilde(&to);
-    let plan = plan_relocate(&path, &dest_root, &policy.guard.protected_paths, allow_tracked)?;
+    let plan = plan_relocate(
+        &path,
+        &dest_root,
+        &policy.guard.protected_paths,
+        allow_tracked,
+    )?;
 
     if !apply {
         if json {
@@ -289,11 +302,18 @@ pub(crate) fn cmd_relocate(
                 .load_preset(UTF8_FULL_CONDENSED)
                 .set_content_arrangement(ContentArrangement::Dynamic)
                 .set_header(vec![Cell::new("FIELD"), Cell::new("VALUE")]);
-            table.add_row(vec![Cell::new("Source"), Cell::new(display_home(&plan.source))]);
+            table.add_row(vec![
+                Cell::new("Source"),
+                Cell::new(display_home(&plan.source)),
+            ]);
             table.add_row(vec![Cell::new("Dest"), Cell::new(display_home(&plan.dest))]);
             table.add_row(vec![
                 Cell::new("Size"),
-                Cell::new(format!("{} in {} files", human_bytes(plan.bytes), plan.files)),
+                Cell::new(format!(
+                    "{} in {} files",
+                    human_bytes(plan.bytes),
+                    plan.files
+                )),
             ]);
             table.add_row(vec![
                 Cell::new("Dest free"),
@@ -329,7 +349,10 @@ pub(crate) fn cmd_relocate(
         if report.skipped_special > 0 {
             println!("⚠️ skipped {} special files", report.skipped_special);
         }
-        println!("Add to policy to keep the link managed:\n{}", report.policy_snippet);
+        println!(
+            "Add to policy to keep the link managed:\n{}",
+            report.policy_snippet
+        );
     }
     Ok(())
 }
