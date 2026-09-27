@@ -122,6 +122,36 @@ fn quarantine_expire_zero_ttl_disables() {
 }
 
 #[test]
+fn quarantine_first_remove_same_fs_frees_nothing() {
+    let root = test_root("firstsame");
+    let src = fixture_dir(&root);
+    let qdir = root.join("q");
+    let (manifest, freed) = crate::quarantine_first_remove(&src, &qdir, &[]).unwrap();
+    assert_eq!(manifest.bytes, 11);
+    assert_eq!(freed, 0);
+    assert!(!src.exists());
+    cleanup(&root);
+}
+
+#[test]
+fn quarantine_first_remove_cross_fs_frees_bytes() {
+    // /dev/shm is tmpfs (different device from /tmp on normal systems).
+    let shm = PathBuf::from("/dev/shm");
+    let probe = shm.join(format!("dracon-q-probe-{}", std::process::id()));
+    if fs::write(&probe, b"x").is_err() {
+        return;
+    }
+    let _ = fs::remove_file(&probe);
+    let root = test_root("firstcross");
+    let src = fixture_dir(&root);
+    let qdir = shm.join(format!("dracon-q-test-{}", std::process::id()));
+    let (_manifest, freed) = crate::quarantine_first_remove(&src, &qdir, &[]).unwrap();
+    assert_eq!(freed, 11);
+    let _ = fs::remove_dir_all(&qdir);
+    cleanup(&root);
+}
+
+#[test]
 fn quarantine_list_empty_root() {
     let root = test_root("empty");
     let list = crate::quarantine_list(&root.join("q"), 30).unwrap();

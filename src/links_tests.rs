@@ -59,6 +59,21 @@ fn link_entry_status_debug() {
 }
 
 #[test]
+fn link_report_with_extra_merges_auto_entries() {
+    let policy = SystemPolicy::default();
+    let extra = vec![LinkEntry {
+        link: "/tmp/does-not-exist-auto-link".to_string(),
+        target: "/tmp/does-not-exist-auto-target".to_string(),
+    }];
+    let report = crate::build_link_report_with(&policy, &extra);
+    assert_eq!(report.total, 1);
+    assert_eq!(report.drifted, 1);
+    assert_eq!(report.missing_target, 1);
+    let plain = crate::build_link_report(&policy);
+    assert_eq!(plain.total, 0);
+}
+
+#[test]
 fn link_status_report_debug() {
     let report = crate::LinkStatusReport {
         entries: vec![],

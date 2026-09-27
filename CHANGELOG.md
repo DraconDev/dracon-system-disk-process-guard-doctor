@@ -33,6 +33,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Design record: `docs/design/space-tiers-second-disk-2026-09-26.md`.
 - `relocate` refuses git-tracked directories unless `--allow-tracked` is
   passed (moving one would replace it with a symlink and break the repo).
+- **Automatic cold relocation** (Phase 2): at action/critical the guard
+  scans `relocate_candidate_roots` for big idle untracked dirs and moves
+  them to `relocate_cold_root` before deleting anything rebuildable.
+  Report-only unless `auto_relocate_apply`; tracked content is never a
+  candidate; moves are re-verified, recorded in a daemon-owned state file,
+  and pressure is re-read between moves (max `relocate_max_moves_per_pass`
+  per pass). `guard once` lists candidates in human and JSON output.
+- **Quarantine-first cleanup** (`clean_quarantine_first`, default off):
+  daemon rust-target and node_modules cleanup moves candidates to
+  quarantine (TTL'd, restorable) instead of deleting; reclaimed bytes are
+  reported honestly (0 for same-filesystem moves). Explicit `guard clean`
+  always deletes.
+- **Link drift monitoring**: the daemon checks managed + auto-relocated
+  links every pass and notifies once on drift (`link status` merges both
+  sources).
+- **`setup` command**: reports space-tier readiness (policy, mounts,
+  candidate roots, cold root, quarantine); `setup --apply` creates missing
+  cold/quarantine dirs. No machine path is assumed — the seed of
+  multi-user onboarding.
 
 ## [0.112.41] - 2026-09-14
 

@@ -172,3 +172,20 @@ trend_warn_hours = 24
 # quarantine_dir = "~/.local/share/dracon/quarantine"
 # Quarantine TTL in days; `expire` deletes older entries, 0 disables expiry.
 # quarantine_ttl_days = 30
+
+# ADDED 2026-09-27 (space tiers, Phase 2): daemon rust-target and
+# node_modules cleanup moves candidates to quarantine instead of deleting.
+# Explicit `guard clean` always deletes. Default off.
+# clean_quarantine_first = false
+
+# ADDED 2026-09-27 (space tiers, Phase 2): automatic cold relocation at
+# action/critical — move big idle dirs to the cold root BEFORE deleting
+# anything rebuildable. Report-only unless auto_relocate_apply. Tracked
+# content is never a candidate (no override in auto mode).
+# auto_relocate = true
+# auto_relocate_apply = false
+# relocate_candidate_roots = "~/Dev"
+# relocate_cold_root = "/mnt/data/cold"
+# relocate_min_size_mb = 2048
+# relocate_min_age_days = 14
+# relocate_max_moves_per_pass = 3

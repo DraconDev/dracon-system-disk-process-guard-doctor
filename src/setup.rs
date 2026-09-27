@@ -10,7 +10,7 @@
 use anyhow::Result;
 use serde::Serialize;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::{expand_tilde, human_bytes, load_system_policy, parse_df_details};
 
@@ -54,7 +54,7 @@ pub(crate) fn ensure_setup_dir(dir: &Path) -> Result<String> {
     Ok(match df_avail(dir) {
         Some((used, avail)) => format!("{} free, {}% used", human_bytes(avail), used),
         None => "writable".to_string(),
-    }
+    })
 }
 
 fn check_dir_configured(raw: &str, what: &str) -> SetupCheck {

@@ -6190,6 +6190,8 @@ pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) {
     if policy.quarantine_dir.trim().is_empty() {
         policy.quarantine_dir = default_quarantine_dir();
     }
+    policy.relocate_min_size_mb = policy.relocate_min_size_mb.max(1);
+    policy.relocate_max_moves_per_pass = policy.relocate_max_moves_per_pass.max(1);
     if policy.notify_command.trim().is_empty() {
         policy.notify_command = default_notify_command();
     }

@@ -180,6 +180,101 @@ fn plan_relocate_refuses_tracked_unless_allowed() {
     cleanup(&root);
 }
 
+fn touch_aged(path: &Path, days_ago: &str) {
+    for entry in walkdir::WalkDir::new(path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if entry.file_type().is_file() {
+            let status = std::process::Command::new("touch")
+                .args(["-d", days_ago])
+                .arg(entry.path())
+                .status()
+                .unwrap();
+            assert!(status.success());
+        }
+    }
+}
+
+fn scan_fixture(root: &Path) -> PathBuf {
+    let scan = root.join("scan");
+    let big_old = scan.join("big-old");
+    fs::create_dir_all(&big_old).unwrap();
+    fs::write(big_old.join("f.bin"), vec![7u8; 2 * 1024 * 1024]).unwrap();
+    touch_aged(&big_old, "20 days ago");
+    let big_fresh = scan.join("big-fresh");
+    fs::create_dir_all(&big_fresh).unwrap();
+    fs::write(big_fresh.join("f.bin"), vec![7u8; 2 * 1024 * 1024]).unwrap();
+    let small_old = scan.join("small-old");
+    fs::create_dir_all(&small_old).unwrap();
+    fs::write(small_old.join("f.txt"), b"x").unwrap();
+    touch_aged(&small_old, "20 days ago");
+    let nested = scan.join("nested");
+    fs::create_dir_all(nested.join("inner")).unwrap();
+    fs::write(nested.join("outer.bin"), vec![7u8; 1_600_000]).unwrap();
+    fs::write(nested.join("inner").join("in.bin"), vec![7u8; 1_600_000]).unwrap();
+    touch_aged(&nested, "20 days ago");
+    let target = scan.join("proj").join("target");
+    fs::create_dir_all(&target).unwrap();
+    fs::write(target.join("big.bin"), vec![7u8; 5 * 1024 * 1024]).unwrap();
+    touch_aged(&target, "20 days ago");
+    scan
+}
+
+#[test]
+fn find_cold_candidates_filters_size_age_and_build_dirs() {
+    let root = test_root("scan");
+    let scan = scan_fixture(&root);
+    let found = crate::find_cold_candidates(&[scan.clone()], 1024 * 1024, 14);
+    let paths: Vec<&str> = found.iter().map(|c| c.path.as_str()).collect();
+    assert!(
+        paths.iter().any(|p| p.ends_with("big-old")),
+        "big-old must qualify: {paths:?}"
+    );
+    assert!(
+        !paths.iter().any(|p| p.contains("big-fresh")),
+        "fresh must not qualify: {paths:?}"
+    );
+    assert!(
+        !paths.iter().any(|p| p.contains("small-old")),
+        "small must not qualify: {paths:?}"
+    );
+    assert!(
+        !paths.iter().any(|p| p.contains("target")),
+        "build dirs must be pruned: {paths:?}"
+    );
+    assert!(
+        !paths.iter().any(|p| p.ends_with("proj")),
+        "proj holds only a pruned target: {paths:?}"
+    );
+    cleanup(&root);
+}
+
+#[test]
+fn find_cold_candidates_collapses_nesting() {
+    let root = test_root("nest");
+    let scan = scan_fixture(&root);
+    let found = crate::find_cold_candidates(&[scan], 1024 * 1024, 14);
+    let nested: Vec<&str> = found
+        .iter()
+        .map(|c| c.path.as_str())
+        .filter(|p| p.contains("nested"))
+        .collect();
+    assert_eq!(nested.len(), 1, "outer only: {nested:?}");
+    assert!(nested[0].ends_with("nested"));
+    cleanup(&root);
+}
+
+#[test]
+fn relocation_state_roundtrip() {
+    // State path is home-derived; only assert load tolerance here —
+    // record/load integration is covered live, not in unit tests.
+    let records = crate::load_relocation_records();
+    let _ = serde_json::to_string(&records).unwrap();
+    let entries = crate::relocation_link_entries();
+    assert_eq!(entries.len(), records.len());
+}
+
 #[test]
 fn plan_relocate_allows_untracked_in_repo() {
     let root = test_root("untracked");

@@ -240,6 +240,10 @@ dracon-system quarantine list
 dracon-system quarantine restore stale-stuff.1729958400000000000
 dracon-system quarantine expire --apply
 
+# Check space-tier setup readiness (cold root, quarantine, mounts)
+dracon-system setup
+dracon-system setup --apply   # create missing cold/quarantine dirs
+
 # Zram stats
 dracon-system zram --status
 dracon-system zram --gen-config

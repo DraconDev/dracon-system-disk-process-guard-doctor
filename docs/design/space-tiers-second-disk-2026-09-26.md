@@ -57,6 +57,19 @@ the remaining bulk is *kept* data in the wrong place, not trash.
 
 - Phase 0 (manual, no code): reclaim second disk, stable `/mnt/data` mount,
   delete the duplicate `out/`, untrack generated output, move cold dirs.
+  DONE 2026-09-27: sda2 at /mnt/data (boot-required, no nofail), 417G free,
+  cold/quarantine/scratch live; NixOS swapfile staged for post-reboot.
 - Phase 1 (code): per-mount guard, `relocate` on top of link policy, quarantine.
-- Phase 2 (code): cold-candidate suggestions at action level, quarantine expiry.
+  DONE 2026-09-26: + git-tracked refusal (`--allow-tracked` override).
+- Phase 2 (code): relocate-first automation, quarantine-first cleanup,
+  link-drift monitoring, `setup` readiness. DONE 2026-09-27 (this change).
 - Phase 3 (later): cloud export for proven-cold.
+
+## Multi-user setup contract (2026-09-27)
+
+No machine path is assumed in code: `relocate_cold_root` defaults to empty
+(disabled), quarantine defaults under `$HOME`, candidate roots default to
+`~/Dev`. Each machine configures its own cold root + mounts in policy;
+`dracon-system setup` reports readiness and `setup --apply` provisions the
+dirs. A future guided wizard (`setup --init`: discover mounts, propose
+roots, write policy) builds on this contract without changing it.

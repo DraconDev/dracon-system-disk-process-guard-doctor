@@ -1,7 +1,7 @@
 //! Tests for setup.rs (readiness checks and dir provisioning).
 
-use super::*;
 use std::fs;
+use std::path::PathBuf;
 
 fn test_root(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!(

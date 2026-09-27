@@ -358,10 +358,13 @@ const SCAN_SKIP_NAMES: &[&str] = &["target", "node_modules", ".git"];
 /// into each ancestor dir up to `root`. Returns bytes/files/newest-mtime.
 fn dir_sizes_bottom_up(root: &Path) -> HashMap<PathBuf, (u64, u64, u64)> {
     let mut sizes: HashMap<PathBuf, (u64, u64, u64)> = HashMap::new();
+    // NOTE: no contents_first — it yields children before parents, which
+    // defeats filter_entry pruning (rejected dirs are pruned only after
+    // their children were already visited). Accumulation via ancestors()
+    // is order-independent, so plain pre-order is correct here.
     let iter = walkdir::WalkDir::new(root)
         .follow_links(false)
         .max_depth(SCAN_MAX_DEPTH)
-        .contents_first(true)
         .into_iter()
         .filter_entry(|e| {
             if e.file_type().is_symlink() {
