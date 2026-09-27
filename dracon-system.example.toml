@@ -109,7 +109,17 @@ cap_offenders_cpu_percent = 0
 # Monitor large log files
 monitor_logs = true
 log_size_mb = 100
-log_dirs = "/var/log,~/.local/share/opencode/log"
+# FIXED 2026-09-27 (audit F94): this listed /var/log and
+# ~/.local/share/opencode/log, but the shipped dracon-system-guard.service
+# grants neither in ReadWritePaths. Under ProtectSystem=strict +
+# ProtectHome=read-only the write-mode open in truncate_log_file fails
+# EROFS for every configured dir, so auto_truncate_logs (when enabled)
+# logged "failed to truncate" and reclaimed nothing. The list below is
+# inside the unit's writable set. To truncate /var/log you must run
+# dracon-system outside the unit, or add /var/log to ReadWritePaths
+# yourself — an unprivileged user service cannot do it under the shipped
+# hardening.
+log_dirs = "~/.local/share/opencode/log"
 auto_truncate_logs = false
 log_max_truncate_mb = 50
 log_preserve_header_lines = 0   # Lines to preserve when truncating logs
@@ -118,6 +128,11 @@ log_preserve_header_lines = 0   # Lines to preserve when truncating logs
 # Broad cleanup is report-only unless explicitly requested.
 docker_prune = false
 docker_prune_volumes = false
+# `docker system prune --all` also deletes every unused image, not just
+# dangling ones. Off by default: the daemon (auto_cleanup_apply) prunes
+# dangling layers only unless you opt in here. The `guard clean --all`
+# CLI flag is separate and still honoured.
+docker_prune_all = false
 
 # Package cache cleanup. Dry-run estimates skip caches used by active
 # cargo/rustc, npm, pip, or go (including common wrappers). Apply intentionally

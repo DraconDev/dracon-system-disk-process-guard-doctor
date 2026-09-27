@@ -201,6 +201,16 @@ pub(crate) struct GuardPolicy {
     pub(crate) docker_prune: bool,
     #[serde(default)]
     pub(crate) docker_prune_volumes: bool,
+    // ADDED 2026-09-27 (audit F91). `docker system prune --all` deletes
+    // every unused image, not just dangling ones — far more destructive
+    // than the plain prune. The two CLI call sites tie it to an explicit
+    // `--all` flag, but `run_auto_cleanup` (the DAEMON path) passed a
+    // literal `true` with no knob at all, so any policy with
+    // `docker_prune = true` + `auto_cleanup_apply = true` reaped all
+    // unused images on every action/critical pass. Default false: the
+    // daemon prunes dangling layers only unless the operator opts in.
+    #[serde(default)]
+    pub(crate) docker_prune_all: bool,
     #[serde(default = "default_true")]
     pub(crate) clean_package_caches: bool,
     #[serde(default = "default_true")]
@@ -349,6 +359,7 @@ impl Default for GuardPolicy {
             log_preserve_header_lines: 0,
             docker_prune: default_true(),
             docker_prune_volumes: false,
+            docker_prune_all: false,
             clean_package_caches: default_true(),
             clean_trash: default_true(),
             clean_nix_garbage: default_true(),

@@ -5061,7 +5061,19 @@ async fn run_auto_cleanup(
     }
 
     if guard.docker_prune && apply {
-        match docker_prune(guard.auto_cleanup_apply, true, guard.docker_prune_volumes).await {
+        // FIXED 2026-09-27 (audit F91): the `all` argument was a literal
+        // `true`, so the daemon ran `docker system prune -f --all` — which
+        // deletes EVERY unused image, not just dangling ones — on every
+        // action/critical pass, with no knob to restrict it. F44 fixed the
+        // two CLI call sites; this third one was missed. It now follows
+        // the `docker_prune_all` policy knob (default false).
+        match docker_prune(
+            guard.auto_cleanup_apply,
+            guard.docker_prune_all,
+            guard.docker_prune_volumes,
+        )
+        .await
+        {
             Ok(bytes) => {
                 total_reclaimed += bytes;
                 if bytes > 0 {
@@ -7093,6 +7105,21 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
                         guard.disk_warn_percent,
                         guard.disk_critical_percent
                     );
+                    // FIXED 2026-09-27 (audit F93): `enabled` was only ever
+                    // checked once, at daemon startup (main.rs:6996), so a
+                    // SIGHUP that loaded `enabled = false` assigned it to
+                    // the LIVE policy and the loop kept calling
+                    // `run_guard_once` forever — the documented way to stop
+                    // the guard did not stop cleanup, and re-enabling
+                    // required a restart. Honour it on reload, mirroring
+                    // the startup path. Process adjustments were already
+                    // restored above, so exiting here is clean.
+                    if !guard.enabled {
+                        eprintln!(
+                            "guard disabled in policy — stopping after SIGHUP reload (restart the service to re-enable)"
+                        );
+                        break;
+                    }
                 }
                 Err(e) => {
                     // CHANGED 2026-09-09 (audit F42): the old message
@@ -7310,7 +7337,22 @@ async fn cmd_guard_clean(
 
     if do_rust {
         let mut runtime = GuardRuntimeState::default();
-        let result = auto_cleanup_rust_targets(&guard_clone, &mut runtime, apply, false).await?;
+        // FIXED 2026-09-27 (audit F92): this passed
+        // `bypass_age_gate = false`, so the `rust_target_action_min_age_days`
+        // (default 7) freshness gate also applied to the operator's EXPLICIT
+        // `guard clean --rust --apply`. On a full disk the freshly-built
+        // `target/` that is actually consuming the space is exactly the one
+        // the gate protects, so the documented "execute cleanup" flow printed
+        // `Protected: … (touched 0d ago, under action min-age 7d)` and
+        // reclaimed nothing — the escape hatch silently did nothing.
+        //
+        // The gate exists to stop AUTONOMOUS daily thrash (a deleted target
+        // gets rebuilt within hours, pushing the disk back over the action
+        // line), not as a safety invariant: the live-build protections
+        // (mtime<60s backstop, active cargo/rustc detection, ancestor-aware
+        // protected-project matching) all still apply here, exactly as they
+        // do when the daemon lifts the gate at the critical tier.
+        let result = auto_cleanup_rust_targets(&guard_clone, &mut runtime, apply, true).await?;
         total_reclaimed += result.reclaimed_bytes;
         for p in result.cleaned_paths {
             actions.push(format!("Rust: {}", p));

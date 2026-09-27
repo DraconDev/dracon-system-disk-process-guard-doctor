@@ -43,7 +43,14 @@ ProtectHome=read-only
 # ProtectHome=read-only). Deployed units predating the PrivateTmp=false
 # fix MUST be reinstalled — with PrivateTmp=true the guard "cleans" an
 # empty private namespace while host /tmp (86 GiB on 2026-09-20) grows.
-ReadWritePaths=%h/.dracon %h/Dev %h/.local/state/dracon %h/.local/share/Trash %h/.cargo %h/.cache %h/.npm %h/.local/state/nix /tmp
+# CHANGED 2026-09-27 (audit F94): %h/.local/share is writable so the
+# example policy's log_dirs (~/.local/share/opencode/log) is reachable —
+# without it truncate_log_file's write-mode open fails EROFS under
+# ProtectSystem=strict and auto_truncate_logs reclaims nothing. /var/log
+# is deliberately NOT granted: an unprivileged user service cannot
+# truncate it under this hardening, so shipping it in log_dirs only
+# produced a permanent "failed to truncate" warning.
+ReadWritePaths=%h/.dracon %h/Dev %h/.local/state/dracon %h/.local/share %h/.local/share/Trash %h/.cargo %h/.cache %h/.npm %h/.local/state/nix /tmp
 PrivateTmp=false
 
 # Kernel-level sandboxing (all certain — these daemons never use these privileges)
