@@ -56,6 +56,61 @@ pub(crate) fn now_unix() -> u64 {
         .unwrap_or(0)
 }
 
+/// True when both paths live on the same filesystem (same device number).
+/// A same-filesystem quarantine move frees nothing — honest accounting for
+/// the guard's reclaimed-bytes reporting.
+#[cfg(unix)]
+pub(crate) fn same_filesystem(a: &Path, b: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (fs::metadata(a), fs::metadata(b)) {
+        (Ok(ma), Ok(mb)) => ma.dev() == mb.dev(),
+        _ => false,
+    }
+}
+
+#[cfg(not(unix))]
+pub(crate) fn same_filesystem(_a: &Path, _b: &Path) -> bool {
+    false
+}
+
+/// Quarantine `origin` instead of deleting it. Returns the manifest plus the
+/// bytes actually freed on the origin filesystem (0 for same-filesystem
+/// moves — the win there is the TTL expiry later, not immediate space).
+pub(crate) fn quarantine_first_remove(
+    origin: &Path,
+    root: &Path,
+    user_protected: &[String],
+) -> Result<(QuarantineManifest, u64)> {
+    // Capture the origin device BEFORE the move (the path is gone after).
+    let origin_dev = fs::metadata(origin).ok().and_then(|m| {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            Some(m.dev())
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = m;
+            None
+        }
+    });
+    let manifest = quarantine_move(origin, root, user_protected)?;
+    #[cfg(unix)]
+    let same_dev = {
+        use std::os::unix::fs::MetadataExt;
+        fs::metadata(root).ok().is_some_and(|m| Some(m.dev()) == origin_dev)
+    };
+    #[cfg(not(unix))]
+    let same_dev = false;
+    // Unknown device comparison claims nothing (fail closed).
+    let freed = if same_dev || origin_dev.is_none() {
+        0
+    } else {
+        manifest.bytes
+    };
+    Ok((manifest, freed))
+}
+
 pub(crate) fn quarantine_root(guard: &crate::GuardPolicy) -> PathBuf {
     let raw = guard.quarantine_dir.trim();
     if raw.is_empty() {

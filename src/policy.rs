@@ -267,6 +267,29 @@ pub(crate) struct GuardPolicy {
     // ADDED 2026-09-26 (space tiers): quarantine TTL in days; 0 disables expiry.
     #[serde(default = "default_quarantine_ttl_days")]
     pub(crate) quarantine_ttl_days: u64,
+    // ADDED 2026-09-27 (space tiers Phase 2): daemon rust-target and
+    // node_modules cleanup moves candidates to quarantine instead of
+    // deleting them. Explicit `guard clean` always deletes.
+    #[serde(default)]
+    pub(crate) clean_quarantine_first: bool,
+    // ADDED 2026-09-27 (space tiers Phase 2): scan for cold relocation
+    // candidates at action/critical. Needs relocate_cold_root set; that
+    // default is empty (disabled) so no machine path is ever assumed —
+    // multi-user setups must configure it explicitly.
+    #[serde(default = "default_true")]
+    pub(crate) auto_relocate: bool,
+    #[serde(default)]
+    pub(crate) auto_relocate_apply: bool,
+    #[serde(default = "default_relocate_candidate_roots")]
+    pub(crate) relocate_candidate_roots: String,
+    #[serde(default)]
+    pub(crate) relocate_cold_root: String,
+    #[serde(default = "default_relocate_min_size_mb")]
+    pub(crate) relocate_min_size_mb: u64,
+    #[serde(default = "default_relocate_min_age_days")]
+    pub(crate) relocate_min_age_days: u64,
+    #[serde(default = "default_relocate_max_moves_per_pass")]
+    pub(crate) relocate_max_moves_per_pass: u64,
 }
 
 impl Default for GuardPolicy {
@@ -344,6 +367,14 @@ impl Default for GuardPolicy {
             disk_extra_mounts: String::new(),
             quarantine_dir: default_quarantine_dir(),
             quarantine_ttl_days: default_quarantine_ttl_days(),
+            clean_quarantine_first: false,
+            auto_relocate: default_true(),
+            auto_relocate_apply: false,
+            relocate_candidate_roots: default_relocate_candidate_roots(),
+            relocate_cold_root: String::new(),
+            relocate_min_size_mb: default_relocate_min_size_mb(),
+            relocate_min_age_days: default_relocate_min_age_days(),
+            relocate_max_moves_per_pass: default_relocate_max_moves_per_pass(),
         }
     }
 }
@@ -592,6 +623,22 @@ pub(crate) fn default_quarantine_dir() -> String {
 
 pub(crate) fn default_quarantine_ttl_days() -> u64 {
     30
+}
+
+pub(crate) fn default_relocate_candidate_roots() -> String {
+    "~/Dev".to_string()
+}
+
+pub(crate) fn default_relocate_min_size_mb() -> u64 {
+    2048
+}
+
+pub(crate) fn default_relocate_min_age_days() -> u64 {
+    14
+}
+
+pub(crate) fn default_relocate_max_moves_per_pass() -> u64 {
+    3
 }
 
 // ---------------------------------------------------------------------------
