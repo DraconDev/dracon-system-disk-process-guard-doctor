@@ -2,6 +2,8 @@
 name = "dracon-system"
 version = "0.112.41"
 edition = "2021"
+# See dracon-sync/Cargo.toml — workspace-wide MSRV, audit F84.
+rust-version = "1.89"
 license = "AGPL-3.0-only"
 description = "Disk, process, storage, and service diagnostics for local development machines"
 readme = "README.md"
