@@ -185,6 +185,9 @@ fn guard_report_can_be_created_with_alerts() {
         disk_state: "warn".to_string(),
         sync_frozen: false,
         extra_mounts: Vec::new(),
+        relocate_candidates: Vec::new(),
+        relocated_count: 0,
+        relocated_bytes: 0,
         alerts: vec![GuardProcessAlert {
             pid: 12345,
             ppid: 1,

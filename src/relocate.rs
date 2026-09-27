@@ -8,7 +8,8 @@
 //! default; `--apply` performs the move.
 
 use anyhow::Result;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -331,4 +332,182 @@ pub(crate) fn cmd_relocate(
         println!("Add to policy to keep the link managed:\n{}", report.policy_snippet);
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Automatic cold-candidate scanning (space tiers Phase 2)
+// ---------------------------------------------------------------------------
+
+/// A directory eligible for automatic relocation.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ColdCandidate {
+    pub(crate) path: String,
+    pub(crate) bytes: u64,
+    pub(crate) files: u64,
+    pub(crate) age_days: u64,
+}
+
+const SCAN_MAX_DEPTH: usize = 8;
+const SCAN_MAX_CANDIDATES: usize = 20;
+/// Subtrees never counted as relocate candidates: build outputs are
+/// delete-managed, `.git` is history. Pruned before sizing so parents are
+/// not inflated by bytes that can never move with them.
+const SCAN_SKIP_NAMES: &[&str] = &["target", "node_modules", ".git"];
+
+/// Single-pass bottom-up sizing: every file's bytes and mtime accumulate
+/// into each ancestor dir up to `root`. Returns bytes/files/newest-mtime.
+fn dir_sizes_bottom_up(root: &Path) -> HashMap<PathBuf, (u64, u64, u64)> {
+    let mut sizes: HashMap<PathBuf, (u64, u64, u64)> = HashMap::new();
+    let iter = walkdir::WalkDir::new(root)
+        .follow_links(false)
+        .max_depth(SCAN_MAX_DEPTH)
+        .contents_first(true)
+        .into_iter()
+        .filter_entry(|e| {
+            if e.file_type().is_symlink() {
+                return false;
+            }
+            if e.depth() > 0 {
+                if let Some(name) = e.file_name().to_str() {
+                    if SCAN_SKIP_NAMES.contains(&name) {
+                        return false;
+                    }
+                }
+            }
+            true
+        })
+        .filter_map(|e| e.ok());
+    for entry in iter {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let meta = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let mtime = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        for ancestor in entry.path().ancestors() {
+            if !ancestor.starts_with(root) {
+                break;
+            }
+            let slot = sizes.entry(ancestor.to_path_buf()).or_insert((0, 0, 0));
+            slot.0 += meta.len();
+            slot.1 += 1;
+            slot.2 = slot.2.max(mtime);
+        }
+    }
+    sizes
+}
+
+/// Find cold relocation candidates under `roots`: big enough, idle long
+/// enough, not symlinked, not git-tracked. Nested qualifiers collapse to
+/// the outermost dir. Sorted biggest-first, capped.
+pub(crate) fn find_cold_candidates(
+    roots: &[PathBuf],
+    min_bytes: u64,
+    min_age_days: u64,
+) -> Vec<ColdCandidate> {
+    let now = crate::now_unix();
+    let mut qualified: Vec<(PathBuf, u64, u64, u64)> = Vec::new();
+    for root in roots {
+        if !root.is_dir() {
+            continue;
+        }
+        let canon_root = root.canonicalize().unwrap_or_else(|_| root.clone());
+        for (dir, (bytes, files, newest)) in dir_sizes_bottom_up(&canon_root) {
+            if dir == canon_root || bytes < min_bytes {
+                continue;
+            }
+            let age_days = now.saturating_sub(newest) / 86_400;
+            if age_days < min_age_days {
+                continue;
+            }
+            // Auto mode never touches tracked content (no override).
+            if is_git_tracked(&dir).unwrap_or(true) {
+                continue;
+            }
+            qualified.push((dir, bytes, files, age_days));
+        }
+    }
+    // Collapse nesting: keep outermost qualifiers only.
+    qualified.sort_by_key(|(p, _, _, _)| p.components().count());
+    let mut kept: Vec<(PathBuf, u64, u64, u64)> = Vec::new();
+    for item in qualified {
+        if kept.iter().any(|(k, _, _, _)| item.0.starts_with(k)) {
+            continue;
+        }
+        kept.push(item);
+    }
+    let mut out: Vec<ColdCandidate> = kept
+        .into_iter()
+        .map(|(path, bytes, files, age_days)| ColdCandidate {
+            path: path.display().to_string(),
+            bytes,
+            files,
+            age_days,
+        })
+        .collect();
+    out.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+    out.truncate(SCAN_MAX_CANDIDATES);
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Daemon-owned relocation state (space tiers Phase 2)
+// ---------------------------------------------------------------------------
+
+/// Record of one automatic relocation. Lives in a daemon-owned JSON state
+/// file — human policy stays hand-edited, `link status` merges both.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct RelocationRecord {
+    pub(crate) link: String,
+    pub(crate) target: String,
+    pub(crate) moved_at_unix: u64,
+    pub(crate) bytes: u64,
+}
+
+pub(crate) fn relocation_state_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("/home"))
+        .join(".local/state/dracon/dracon-system-relocations.json")
+}
+
+pub(crate) fn load_relocation_records() -> Vec<RelocationRecord> {
+    fs::read_to_string(relocation_state_path())
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+pub(crate) fn record_relocation(link: &str, target: &str, bytes: u64) -> Result<()> {
+    let path = relocation_state_path();
+    let mut records = load_relocation_records();
+    records.retain(|r| r.link != link);
+    records.push(RelocationRecord {
+        link: link.to_string(),
+        target: target.to_string(),
+        moved_at_unix: crate::now_unix(),
+        bytes,
+    });
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&path, serde_json::to_string_pretty(&records)?)?;
+    Ok(())
+}
+
+/// Auto-relocation records as link entries for `link status` merging.
+pub(crate) fn relocation_link_entries() -> Vec<crate::LinkEntry> {
+    load_relocation_records()
+        .into_iter()
+        .map(|r| crate::LinkEntry {
+            link: r.link,
+            target: r.target,
+        })
+        .collect()
 }

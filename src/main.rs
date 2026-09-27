@@ -39,6 +39,8 @@ mod relocate;
 pub(crate) use relocate::*;
 mod safety;
 pub(crate) use safety::*;
+mod setup;
+pub(crate) use setup::*;
 mod zram;
 pub(crate) use zram::*;
 
@@ -52,6 +54,8 @@ mod links_tests;
 mod quarantine_tests;
 #[cfg(test)]
 mod relocate_tests;
+#[cfg(test)]
+mod setup_tests;
 
 // Memory-leak fix: the unrenice loops used to `continue` forever on renice
 // failure or ProcessIdentityStatus::Unavailable, never removing the entry from
@@ -274,6 +278,15 @@ enum Commands {
         #[command(subcommand)]
         cmd: QuarantineCommands,
     },
+    /// Check space-tier setup readiness (cold root, quarantine, mounts).
+    Setup {
+        /// Create missing cold/quarantine directories.
+        #[arg(long)]
+        apply: bool,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -450,6 +463,12 @@ pub(crate) struct GuardReport {
     /// ADDED 2026-09-26 (space tiers): extra mounts from
     /// `disk_extra_mounts`. Visibility only; decisions key off primary.
     extra_mounts: Vec<MountStatus>,
+    /// ADDED 2026-09-27 (space tiers Phase 2): cold candidates scanned at
+    /// action/critical (empty below action or when unconfigured), plus
+    /// what this pass actually moved.
+    relocate_candidates: Vec<ColdCandidate>,
+    relocated_count: usize,
+    relocated_bytes: u64,
     alerts: Vec<GuardProcessAlert>,
     /// ADDED 2026-08-10 (v0.112.35): memory/swap pressure snapshot.
     memory: Option<MemoryReport>,
@@ -2828,30 +2847,62 @@ async fn auto_cleanup_rust_targets(
             continue;
         }
 
+        // ADDED 2026-09-27 (space tiers Phase 2): quarantine-first routing —
+        // move to quarantine (TTL'd, restorable) instead of deleting.
+        let mut quarantined = false;
+        let mut freed = target.bytes;
         if apply {
-            let safe_path = match check_safe_to_delete_guard(&target.path, &guard.protected_paths) {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!("⚠️ skipping {}: {}", target.path.display(), e);
-                    result
-                        .protected_paths
-                        .push(target.path.display().to_string());
+            if guard.clean_quarantine_first {
+                let qdir = quarantine_root(guard);
+                match quarantine_first_remove(&target.path, &qdir, &guard.protected_paths) {
+                    Ok((manifest, f)) => {
+                        quarantined = true;
+                        freed = f;
+                        eprintln!(
+                            "📦 Rust quarantined: {} as {}",
+                            target.path.display(),
+                            manifest.name
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("⚠️ failed to quarantine {}: {}", target.path.display(), e);
+                        continue;
+                    }
+                }
+            } else {
+                let safe_path = match check_safe_to_delete_guard(&target.path, &guard.protected_paths) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("⚠️ skipping {}: {}", target.path.display(), e);
+                        result
+                            .protected_paths
+                            .push(target.path.display().to_string());
+                        continue;
+                    }
+                };
+                if let Err(e) = tokio::fs::remove_dir_all(&safe_path).await {
+                    eprintln!("⚠️ failed to remove {}: {}", target.path.display(), e);
                     continue;
                 }
-            };
-            if let Err(e) = tokio::fs::remove_dir_all(&safe_path).await {
-                eprintln!("⚠️ failed to remove {}: {}", target.path.display(), e);
-                continue;
             }
         }
 
         result.cleaned_count += 1;
-        result.reclaimed_bytes += target.bytes;
-        result.cleaned_paths.push(format!(
-            "{} ({})",
-            target.path.display(),
-            human_bytes(target.bytes)
-        ));
+        result.reclaimed_bytes += freed;
+        if quarantined {
+            result.cleaned_paths.push(format!(
+                "{} (quarantined, {}, freed {})",
+                target.path.display(),
+                human_bytes(target.bytes),
+                human_bytes(freed)
+            ));
+        } else {
+            result.cleaned_paths.push(format!(
+                "{} ({})",
+                target.path.display(),
+                human_bytes(target.bytes)
+            ));
+        }
     }
 
     Ok(result)
@@ -2949,35 +3000,71 @@ async fn proactive_cleanup_rust_targets(
             continue;
         }
 
+        // ADDED 2026-09-27 (space tiers Phase 2): quarantine-first routing.
+        let mut quarantined = false;
+        let mut freed = target.bytes;
         if apply {
-            let safe_path = match check_safe_to_delete_guard(&target.path, &guard.protected_paths) {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!("⚠️ proactive: skipping {}: {}", target.path.display(), e);
-                    result
-                        .protected_paths
-                        .push(target.path.display().to_string());
+            if guard.clean_quarantine_first {
+                let qdir = quarantine_root(guard);
+                match quarantine_first_remove(&target.path, &qdir, &guard.protected_paths) {
+                    Ok((manifest, f)) => {
+                        quarantined = true;
+                        freed = f;
+                        eprintln!(
+                            "📦 proactive quarantined: {} as {}",
+                            target.path.display(),
+                            manifest.name
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "⚠️ proactive: failed to quarantine {}: {}",
+                            target.path.display(),
+                            e
+                        );
+                        continue;
+                    }
+                }
+            } else {
+                let safe_path = match check_safe_to_delete_guard(&target.path, &guard.protected_paths) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("⚠️ proactive: skipping {}: {}", target.path.display(), e);
+                        result
+                            .protected_paths
+                            .push(target.path.display().to_string());
+                        continue;
+                    }
+                };
+                if let Err(e) = tokio::fs::remove_dir_all(&safe_path).await {
+                    eprintln!(
+                        "⚠️ proactive: failed to remove {}: {}",
+                        target.path.display(),
+                        e
+                    );
                     continue;
                 }
-            };
-            if let Err(e) = tokio::fs::remove_dir_all(&safe_path).await {
-                eprintln!(
-                    "⚠️ proactive: failed to remove {}: {}",
-                    target.path.display(),
-                    e
-                );
-                continue;
             }
         }
 
         result.cleaned_count += 1;
-        result.reclaimed_bytes += target.bytes;
-        result.cleaned_paths.push(format!(
-            "{} ({} days stale, {})",
-            target.path.display(),
-            target.mtime_secs_ago / 86400,
-            human_bytes(target.bytes)
-        ));
+        result.reclaimed_bytes += freed;
+        if quarantined {
+            result.cleaned_paths.push(format!(
+                "{} (quarantined, {} days stale, {}, freed {})",
+                target.path.display(),
+                target.mtime_secs_ago / 86400,
+                human_bytes(target.bytes),
+                human_bytes(freed)
+            ));
+        } else {
+            result.cleaned_paths.push(format!(
+                "{} ({} days stale, {})",
+                target.path.display(),
+                target.mtime_secs_ago / 86400,
+                human_bytes(target.bytes)
+            ));
+        }
     }
 
     Ok(result)
@@ -3631,6 +3718,8 @@ async fn clean_old_node_modules(
     max_age_days: u64,
     apply: bool,
     protected_paths: &[String],
+    quarantine_first: bool,
+    quarantine_dir: &Path,
 ) -> Result<(u64, Vec<String>)> {
     use walkdir::WalkDir;
 
@@ -3693,28 +3782,60 @@ async fn clean_old_node_modules(
 
             if size > 0 {
                 let mut succeeded = true;
+                // ADDED 2026-09-27 (space tiers Phase 2): quarantine-first.
+                let mut quarantined = false;
+                let mut freed = size;
                 if apply {
-                    match check_safe_to_delete_guard(&path, protected_paths) {
-                        Ok(ref safe_path) => {
-                            if let Err(e) = tokio::fs::remove_dir_all(safe_path).await {
-                                eprintln!("⚠️ failed to remove {}: {}", path.display(), e);
+                    if quarantine_first {
+                        match quarantine_first_remove(&path, quarantine_dir, protected_paths) {
+                            Ok((manifest, f)) => {
+                                quarantined = true;
+                                freed = f;
+                                eprintln!(
+                                    "📦 Node quarantined: {} as {}",
+                                    path.display(),
+                                    manifest.name
+                                );
+                            }
+                            Err(e) => {
+                                eprintln!("⚠️ failed to quarantine {}: {}", path.display(), e);
                                 succeeded = false;
                             }
                         }
-                        Err(e) => {
-                            eprintln!("⚠️ skipping {}: {}", path.display(), e);
-                            continue;
+                    } else {
+                        match check_safe_to_delete_guard(&path, protected_paths) {
+                            Ok(ref safe_path) => {
+                                if let Err(e) = tokio::fs::remove_dir_all(safe_path).await {
+                                    eprintln!("⚠️ failed to remove {}: {}", path.display(), e);
+                                    succeeded = false;
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("⚠️ skipping {}: {}", path.display(), e);
+                                continue;
+                            }
                         }
                     }
                 }
                 if !apply || succeeded {
-                    cleaned.push(format!(
-                        "{} ({} days old, {})",
-                        path.display(),
-                        modified_secs_ago / 86400,
-                        human_bytes(size)
-                    ));
-                    reclaimed += size;
+                    if quarantined {
+                        cleaned.push(format!(
+                            "{} (quarantined, {} days old, {}, freed {})",
+                            path.display(),
+                            modified_secs_ago / 86400,
+                            human_bytes(size),
+                            human_bytes(freed)
+                        ));
+                        reclaimed += freed;
+                    } else {
+                        cleaned.push(format!(
+                            "{} ({} days old, {})",
+                            path.display(),
+                            modified_secs_ago / 86400,
+                            human_bytes(size)
+                        ));
+                        reclaimed += size;
+                    }
                 }
             }
         }
@@ -4904,6 +5025,8 @@ async fn run_auto_cleanup(
             guard.node_modules_max_age_days,
             apply,
             &guard.protected_paths,
+            guard.clean_quarantine_first,
+            &quarantine_root(guard),
         )
         .await
         {
@@ -5593,13 +5716,177 @@ async fn run_proactive_cleanup(guard: &GuardPolicy, state: &mut GuardRuntimeStat
     Ok(())
 }
 
+/// ADDED 2026-09-27 (space tiers Phase 2): relocate-first mitigation.
+/// At action/critical, move cold candidates to the cold root until usage
+/// drops below action% or candidates/moves run out. Report-only unless
+/// `auto_relocate_apply`. Tracked content is never a candidate.
+/// Returns (moves applied, bytes moved, candidates scanned).
+async fn run_auto_relocate(
+    guard: &GuardPolicy,
+) -> Result<(usize, u64, Vec<ColdCandidate>)> {
+    let cold_raw = guard.relocate_cold_root.trim();
+    if cold_raw.is_empty() {
+        return Ok((0, 0, Vec::new()));
+    }
+    let cold_root = expand_tilde(cold_raw);
+    if !cold_root.is_dir() {
+        eprintln!(
+            "⚠️ auto-relocate: cold root {} missing — run `dracon-system setup`",
+            cold_root.display()
+        );
+        return Ok((0, 0, Vec::new()));
+    }
+    let roots: Vec<PathBuf> = guard
+        .relocate_candidate_roots
+        .split(',')
+        .filter_map(|s| {
+            let s = s.trim();
+            if s.is_empty() {
+                return None;
+            }
+            let p = expand_tilde(s);
+            if p.is_dir() {
+                Some(p)
+            } else {
+                None
+            }
+        })
+        .collect();
+    if roots.is_empty() {
+        return Ok((0, 0, Vec::new()));
+    }
+    let min_bytes = guard
+        .relocate_min_size_mb
+        .saturating_mul(1024)
+        .saturating_mul(1024);
+    let candidates = find_cold_candidates(&roots, min_bytes, guard.relocate_min_age_days);
+    if candidates.is_empty() {
+        return Ok((0, 0, Vec::new()));
+    }
+    let mut moves = 0usize;
+    let mut moved_bytes = 0u64;
+    let max_moves = guard.relocate_max_moves_per_pass.max(1) as usize;
+    for cand in candidates.iter().take(max_moves) {
+        // Re-check pressure before each move; stop once below action.
+        let used_now = disk_details_for(&guard.disk_mount_path)
+            .await
+            .map(|d| d.use_percent)
+            .unwrap_or(u8::MAX);
+        if used_now < guard.disk_action_percent {
+            break;
+        }
+        let src = PathBuf::from(&cand.path);
+        let plan = match plan_relocate(&src, &cold_root, &guard.protected_paths, false) {
+            Ok(p) if p.ready => p,
+            Ok(p) => {
+                eprintln!(
+                    "⚠️ auto-relocate: {} not ready: {}",
+                    cand.path,
+                    p.issues.join("; ")
+                );
+                continue;
+            }
+            Err(e) => {
+                eprintln!("⚠️ auto-relocate: {}: {:#}", cand.path, e);
+                continue;
+            }
+        };
+        if !guard.auto_relocate_apply {
+            eprintln!(
+                "📦 auto-relocate would move {} ({}, {}d idle) → {} (report-only)",
+                cand.path,
+                human_bytes(cand.bytes),
+                cand.age_days,
+                plan.dest
+            );
+            continue;
+        }
+        match apply_relocate(&plan) {
+            Ok(report) => {
+                moves += 1;
+                moved_bytes += report.bytes;
+                eprintln!(
+                    "📦 auto-relocated {} ({}) → {}",
+                    report.link,
+                    human_bytes(report.bytes),
+                    report.target
+                );
+                if let Err(e) = record_relocation(&report.link, &report.target, report.bytes) {
+                    eprintln!("⚠️ auto-relocate: moved but failed to record: {e:#}");
+                }
+            }
+            Err(e) => eprintln!("⚠️ auto-relocate failed for {}: {:#}", cand.path, e),
+        }
+    }
+    if moves > 0 {
+        send_notification(
+            guard,
+            "Dracon System Guard",
+            &format!(
+                "Auto-relocated {} cold dir(s), {} → {}",
+                moves,
+                human_bytes(moved_bytes),
+                cold_root.display()
+            ),
+        )
+        .await;
+    }
+    Ok((moves, moved_bytes, candidates))
+}
+
+/// ADDED 2026-09-27 (space tiers Phase 2): monitor managed + auto-relocated
+/// links every pass; notify once on drift, repeat per report cadence.
+/// Loads link entries fresh (cheap TOML read) to avoid threading
+/// SystemPolicy through the guard-only daemon state.
+async fn check_link_drift(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
+    let entries = match load_system_policy() {
+        Ok((_, policy)) => policy.links.entries,
+        Err(_) => return,
+    };
+    let auto = relocation_link_entries();
+    if entries.is_empty() && auto.is_empty() {
+        return;
+    }
+    let mut policy = SystemPolicy::default();
+    policy.links.entries = entries;
+    let report = build_link_report_with(&policy, &auto);
+    let value = if report.drifted == 0 {
+        "ok".to_string()
+    } else {
+        format!("drifted={}", report.drifted)
+    };
+    let (_prev, should_emit) =
+        report_state_transition(state, "links", &value, guard.report_repeat_secs);
+    if should_emit && report.drifted > 0 {
+        let detail = report
+            .entries
+            .iter()
+            .filter(|e| e.issue != "ok")
+            .take(5)
+            .map(|e| format!("{} ({})", e.link, e.issue))
+            .collect::<Vec<_>>()
+            .join("; ");
+        send_notification(
+            guard,
+            "Dracon System Guard",
+            &format!("{} managed link(s) drifted: {}", report.drifted, detail),
+        )
+        .await;
+        log_guard_event(
+            guard,
+            "links-drifted",
+            &format!("drifted={} detail={}", report.drifted, detail),
+        );
+    }
+}
+
 pub(crate) async fn run_guard_once(
     guard: &GuardPolicy,
     state: &mut GuardRuntimeState,
 ) -> Result<GuardReport> {
     let details = disk_details_for(&guard.disk_mount_path).await?;
-    let used = details.use_percent;
-    let dstate = disk_state(used, guard).to_string();
+    let mut used = details.use_percent;
+    let mut dstate = disk_state(used, guard).to_string();
     let marker = sync_freeze_marker_path(guard);
     let mut sync_frozen = marker.exists();
 
@@ -5629,12 +5916,35 @@ pub(crate) async fn run_guard_once(
     let fill_gbph = check_rapid_disk_fill(guard, state, details.used_bytes, used).await;
     manage_sync_freeze(guard, used, &dstate, &mut sync_frozen);
 
+    let mut relocate_candidates: Vec<ColdCandidate> = Vec::new();
+    let mut relocated_count = 0usize;
+    let mut relocated_bytes = 0u64;
     if dstate == "action" || dstate == "critical" {
         let now = Instant::now();
         if auto_cleanup_due_at(state, guard.auto_cleanup_interval_secs, now) {
             // Set the timestamp before the scan so a persistent filesystem
             // error cannot turn into a 30-second retry loop.
             state.last_auto_cleanup = Some(now);
+            // ADDED 2026-09-27 (space tiers Phase 2): relocate-first —
+            // move cold bulk before deleting anything rebuildable.
+            if guard.auto_relocate {
+                match run_auto_relocate(guard).await {
+                    Ok((moves, moved_bytes, candidates)) => {
+                        relocated_count = moves;
+                        relocated_bytes = moved_bytes;
+                        relocate_candidates = candidates;
+                    }
+                    Err(e) => eprintln!("⚠️ auto-relocate failed: {e:#}"),
+                }
+            }
+            // Re-read pressure after moves so delete-based cleanup (and the
+            // critical age-gate bypass) acts on post-move reality.
+            if relocated_count > 0 {
+                if let Ok(d) = disk_details_for(&guard.disk_mount_path).await {
+                    used = d.use_percent;
+                    dstate = disk_state(used, guard).to_string();
+                }
+            }
             run_auto_cleanup(guard, state, used, true).await?;
         }
     } else if used >= guard.proactive_cleanup_percent {
@@ -5659,6 +5969,7 @@ pub(crate) async fn run_guard_once(
     }
 
     check_disk_state_change(guard, state, used, &dstate).await;
+    check_link_drift(guard, state).await;
 
     // One bounded metadata scan is shared by heavy-process and memory
     // pressure checks. The old implementation ran `ps ... args` twice per
@@ -5678,6 +5989,9 @@ pub(crate) async fn run_guard_once(
         disk_state: dstate,
         sync_frozen,
         extra_mounts,
+        relocate_candidates,
+        relocated_count,
+        relocated_bytes,
         alerts,
         memory,
         zombies,
@@ -6488,6 +6802,39 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
         ]);
     }
 
+    if report.relocated_count > 0 {
+        table.add_row(vec![
+            Cell::new("📦"),
+            Cell::new("Auto-relocated"),
+            Cell::new(format!(
+                "{} dir(s), {}",
+                report.relocated_count,
+                human_bytes(report.relocated_bytes)
+            )),
+        ]);
+    }
+    for (i, c) in report.relocate_candidates.iter().enumerate() {
+        if i >= 5 {
+            table.add_row(vec![
+                Cell::new(""),
+                Cell::new("Cold candidates"),
+                Cell::new(format!("…and {} more", report.relocate_candidates.len() - 5)),
+            ]);
+            break;
+        }
+        table.add_row(vec![
+            Cell::new("📦"),
+            Cell::new(if i == 0 { "Cold candidates" } else { "" }),
+            Cell::new(format!(
+                "{} ({} in {} files, {}d idle)",
+                c.path,
+                human_bytes(c.bytes),
+                c.files,
+                c.age_days
+            )),
+        ]);
+    }
+
     table.add_row(vec![
         Cell::new(if report.sync_frozen { "⏸️" } else { "" }),
         Cell::new("Sync Frozen"),
@@ -7019,11 +7366,14 @@ async fn cmd_guard_clean(
                 }
             })
             .collect();
+        // Explicit `guard clean` always deletes (no quarantine-first).
         match clean_old_node_modules(
             &roots,
             guard_clone.node_modules_max_age_days,
             apply,
             &guard_clone.protected_paths,
+            false,
+            Path::new(""),
         )
         .await
         {
@@ -7195,6 +7545,7 @@ async fn run() -> Result<()> {
             cmd_relocate(path, to, apply, allow_tracked, json)
         }
         Commands::Quarantine { cmd } => cmd_quarantine(cmd),
+        Commands::Setup { apply, json } => cmd_setup(apply, json),
         Commands::Events {
             tail,
             source,

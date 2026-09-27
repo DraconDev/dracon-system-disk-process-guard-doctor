@@ -99,13 +99,22 @@ pub(crate) fn lexical_normalize(path: &Path) -> PathBuf {
 
 /// Build a full link status report from policy.
 pub(crate) fn build_link_report(policy: &SystemPolicy) -> LinkStatusReport {
-    let mut entries = Vec::with_capacity(policy.links.entries.len());
+    build_link_report_with(policy, &[])
+}
+
+/// Build a link report from policy plus extra entries (daemon-owned
+/// auto-relocation records). ADDED 2026-09-27 (space tiers Phase 2).
+pub(crate) fn build_link_report_with(
+    policy: &SystemPolicy,
+    extra: &[LinkEntry],
+) -> LinkStatusReport {
+    let mut entries = Vec::with_capacity(policy.links.entries.len() + extra.len());
     let mut healthy = 0usize;
     let mut drifted = 0usize;
     let mut missing_target = 0usize;
     let mut missing_link = 0usize;
 
-    for entry in &policy.links.entries {
+    for entry in policy.links.entries.iter().chain(extra.iter()) {
         let status = evaluate_link(entry);
         match status.issue.as_str() {
             "ok" => healthy += 1,
@@ -234,9 +243,12 @@ pub(crate) fn cmd_link(cmd: LinkCommands) -> Result<()> {
     use comfy_table::{presets::UTF8_FULL_CONDENSED, Cell, Color, ContentArrangement, Table};
 
     let (_, policy) = crate::load_system_policy()?;
+    // Daemon-owned auto-relocation records merge into status/doctor so
+    // automatic moves are monitored like hand-written entries.
+    let auto_entries = crate::relocation_link_entries();
     match cmd {
         LinkCommands::Status { json } | LinkCommands::Doctor { json } => {
-            let report = build_link_report(&policy);
+            let report = build_link_report_with(&policy, &auto_entries);
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {

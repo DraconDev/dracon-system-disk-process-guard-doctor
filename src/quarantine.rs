@@ -56,23 +56,6 @@ pub(crate) fn now_unix() -> u64 {
         .unwrap_or(0)
 }
 
-/// True when both paths live on the same filesystem (same device number).
-/// A same-filesystem quarantine move frees nothing — honest accounting for
-/// the guard's reclaimed-bytes reporting.
-#[cfg(unix)]
-pub(crate) fn same_filesystem(a: &Path, b: &Path) -> bool {
-    use std::os::unix::fs::MetadataExt;
-    match (fs::metadata(a), fs::metadata(b)) {
-        (Ok(ma), Ok(mb)) => ma.dev() == mb.dev(),
-        _ => false,
-    }
-}
-
-#[cfg(not(unix))]
-pub(crate) fn same_filesystem(_a: &Path, _b: &Path) -> bool {
-    false
-}
-
 /// Quarantine `origin` instead of deleting it. Returns the manifest plus the
 /// bytes actually freed on the origin filesystem (0 for same-filesystem
 /// moves — the win there is the TTL expiry later, not immediate space).
