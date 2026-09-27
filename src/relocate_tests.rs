@@ -225,7 +225,7 @@ fn scan_fixture(root: &Path) -> PathBuf {
 fn find_cold_candidates_filters_size_age_and_build_dirs() {
     let root = test_root("scan");
     let scan = scan_fixture(&root);
-    let found = crate::find_cold_candidates(&[scan.clone()], 1024 * 1024, 14);
+    let found = crate::find_cold_candidates(std::slice::from_ref(&scan), 1024 * 1024, 14);
     let paths: Vec<&str> = found.iter().map(|c| c.path.as_str()).collect();
     assert!(
         paths.iter().any(|p| p.ends_with("big-old")),

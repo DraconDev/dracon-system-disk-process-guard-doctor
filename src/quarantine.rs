@@ -65,16 +65,19 @@ pub(crate) fn quarantine_first_remove(
     user_protected: &[String],
 ) -> Result<(QuarantineManifest, u64)> {
     // Capture the origin device BEFORE the move (the path is gone after).
-    let origin_dev = fs::metadata(origin).ok().and_then(|m| {
+    // FIXED 2026-09-27 (clippy `option_and_then_some`): `.and_then(|m| Some(m.dev()))`
+    // is `.map(|m| m.dev())`. Pre-existing lint, newly fatal under the CI
+    // gate that now lints `--all-targets`.
+    let origin_dev = fs::metadata(origin).ok().map(|m| {
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
-            Some(m.dev())
+            m.dev()
         }
         #[cfg(not(unix))]
         {
             let _ = m;
-            None
+            0
         }
     });
     let manifest = quarantine_move(origin, root, user_protected)?;

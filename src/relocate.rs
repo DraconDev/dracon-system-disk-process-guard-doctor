@@ -455,7 +455,10 @@ pub(crate) fn find_cold_candidates(
             age_days,
         })
         .collect();
-    out.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+    // FIXED 2026-09-27 (clippy `unnecessary_sort_by`): sorting by a single
+    // `u64` key is `sort_by_key`. Pre-existing lint, newly fatal under the
+    // CI gate that now lints `--all-targets`.
+    out.sort_by_key(|c| std::cmp::Reverse(c.bytes));
     out.truncate(SCAN_MAX_CANDIDATES);
     out
 }
