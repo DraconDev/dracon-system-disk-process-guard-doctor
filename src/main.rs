@@ -4647,6 +4647,43 @@ async fn check_memory_pressure(
 /// v0.112.35). Zombies can't be killed; the diagnostic value is the
 /// count, their parents (a live parent that never wait()s), and how
 /// long they have lingered.
+/// Build the reporting policy from the operator's config.
+///
+/// Exempt names are shared with the pressure mitigation on purpose: if a
+/// process is too important to renice under memory pressure, it is far too
+/// important to appear on a list of things that look abandoned.
+fn reap_policy_from_guard(guard: &GuardPolicy) -> ReapPolicy {
+    ReapPolicy {
+        min_idle_hours: guard.reap_report_min_idle_hours,
+        max_cpu_seconds: guard.reap_report_max_cpu_seconds,
+        signatures: parse_kinds(&guard.reap_report_signatures),
+        exempt_names: parse_kinds(&guard.process_exempt_names),
+    }
+}
+
+/// Report abandoned dev/test processes. Never signals, kills, or stops
+/// anything -- see `reap.rs`. Returns empty on a host where procfs cannot
+/// be read, so a missing clock degrades the report instead of failing the
+/// pass.
+fn reap_candidates(guard: &GuardPolicy) -> Vec<ReapCandidate> {
+    let proc_root = Path::new("/proc");
+    let Some(boot_time) = read_boot_time(proc_root) else {
+        return Vec::new();
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(boot_time);
+    let ticks_per_sec = 100; // Linux USER_HZ is fixed at 100 on every arch.
+    scan_reap_candidates(
+        proc_root,
+        &reap_policy_from_guard(guard),
+        boot_time,
+        now,
+        ticks_per_sec,
+    )
+}
+
 fn zombie_details(state: &mut GuardRuntimeState) -> Vec<ZombieInfo> {
     let now = Instant::now();
     let mut zombies = Vec::new();
@@ -5999,6 +6036,7 @@ pub(crate) async fn run_guard_once(
 
     check_inode_usage(guard, state).await;
     let zombies = check_zombie_processes(guard, state).await;
+    let reap_candidates = reap_candidates(guard);
     check_large_logs(guard, state).await;
     let memory = check_memory_pressure(guard, state, &samples).await;
 
@@ -6014,6 +6052,7 @@ pub(crate) async fn run_guard_once(
         alerts,
         memory,
         zombies,
+        reap_candidates,
         disk_fill_gbph: fill_gbph,
     })
 }
