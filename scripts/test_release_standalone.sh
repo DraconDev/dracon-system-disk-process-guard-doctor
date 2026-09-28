@@ -18,7 +18,16 @@ fi
 git clone --no-local --quiet "$REPO_ROOT" "$work/repo"
 clone="$work/repo"
 test -f "$clone/Cargo.lock"
-test -f "$clone/deny.toml"
+# REMOVED 2026-09-28 (audit decision D5): the per-utility `deny.toml`
+# is gone. It was a weaker duplicate of the workspace root's config
+# (`multiple-versions = "warn"` there vs `"deny"` at the root), and
+# because cargo-deny 0.19 resolves a config by searching parent
+# directories, its presence made `cargo deny check` in this repo use the
+# WEAKER file while CI used the real one. Without it, the gate below reads
+# the same single config CI does. (This script still predates the
+# 2026-09-11 nested-repo flip — it asserts a `dracon-system/` subdirectory
+# inside the clone, which a standalone clone does not have. That staleness
+# is pre-existing and deliberately NOT fixed here.)
 test -f "$clone/dracon-system/Cargo.toml"
 test -z "$(git -C "$clone" status --porcelain)"
 
