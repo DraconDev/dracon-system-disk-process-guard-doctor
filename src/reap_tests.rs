@@ -63,6 +63,10 @@ impl Fixture {
         let uptime_secs = self.now - self.boot_time;
         let starttime = uptime_secs.saturating_sub(age_secs) * TICKS;
         let utime = cpu_secs * TICKS;
+        // utime and stime are summed by the parser (lifetime CPU), so all
+        // of the fixture's budget goes in utime to keep `cpu_secs` meaning
+        // the total rather than each half of it.
+        let stime = 0;
         // Fields are the kernel's 1-indexed ones; comm sits at 2 and may
         // contain spaces, exactly as on a real host. After comm the order
         // is state ppid pgrp session tty_nr tpgid flags minflt cminflt
@@ -70,7 +74,7 @@ impl Fixture {
         // num_threads itrealvalue starttime.
         let stat = format!(
             "{pid} ({comm}) {state} {ppid} {pgrp} {session} {tty_nr} 0 -1 4194304 0 0 0 \
-             {utime} {utime} 0 0 20 0 1 0 {starttime} 0 0 0 0 0 0 0 0 0 0 0 0 17 2 0 0 0 0 0",
+             {utime} {stime} 0 0 20 0 1 0 {starttime} 0 0 0 0 0 0 0 0 0 0 0 0 17 2 0 0 0 0 0",
             ppid = 1224,
             pgrp = pid,
             session = pid,
@@ -267,7 +271,7 @@ fn a_comm_containing_spaces_and_parens_still_parses() {
     let dir = fx.root.join("8100");
     fs::create_dir_all(&dir).expect("pid dir");
     let stat = format!(
-        "8100 (weird (name) here) S 1224 8100 8100 0 0 -1 4194304 0 0 0 {u} {u} 0 0 20 0 1 0 \
+        "8100 (weird (name) here) S 1224 8100 8100 0 0 -1 4194304 0 0 0 {u} 0 0 0 20 0 1 0 \
          {st} 0 0 0 0 0 0 0 0 0 0 0 0 17 2 0 0 0 0 0",
         u = 5 * TICKS,
         st = (10 * DAY_SECS - 3 * DAY_SECS) * TICKS,
