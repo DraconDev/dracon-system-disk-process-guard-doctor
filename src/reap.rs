@@ -54,12 +54,23 @@ pub(crate) struct ReapPolicy {
     pub(crate) exempt_names: Vec<String>,
 }
 
+/// Split a comma-separated list into a deterministic, sorted Vec.
+///
+/// `parse_kinds` returns a HashSet, which would make the *reported*
+/// signature depend on hash order when two entries both match. Sorting
+/// keeps consecutive guard reports comparable.
+pub(crate) fn sorted_signatures(csv: &str) -> Vec<String> {
+    let mut out: Vec<String> = crate::parse_kinds(csv).into_iter().collect();
+    out.sort();
+    out
+}
+
 impl Default for ReapPolicy {
     fn default() -> Self {
         ReapPolicy {
             min_idle_hours: DEFAULT_REAP_REPORT_MIN_IDLE_HOURS,
             max_cpu_seconds: DEFAULT_REAP_REPORT_MAX_CPU_SECONDS,
-            signatures: crate::parse_kinds(DEFAULT_REAP_REPORT_SIGNATURES),
+            signatures: sorted_signatures(DEFAULT_REAP_REPORT_SIGNATURES),
             exempt_names: Vec::new(),
         }
     }

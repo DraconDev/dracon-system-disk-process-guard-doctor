@@ -4656,8 +4656,8 @@ fn reap_policy_from_guard(guard: &GuardPolicy) -> ReapPolicy {
     ReapPolicy {
         min_idle_hours: guard.reap_report_min_idle_hours,
         max_cpu_seconds: guard.reap_report_max_cpu_seconds,
-        signatures: parse_kinds(&guard.reap_report_signatures),
-        exempt_names: parse_kinds(&guard.process_exempt_names),
+        signatures: sorted_signatures(&guard.reap_report_signatures),
+        exempt_names: sorted_signatures(&guard.process_exempt_names),
     }
 }
 
