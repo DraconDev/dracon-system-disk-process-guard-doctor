@@ -44,7 +44,8 @@ pub(crate) const DEFAULT_REAP_REPORT_MAX_CPU_SECONDS: u64 = 60;
 /// Comma-separated in the TOML. Deliberately specific: the default is
 /// narrow enough that a shell, an editor, or an agent session can never
 /// match by accident.
-pub(crate) const DEFAULT_REAP_REPORT_SIGNATURES: &str = "eve web,vite,playwright,chromium,bun run,bun test,npm run test,.mjs,litestream,stub-auth-api";
+pub(crate) const DEFAULT_REAP_REPORT_SIGNATURES: &str =
+    "eve web,vite,playwright,chromium,bun run,bun test,npm run test,.mjs,litestream,stub-auth-api";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReapPolicy {
