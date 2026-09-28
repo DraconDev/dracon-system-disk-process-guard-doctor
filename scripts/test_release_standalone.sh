@@ -23,11 +23,18 @@ test -f "$clone/Cargo.lock"
 # (`multiple-versions = "warn"` there vs `"deny"` at the root), and
 # because cargo-deny 0.19 resolves a config by searching parent
 # directories, its presence made `cargo deny check` in this repo use the
-# WEAKER file while CI used the real one. Without it, the gate below reads
-# the same single config CI does. (This script still predates the
-# 2026-09-11 nested-repo flip — it asserts a `dracon-system/` subdirectory
-# inside the clone, which a standalone clone does not have. That staleness
-# is pre-existing and deliberately NOT fixed here.)
+# WEAKER file while CI used the real one. Without it, a release run
+# IN-WORKSPACE reads the same single config CI does. In a BARE clone
+# (this script's own `git clone`, which has no workspace above it) there
+# is no config in scope at all, and cargo-deny does not fail for that: it
+# warns `unable to find a config path, falling back to default config` and
+# applies its BUILT-IN policy. `run_deny_gate` in `scripts/release.sh` now
+# turns that fallback into a fatal `die_pre`, so the `run_gate deny` line
+# below can no longer pass by enforcing something nobody chose.
+# (This script still predates the 2026-09-11 nested-repo flip — it asserts
+# a `dracon-system/` subdirectory inside the clone, which a standalone
+# clone does not have. That staleness is pre-existing and deliberately NOT
+# fixed here.)
 test -f "$clone/dracon-system/Cargo.toml"
 test -z "$(git -C "$clone" status --porcelain)"
 
