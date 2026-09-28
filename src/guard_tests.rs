@@ -201,6 +201,7 @@ fn guard_report_can_be_created_with_alerts() {
         }],
         memory: None,
         zombies: Vec::new(),
+        reap_candidates: Vec::new(),
         disk_fill_gbph: None,
     };
     assert!(report.enabled);
