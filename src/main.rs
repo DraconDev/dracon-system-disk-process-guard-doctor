@@ -35,6 +35,8 @@ mod policy;
 pub(crate) use policy::*;
 mod quarantine;
 pub(crate) use quarantine::*;
+mod reap;
+pub(crate) use reap::*;
 mod relocate;
 pub(crate) use relocate::*;
 mod safety;
@@ -52,6 +54,8 @@ mod guard_tests;
 mod links_tests;
 #[cfg(test)]
 mod quarantine_tests;
+#[cfg(test)]
+mod reap_tests;
 #[cfg(test)]
 mod relocate_tests;
 #[cfg(test)]
@@ -474,6 +478,9 @@ pub(crate) struct GuardReport {
     memory: Option<MemoryReport>,
     /// ADDED 2026-08-10 (v0.112.35): zombie detail (pid/ppid/age/parent).
     zombies: Vec<ZombieInfo>,
+    /// Abandoned dev/test processes -- report only, never signalled. See
+    /// `reap.rs`: this is a worklist for a human, not an action.
+    reap_candidates: Vec<ReapCandidate>,
     /// ADDED 2026-08-10 (v0.112.35): sustained disk fill rate (GiB/hour).
     disk_fill_gbph: Option<f64>,
 }
