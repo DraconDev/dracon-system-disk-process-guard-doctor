@@ -24,10 +24,8 @@ struct Fixture {
 
 impl Fixture {
     fn new(name: &str) -> Fixture {
-        let root = std::env::temp_dir().join(format!(
-            "dracon-reap-test-{}-{name}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("dracon-reap-test-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).expect("fixture proc root");
         // A fixed epoch so elapsed arithmetic is exact, not wall-clock.
@@ -182,7 +180,16 @@ fn a_busy_process_is_never_reported() {
 fn a_young_process_is_never_reported() {
     let fx = Fixture::new("too-young");
     // Idle and terminal-less, but only 20 minutes old.
-    fx.proc(902, "node", &["node", "vite", "dev"], 'S', 0, 1, 20 * 60, 65_536);
+    fx.proc(
+        902,
+        "node",
+        &["node", "vite", "dev"],
+        'S',
+        0,
+        1,
+        20 * 60,
+        65_536,
+    );
     assert!(fx.default_scan().is_empty(), "a fresh server is not dead");
 }
 
@@ -225,7 +232,16 @@ fn an_exempt_name_is_never_reported() {
 fn a_running_process_is_never_reported() {
     // Idle-looking CPU history but currently on-CPU: state R is work.
     let fx = Fixture::new("on-cpu");
-    fx.proc(905, "node", &["node", "vite", "dev"], 'R', 0, 1, 5 * DAY_SECS, 65_536);
+    fx.proc(
+        905,
+        "node",
+        &["node", "vite", "dev"],
+        'R',
+        0,
+        1,
+        5 * DAY_SECS,
+        65_536,
+    );
     assert!(fx.default_scan().is_empty(), "an R process is busy");
 }
 
@@ -291,12 +307,43 @@ fn a_comm_containing_spaces_and_parens_still_parses() {
 fn results_are_ordered_by_rss_then_pid() {
     // Stable ordering makes consecutive guard reports comparable.
     let fx = Fixture::new("ordering");
-    fx.proc(500, "node", &["node", "vite"], 'S', 0, 1, 3 * DAY_SECS, 1_000);
-    fx.proc(501, "node", &["node", "vite"], 'S', 0, 1, 3 * DAY_SECS, 9_000);
-    fx.proc(502, "node", &["node", "vite"], 'S', 0, 1, 3 * DAY_SECS, 9_000);
+    fx.proc(
+        500,
+        "node",
+        &["node", "vite"],
+        'S',
+        0,
+        1,
+        3 * DAY_SECS,
+        1_000,
+    );
+    fx.proc(
+        501,
+        "node",
+        &["node", "vite"],
+        'S',
+        0,
+        1,
+        3 * DAY_SECS,
+        9_000,
+    );
+    fx.proc(
+        502,
+        "node",
+        &["node", "vite"],
+        'S',
+        0,
+        1,
+        3 * DAY_SECS,
+        9_000,
+    );
     let found = fx.default_scan();
     let pids: Vec<i32> = found.iter().map(|c| c.pid).collect();
-    assert_eq!(pids, vec![501, 502, 500], "rss desc, then pid asc: {pids:?}");
+    assert_eq!(
+        pids,
+        vec![501, 502, 500],
+        "rss desc, then pid asc: {pids:?}"
+    );
 }
 
 #[test]
@@ -304,8 +351,26 @@ fn the_cpu_ceiling_is_inclusive() {
     // Exactly at the limit is idle; one second over is not. An off-by-one
     // here would either hide real candidates or admit a busy one.
     let fx = Fixture::new("cpu-boundary");
-    fx.proc(601, "node", &["node", "vite"], 'S', 0, 60, 3 * DAY_SECS, 1_000);
-    fx.proc(602, "node", &["node", "vite"], 'S', 0, 61, 3 * DAY_SECS, 1_000);
+    fx.proc(
+        601,
+        "node",
+        &["node", "vite"],
+        'S',
+        0,
+        60,
+        3 * DAY_SECS,
+        1_000,
+    );
+    fx.proc(
+        602,
+        "node",
+        &["node", "vite"],
+        'S',
+        0,
+        61,
+        3 * DAY_SECS,
+        1_000,
+    );
     let found = fx.default_scan();
     let pids: Vec<i32> = found.iter().map(|c| c.pid).collect();
     assert_eq!(pids, vec![601], "60s is idle, 61s is not: {pids:?}");
@@ -314,8 +379,26 @@ fn the_cpu_ceiling_is_inclusive() {
 #[test]
 fn the_idle_floor_is_inclusive() {
     let fx = Fixture::new("idle-boundary");
-    fx.proc(701, "node", &["node", "vite"], 'S', 0, 1, DAY_SECS - 60, 1_000);
-    fx.proc(702, "node", &["node", "vite"], 'S', 0, 1, DAY_SECS + 60, 1_000);
+    fx.proc(
+        701,
+        "node",
+        &["node", "vite"],
+        'S',
+        0,
+        1,
+        DAY_SECS - 60,
+        1_000,
+    );
+    fx.proc(
+        702,
+        "node",
+        &["node", "vite"],
+        'S',
+        0,
+        1,
+        DAY_SECS + 60,
+        1_000,
+    );
     let found = fx.default_scan();
     let pids: Vec<i32> = found.iter().map(|c| c.pid).collect();
     assert_eq!(pids, vec![702], "23h59m is too young, 24h01m qualifies");
@@ -326,7 +409,16 @@ fn a_widened_allowlist_matches_a_new_signature() {
     // The allowlist is operator-owned; adding a signature widens the report
     // and nothing else.
     let fx = Fixture::new("custom-signature");
-    fx.proc(801, "mytool", &["mytool", "--serve"], 'S', 0, 2, 4 * DAY_SECS, 2_048);
+    fx.proc(
+        801,
+        "mytool",
+        &["mytool", "--serve"],
+        'S',
+        0,
+        2,
+        4 * DAY_SECS,
+        2_048,
+    );
     assert!(fx.default_scan().is_empty(), "not on the default allowlist");
     let custom = ReapPolicy {
         signatures: vec!["mytool --serve".to_string()],
@@ -362,7 +454,11 @@ fn elapsed_never_underflows_or_divides_by_zero() {
     // A zero clock divisor or a starttime in the future must not panic;
     // both just mean "not old enough".
     assert_eq!(elapsed_secs(0, 0, 100, 200), 0, "zero ticks divisor");
-    assert_eq!(elapsed_secs(1_000_000, TICKS, 100, 200), 0, "start in the future");
+    assert_eq!(
+        elapsed_secs(1_000_000, TICKS, 100, 200),
+        0,
+        "start in the future"
+    );
     assert_eq!(
         elapsed_secs(0, TICKS, 100, 200),
         100,
