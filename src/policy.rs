@@ -80,6 +80,21 @@ pub(crate) struct GuardPolicy {
     pub(crate) process_sustain_secs: u64,
     #[serde(default = "default_process_exempt_names")]
     pub(crate) process_exempt_names: String,
+    // --- Abandoned dev/test process reporting (report-only) -------------
+    // Test runs leave orphaned dev servers behind when they are killed
+    // mid-flight. These three fields only change what the guard *prints*;
+    // nothing here signals, kills, or stops a process. Lowering
+    // min_idle_hours makes the report noisier, never more destructive.
+    /// Minimum age before an idle, terminal-less process is reported.
+    #[serde(default = "default_reap_report_min_idle_hours")]
+    pub(crate) reap_report_min_idle_hours: u64,
+    /// Lifetime CPU ceiling, in seconds, below which a process is idle.
+    #[serde(default = "default_reap_report_max_cpu_seconds")]
+    pub(crate) reap_report_max_cpu_seconds: u64,
+    /// Comma-separated allowlist of command-line signatures that mark a
+    /// process as disposable test/dev infrastructure.
+    #[serde(default = "default_reap_report_signatures")]
+    pub(crate) reap_report_signatures: String,
     #[serde(default = "default_true")]
     pub(crate) notify: bool,
     #[serde(default = "default_notify_command")]
@@ -482,6 +497,18 @@ pub(crate) fn default_process_rss_mb() -> u64 {
 
 pub(crate) fn default_process_sustain_secs() -> u64 {
     30
+}
+
+pub(crate) fn default_reap_report_min_idle_hours() -> u64 {
+    crate::reap::DEFAULT_REAP_REPORT_MIN_IDLE_HOURS
+}
+
+pub(crate) fn default_reap_report_max_cpu_seconds() -> u64 {
+    crate::reap::DEFAULT_REAP_REPORT_MAX_CPU_SECONDS
+}
+
+pub(crate) fn default_reap_report_signatures() -> String {
+    crate::reap::DEFAULT_REAP_REPORT_SIGNATURES.to_string()
 }
 
 pub(crate) fn default_process_exempt_names() -> String {
