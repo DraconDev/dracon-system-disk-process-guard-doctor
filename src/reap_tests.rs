@@ -41,8 +41,11 @@ impl Fixture {
 
     /// Write one process into the fixture tree.
     ///
-    /// `age_secs` is converted to a `starttime` tick count so the scanner's
-    /// own elapsed calculation is exercised rather than stubbed.
+    /// `age_secs` is how old the process is *at scan time*, so the
+    /// starttime is derived from `now` rather than from boot; otherwise
+    /// every test would measure `now - age` and assert the wrong number.
+    /// Going through the scanner's own elapsed calculation is the point:
+    /// the stat fixture is real enough to exercise it.
     #[allow(clippy::too_many_arguments)]
     fn proc(
         &self,
@@ -57,7 +60,8 @@ impl Fixture {
     ) {
         let dir = self.root.join(pid.to_string());
         fs::create_dir_all(&dir).expect("pid dir");
-        let starttime = age_secs * TICKS;
+        let uptime_secs = self.now - self.boot_time;
+        let starttime = uptime_secs.saturating_sub(age_secs) * TICKS;
         let utime = cpu_secs * TICKS;
         // Fields are the kernel's 1-indexed ones; comm sits at 2 and may
         // contain spaces, exactly as on a real host. After comm the order
@@ -266,7 +270,7 @@ fn a_comm_containing_spaces_and_parens_still_parses() {
         "8100 (weird (name) here) S 1224 8100 8100 0 0 -1 4194304 0 0 0 {u} {u} 0 0 20 0 1 0 \
          {st} 0 0 0 0 0 0 0 0 0 0 0 0 17 2 0 0 0 0 0",
         u = 5 * TICKS,
-        st = 3 * DAY_SECS * TICKS,
+        st = (10 * DAY_SECS - 3 * DAY_SECS) * TICKS,
     );
     fs::write(dir.join("stat"), stat).expect("stat");
     fs::write(dir.join("comm"), "weird (name) here\n").expect("comm");
