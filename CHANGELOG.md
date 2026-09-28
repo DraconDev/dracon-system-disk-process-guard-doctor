@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **The per-utility `deny.toml` is deleted (audit decision D5, 2026-09-27)** — the workspace root's `deny.toml` is the single real gate, and this file was a *shadowing* weaker duplicate of it: `multiple-versions = "warn"` here versus `"deny"` at the root, and a shorter advisory/license list. cargo-deny 0.19 resolves a config by searching parent directories, so while this file existed, `cargo deny check` run from this repo (including the `run_gate cargo deny check` in `scripts/release.sh`) silently enforced the WEAKER policy while CI enforced the real one. With it gone, the release gate and CI read the same config, so the gate is strictly stronger than before. Verified after removal: `cargo deny check` passes from the workspace root, from this repo, and from `dracon-sync` (which never had a config). The `test -f "$clone/deny.toml"` assertion in `scripts/test_release_standalone.sh` was removed with it; that script still predates the 2026-09-11 nested-repo flip (it asserts a `dracon-system/` subdirectory inside a standalone clone), which is pre-existing and deliberately not fixed here. A release cut from a bare clone of this repo with no workspace `deny.toml` in scope will now fail the deny gate loudly instead of checking a weaker local policy.
+
 ### Added (space tiers, Phase 1, 2026-09-26)
 
 - **`relocate` command**: move a cold directory to another root (typically
