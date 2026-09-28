@@ -60,9 +60,12 @@ impl Fixture {
         let starttime = age_secs * TICKS;
         let utime = cpu_secs * TICKS;
         // Fields are the kernel's 1-indexed ones; comm sits at 2 and may
-        // contain spaces, exactly as on a real host.
+        // contain spaces, exactly as on a real host. After comm the order
+        // is state ppid pgrp session tty_nr tpgid flags minflt cminflt
+        // majflt cmajflt utime stime cutime cstime priority nice
+        // num_threads itrealvalue starttime.
         let stat = format!(
-            "{pid} ({comm}) {state} {ppid} {pgrp} {session} {tty_nr} 0 -1 4194304 \
+            "{pid} ({comm}) {state} {ppid} {pgrp} {session} {tty_nr} 0 -1 4194304 0 0 0 \
              {utime} {utime} 0 0 20 0 1 0 {starttime} 0 0 0 0 0 0 0 0 0 0 0 0 17 2 0 0 0 0 0",
             ppid = 1224,
             pgrp = pid,
@@ -260,7 +263,8 @@ fn a_comm_containing_spaces_and_parens_still_parses() {
     let dir = fx.root.join("8100");
     fs::create_dir_all(&dir).expect("pid dir");
     let stat = format!(
-        "8100 (weird (name) here) S 1224 8100 8100 0 0 -1 4194304 {u} {u} 0 0 20 0 1 0 {st} 0 0 0 0 0 0 0 0 0 0 0 0 17 2 0 0 0 0 0",
+        "8100 (weird (name) here) S 1224 8100 8100 0 0 -1 4194304 0 0 0 {u} {u} 0 0 20 0 1 0 \
+         {st} 0 0 0 0 0 0 0 0 0 0 0 0 17 2 0 0 0 0 0",
         u = 5 * TICKS,
         st = 3 * DAY_SECS * TICKS,
     );
@@ -351,5 +355,9 @@ fn elapsed_never_underflows_or_divides_by_zero() {
     // both just mean "not old enough".
     assert_eq!(elapsed_secs(0, 0, 100, 200), 0, "zero ticks divisor");
     assert_eq!(elapsed_secs(1_000_000, TICKS, 100, 200), 0, "start in the future");
-    assert_eq!(elapsed_secs(0, TICKS, 100, 200), 0, "started at boot");
+    assert_eq!(
+        elapsed_secs(0, TICKS, 100, 200),
+        100,
+        "starttime 0 means it started at boot, so age is now - boot"
+    );
 }
