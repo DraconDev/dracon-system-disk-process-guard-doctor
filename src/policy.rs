@@ -1386,7 +1386,7 @@ pub(crate) fn unknown_policy_keys(doc: &toml::Value) -> Vec<String> {
 
 /// Human-readable guidance for a rejected key, used in the warning.
 /// Suggests a near-miss spelling when one is within two edits.
-fn hint_for(key: &str) -> String {
+pub(crate) fn hint_for(key: &str) -> String {
     let base = key.rsplit('.').next().unwrap_or(key);
     let mut best = usize::MAX;
     let mut close: Vec<&str> = Vec::new();
