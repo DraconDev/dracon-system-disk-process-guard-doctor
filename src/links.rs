@@ -208,7 +208,10 @@ pub(crate) fn apply_link_policy(
                 }
                 fs::remove_file(&link)?;
             } else if force_replace {
-                let safe_link = check_safe_to_delete(&link, &[])?;
+                // A force-replaced regular file is deleted (after backup),
+                // so the user's protected list applies here exactly as it
+                // does on every other delete path.
+                let safe_link = check_safe_to_delete(&link, &policy.guard.protected_paths)?;
                 let backup = backup_path_for(&link);
                 fs::rename(&safe_link, backup)?;
             } else {
