@@ -458,8 +458,7 @@ fn already_legal_policy_is_left_untouched() {
 /// bad `quarantine_ttl_days` or `storage.min_size_mb` used to reach relocate,
 /// quarantine and storage RAW.
 #[test]
-fn parsed_policy_is_normalized_at_the_load_boundary() {
-    let toml_src = r#"
+fn parsed_policy_is_normalized_at_the_load_boundary() {    let toml_src = r#"
 [guard]
 interval_secs = 0
 guard_log_max_mb = 0
@@ -484,4 +483,24 @@ min_size_mb = 0
     assert!(parsed.guard.disk_warn_percent <= 100);
     assert!(parsed.guard.process_stuck_after_secs >= parsed.guard.process_sustain_secs);
     assert!(parsed.storage.min_size_mb >= 1);
+}
+
+/// The shipped example template documents the ranges, so it must itself be
+/// legal. This is what stops the two from drifting: if a range is tightened in
+/// code, the example that violates it fails here rather than being copied onto
+/// a machine as the recommended starting config.
+#[test]
+fn shipped_example_template_is_already_legal() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("dracon-system.example.toml");
+    let content = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
+    let mut parsed: SystemPolicy = toml::from_str(&content)
+        .unwrap_or_else(|e| panic!("example template must parse: {e}"));
+    let adjusted = normalize_guard_policy(&mut parsed.guard);
+    assert!(
+        adjusted.is_empty(),
+        "dracon-system.example.toml sets out-of-range values for {adjusted:?}; \
+         either fix the example or widen the range in normalize_guard_policy"
+    );
 }
