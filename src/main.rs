@@ -4541,9 +4541,9 @@ async fn check_memory_pressure(
                     }
                     continue;
                 }
-            }
+            };
             // Identity was readable: clear any prior unavailability count.
-            state.cap_identity_unavailable_attempts.remove(&pid);;
+            state.cap_identity_unavailable_attempts.remove(&pid);
             if let Err(e) = uncap_cpu_process_with_bin(
                 Path::new("systemctl"),
                 Path::new("/proc"),
