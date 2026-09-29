@@ -176,10 +176,23 @@ pub(crate) fn quarantine_move(
         bytes,
         files,
     };
-    fs::write(
-        entry_dir.join(MANIFEST_NAME),
-        serde_json::to_string_pretty(&manifest)?,
-    )?;
+    // Serialize before anything is unlinked: if the write below fails we
+    // still have the bytes to report exactly where the data sits.
+    let manifest_text = serde_json::to_string_pretty(&manifest)?;
+    fs::write(entry_dir.join(MANIFEST_NAME), &manifest_text).map_err(|e| {
+        // The data moved but has no manifest, which would orphan it (a
+        // future restore refuses manifest-less entries). Move it back
+        // rather than leave it unrecorded.
+        if fs::rename(&entry_dir, &canon_origin).is_ok() {
+            anyhow::anyhow!("quarantine manifest write failed — moved back to origin: {e}")
+        } else {
+            anyhow::anyhow!(
+                "quarantine manifest write failed AND move-back failed: data is at {} with no manifest, origin {} is gone",
+                entry_dir.display(),
+                canon_origin.display()
+            )
+        }
+    })?;
     Ok(manifest)
 }
 
@@ -234,7 +247,22 @@ pub(crate) fn quarantine_list(root: &Path, ttl_days: u64) -> Result<QuarantineLi
 }
 
 /// Restore an entry to its recorded origin. The origin must not exist.
+///
+/// The entry `name` is a single path component minted by `entry_dir_for`;
+/// separators, parent components, and absolute paths are refused before
+/// they can escape the quarantine root, and a smuggled symlink is refused
+/// rather than followed. The manifest is kept until the move succeeds, so
+/// a failed restore leaves the entry restorable instead of orphaning it.
 pub(crate) fn quarantine_restore(root: &Path, name: &str) -> Result<PathBuf> {
+    if name.is_empty()
+        || name == "."
+        || name == ".."
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains('\0')
+    {
+        anyhow::bail!("invalid quarantine entry name: {name}");
+    }
     let canon_root = root.canonicalize().map_err(|e| {
         anyhow::anyhow!(
             "cannot canonicalize quarantine root {}: {}",
@@ -243,7 +271,14 @@ pub(crate) fn quarantine_restore(root: &Path, name: &str) -> Result<PathBuf> {
         )
     })?;
     let entry_dir = canon_root.join(name);
-    if !entry_dir.is_dir() {
+    // symlink_metadata does not follow links: a smuggled symlink into an
+    // entry-named path is refused here instead of being operated through.
+    let meta = fs::symlink_metadata(&entry_dir)
+        .map_err(|_| anyhow::anyhow!("no such quarantine entry: {name}"))?;
+    if !meta.file_type().is_dir() {
+        if meta.file_type().is_symlink() {
+            anyhow::bail!("refusing to restore through symlink {name}");
+        }
         anyhow::bail!("no such quarantine entry: {name}");
     }
     let manifest = read_manifest(&entry_dir)
@@ -255,10 +290,13 @@ pub(crate) fn quarantine_restore(root: &Path, name: &str) -> Result<PathBuf> {
     if let Some(parent) = origin.parent() {
         fs::create_dir_all(parent)?;
     }
-    // Drop the manifest before moving back so the restored tree is clean.
-    fs::remove_file(entry_dir.join(MANIFEST_NAME))?;
     match fs::rename(&entry_dir, &origin) {
-        Ok(()) => Ok(origin),
+        Ok(()) => {
+            // Drop the manifest only after the move, so the restored tree
+            // is clean; a failure here is cosmetic, the data is home.
+            let _ = fs::remove_file(origin.join(MANIFEST_NAME));
+            Ok(origin)
+        }
         Err(_) => {
             copy_tree(&entry_dir, &origin)?;
             let (got_files, got_bytes) = walk_stats(&origin);
@@ -283,7 +321,13 @@ pub(crate) fn quarantine_expire(root: &Path, ttl_days: u64, apply: bool) -> Resu
     let mut removed = Vec::new();
     for entry in list.entries.iter().filter(|e| e.expired) {
         let dir = canon_root.join(&entry.name);
-        let canon = dir.canonicalize()?;
+        // A directory that vanished between the list and the removal is
+        // already gone; skip it rather than aborting the batch and losing
+        // the removals already collected.
+        let Ok(canon) = dir.canonicalize() else {
+            eprintln!("quarantine expire: entry {} vanished, skipping", entry.name);
+            continue;
+        };
         if canon.parent() != Some(canon_root.as_path()) {
             anyhow::bail!("entry {} escaped quarantine root — refusing", entry.name);
         }

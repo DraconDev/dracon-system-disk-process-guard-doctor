@@ -70,6 +70,45 @@ fn quarantine_restore_refuses_existing_origin() {
     fs::create_dir_all(&src).unwrap();
     let err = crate::quarantine_restore(&qdir, &manifest.name).unwrap_err();
     assert!(format!("{err:#}").contains("already exists"));
+    // The refusal happens before any manifest removal, so the entry stays
+    // restorable once the blocking origin is cleared.
+    assert!(qdir.join(&manifest.name).join(".quarantine.json").exists());
+    cleanup(&root);
+}
+
+#[test]
+fn quarantine_restore_refuses_traversal_names() {
+    let root = test_root("traversal");
+    let qdir = root.join("q");
+    fs::create_dir_all(&qdir).unwrap();
+    for hostile in ["../evil", "..", ".", "", "a/b", "/abs", "a\\b", "a\0b"] {
+        let err = crate::quarantine_restore(&qdir, hostile).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("invalid quarantine entry name"),
+            "name {hostile:?} must be refused"
+        );
+    }
+    cleanup(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn quarantine_restore_refuses_smuggled_symlink() {
+    use std::os::unix::fs::symlink;
+    let root = test_root("smlink");
+    let outside = root.join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    let qdir = root.join("q");
+    fs::create_dir_all(&qdir).unwrap();
+    symlink(&outside, qdir.join("linked")).unwrap();
+    let err = crate::quarantine_restore(&qdir, "linked").unwrap_err();
+    let msg = format!("{err:#}");
+    assert!(
+        msg.contains("symlink") || msg.contains("no manifest"),
+        "smuggled symlink must be refused: {msg}"
+    );
+    // Nothing outside the root was touched.
+    assert!(outside.is_dir() && !outside.join(".quarantine.json").exists());
     cleanup(&root);
 }
 
