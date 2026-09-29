@@ -60,6 +60,8 @@ mod reap_tests;
 mod relocate_tests;
 #[cfg(test)]
 mod setup_tests;
+#[cfg(test)]
+mod zram_tests;
 
 // Memory-leak fix: the unrenice loops used to `continue` forever on renice
 // failure or ProcessIdentityStatus::Unavailable, never removing the entry from
