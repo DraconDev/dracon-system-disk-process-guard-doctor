@@ -530,12 +530,12 @@ min_size_mb = 0
 /// lines a day at the default 30 s interval. `report_clamps` dedupes on the
 /// clamped set; these tests drive that state machine directly.
 fn reset_clamp_report_state() {
-    let cell = LAST_REPORTED_CLAMPS.get_or_init(|| std::sync::Mutex::new(None));
+    let cell = crate::policy::LAST_REPORTED_CLAMPS.get_or_init(|| std::sync::Mutex::new(None));
     *cell.lock().unwrap_or_else(|p| p.into_inner()) = None;
 }
 
 fn current_clamp_report_state() -> Option<Vec<&'static str>> {
-    let cell = LAST_REPORTED_CLAMPS.get_or_init(|| std::sync::Mutex::new(None));
+    let cell = crate::policy::LAST_REPORTED_CLAMPS.get_or_init(|| std::sync::Mutex::new(None));
     cell.lock()
         .unwrap_or_else(|p| p.into_inner())
         .clone()
