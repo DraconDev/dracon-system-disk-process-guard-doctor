@@ -1346,7 +1346,7 @@ fn known_keys_of<T: Serialize + Default>(extra: &[&str]) -> HashSet<String> {
 }
 
 /// `Option` fields, which TOML serialization omits when they are `None`.
-const GUARD_OPTION_FIELDS: &[&str] = &["log_dirs"];
+pub(crate) const GUARD_OPTION_FIELDS: &[&str] = &["log_dirs"];
 
 /// Every key the policy file accepts, per top-level section.
 pub(crate) fn known_policy_keys() -> HashMap<&'static str, HashSet<String>> {
