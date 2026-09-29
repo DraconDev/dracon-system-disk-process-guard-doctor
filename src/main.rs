@@ -7374,6 +7374,7 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
                         ));
                         continue;
                     }
+                    eprintln!("DBG reached interval assign, outcome={:?} restored={}", outcome, adjustments_restored);
                     interval = guard.interval_secs;
                     veprintln!(
                         2,
