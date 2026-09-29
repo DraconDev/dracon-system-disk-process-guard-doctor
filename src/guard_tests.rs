@@ -783,6 +783,20 @@ fn normalize_guard_policy_clamps_cpu_cap_percent() {
 }
 
 #[test]
+fn unavailable_identity_defer_drops_at_retry_limit() {
+    // The oom-restore and cpu-uncap loops must not retain an entry whose
+    // process identity stays unreadable forever (audit LOW: unbounded
+    // defer leaks the tracking maps inside the 250 MiB cgroup).
+    let mut attempts = std::collections::HashMap::new();
+    assert!(!crate::record_unavailable_attempt(&mut attempts, 4242));
+    assert!(!crate::record_unavailable_attempt(&mut attempts, 4242));
+    assert!(crate::record_unavailable_attempt(&mut attempts, 4242));
+    assert_eq!(attempts.get(&4242), Some(&3));
+    // A different pid counts independently.
+    assert!(!crate::record_unavailable_attempt(&mut attempts, 4243));
+}
+
+#[test]
 fn clean_node_modules_flag_defaults_true_and_gates_toml_off() {
     // Audit M3 (2026-08-21): node_modules cleanup was the only cleanup
     // kind with no feature flag. The knob must default true (behavior
