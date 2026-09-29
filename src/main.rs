@@ -5776,26 +5776,42 @@ async fn check_zombie_processes(
 }
 
 async fn check_large_logs(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
-    if !guard.monitor_logs || guard.log_dirs.trim().is_empty() {
+    if !guard.monitor_logs {
         return;
     }
+    // ADDED 2026-09-29 (DECIDE #4 follow-up): an ABSENT log_dirs now means
+    // "scan the default" rather than "monitoring off", so log-size alerts
+    // work without the operator naming a directory. An explicitly blank
+    // value still disables the check.
+    let Some(configured) = effective_log_dirs(&guard.log_dirs) else {
+        return;
+    };
 
-    let log_dirs: Vec<PathBuf> = guard
-        .log_dirs
-        .split(',')
-        .filter_map(|s| {
-            let s = s.trim();
-            if s.is_empty() {
-                return None;
-            }
-            let p = expand_tilde(s);
-            if p.exists() {
-                Some(p)
-            } else {
-                None
-            }
-        })
-        .collect();
+    let mut log_dirs: Vec<PathBuf> = Vec::new();
+    // A configured directory that does not exist used to be dropped without
+    // a word, which made a wrong or not-yet-created default look identical
+    // to "monitoring off". Report it once per pass instead: a silent skip
+    // is exactly how a monitoring feature disappears without anyone noticing.
+    let mut missing: Vec<String> = Vec::new();
+    for entry in configured.split(',') {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let path = expand_tilde(entry);
+        if path.exists() {
+            log_dirs.push(path);
+        } else {
+            missing.push(entry.to_string());
+        }
+    }
+    if !missing.is_empty() {
+        eprintln!(
+            "log monitoring: configured director{} not found, skipping: {}",
+            if missing.len() == 1 { "y" } else { "ies" },
+            missing.join(", ")
+        );
+    }
 
     if log_dirs.is_empty() {
         return;
