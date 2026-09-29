@@ -7,11 +7,12 @@
 # RANGES ARE ENFORCED IN CODE — the comments below are not just prose
 # ===========================================================================
 # Every numeric knob documented here has a legal range, and that range is
-# ENFORCED, not merely suggested. The enforcing code is
-# `normalize_guard_policy` in src/policy.rs (~line 791), called from
-# `SystemPolicy::normalize` (src/policy.rs ~line 764) at the policy load
-# boundary, so every consumer — daemon, doctor, setup, links, relocate,
-# quarantine, storage — receives in-range values by construction.
+# ENFORCED, not merely suggested. The enforcing code is the function
+# `normalize_guard_policy` in src/policy.rs (search for it; the line number
+# moves as this file grows), called from `SystemPolicy::normalize` in the
+# same file, which `parse_system_policy` in src/main.rs invokes at the policy
+# load boundary. Every consumer — daemon, doctor, setup, links, relocate,
+# quarantine, storage — therefore receives in-range values by construction.
 #
 # ADDED 2026-09-29 (audit DECIDE #8 follow-up): until then the ranges below
 # existed only as comments, and nine of the eleven policy load sites never
