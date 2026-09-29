@@ -1598,6 +1598,54 @@ async fn clean_tmp_paths_respects_age_dry_run_and_open_fds() {
 }
 
 #[tokio::test]
+async fn clean_tmp_keeps_tree_with_fresh_nested_content() {
+    // Audit MEDIUM: directory mtime only bumps on direct-child changes,
+    // so a stale top dir can hide a freshly written nested file. The
+    // cleaner must judge the tree by its newest entry, not the top dir.
+    use std::time::Duration;
+    let root = unique_test_home("tmp_nested");
+    fs::create_dir_all(&root).expect("create tmp root");
+    let stale_dir = root.join("old-run");
+    let nested = stale_dir.join("logs");
+    fs::create_dir_all(&nested).expect("create nested dir");
+    write_file_with_mtime(&nested.join("fresh.log"), b"just written", 60);
+    // Backdate everything except the fresh log, top dir included.
+    let old = SystemTime::now() - Duration::from_secs(2 * 86_400);
+    for p in [&stale_dir, &nested] {
+        fs::OpenOptions::new()
+            .read(true)
+            .open(p)
+            .expect("open dir for mtime set")
+            .set_modified(old)
+            .expect("backdate dir");
+    }
+    // A fully stale tree next to it must still be cleaned.
+    let dead_dir = root.join("dead-run");
+    fs::create_dir_all(&dead_dir).expect("create dead dir");
+    write_file_with_mtime(&dead_dir.join("old.log"), b"stale", 2 * 86_400);
+    fs::OpenOptions::new()
+        .read(true)
+        .open(&dead_dir)
+        .expect("open dir for mtime set")
+        .set_modified(old)
+        .expect("backdate dir");
+
+    let roots = vec![root.display().to_string()];
+    let (bytes, lines) = clean_tmp_paths(true, &roots, 24, &[]).await.expect("apply");
+    assert!(bytes > 0, "the dead tree must be reclaimed");
+    assert!(!dead_dir.exists(), "fully stale tree must be removed");
+    assert!(
+        stale_dir.join("logs").join("fresh.log").exists(),
+        "tree with fresh nested content must be kept: {lines:?}"
+    );
+    assert!(
+        !lines.iter().any(|l| l.contains("old-run")),
+        "kept tree must not be reported cleaned: {lines:?}"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[tokio::test]
 async fn clean_tmp_paths_rejects_home_search_root_before_apply() {
     let home = dirs::home_dir().expect("home directory");
     let sentinel = home.join(format!(

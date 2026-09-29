@@ -4870,6 +4870,38 @@ async fn collect_open_paths_under_from(
     open
 }
 
+/// True when any entry at or under `dir` (including `dir` itself) is
+/// newer than `cutoff`. Symlinks are never followed. Short-circuits on
+/// the first fresh entry; a fully stale tree costs one walk — the same
+/// order as the size accounting that follows for deletion candidates.
+async fn tree_has_fresh_content(dir: &Path, cutoff: SystemTime) -> bool {
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        let meta = match tokio::fs::symlink_metadata(&current).await {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        if meta.file_type().is_symlink() {
+            continue;
+        }
+        if let Ok(mtime) = meta.modified() {
+            if mtime > cutoff {
+                return true;
+            }
+        }
+        if meta.is_dir() {
+            let mut rd = match tokio::fs::read_dir(&current).await {
+                Ok(rd) => rd,
+                Err(_) => continue,
+            };
+            while let Ok(Some(entry)) = rd.next_entry().await {
+                stack.push(entry.path());
+            }
+        }
+    }
+    false
+}
+
 fn path_has_open_ancestor(path: &Path, open: &std::collections::HashSet<PathBuf>) -> bool {
     open.iter()
         .any(|o| o.starts_with(path) || path.starts_with(o))
@@ -4963,7 +4995,15 @@ async fn clean_tmp_paths_with_proc(
                 Ok(m) => m,
                 Err(_) => continue,
             };
-            if modified > cutoff {
+            // Files judge by their own mtime. Directories cannot: dir
+            // mtime only bumps on direct-child changes, so a stale-looking
+            // top dir can hide freshly written nested files. Judge the
+            // tree by its newest entry instead.
+            if meta.is_dir() {
+                if tree_has_fresh_content(&path, cutoff).await {
+                    continue; // fresh content at or under this dir
+                }
+            } else if modified > cutoff {
                 continue; // too young
             }
             if path_has_open_ancestor(&path, &open_paths) {
