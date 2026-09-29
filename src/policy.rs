@@ -766,22 +766,6 @@ pub(crate) const RENICE_VALUE_MAX: i32 = 19;
 static LAST_REPORTED_CLAMPS: std::sync::OnceLock<std::sync::Mutex<Option<Vec<&'static str>>>> =
     std::sync::OnceLock::new();
 
-/// Read or clear the report state. Test-only, so the private static is not
-/// widened to `pub(crate)` for production callers.
-#[cfg(test)]
-pub(crate) fn clamp_report_state() -> Option<Vec<&'static str>> {
-    let cell = LAST_REPORTED_CLAMPS.get_or_init(|| std::sync::Mutex::new(None));
-    cell.lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .clone()
-}
-
-#[cfg(test)]
-pub(crate) fn set_clamp_report_state(state: Option<Vec<&'static str>>) {
-    let cell = LAST_REPORTED_CLAMPS.get_or_init(|| std::sync::Mutex::new(None));
-    *cell.lock().unwrap_or_else(|p| p.into_inner()) = state;
-}
-
 impl SystemPolicy {
     /// Normalize every sub-policy and report what was clamped.
     ///
@@ -796,44 +780,71 @@ impl SystemPolicy {
     pub(crate) fn normalize(&mut self) {
         let mut adjusted = normalize_storage_policy(&mut self.storage);
         adjusted.append(&mut normalize_guard_policy(&mut self.guard));
-        // Sorted so the comparison below is order-independent.
+        // Sorted so the comparison is order-independent.
         adjusted.sort_unstable();
         report_clamps(adjusted);
     }
 }
 
-/// Report a clamped-field set once per distinct state, per process.
+/// What the clamp reporter should do for one transition.
+///
+/// Modelled as a pure decision rather than read out of the process-global
+/// inside the production wrapper: FIXED 2026-09-29 (auditor, second review
+/// round) the four cadence tests drove `LAST_REPORTED_CLAMPS` directly while
+/// libtest ran them on separate threads, so they raced each other and the
+/// full suite failed roughly 7% of runs. The logic is now a total function
+/// of (previous, current) with no shared state, so the tests are
+/// order-independent and need no mutex.
+#[derive(Debug, PartialEq, Eq)]
+enum ClampReport {
+    /// In range, and nothing was ever clamped in this process: stay silent
+    /// and record nothing. Writing an empty set here would make the first
+    /// real clamp look like a transition from a known state.
+    SilentNoState,
+    /// Identical to what was already reported: stay silent.
+    Unchanged,
+    /// Out of range: report these clamped fields.
+    Clamped(Vec<&'static str>),
+    /// Was clamped, now in range: report the recovery so a fix is confirmed
+    /// rather than inferred from silence.
+    Recovered(Vec<&'static str>),
+}
+
+/// Decide the clamp report for one transition. Pure: no globals, no I/O.
 ///
 /// A fresh process reports its first non-empty set, so a daemon restart
-/// always re-tells the operator their file is out of range. A repeat of the
-/// same set is silent. A transition back to empty reports the recovery, so
-/// fixing the file is confirmed rather than merely inferred from silence.
+/// always re-tells the operator their file is out of range.
+fn clamp_report_decision(
+    previous: Option<&[&'static str]>,
+    current: &[&'static str],
+) -> ClampReport {
+    match (previous, current) {
+        (None, []) => ClampReport::SilentNoState,
+        (None, cur) => ClampReport::Clamped(cur.to_vec()),
+        (Some(prev), cur) if prev == cur => ClampReport::Unchanged,
+        (Some(prev), []) => ClampReport::Recovered(prev.to_vec()),
+        (Some(_), cur) => ClampReport::Clamped(cur.to_vec()),
+    }
+}
+
+/// Report a clamped-field set once per distinct state, per process.
 fn report_clamps(adjusted: Vec<&'static str>) {
     let cell = LAST_REPORTED_CLAMPS.get_or_init(|| std::sync::Mutex::new(None));
     let mut last = cell.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    // In range, and nothing was ever clamped in this process: there is no
-    // state worth recording, and writing an empty set here would make the
-    // first real clamp look like a transition from a known state.
-    if adjusted.is_empty() && last.is_none() {
-        return;
-    }
-    let previous = last.replace(adjusted.clone());
-    if previous.as_deref() == Some(adjusted.as_slice()) {
-        return;
-    }
-    if adjusted.is_empty() {
-        // Never clamped anything in this process — nothing to recover from.
-        if previous.is_none() {
-            return;
-        }
-        let recovered = previous.unwrap_or_default().join(", ");
-        eprintln!("✓ policy: all values now in range (previously clamped: {recovered})");
+    let decision = clamp_report_decision(last.as_deref(), &adjusted);
+    let fields = match &decision {
+        ClampReport::SilentNoState | ClampReport::Unchanged => return,
+        ClampReport::Clamped(fields) | ClampReport::Recovered(fields) => fields.clone(),
+    };
+    *last = Some(adjusted);
+    if matches!(decision, ClampReport::Recovered(_)) {
+        eprintln!("✓ policy: all values now in range (previously clamped: {})", fields.join(", "));
     } else {
         // Silent clamping is how DECIDE #8 was allowed to look like a
         // decision; say what moved so an operator can fix the file.
         eprintln!(
             "⚠ policy: out-of-range value(s) clamped to their legal range: {}",
-            adjusted.join(", ")
+            fields.join(", ")
         );
     }
 }
