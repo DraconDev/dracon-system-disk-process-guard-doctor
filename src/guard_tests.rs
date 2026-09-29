@@ -936,8 +936,10 @@ fn runtime_with_pending_nice(pid: i32) -> GuardRuntimeState {
 fn a_fully_restored_reload_applies_the_new_policy_and_clears_runtime() {
     let mut guard = GuardPolicy::default();
     let mut runtime = runtime_with_pending_nice(4242);
-    let mut new_policy = GuardPolicy::default();
-    new_policy.disk_warn_percent = 55;
+    let new_policy = GuardPolicy {
+        disk_warn_percent: 55,
+        ..Default::default()
+    };
 
     let outcome = apply_policy_reload(&mut guard, &mut runtime, new_policy, true);
 
@@ -956,8 +958,10 @@ fn a_partial_restore_keeps_the_previous_policy_live() {
         ..Default::default()
     };
     let mut runtime = runtime_with_pending_nice(4242);
-    let mut new_policy = GuardPolicy::default();
-    new_policy.disk_warn_percent = 55;
+    let new_policy = GuardPolicy {
+        disk_warn_percent: 55,
+        ..Default::default()
+    };
 
     let outcome = apply_policy_reload(&mut guard, &mut runtime, new_policy, false);
 
@@ -983,7 +987,7 @@ fn a_partial_restore_cannot_strand_an_adjustment_the_new_policy_disables() {
         ..Default::default()
     };
     let mut runtime = runtime_with_pending_nice(4242);
-    let mut new_policy = GuardPolicy {
+    let new_policy = GuardPolicy {
         auto_renice_on_memory: false,
         ..Default::default()
     };
@@ -1009,8 +1013,10 @@ fn a_partial_restore_with_only_threshold_changes_is_also_deferred() {
     // cannot reason about the combination.
     let mut guard = GuardPolicy::default();
     let mut runtime = runtime_with_pending_nice(7);
-    let mut new_policy = GuardPolicy::default();
-    new_policy.interval_secs = 5;
+    let new_policy = GuardPolicy {
+        interval_secs: 5,
+        ..Default::default()
+    };
 
     assert_eq!(
         apply_policy_reload(&mut guard, &mut runtime, new_policy, false),
@@ -1029,7 +1035,7 @@ fn disabling_the_guard_is_applied_even_after_a_partial_restore() {
     // false` must not be blocked by a failed restore.
     let mut guard = GuardPolicy::default();
     let mut runtime = runtime_with_pending_nice(99);
-    let mut new_policy = GuardPolicy {
+    let new_policy = GuardPolicy {
         enabled: false,
         ..Default::default()
     };
@@ -1050,8 +1056,10 @@ fn reload_is_idempotent_across_repeated_sighups() {
     let mut guard = GuardPolicy::default();
     let mut runtime = GuardRuntimeState::default();
     for _ in 0..5 {
-        let mut p = GuardPolicy::default();
-        p.disk_warn_percent = 70;
+        let p = GuardPolicy {
+            disk_warn_percent: 70,
+            ..Default::default()
+        };
         assert_eq!(
             apply_policy_reload(&mut guard, &mut runtime, p, true),
             ReloadOutcome::Applied
@@ -1067,15 +1075,19 @@ fn a_reload_that_succeeds_after_a_deferred_one_recovers() {
     // succeeds, the next SIGHUP applies normally.
     let mut guard = GuardPolicy::default();
     let mut runtime = runtime_with_pending_nice(1);
-    let mut p1 = GuardPolicy::default();
-    p1.disk_warn_percent = 55;
+    let p1 = GuardPolicy {
+        disk_warn_percent: 55,
+        ..Default::default()
+    };
     assert_eq!(
         apply_policy_reload(&mut guard, &mut runtime, p1, false),
         ReloadOutcome::Deferred
     );
 
-    let mut p2 = GuardPolicy::default();
-    p2.disk_warn_percent = 55;
+    let p2 = GuardPolicy {
+        disk_warn_percent: 55,
+        ..Default::default()
+    };
     assert_eq!(
         apply_policy_reload(&mut guard, &mut runtime, p2, true),
         ReloadOutcome::Applied
