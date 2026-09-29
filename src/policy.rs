@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 // Policy structs
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub(crate) struct SystemPolicy {
     #[serde(default)]
     pub(crate) storage: StoragePolicy,
@@ -16,7 +16,7 @@ pub(crate) struct SystemPolicy {
     pub(crate) guard: GuardPolicy,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct StoragePolicy {
     #[serde(default)]
     pub(crate) default_root: String,
@@ -36,19 +36,19 @@ impl Default for StoragePolicy {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub(crate) struct LinkPolicy {
     #[serde(default)]
     pub(crate) entries: Vec<LinkEntry>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct LinkEntry {
     pub(crate) link: String,
     pub(crate) target: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct GuardPolicy {
     #[serde(default = "default_enabled")]
     pub(crate) enabled: bool,
