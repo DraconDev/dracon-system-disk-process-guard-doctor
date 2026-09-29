@@ -349,6 +349,19 @@ enum QuarantineCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Delete ONE named entry, even if its manifest is unreadable.
+    ///
+    /// The escape hatch for an entry the fail-safe is pinning. It is always
+    /// for a single named entry, never a bulk sweep of everything
+    /// unreadable, and dry-run unless --apply.
+    Purge {
+        /// Entry name from `quarantine list`.
+        name: String,
+        #[arg(long)]
+        apply: bool,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]

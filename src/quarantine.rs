@@ -509,6 +509,7 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
                         Cell::new("AGE"),
                         Cell::new("SIZE"),
                         Cell::new("EXPIRED"),
+                        Cell::new("NOTE"),
                     ]);
                 for e in &list.entries {
                     table.add_row(vec![
@@ -521,6 +522,7 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
                         ),
                         Cell::new(human_bytes(e.bytes)),
                         Cell::new(if e.expired { "yes" } else { "" }),
+                        Cell::new(if e.pinned { "PINNED" } else { "" }),
                     ]);
                 }
                 println!("{table}");
@@ -531,6 +533,18 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
                     human_bytes(list.expired_bytes),
                     ttl
                 );
+                // The fail-safe is not allowed to be silent: an entry held
+                // forever because its manifest is unreadable would otherwise
+                // look exactly like a quarantine that has nothing to expire.
+                if !list.pinned.is_empty() {
+                    println!(
+                        "⚠ {} entr{} pinned by the fail-safe ({}): {PIN_REASON}",
+                        list.pinned.len(),
+                        if list.pinned.len() == 1 { "y is" } else { "ies are" },
+                        human_bytes(list.pinned_bytes)
+                    );
+                    println!("   {}", list.pinned.join(", "));
+                }
             }
         }
         QuarantineCommands::Restore { name, json } => {
@@ -549,6 +563,9 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
         }
         QuarantineCommands::Expire { apply, json } => {
             let expired = quarantine_expire(&root, ttl, apply)?;
+            // Count what the fail-safe is holding so "No expired entries"
+            // cannot be read as "nothing is being kept".
+            let pinned = quarantine_list(&root, ttl)?.pinned;
             if json {
                 println!(
                     "{}",
@@ -556,10 +573,19 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
                         "ttl_days": ttl,
                         "apply": apply,
                         "expired": expired,
+                        "pinned": pinned,
                     }))?
                 );
             } else if expired.is_empty() {
                 println!("No expired entries (TTL {}d)", ttl);
+                if !pinned.is_empty() {
+                    println!(
+                        "⚠ {} entr{} pinned by the fail-safe (unreadable manifest) and not expired: {}",
+                        pinned.len(),
+                        if pinned.len() == 1 { "y is" } else { "ies are" },
+                        pinned.join(", ")
+                    );
+                }
             } else if apply {
                 println!(
                     "🗑 Expired {} entries: {}",
@@ -572,6 +598,38 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
                     expired.len(),
                     expired.join(", ")
                 );
+                println!("Dry-run: pass --apply to delete.");
+            }
+        }
+        QuarantineCommands::Purge { name, apply, json } => {
+            let (contents, bytes, was_pinned) = quarantine_purge(&root, &name, apply)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "entry": name,
+                        "contents": contents,
+                        "bytes": bytes,
+                        "pinned_by_fail_safe": was_pinned,
+                        "applied": apply,
+                    }))?
+                );
+            } else if apply {
+                println!("🗑 Purged {name} ({contents})");
+                if was_pinned {
+                    println!(
+                        "   This entry had an unreadable manifest, so it could not be \
+                         restored. It is now gone for good."
+                    );
+                }
+            } else {
+                println!("Would purge {name} ({contents})");
+                if was_pinned {
+                    println!(
+                        "   Its manifest is unreadable, so it cannot be restored — \
+                         purging discards it permanently."
+                    );
+                }
                 println!("Dry-run: pass --apply to delete.");
             }
         }
