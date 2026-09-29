@@ -217,9 +217,7 @@ pub(crate) fn cmd_setup(apply: bool, json: bool) -> Result<()> {
         // quarantine root (or vice versa) would make cleanup and expiry
         // operate on each other's trees.
         let cold_path = expand_tilde(cold_raw);
-        if cold_path != qdir
-            && (cold_path.starts_with(&qdir) || qdir.starts_with(&cold_path))
-        {
+        if cold_path != qdir && (cold_path.starts_with(&qdir) || qdir.starts_with(&cold_path)) {
             anyhow::bail!(
                 "cannot apply: cold root {} nests inside quarantine root {} (or vice versa)",
                 cold_path.display(),
@@ -227,10 +225,7 @@ pub(crate) fn cmd_setup(apply: bool, json: bool) -> Result<()> {
             );
         }
         let protected = &policy.guard.protected_paths;
-        println!(
-            "cold root: {}",
-            ensure_setup_dir(&cold_path, protected)?
-        );
+        println!("cold root: {}", ensure_setup_dir(&cold_path, protected)?);
         println!("quarantine: {}", ensure_setup_dir(&qdir, protected)?);
     }
 
