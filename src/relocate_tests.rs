@@ -11,6 +11,46 @@ fn test_root(name: &str) -> PathBuf {
     ))
 }
 
+#[test]
+fn walk_stats_strict_agrees_with_lenient_on_readable_trees() {
+    let root = test_root("strict-parity");
+    let src = fixture_dir(&root);
+    let (files, bytes) = crate::walk_stats(&src);
+    let (sfiles, sbytes) = crate::walk_stats_strict(&src).expect("readable tree verifies");
+    assert_eq!((files, bytes), (sfiles, sbytes));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn copy_tree_and_strict_stats_refuse_unreadable_entries() {
+    // Audit MEDIUM: an entry neither side can read used to vanish from
+    // both tallies while verification still passed. Unreadable entries
+    // must now fail the copy and the verification instead.
+    use std::os::unix::fs::PermissionsExt;
+    let root = test_root("unreadable");
+    let src = fixture_dir(&root);
+    let locked = src.join("locked");
+    std::fs::create_dir_all(&locked).unwrap();
+    std::fs::write(locked.join("secret.txt"), b"x").unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let dst = root.join("dst");
+    let err = crate::copy_tree(&src, &dst).unwrap_err();
+    assert!(
+        format!("{err:#}").contains("cannot copy"),
+        "copy must name the unreadable entry: {err:#}"
+    );
+    assert!(
+        crate::walk_stats_strict(&src).is_err(),
+        "strict stats must refuse the unreadable tree"
+    );
+    // Lenient reporting still works for sizing.
+    let (files, _) = crate::walk_stats(&src);
+    assert!(files >= 2);
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 fn fixture_dir(root: &Path) -> PathBuf {
     let src = root.join("src");
     fs::create_dir_all(src.join("nested")).unwrap();

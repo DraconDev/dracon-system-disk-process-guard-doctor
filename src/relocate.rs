@@ -42,6 +42,10 @@ pub(crate) struct RelocateReport {
 }
 
 /// Walk stats: (regular_files, total_bytes). Never follows symlinks.
+///
+/// Lenient by design: unreadable entries are skipped. Use for reporting
+/// and sizing only — never to verify a copy whose origin is about to be
+/// deleted (see `walk_stats_strict`).
 pub(crate) fn walk_stats(root: &Path) -> (u64, u64) {
     let mut files = 0u64;
     let mut bytes = 0u64;
@@ -58,9 +62,36 @@ pub(crate) fn walk_stats(root: &Path) -> (u64, u64) {
     (files, bytes)
 }
 
+/// Walk stats, strict variant: any unreadable entry is an error, not a
+/// silent undercount. Use at verification points where the origin is
+/// about to be deleted — an entry neither side can read would otherwise
+/// vanish from both tallies and the verification would still pass.
+pub(crate) fn walk_stats_strict(root: &Path) -> Result<(u64, u64)> {
+    fn walk_err(root: &Path, e: &walkdir::Error) -> anyhow::Error {
+        match e.path() {
+            Some(p) => anyhow::anyhow!("cannot inspect {}: {}", p.display(), e),
+            None => anyhow::anyhow!("directory walk failed under {}: {}", root.display(), e),
+        }
+    }
+    let mut files = 0u64;
+    let mut bytes = 0u64;
+    for entry in walkdir::WalkDir::new(root).follow_links(false).into_iter() {
+        let entry = entry.map_err(|e| walk_err(root, &e))?;
+        if entry.file_type().is_file() {
+            files += 1;
+            bytes += entry
+                .metadata()
+                .map(|m| m.len())
+                .map_err(|e| anyhow::anyhow!("cannot stat {}: {}", entry.path().display(), e))?;
+        }
+    }
+    Ok((files, bytes))
+}
+
 /// Recursive copy: dirs recreated, files copied, symlinks re-created as
 /// symlinks. Returns the count of skipped special files (sockets, fifos…).
-/// Never follows symlinks.
+/// Never follows symlinks. Bails on the first unreadable entry rather
+/// than silently dropping data the verification could never see.
 pub(crate) fn copy_tree(src: &Path, dst: &Path) -> Result<u64> {
     let mut skipped = 0u64;
     fs::create_dir_all(dst)?;
@@ -68,8 +99,11 @@ pub(crate) fn copy_tree(src: &Path, dst: &Path) -> Result<u64> {
         .follow_links(false)
         .min_depth(1)
         .into_iter()
-        .filter_map(|e| e.ok())
     {
+        let entry = entry.map_err(|e| match e.path() {
+            Some(p) => anyhow::anyhow!("cannot copy {}: {}", p.display(), e),
+            None => anyhow::anyhow!("copy walk failed under {}: {}", src.display(), e),
+        })?;
         let rel = entry
             .path()
             .strip_prefix(src)
@@ -213,7 +247,7 @@ pub(crate) fn plan_relocate(
         anyhow::bail!("source and destination nest — refusing");
     }
 
-    let (files, bytes) = walk_stats(&canon_src);
+    let (files, bytes) = walk_stats_strict(&canon_src)?;
     let avail = avail_bytes_for(&canon_root);
     let fits = avail.map(|a| a >= bytes).unwrap_or(true);
     if !fits {
@@ -259,7 +293,7 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
     }
 
     let skipped_special = copy_tree(source, dest)?;
-    let (dest_files, dest_bytes) = walk_stats(dest);
+    let (dest_files, dest_bytes) = walk_stats_strict(dest)?;
     if dest_files != plan.files || dest_bytes != plan.bytes {
         anyhow::bail!(
             "copy verification failed: expected {} files / {} bytes, got {} / {} — source untouched",
