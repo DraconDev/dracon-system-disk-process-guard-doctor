@@ -6037,6 +6037,7 @@ async fn run_auto_relocate(guard: &GuardPolicy) -> Result<(usize, u64, Vec<ColdC
 /// Loads link entries fresh (cheap TOML read) to avoid threading
 /// SystemPolicy through the guard-only daemon state.
 async fn check_link_drift(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
+    eprintln!("DBG check_link_drift entered");
     let entries = match load_system_policy() {
         Ok((_, policy)) => policy.links.entries,
         Err(_) => return,
