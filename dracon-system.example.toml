@@ -3,6 +3,45 @@
 #
 # Controls disk monitoring, process protection, and auto-cleanup.
 #
+# ===========================================================================
+# RANGES ARE ENFORCED IN CODE — the comments below are not just prose
+# ===========================================================================
+# Every numeric knob documented here has a legal range, and that range is
+# ENFORCED, not merely suggested. The enforcing code is
+# `normalize_guard_policy` in src/policy.rs (~line 791), called from
+# `SystemPolicy::normalize` (src/policy.rs ~line 764) at the policy load
+# boundary, so every consumer — daemon, doctor, setup, links, relocate,
+# quarantine, storage — receives in-range values by construction.
+#
+# ADDED 2026-09-29 (audit DECIDE #8 follow-up): until then the ranges below
+# existed only as comments, and nine of the eleven policy load sites never
+# normalized at all, so a nonsense threshold reached relocate, quarantine and
+# storage raw.
+#
+# Two behaviours, both deliberate:
+#
+#   CLAMPED — the value would make the daemon malfunction, so it is moved
+#     into range and the daemon keeps running. Every clamp is reported once
+#     on stderr as:
+#       ⚠ policy: out-of-range value(s) clamped to their legal range: <fields>
+#     A clamp in the journal means this file needs fixing; the guard is
+#     running on the clamped value, not yours.
+#
+#   NOT CLAMPED (0 is meaningful) — several knobs treat 0 as "disabled" and
+#     are left exactly as written. A floor on those would silently RE-ARM a
+#     feature you deliberately turned off, which is worse than the mistake it
+#     was meant to prevent. Those are: trend_warn_hours, zombie_threshold,
+#     log_size_mb, node_modules_max_age_days, tmp_min_age_hours,
+#     trash_min_age_days, rust_target_action_min_age_days,
+#     quarantine_ttl_days, cap_offenders_cpu_percent,
+#     reap_report_min_idle_hours, reap_report_max_cpu_seconds,
+#     nix_keep_generations. The list is pinned by a test
+#     (`sentinel_zero_knobs_are_never_clamped`) so it cannot drift.
+#
+# Floats accept TOML `nan` and `inf` literals; those are scrubbed too, since
+# a NaN fails every comparison and would silently disable its own threshold.
+# ===========================================================================
+#
 # NOTE: this example is intentionally stricter (more report-only) than the
 # compiled defaults. Thresholds here (65/75/85/92, unfreeze 70) sit below the
 # code defaults (70/80/90/95, unfreeze 88), and the cleanup kinds below
@@ -52,8 +91,13 @@ process_exempt_names = "systemd,dbus-daemon,Xorg,kwin_wayland,plasmashell,dracon
 # renice_value is the fallback nice when no CPU/memory tier threshold is met
 # Report sustained CPU-heavy processes; do not change priorities by default.
 auto_renice = false
+# nice value, enforced to 0-19 (the POSIX range). Below 0 the guard would
+# try to RAISE an offender's priority, inverting the tier-floor promise
+# above; above 19 the renice exec fails. See normalize_guard_policy.
 renice_value = 5
-release_after_secs = 120     # Un-renice after 2 min of being non-heavy
+release_after_secs = 120     # Un-renice after 2 min of being non-heavy.
+                            # Floor 5s: 0 would un-renice on the very next
+                            # pass, renicing and restoring every cycle.
 
 # Notifications
 # notify_command must be an absolute path (e.g. /usr/bin/notify-send).
@@ -69,6 +113,9 @@ report_repeat_secs = 1800
 # Non-empty relative paths resolve from the process working directory; the
 # shipped user service sets WorkingDirectory=%h for a stable relative base.
 guard_log_file = "~/.local/state/dracon/dracon-system-guard.log"
+# Floor 1 MiB. NOTE 0 does NOT mean "unlimited" — rotation returns early on
+# a 0 cap, so 0 silently disables rotation and the event log grows until the
+# disk guard notices. Use a large value for "effectively unlimited".
 guard_log_max_mb = 1
 
 # Auto-cleanup Rust target directories when disk is full
@@ -78,6 +125,8 @@ auto_cleanup_rust = true
 auto_cleanup_apply = false
 # Bound action-level dry-run scans to once every 30 minutes.
 auto_cleanup_interval_secs = 1800
+# Floor 1 MiB: 0 would make every Rust target — including an empty one — a
+# cleanup candidate.
 cleanup_min_size_mb = 256
 rust_search_roots = "~/Dev"
 
@@ -95,6 +144,8 @@ node_modules_max_age_days = 30
 
 # Monitor inode usage
 monitor_inodes = true
+# Enforced to 1-100. Above 100 the alert can never fire, silently disabling
+# the monitor you enabled here.
 inode_warn_percent = 85
 
 # Monitor zombie processes (diagnostic only; zombies cannot be killed directly).
@@ -131,6 +182,9 @@ log_size_mb = 100
 log_dirs = "~/.local/share/opencode/log"
 auto_truncate_logs = false
 log_max_truncate_mb = 50
+# Floor 1 MiB. Capped at 10,000 lines: the preserve step reads this many
+# lines into memory, so an unbounded value is a memory-exhaustion vector on
+# a multi-gigabyte log. 0 = preserve no header (allowed).
 log_preserve_header_lines = 0   # Lines to preserve when truncating logs
 
 # Docker cleanup
@@ -227,7 +281,8 @@ trend_warn_hours = 24
 # when no root argument is passed; kinds selects hotspot classes.
 # [storage]
 # default_root = "/home/dracon/Dev"
-# min_size_mb = 512
+# min_size_mb = 512              # Floor 1 MiB: 0 would make every file,
+                                 # including empty ones, a hotspot candidate.
 # kinds = "rust-build,node-deps,build-output,cache"
 
 # Managed symlinks (`link status` / `link apply`). Each entry keeps the
