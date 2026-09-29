@@ -1651,7 +1651,7 @@ async fn renice_process(pid: i32, value: i32) -> Result<()> {
     // Never exec a bare PATH-relative name for a privilege op: resolve the
     // NixOS store path first (falls back to the bare name off NixOS, which
     // is the old behavior there).
-    renice_process_with_bin(&PathBuf::from(resolve_bin("renice")), pid, value).await
+    renice_process_with_bin(&PathBuf::from(resolve_bin_strict("renice")?), pid, value).await
 }
 
 /// OOM-killer steering target (v0.112.36). Higher oom_score_adj =
@@ -1908,7 +1908,9 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
     // --no-block returns before the unit's cgroup exists: poll for it.
     let mut cg = String::new();
     for _ in 0..10 {
-        let out = Command::new(resolve_bin("systemctl"))
+        let out = Command::new(
+            resolve_bin_strict("systemctl").map_err(|e| e.to_string())?,
+        )
             .args(["--user", "show", &unit, "-p", "ControlGroup", "--value"])
             .output()
             .await
@@ -1920,7 +1922,9 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
     if cg.is_empty() {
-        let _ = Command::new(resolve_bin("systemctl"))
+        let _ = Command::new(
+            resolve_bin_strict("systemctl").map_err(|e| format!("resolve systemctl: {e:#}"))?,
+        )
             .args(["--user", "stop", &unit])
             .status()
             .await;
@@ -1928,7 +1932,9 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
     }
     let procs_file = format!("/sys/fs/cgroup/{cg}/cgroup.procs");
     if let Err(e) = std::fs::write(&procs_file, format!("{pid}\n")) {
-        let _ = Command::new(resolve_bin("systemctl"))
+        let _ = Command::new(
+            resolve_bin_strict("systemctl").map_err(|e| format!("resolve systemctl: {e:#}"))?,
+        )
             .args(["--user", "stop", &unit])
             .status()
             .await;
@@ -2240,8 +2246,20 @@ fn remove_cpu_cap(state: &mut GuardRuntimeState, pid: i32) {
 /// adjustment.
 async fn restore_runtime_adjustments(state: &mut GuardRuntimeState) -> bool {
     let samples = process_samples().await.unwrap_or_default();
-    let renice_bin = PathBuf::from(resolve_bin("renice"));
-    let systemctl_bin = PathBuf::from(resolve_bin("systemctl"));
+    let renice_bin = match resolve_bin_strict("renice") {
+        Ok(b) => PathBuf::from(b),
+        Err(e) => {
+            eprintln!("SIGHUP restore unavailable: {e:#}");
+            return false;
+        }
+    };
+    let systemctl_bin = match resolve_bin_strict("systemctl") {
+        Ok(b) => PathBuf::from(b),
+        Err(e) => {
+            eprintln!("SIGHUP restore unavailable: {e:#}");
+            return false;
+        }
+    };
     restore_runtime_adjustments_with_samples(
         state,
         &renice_bin,
@@ -3596,6 +3614,22 @@ static RESOLVE_BIN_CACHE: std::sync::OnceLock<
 > = std::sync::OnceLock::new();
 
 fn resolve_bin(name: &str) -> String {
+    resolve_bin_opt(name).unwrap_or_else(|| name.to_string())
+}
+
+/// Strict variant for privilege-adjacent execs (renice, systemctl):
+/// refuse to run when no absolute store path resolves, instead of
+/// falling back to a bare PATH-relative name that PATH poisoning could
+/// redirect. Returns the absolute path.
+fn resolve_bin_strict(name: &str) -> Result<String> {
+    resolve_bin_opt(name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "cannot resolve absolute path for `{name}` (not in NixOS store dirs) — refusing PATH-relative exec"
+        )
+    })
+}
+
+fn resolve_bin_opt(name: &str) -> Option<String> {
     let cache =
         RESOLVE_BIN_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
     {
@@ -3616,12 +3650,13 @@ fn resolve_bin(name: &str) -> String {
                 .join(name)
                 .to_string_lossy()
                 .to_string()
-        })
-        .unwrap_or_else(|| name.to_string());
-    cache
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(name.to_string(), result.clone());
+        });
+    if let Some(ref resolved) = result {
+        cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(name.to_string(), resolved.clone());
+    }
     result
 }
 
@@ -4552,7 +4587,7 @@ async fn check_memory_pressure(
             // Identity was readable: clear any prior unavailability count.
             state.cap_identity_unavailable_attempts.remove(&pid);
             if let Err(e) = uncap_cpu_process_with_bin(
-                &PathBuf::from(resolve_bin("systemctl")),
+                &PathBuf::from(resolve_bin_strict("systemctl")?),
                 Path::new("/proc"),
                 pid,
                 &scope,
@@ -6273,7 +6308,11 @@ fn effective_system_policy_path() -> Result<PathBuf> {
 }
 
 async fn is_user_service_active(service: &str) -> bool {
-    let output = Command::new(resolve_bin("systemctl"))
+    let bin = match resolve_bin_strict("systemctl") {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
+    let output = Command::new(bin)
         .args(["--user", "is-active", service])
         .output()
         .await;
