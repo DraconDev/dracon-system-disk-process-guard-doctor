@@ -803,11 +803,13 @@ fn reap_policy_from_guard_maps_thresholds_and_shares_exempts() {
     // scanner had zero coverage. The exempt list is shared with pressure
     // mitigation on purpose (too important to renice ⇒ too important to
     // look abandoned), so pin that coupling here.
-    let mut guard = crate::GuardPolicy::default();
-    guard.reap_report_min_idle_hours = 48;
-    guard.reap_report_max_cpu_seconds = 120;
-    guard.reap_report_signatures = "vite,mytool".to_string();
-    guard.process_exempt_names = "keepme,alsokeep".to_string();
+    let guard = crate::GuardPolicy {
+        reap_report_min_idle_hours: 48,
+        reap_report_max_cpu_seconds: 120,
+        reap_report_signatures: "vite,mytool".to_string(),
+        process_exempt_names: "keepme,alsokeep".to_string(),
+        ..Default::default()
+    };
     let policy = crate::reap_policy_from_guard(&guard);
     assert_eq!(policy.min_idle_hours, 48);
     assert_eq!(policy.max_cpu_seconds, 120);
