@@ -186,6 +186,34 @@ fn apply_relocate_roundtrip_leaves_symlink() {
     cleanup(&root);
 }
 
+#[cfg(unix)]
+#[test]
+fn apply_relocate_refuses_stale_staging_dir() {
+    // Audit MEDIUM: the source is staged aside before the symlink is
+    // created. A leftover staging dir from a previous failed run must
+    // refuse the run rather than be silently reused or overwritten.
+    let root = test_root("staging");
+    let src = fixture_dir(&root);
+    let dest_root = root.join("cold");
+    fs::create_dir_all(&dest_root).unwrap();
+    let plan = crate::plan_relocate(&src, &dest_root, &[], false).unwrap();
+    let staging = src.with_file_name(format!(
+        "{}.dracon-relocate-staging",
+        src.file_name().unwrap().to_string_lossy()
+    ));
+    fs::create_dir_all(&staging).unwrap();
+    let err = crate::apply_relocate(&plan).unwrap_err();
+    assert!(
+        format!("{err:#}").contains("stale staging"),
+        "stale staging dir must refuse the run: {err:#}"
+    );
+    assert!(
+        fs::read(src.join("a.txt")).is_ok(),
+        "refused run must leave the source untouched"
+    );
+    cleanup(&root);
+}
+
 fn git_repo_with_tracked_subdir(root: &Path) -> PathBuf {
     use std::process::Command;
     let repo = root.join("repo");

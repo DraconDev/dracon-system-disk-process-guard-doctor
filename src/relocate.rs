@@ -307,7 +307,8 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
         );
     }
 
-    let skipped_special = copy_tree(source, dest)?;    let (dest_files, dest_bytes) = walk_stats_strict(dest)?;
+    let skipped_special = copy_tree(source, dest)?;
+    let (dest_files, dest_bytes) = walk_stats_strict(dest)?;
     if dest_files != plan.files || dest_bytes != plan.bytes {
         anyhow::bail!(
             "copy verification failed: expected {} files / {} bytes, got {} / {} — source untouched",
@@ -334,7 +335,11 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
         );
     }
     fs::rename(source, &staging).map_err(|e| {
-        anyhow::anyhow!("cannot stage {} aside: {} — source untouched", source.display(), e)
+        anyhow::anyhow!(
+            "cannot stage {} aside: {} — source untouched",
+            source.display(),
+            e
+        )
     })?;
     if let Err(e) = make_symlink(dest, source) {
         fs::rename(&staging, source).map_err(|restore_err| {
