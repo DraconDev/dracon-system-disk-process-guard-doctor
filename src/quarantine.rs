@@ -257,7 +257,7 @@ pub(crate) fn quarantine_list(root: &Path, ttl_days: u64) -> Result<QuarantineLi
                     let exp = ttl_days > 0 && age > ttl_days;
                     (m.origin.clone(), Some(m.moved_at_unix), Some(age), exp)
                 }
-                None => ("unknown".to_string(), None, None, false),
+                None => ("unknown".to_string(), None, None, true),
             };
             let is_pinned = manifest.is_none();
             total_bytes += bytes;
