@@ -11,6 +11,13 @@ StandardError=journal
 # PassEnvironment=PATH after running `systemctl --user import-environment PATH`.
 Environment=PATH=%h/.local/bin:/run/wrappers/bin:%h/.local/share/flatpak/exports/bin:/var/lib/flatpak/exports/bin:%h/.nix-profile/bin:/nix/profile/bin:%h/.local/state/nix/profile/bin:/etc/profiles/per-user/%u/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin
 ExecStart=%h/.local/bin/dracon-system guard daemon
+# ADDED 2026-09-29 (DECIDE #2 follow-up): without an ExecReload,
+# `systemctl --user reload` had no handler and the documented SIGHUP reload
+# path could not be invoked through systemd. SIGHUP is the reload signal the
+# guard already handles; this just makes it reachable from the service
+# manager. The guard re-reads its policy on every pass anyway, so this is
+# about applying a change at a known point, not about freshness.
+ExecReload=/bin/kill -HUP $MAINPID
 # Do not restart clean policy-disabled exits; restart crashes and failures.
 Restart=on-failure
 RestartSec=10
