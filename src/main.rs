@@ -590,7 +590,7 @@ pub(crate) struct GuardRuntimeState {
     pub(crate) disk_bytes_history: Vec<(Instant, u64)>,
     /// ADDED 2026-08-10 (v0.112.35): first-sight timestamps for
     /// zombie processes so alerts can report zombie age.
-    pub(crate) zombies_since: HashMap<i32, Instant>,
+    pub(crate) zombies_since: HashMap<(i32, u64), Instant>,
     /// ADDED 2026-08-10 (v0.112.35): last pswpin/pswpout counters
     /// for the swap-thrash fallback when PSI is unavailable.
     pub(crate) prev_swap_counters: Option<(Instant, u64, u64)>,
@@ -4742,6 +4742,9 @@ fn reap_candidates(guard: &GuardPolicy) -> Vec<ReapCandidate> {
 fn zombie_details(state: &mut GuardRuntimeState) -> Vec<ZombieInfo> {
     let now = Instant::now();
     let mut zombies = Vec::new();
+    // PIDs recycle: key first-seen by (pid, starttime) so a new process
+    // reusing a dead zombie's PID does not inherit its age.
+    let mut seen: HashSet<(i32, u64)> = HashSet::new();
     if let Ok(entries) = fs::read_dir("/proc") {
         for entry in entries.flatten() {
             let pid_str = entry.file_name();
@@ -4751,10 +4754,12 @@ fn zombie_details(state: &mut GuardRuntimeState) -> Vec<ZombieInfo> {
             let Ok(stat) = fs::read_to_string(format!("/proc/{pid}/stat")) else {
                 continue;
             };
-            let Some((_, comm, ppid, _)) = parse_proc_stat_zombie(&stat) else {
+            let Some((_, comm, ppid, starttime)) = parse_proc_stat_zombie(&stat) else {
                 continue;
             };
-            let first_seen = *state.zombies_since.entry(pid).or_insert(now);
+            let key = (pid, starttime);
+            seen.insert(key);
+            let first_seen = *state.zombies_since.entry(key).or_insert(now);
             let parent_comm = fs::read_to_string(format!("/proc/{ppid}/comm"))
                 .map(|c| c.trim().to_string())
                 .unwrap_or_else(|_| "(unknown)".to_string());
@@ -4771,7 +4776,7 @@ fn zombie_details(state: &mut GuardRuntimeState) -> Vec<ZombieInfo> {
     }
     state
         .zombies_since
-        .retain(|pid, _| zombies.iter().any(|z| z.pid == *pid));
+        .retain(|key, _| seen.contains(key));
     zombies.sort_by_key(|b| std::cmp::Reverse(b.age_secs));
     zombies
 }
