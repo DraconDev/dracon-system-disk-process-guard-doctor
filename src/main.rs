@@ -53,6 +53,8 @@ mod guard_tests;
 #[cfg(test)]
 mod links_tests;
 #[cfg(test)]
+mod policy_tests;
+#[cfg(test)]
 mod quarantine_tests;
 #[cfg(test)]
 mod reap_tests;
