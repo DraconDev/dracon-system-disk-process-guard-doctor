@@ -272,6 +272,10 @@ pub(crate) fn plan_relocate(
 
 /// Execute a validated plan: copy, verify, remove source, leave symlink.
 pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
+    #[cfg(not(unix))]
+    {
+        anyhow::bail!("relocate is only supported on unix");
+    }
     if !plan.ready {
         anyhow::bail!("plan is not ready: {}", plan.issues.join("; "));
     }
@@ -304,11 +308,34 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
         );
     }
 
-    fs::remove_dir_all(source)?;
-    #[cfg(unix)]
-    std::os::unix::fs::symlink(dest, source)?;
-    #[cfg(not(unix))]
-    anyhow::bail!("relocate is only supported on unix");
+    // Stage the source aside instead of deleting it: if the symlink step
+    // fails, the original path is restored rather than left broken.
+    let staging = source.with_file_name(format!(
+        "{}.dracon-relocate-staging",
+        source
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "relocated".to_string())
+    ));
+    if fs::symlink_metadata(&staging).is_ok() {
+        anyhow::bail!(
+            "stale staging dir {} from a previous run — refusing (clear it manually)",
+            staging.display()
+        );
+    }
+    fs::rename(source, &staging).map_err(|e| {
+        anyhow::anyhow!("cannot stage {} aside: {} — source untouched", source.display(), e)
+    })?;
+    if let Err(e) = std::os::unix::fs::symlink(dest, source) {
+        fs::rename(&staging, source).map_err(|restore_err| {
+            anyhow::anyhow!(
+                "symlink failed ({e:#}) AND restore failed ({restore_err:#}) — data is intact at {}",
+                staging.display()
+            )
+        })?;
+        anyhow::bail!("symlink failed ({e:#}) — source restored");
+    }
+    fs::remove_dir_all(&staging)?;
 
     let snippet = format!(
         "[[links.entries]]\nlink = \"{}\"\ntarget = \"{}\"\n",
