@@ -17,7 +17,13 @@ ExecStart=%h/.local/bin/dracon-system guard daemon
 # guard already handles; this just makes it reachable from the service
 # manager. The guard re-reads its policy on every pass anyway, so this is
 # about applying a change at a known point, not about freshness.
-ExecReload=/bin/kill -HUP $MAINPID
+#
+# /bin/sh, not /bin/kill: this unit is NixOS-targeted but also serves plain
+# distros, and on NixOS /bin contains only `sh` — `systemd-analyze verify`
+# rejects `/bin/kill` there with "Command /bin/kill is not executable". /bin/sh
+# is universal, and `kill` is a POSIX shell builtin, so no PATH lookup is
+# involved at all. The NixOS store path would verify but is absent off NixOS.
+ExecReload=/bin/sh -c 'kill -HUP $MAINPID'
 # Do not restart clean policy-disabled exits; restart crashes and failures.
 Restart=on-failure
 RestartSec=10
