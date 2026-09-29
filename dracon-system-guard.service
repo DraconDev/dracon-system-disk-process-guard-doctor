@@ -15,8 +15,10 @@ ExecStart=%h/.local/bin/dracon-system guard daemon
 # `systemctl --user reload` had no handler and the documented SIGHUP reload
 # path could not be invoked through systemd. SIGHUP is the reload signal the
 # guard already handles; this just makes it reachable from the service
-# manager. The guard re-reads its policy on every pass anyway, so this is
-# about applying a change at a known point, not about freshness.
+# manager. It is NOT a freshness mechanism: the daemon re-reads the policy
+# file every pass, but only to pick up `links` entries — `[guard]` and
+# `[storage]` come from the copy the daemon holds, so a threshold change
+# needs this signal (or a restart) to take effect.
 #
 # /bin/sh, not /bin/kill: this unit is NixOS-targeted but also serves plain
 # distros, and on NixOS /bin contains only `sh` — `systemd-analyze verify`
