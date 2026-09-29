@@ -383,3 +383,128 @@ fn is_git_tracked_sees_repo_roots() {
     assert!(format!("{err:#}").contains("git-tracked"));
     cleanup(&root);
 }
+
+// ---------------------------------------------------------------------------
+// find_cold_candidates — the daemon's autonomous "move this directory"
+// selection. It had NO coverage before the 0.112.42 release review, which
+// matters because in auto mode this drives a real move of user data with no
+// operator command and no --allow-tracked escape hatch.
+// ---------------------------------------------------------------------------
+
+/// Create `dir` under `root` holding `bytes` of file data, with every
+/// mtime set to `age_days` in the past so the idle filter is deterministic.
+fn aged_dir(root: &Path, name: &str, bytes: usize, age_days: u64) -> PathBuf {
+    let dir = root.join(name);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("payload.bin");
+    std::fs::write(&path, vec![b'x'; bytes]).unwrap();
+    filetime_set(&path, age_days);
+    filetime_set(&dir, age_days);
+    dir
+}
+
+/// Set a path's mtime to `age_days` in the past.
+///
+/// `File::set_modified` is stable and needs no extra dependency; opening a
+/// directory read-only is enough for futimens to stamp it on Linux.
+fn filetime_set(path: &Path, age_days: u64) {
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .open(path)
+        .unwrap_or_else(|e| panic!("open {} to set mtime: {e}", path.display()));
+    f.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(age_days * 86_400))
+        .unwrap_or_else(|e| panic!("set mtime on {}: {e}", path.display()));
+}
+
+#[test]
+fn cold_candidates_respect_the_size_floor() {
+    let root = test_root("cold-size");
+    std::fs::create_dir_all(&root).unwrap();
+    aged_dir(&root, "big", 64 * 1024, 40);
+    aged_dir(&root, "small", 16, 40);
+    let candidates = find_cold_candidates(&[root.clone()], 32 * 1024, 0);
+    let names: Vec<String> = candidates
+        .iter()
+        .map(|c| c.path.rsplit('/').next().unwrap().to_string())
+        .collect();
+    assert!(
+        names.iter().any(|n| n == "big"),
+        "a directory over the floor must be a candidate, got {names:?}"
+    );
+    assert!(
+        !names.iter().any(|n| n == "small"),
+        "a directory under the floor must not be a candidate, got {names:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn cold_candidates_respect_the_idle_floor() {
+    let root = test_root("cold-age");
+    std::fs::create_dir_all(&root).unwrap();
+    aged_dir(&root, "stale", 64 * 1024, 90);
+    aged_dir(&root, "fresh", 64 * 1024, 0);
+    let candidates = find_cold_candidates(&[root.clone()], 1024, 30);
+    let names: Vec<String> = candidates
+        .iter()
+        .map(|c| c.path.rsplit('/').next().unwrap().to_string())
+        .collect();
+    assert!(names.iter().any(|n| n == "stale"), "got {names:?}");
+    assert!(
+        !names.iter().any(|n| n == "fresh"),
+        "a directory younger than the idle floor must not be moved, got {names:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn cold_candidates_never_include_a_git_tracked_directory() {
+    // The single most important property of auto mode: the daemon relocates
+    // on its own with no --allow-tracked escape hatch, so a repo must never
+    // be selected. Moving one replaces it with a symlink and destroys the
+    // working tree.
+    let root = test_root("cold-tracked");
+    std::fs::create_dir_all(&root).unwrap();
+    let repo = aged_dir(&root, "repo", 64 * 1024, 90);
+    // Mark it tracked: the production check probes the enclosing repo root.
+    let _ = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&repo)
+        .args(["init", "-q"])
+        .status();
+    std::fs::write(repo.join("tracked.txt"), b"content").unwrap();
+    let _ = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&repo)
+        .args(["add", "tracked.txt"])
+        .status();
+
+    let candidates = find_cold_candidates(&[root.clone()], 1024, 0);
+    let names: Vec<String> = candidates
+        .iter()
+        .map(|c| c.path.rsplit('/').next().unwrap().to_string())
+        .collect();
+    assert!(
+        !names.iter().any(|n| n == "repo"),
+        "a git-tracked directory must never be an auto-relocate candidate, got {names:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn cold_candidates_never_include_the_scan_root_itself() {
+    // Moving the root would move everything under it, including the
+    // candidate list's own parent.
+    let root = test_root("cold-root");
+    std::fs::create_dir_all(&root).unwrap();
+    aged_dir(&root, "child", 64 * 1024, 90);
+    let candidates = find_cold_candidates(&[root.clone()], 1024, 0);
+    for c in &candidates {
+        assert_ne!(
+            c.path.trim_end_matches('/'),
+            root.canonicalize().unwrap_or(root.clone()).to_str().unwrap(),
+            "the scan root itself must never be a candidate"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
