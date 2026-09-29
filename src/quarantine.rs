@@ -14,7 +14,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     check_safe_to_delete_guard, copy_tree, expand_tilde, human_bytes, load_system_policy,
-    unique_backup_path, walk_stats, QuarantineCommands,
+    unique_backup_path, walk_stats, walk_stats_strict, QuarantineCommands,
 };
 
 const MANIFEST_NAME: &str = ".quarantine.json";
@@ -149,7 +149,7 @@ pub(crate) fn quarantine_move(
         anyhow::bail!("origin and quarantine root nest — refusing");
     }
 
-    let (files, bytes) = walk_stats(&canon_origin);
+    let (files, bytes) = walk_stats_strict(&canon_origin)?;
     let entry_dir = entry_dir_for(&canon_root, &canon_origin);
     let name = entry_dir
         .file_name()
@@ -159,8 +159,16 @@ pub(crate) fn quarantine_move(
     match fs::rename(&canon_origin, &entry_dir) {
         Ok(()) => {}
         Err(_) => {
-            copy_tree(&canon_origin, &entry_dir)?;
-            let (got_files, got_bytes) = walk_stats(&entry_dir);
+            let skipped = copy_tree(&canon_origin, &entry_dir).inspect_err(|_| {
+                let _ = fs::remove_dir_all(&entry_dir);
+            })?;
+            if skipped > 0 {
+                eprintln!(
+                    "quarantine move: skipped {} special files (sockets, fifos) — not preserved",
+                    skipped
+                );
+            }
+            let (got_files, got_bytes) = walk_stats_strict(&entry_dir)?;
             if got_files != files || got_bytes != bytes {
                 let _ = fs::remove_dir_all(&entry_dir);
                 anyhow::bail!("copy verification failed — origin untouched");
@@ -298,8 +306,10 @@ pub(crate) fn quarantine_restore(root: &Path, name: &str) -> Result<PathBuf> {
             Ok(origin)
         }
         Err(_) => {
-            copy_tree(&entry_dir, &origin)?;
-            let (got_files, got_bytes) = walk_stats(&origin);
+            copy_tree(&entry_dir, &origin).inspect_err(|_| {
+                let _ = fs::remove_dir_all(&origin);
+            })?;
+            let (got_files, got_bytes) = walk_stats_strict(&origin)?;
             if got_files != manifest.files || got_bytes != manifest.bytes {
                 let _ = fs::remove_dir_all(&origin);
                 anyhow::bail!("restore verification failed — quarantine entry kept");
