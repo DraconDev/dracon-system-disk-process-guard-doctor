@@ -289,7 +289,7 @@ fn stuck_threshold_never_drops_below_sustain() {
 /// worse failure than the one the clamp was meant to prevent.
 #[test]
 fn sentinel_zero_knobs_are_never_clamped() {
-    let sentinel = GuardPolicy {
+    let mut sentinel = GuardPolicy {
         trend_warn_hours: 0,
         zombie_threshold: 0,
         log_size_mb: 0,

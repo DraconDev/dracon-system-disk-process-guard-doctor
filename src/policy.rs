@@ -717,8 +717,10 @@ pub(crate) fn default_relocate_max_moves_per_pass() -> u64 {
 // call it.
 
 /// Knobs where `0` is a documented "disabled" sentinel rather than a nonsense
-/// value. These are deliberately NOT given a floor: see rule 2 above.
-/// Pinned by `sentinel_zero_knobs_are_never_clamped`.
+/// value. These are deliberately NOT given a floor: see rule 2 above. This
+/// list exists so the range tests can fail if a later "just add a floor"
+/// change clamps one by accident — it is a test contract, not runtime data.
+#[cfg(test)]
 pub(crate) const SENTINEL_ZERO_KNOBS: &[&str] = &[
     // 0 = no trend alert within any horizon.
     "trend_warn_hours",
