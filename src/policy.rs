@@ -687,6 +687,284 @@ pub(crate) fn default_relocate_max_moves_per_pass() -> u64 {
 }
 
 // ---------------------------------------------------------------------------
+// Legal-range enforcement (normalization)
+// ---------------------------------------------------------------------------
+//
+// `dracon-system.example.toml` documents a legal range for most numeric
+// knobs. Before this module, those ranges existed only as PROSE: the daemon
+// accepted any value the type allowed, and a nonsense threshold silently did
+// nothing (a NaN comparison is false everywhere; a percent above 100 never
+// trips; a 0 log cap disables rotation without saying so). The audit DECIDE
+// #8 recorded that gap; this is the enforcement half.
+//
+// `normalize_guard_policy` is the SINGLE place the ranges are applied, and
+// `SystemPolicy::normalize` runs it from `load_system_policy`, so every
+// consumer — daemon, doctor, setup, links, relocate, quarantine, storage —
+// gets in-range values by construction.
+//
+// Two rules decide clamp vs. leave-alone:
+//
+// 1. A value that makes the daemon MALFUNCTION is clamped.
+// 2. A value where 0 is a DOCUMENTED "off" sentinel is left alone. A floor
+//    there would silently re-arm a feature the operator deliberately turned
+//    off, which is a worse failure than the one the clamp prevents. Those
+//    knobs are listed in SENTINEL_ZERO_KNOBS so a range test can fail if a
+//    later change clamps one by accident.
+//
+// Normalization is idempotent: every rule is min/max/clamp against a
+// constant or an already-normalized neighbour, so applying it twice is a
+// no-op. That is what lets the load boundary and the CLI entry points both
+// call it.
+
+/// Knobs where `0` is a documented "disabled" sentinel rather than a nonsense
+/// value. These are deliberately NOT given a floor: see rule 2 above.
+/// Pinned by `sentinel_zero_knobs_are_never_clamped`.
+pub(crate) const SENTINEL_ZERO_KNOBS: &[&str] = &[
+    // 0 = no trend alert within any horizon.
+    "trend_warn_hours",
+    // 0 = never alert on zombie count.
+    "zombie_threshold",
+    // 0 = never alert on log size.
+    "log_size_mb",
+    // 0 = treat every node_modules as a candidate.
+    "node_modules_max_age_days",
+    // 0 = sweep /tmp regardless of age.
+    "tmp_min_age_hours",
+    // 0 = purge trash immediately (no recovery window).
+    "trash_min_age_days",
+    // 0 = disable the action-tier age gate (old delete-anything posture).
+    "rust_target_action_min_age_days",
+    // 0 = never expire quarantine entries.
+    "quarantine_ttl_days",
+    // 0 = CPU throttling off.
+    "cap_offenders_cpu_percent",
+    // 0 = report every idle process / report only never-ran processes.
+    "reap_report_min_idle_hours",
+    "reap_report_max_cpu_seconds",
+    // 0 = keep no Nix generations (delete everything prunable).
+    "nix_keep_generations",
+];
+
+/// Largest header `log_preserve_header_lines` will preserve when truncating.
+/// The preserve step reads that many lines into memory, so an unbounded
+/// value is a memory-exhaustion vector on a multi-gigabyte log.
+pub(crate) const LOG_PRESERVE_HEADER_LINES_MAX: usize = 10_000;
+
+/// Inclusive bounds of the POSIX nice range. `graduated_nice_value` already
+/// clamps its result to this, but `renice_value` is the operator's *floor*
+/// input: a negative value would let the guard RAISE an offender's priority,
+/// which the tier-floor contract explicitly promises never happens.
+pub(crate) const RENICE_VALUE_MIN: i32 = 0;
+pub(crate) const RENICE_VALUE_MAX: i32 = 19;
+
+impl SystemPolicy {
+    /// Normalize every sub-policy and report what was clamped.
+    pub(crate) fn normalize(&mut self) {
+        let mut adjusted = normalize_storage_policy(&mut self.storage);
+        adjusted.append(&mut normalize_guard_policy(&mut self.guard));
+        if !adjusted.is_empty() {
+            // Silent clamping is how DECIDE #8 was allowed to look like a
+            // decision; say what moved so an operator can fix the file.
+            eprintln!(
+                "⚠ policy: out-of-range value(s) clamped to their legal range: {}",
+                adjusted.join(", ")
+            );
+        }
+    }
+}
+
+pub(crate) fn normalize_storage_policy(storage: &mut StoragePolicy) -> Vec<&'static str> {
+    let mut adjusted = Vec::new();
+    // 0 would make every file — including empty ones — a hotspot candidate,
+    // and the resulting report is unreadable rather than wrong.
+    if storage.min_size_mb < 1 {
+        adjusted.push("storage.min_size_mb");
+        storage.min_size_mb = 1;
+    }
+    adjusted
+}
+
+/// Apply every documented legal range to a guard policy, returning the names
+/// of the fields that were clamped (empty when the policy was already legal).
+pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) -> Vec<&'static str> {
+    let mut adjusted: Vec<&'static str> = Vec::new();
+
+    // Each knob takes exactly one of four shapes:
+    //   floor!  — below this the daemon misbehaves; raise it.
+    //   ceil!   — above this the knob is meaningless or unbounded; cap it.
+    //   band!   — both ends are meaningful.
+    //   fband!  — the float form. Deliberately unconditional, see below.
+    macro_rules! floor {
+        ($field:ident, $min:expr) => {{
+            let min = $min;
+            if policy.$field < min {
+                adjusted.push(stringify!($field));
+                policy.$field = min;
+            }
+        }};
+    }
+    macro_rules! ceil {
+        ($field:ident, $max:expr) => {{
+            let max = $max;
+            if policy.$field > max {
+                adjusted.push(stringify!($field));
+                policy.$field = max;
+            }
+        }};
+    }
+    macro_rules! band {
+        ($field:ident, $min:expr, $max:expr) => {{
+            let (min, max) = ($min, $max);
+            if policy.$field < min || policy.$field > max {
+                adjusted.push(stringify!($field));
+                policy.$field = policy.$field.max(min).min(max);
+            }
+        }};
+    }
+    // TOML accepts `nan` and `inf` float literals and serde maps them
+    // straight through. A NaN fails EVERY comparison, so a `>`/`max` guard
+    // would let it through and silently disable the threshold it guards.
+    // f32/f64::max and ::min return the non-NaN operand, so assigning
+    // unconditionally is what actually scrubs NaN and ±inf.
+    macro_rules! fband {
+        ($field:ident, $min:expr, $max:expr) => {{
+            let (min, max) = ($min, $max);
+            let before = policy.$field;
+            let after = before.max(min).min(max);
+            if after != before {
+                adjusted.push(stringify!($field));
+                policy.$field = after;
+            }
+        }};
+    }
+
+    // --- cadence ---------------------------------------------------------
+    // 0 would busy-loop the guard with no sleep between passes.
+    floor!(interval_secs, 5);
+    floor!(auto_cleanup_interval_secs, 60);
+    floor!(report_repeat_secs, 60);
+    floor!(proactive_cleanup_interval_cycles, 1);
+
+    // --- disk bands ------------------------------------------------------
+    band!(disk_warn_percent, 1, 100);
+    // ADDED 2026-09-09 (audit F43): an early-warn above warn made the
+    // early band (`used >= early && used < warn`) permanently empty —
+    // the operator's early-warning config silently did nothing.
+    if policy.disk_early_warn_percent > policy.disk_warn_percent {
+        adjusted.push("disk_early_warn_percent");
+        policy.disk_early_warn_percent = policy.disk_warn_percent;
+    }
+    if policy.disk_action_percent < policy.disk_warn_percent {
+        adjusted.push("disk_action_percent");
+        policy.disk_action_percent = policy.disk_warn_percent;
+    }
+    if policy.disk_critical_percent < policy.disk_action_percent {
+        adjusted.push("disk_critical_percent");
+        policy.disk_critical_percent = policy.disk_action_percent;
+    }
+    if policy.disk_action_percent > 100 {
+        adjusted.push("disk_action_percent");
+        policy.disk_action_percent = 100;
+    }
+    if policy.disk_critical_percent > 100 {
+        adjusted.push("disk_critical_percent");
+        policy.disk_critical_percent = 100;
+    }
+    // Both of these are "start acting before action" gates; landing on or
+    // above disk_action_percent would make them fire at the same level and
+    // leave the band they exist to cover empty.
+    if policy.proactive_cleanup_percent >= policy.disk_action_percent {
+        adjusted.push("proactive_cleanup_percent");
+        policy.proactive_cleanup_percent = policy.disk_action_percent.saturating_sub(1);
+    }
+    if policy.unfreeze_below_percent >= policy.disk_action_percent {
+        adjusted.push("unfreeze_below_percent");
+        policy.unfreeze_below_percent = policy.disk_action_percent.saturating_sub(1);
+    }
+    // Percent thresholds whose top end is meaningful (100 = "warn only when
+    // full") but whose 0 would mean "alert on every sample".
+    band!(inode_warn_percent, 1, 100);
+    band!(mem_available_warn_percent, 1, 100);
+    band!(swap_used_warn_percent, 1, 100);
+
+    // --- process thresholds ----------------------------------------------
+    // Upper bound is deliberately generous: per-process CPU is a percentage
+    // of ONE core, so a 32-core process legitimately reads 3200%.
+    fband!(process_cpu_percent, 1.0, 100_000.0);
+    floor!(process_rss_mb, 64);
+    floor!(process_sustain_secs, 5);
+    // A stuck threshold below the sustain threshold makes "stuck" fire on
+    // every process that merely became heavy.
+    if policy.process_stuck_after_secs < policy.process_sustain_secs {
+        adjusted.push("process_stuck_after_secs");
+        policy.process_stuck_after_secs = policy.process_sustain_secs;
+    }
+    // Outside 0..=19 the renice exec fails outright; negative would try to
+    // raise priority, inverting the tier-floor contract.
+    band!(renice_value, RENICE_VALUE_MIN, RENICE_VALUE_MAX);
+    // 0 would un-renice on the very next pass after a renice, so a heavy
+    // process would be reniced and restored every cycle.
+    floor!(release_after_secs, 5);
+    floor!(notify_cooldown_secs, 5);
+
+    // --- memory pressure -------------------------------------------------
+    // A NaN mem_psi_full_warn fails every comparison, so the pressure state
+    // machine would never leave "clear" and no mitigation would ever run.
+    fband!(mem_psi_full_warn, 0.0, 100.0);
+    floor!(memory_pressure_sustain_secs, 30);
+    // systemd CPUQuota accepts values above 100%, but this knob is a cap
+    // expressed as a percentage of one CPU. Keep invalid values from
+    // reaching the per-pass cap loop, where they would fail and retry for
+    // every offender on every interval.
+    ceil!(cap_offenders_cpu_percent, 100);
+
+    // --- disk trends -----------------------------------------------------
+    fband!(disk_rapid_fill_gbph, 0.5, 100_000.0);
+    // trend_warn_hours: 0 is a sentinel (SENTINEL_ZERO_KNOBS), no clamp.
+
+    // --- logging ---------------------------------------------------------
+    // 0 is NOT "unlimited" here: rotate_guard_log_if_oversized returns early
+    // on a 0 cap, so it silently disables rotation and the event log grows
+    // without bound until the disk guard notices it.
+    floor!(guard_log_max_mb, 1);
+    floor!(log_max_truncate_mb, 1);
+    ceil!(log_preserve_header_lines, LOG_PRESERVE_HEADER_LINES_MAX);
+    // log_size_mb: 0 is a sentinel (SENTINEL_ZERO_KNOBS), no clamp.
+
+    // --- cleanup thresholds ----------------------------------------------
+    // 0 would make every Rust target — including a 0-byte one — a candidate.
+    floor!(cleanup_min_size_mb, 1);
+    floor!(rust_target_max_age_days, 1);
+    // node_modules_max_age_days, tmp_min_age_hours, trash_min_age_days and
+    // rust_target_action_min_age_days: 0 is a sentinel, no clamp.
+    // nix_keep_generations: 0 is a sentinel; no upper bound is meaningful
+    // (nix treats "+N" as keep N, and a large N is merely conservative).
+
+    // --- quarantine / relocation -----------------------------------------
+    // quarantine_ttl_days: 0 is a sentinel (never expire), no clamp.
+    floor!(relocate_min_size_mb, 1);
+    // relocate_min_age_days: 0 is a sentinel (fresh dirs are candidates).
+    floor!(relocate_max_moves_per_pass, 1);
+    // reap_report_*: both 0s are sentinels, no clamp.
+
+    // --- empty string fallbacks ------------------------------------------
+    if policy.sync_freeze_marker.trim().is_empty() {
+        adjusted.push("sync_freeze_marker");
+        policy.sync_freeze_marker = default_sync_freeze_marker();
+    }
+    if policy.quarantine_dir.trim().is_empty() {
+        adjusted.push("quarantine_dir");
+        policy.quarantine_dir = default_quarantine_dir();
+    }
+    if policy.notify_command.trim().is_empty() {
+        adjusted.push("notify_command");
+        policy.notify_command = default_notify_command();
+    }
+
+    adjusted
+}
+
+// ---------------------------------------------------------------------------
 // Utility / formatting helpers
 // ---------------------------------------------------------------------------
 
