@@ -344,7 +344,14 @@ pub(crate) fn quarantine_expire(root: &Path, ttl_days: u64, apply: bool) -> Resu
             continue;
         };
         if canon.parent() != Some(canon_root.as_path()) {
-            anyhow::bail!("entry {} escaped quarantine root — refusing", entry.name);
+            // An escaped entry is a security signal, but aborting the
+            // batch discards the removals already collected. Skip it
+            // loudly instead; the warning names the entry for the operator.
+            eprintln!(
+                "quarantine expire: entry {} escaped quarantine root — refusing it, continuing batch",
+                entry.name
+            );
+            continue;
         }
         if apply {
             fs::remove_dir_all(&canon)?;
