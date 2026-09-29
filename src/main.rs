@@ -5775,6 +5775,20 @@ async fn check_zombie_processes(
     zombies
 }
 
+/// Parse the `disk_extra_mounts` comma-separated list into mount points.
+///
+/// Extracted from the guard pass so it is testable: this list is
+/// visibility-only and its only prior coverage was zero. Blank entries and
+/// stray whitespace are dropped, because an empty entry would otherwise be
+/// stat'd as "" and reported as a broken mount on every pass.
+pub(crate) fn parse_extra_mounts(csv: &str) -> Vec<String> {
+    csv.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
 async fn check_large_logs(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
     if !guard.monitor_logs {
         return;
@@ -6135,13 +6149,8 @@ pub(crate) async fn run_guard_once(
     // Unreadable extras are skipped (verbose only) so one bad mount
     // cannot fail the whole guard pass.
     let mut extra_mounts = Vec::new();
-    for mount in guard
-        .disk_extra_mounts
-        .split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        match disk_details_for(mount).await {
+    for mount in parse_extra_mounts(&guard.disk_extra_mounts) {
+        match disk_details_for(&mount).await {
             Ok(d) => extra_mounts.push(MountStatus {
                 mount: d.mount,
                 use_percent: d.use_percent,

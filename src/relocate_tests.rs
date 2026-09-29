@@ -412,8 +412,10 @@ fn filetime_set(path: &Path, age_days: u64) {
         .read(true)
         .open(path)
         .unwrap_or_else(|e| panic!("open {} to set mtime: {e}", path.display()));
-    f.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(age_days * 86_400))
-        .unwrap_or_else(|e| panic!("set mtime on {}: {e}", path.display()));
+    f.set_modified(
+        std::time::SystemTime::now() - std::time::Duration::from_secs(age_days * 86_400),
+    )
+    .unwrap_or_else(|e| panic!("set mtime on {}: {e}", path.display()));
 }
 
 #[test]
@@ -502,9 +504,43 @@ fn cold_candidates_never_include_the_scan_root_itself() {
     for c in &candidates {
         assert_ne!(
             c.path.trim_end_matches('/'),
-            root.canonicalize().unwrap_or(root.clone()).to_str().unwrap(),
+            root.canonicalize()
+                .unwrap_or(root.clone())
+                .to_str()
+                .unwrap(),
             "the scan root itself must never be a candidate"
         );
     }
     let _ = std::fs::remove_dir_all(&root);
+}
+
+// ---------------------------------------------------------------------------
+// parse_extra_mounts — the space-tier extra-mount list. Also had no
+// coverage; a stray empty entry here is stat'd as "" and reported as a
+// broken mount on every guard pass.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn extra_mounts_parse_comma_separated_and_trim() {
+    assert_eq!(
+        parse_extra_mounts("/mnt/data, /mnt/media ,/mnt/other"),
+        vec!["/mnt/data", "/mnt/media", "/mnt/other"]
+    );
+}
+
+#[test]
+fn extra_mounts_drop_empty_and_whitespace_entries() {
+    // An empty entry would be stat'd as "" and reported as a broken mount.
+    assert!(parse_extra_mounts("").is_empty());
+    assert!(parse_extra_mounts("   ").is_empty());
+    assert_eq!(parse_extra_mounts(",,"), Vec::<String>::new());
+    assert_eq!(parse_extra_mounts(" , /mnt/data , "), vec!["/mnt/data"]);
+}
+
+#[test]
+fn extra_mounts_default_is_empty_so_no_mount_is_visibility_only_by_default() {
+    // disk_extra_mounts defaults to ""; a default that accidentally listed a
+    // machine path would make the guard report a mount the operator never
+    // named.
+    assert!(parse_extra_mounts(&GuardPolicy::default().disk_extra_mounts).is_empty());
 }
