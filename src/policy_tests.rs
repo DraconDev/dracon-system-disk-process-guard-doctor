@@ -183,13 +183,20 @@ fn float_knobs_scrub_nan_and_infinity() {
         ..Default::default()
     };
     let adjusted = normalize_guard_policy(&mut p);
-    assert!(p.process_cpu_percent.is_finite(), "NaN CPU threshold survived");
-    assert!(p.mem_psi_full_warn.is_finite(), "NaN PSI threshold survived");
     assert!(
-        p.disk_rapid_fill_gbph.is_finite(),
-        "NaN fill-rate survived"
+        p.process_cpu_percent.is_finite(),
+        "NaN CPU threshold survived"
     );
-    for field in ["process_cpu_percent", "mem_psi_full_warn", "disk_rapid_fill_gbph"] {
+    assert!(
+        p.mem_psi_full_warn.is_finite(),
+        "NaN PSI threshold survived"
+    );
+    assert!(p.disk_rapid_fill_gbph.is_finite(), "NaN fill-rate survived");
+    for field in [
+        "process_cpu_percent",
+        "mem_psi_full_warn",
+        "disk_rapid_fill_gbph",
+    ] {
         assert!(adjusted.contains(&field), "{field} must be reported");
     }
 }
@@ -295,6 +302,7 @@ fn sentinel_zero_knobs_are_never_clamped() {
         log_size_mb: 0,
         node_modules_max_age_days: 0,
         tmp_min_age_hours: 0,
+        relocate_min_age_days: 0,
         trash_min_age_days: 0,
         rust_target_action_min_age_days: 0,
         quarantine_ttl_days: 0,
@@ -330,6 +338,7 @@ fn sentinel_zero_knob_list_matches_the_policy_fields() {
         "log_size_mb",
         "node_modules_max_age_days",
         "tmp_min_age_hours",
+        "relocate_min_age_days",
         "trash_min_age_days",
         "rust_target_action_min_age_days",
         "quarantine_ttl_days",
@@ -458,7 +467,8 @@ fn already_legal_policy_is_left_untouched() {
 /// bad `quarantine_ttl_days` or `storage.min_size_mb` used to reach relocate,
 /// quarantine and storage RAW.
 #[test]
-fn parsed_policy_is_normalized_at_the_load_boundary() {    let toml_src = r#"
+fn parsed_policy_is_normalized_at_the_load_boundary() {
+    let toml_src = r#"
 [guard]
 interval_secs = 0
 guard_log_max_mb = 0
@@ -485,18 +495,137 @@ min_size_mb = 0
     assert!(parsed.storage.min_size_mb >= 1);
 }
 
+/// Go through the SAME entry point the loader uses.
+///
+/// The earlier version of this test parsed TOML and called `normalize()`
+/// itself, so it would still have passed if the loader had stopped
+/// normalizing — it pinned the normalizer, not the load path. Calling
+/// `parse_system_policy` means dropping the `.normalize()` from that
+/// function now fails here, which is the line that actually matters.
+#[test]
+fn parse_system_policy_is_the_normalizing_entry_point() {
+    let toml_src = r#"
+[guard]
+interval_secs = 0
+guard_log_max_mb = 0
+renice_value = -20
+
+[storage]
+min_size_mb = 0
+"#;
+    let parsed = crate::parse_system_policy(toml_src, std::path::Path::new("fixture.toml"))
+        .expect("fixture must parse");
+    assert!(parsed.guard.interval_secs >= 5);
+    assert!(parsed.guard.guard_log_max_mb >= 1);
+    assert_eq!(parsed.guard.renice_value, 0);
+    assert!(parsed.storage.min_size_mb >= 1);
+}
+
+// ---------------------------------------------------------------------------
+// Report cadence — the guard re-loads the policy every pass
+// ---------------------------------------------------------------------------
+
+/// The guard calls `load_system_policy()` once per pass (via
+/// `check_link_drift`), so a per-load report produced ~5,760 identical
+/// lines a day at the default 30 s interval. `report_clamps` dedupes on the
+/// clamped set; these tests drive that state machine directly.
+fn reset_clamp_report_state() {
+    let cell = LAST_REPORTED_CLAMPS.get_or_init(|| std::sync::Mutex::new(None));
+    *cell.lock().unwrap_or_else(|p| p.into_inner()) = None;
+}
+
+fn current_clamp_report_state() -> Option<Vec<&'static str>> {
+    let cell = LAST_REPORTED_CLAMPS.get_or_init(|| std::sync::Mutex::new(None));
+    cell.lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone()
+}
+
+#[test]
+fn clamp_report_records_the_clamped_set() {
+    reset_clamp_report_state();
+    let mut p = SystemPolicy {
+        guard: GuardPolicy {
+            interval_secs: 0,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    p.normalize();
+    assert_eq!(
+        current_clamp_report_state(),
+        Some(vec!["interval_secs"]),
+        "the reported set must be recorded so a repeat can be detected"
+    );
+}
+
+#[test]
+fn a_legal_policy_never_reports() {
+    reset_clamp_report_state();
+    let mut p = SystemPolicy::default();
+    p.normalize();
+    assert_eq!(
+        current_clamp_report_state(),
+        None,
+        "an in-range policy must not record any clamp report"
+    );
+}
+
+#[test]
+fn recovery_is_recorded_when_the_policy_becomes_legal() {
+    reset_clamp_report_state();
+    let mut bad = SystemPolicy {
+        guard: GuardPolicy {
+            interval_secs: 0,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    bad.normalize();
+    assert!(current_clamp_report_state().is_some());
+
+    let mut fixed = SystemPolicy::default();
+    fixed.normalize();
+    assert_eq!(
+        current_clamp_report_state(),
+        Some(Vec::new()),
+        "a transition back to in-range must be recorded so recovery reports once"
+    );
+}
+
+/// The daemon cadence: many passes over the same misconfigured file must
+/// leave exactly one distinct report, not one per pass.
+#[test]
+fn repeated_passes_do_not_accumulate_reports() {
+    reset_clamp_report_state();
+    for _ in 0..50 {
+        let mut p = SystemPolicy {
+            guard: GuardPolicy {
+                interval_secs: 0,
+                disk_warn_percent: 200,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        p.normalize();
+    }
+    assert_eq!(
+        current_clamp_report_state(),
+        Some(vec!["disk_warn_percent", "interval_secs"])
+    );
+}
+
 /// The shipped example template documents the ranges, so it must itself be
 /// legal. This is what stops the two from drifting: if a range is tightened in
 /// code, the example that violates it fails here rather than being copied onto
 /// a machine as the recommended starting config.
 #[test]
 fn shipped_example_template_is_already_legal() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("dracon-system.example.toml");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("dracon-system.example.toml");
     let content = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", path.display()));
-    let mut parsed: SystemPolicy = toml::from_str(&content)
-        .unwrap_or_else(|e| panic!("example template must parse: {e}"));
+    let mut parsed: SystemPolicy =
+        toml::from_str(&content).unwrap_or_else(|e| panic!("example template must parse: {e}"));
     let adjusted = normalize_guard_policy(&mut parsed.guard);
     assert!(
         adjusted.is_empty(),

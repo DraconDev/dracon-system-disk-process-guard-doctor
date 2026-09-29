@@ -723,7 +723,7 @@ pub(crate) fn default_relocate_max_moves_per_pass() -> u64 {
 #[cfg(test)]
 pub(crate) const SENTINEL_ZERO_KNOBS: &[&str] = &[
     // 0 = no trend alert within any horizon.
-    "trend_warn_hours",    // 0 = never alert on zombie count.
+    "trend_warn_hours", // 0 = never alert on zombie count.
     "zombie_threshold",
     // 0 = never alert on log size.
     "log_size_mb",
@@ -763,9 +763,8 @@ pub(crate) const RENICE_VALUE_MAX: i32 = 19;
 /// The clamped-field set from the most recent `SystemPolicy::normalize` call
 /// in this process, or `None` before the first one. Used to report each
 /// distinct state exactly once.
-static LAST_REPORTED_CLAMPS: std::sync::OnceLock<
-    std::sync::Mutex<Option<Vec<&'static str>>>,
-> = std::sync::OnceLock::new();
+static LAST_REPORTED_CLAMPS: std::sync::OnceLock<std::sync::Mutex<Option<Vec<&'static str>>>> =
+    std::sync::OnceLock::new();
 
 impl SystemPolicy {
     /// Normalize every sub-policy and report what was clamped.
