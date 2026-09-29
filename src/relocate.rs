@@ -110,7 +110,32 @@ fn avail_bytes_for(path: &Path) -> Option<u64> {
 
 /// True when `path` holds git-tracked content. Outside a work tree → false.
 /// Inside a work tree, inspection failures bail (fail closed).
+///
+/// A repository root is tracked content even when its parent is not a work
+/// tree, so the toplevel of `path` itself is probed first and compared
+/// canonically (symlinks and trailing slashes cannot dodge it). Anything
+/// else falls through to the parent probe below.
 pub(crate) fn is_git_tracked(path: &Path) -> Result<bool> {
+    if let Ok(canon) = fs::canonicalize(path) {
+        if let Ok(top_out) = std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+        {
+            if top_out.status.success() {
+                let top = String::from_utf8_lossy(&top_out.stdout).trim().to_string();
+                if !top.is_empty() {
+                    let matches = fs::canonicalize(&top)
+                        .map(|canon_top| canon_top == canon)
+                        .unwrap_or_else(|_| Path::new(&top) == canon.as_path());
+                    if matches {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+    }
     let parent = path.parent().unwrap_or_else(|| Path::new("/"));
     let name = path
         .file_name()
