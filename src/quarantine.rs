@@ -370,10 +370,6 @@ pub(crate) fn quarantine_purge(
 /// restorable instead of orphaning it.
 pub(crate) fn quarantine_restore(root: &Path, name: &str) -> Result<PathBuf> {
     let entry_dir = resolve_entry_dir(root, name)?;
-    let canon_root = entry_dir
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| root.to_path_buf());
     let manifest = read_manifest(&entry_dir)
         .ok_or_else(|| anyhow::anyhow!("entry {name} has no manifest — refusing blind restore"))?;
     let origin = PathBuf::from(&manifest.origin);
