@@ -1407,7 +1407,7 @@ pub(crate) fn hint_for(key: &str) -> String {
 
     // Exact name, different table: the key is real but misplaced.
     for (name, candidates) in &known {
-        if name == section {
+        if Some(*name) == section {
             continue;
         }
         if candidates.contains(base) {
