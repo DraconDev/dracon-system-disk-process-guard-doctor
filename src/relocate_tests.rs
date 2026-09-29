@@ -424,7 +424,7 @@ fn cold_candidates_respect_the_size_floor() {
     std::fs::create_dir_all(&root).unwrap();
     aged_dir(&root, "big", 64 * 1024, 40);
     aged_dir(&root, "small", 16, 40);
-    let candidates = find_cold_candidates(&[root.clone()], 32 * 1024, 0);
+    let candidates = find_cold_candidates(std::slice::from_ref(&root), 32 * 1024, 0);
     let names: Vec<String> = candidates
         .iter()
         .map(|c| c.path.rsplit('/').next().unwrap().to_string())
@@ -446,7 +446,7 @@ fn cold_candidates_respect_the_idle_floor() {
     std::fs::create_dir_all(&root).unwrap();
     aged_dir(&root, "stale", 64 * 1024, 90);
     aged_dir(&root, "fresh", 64 * 1024, 0);
-    let candidates = find_cold_candidates(&[root.clone()], 1024, 30);
+    let candidates = find_cold_candidates(std::slice::from_ref(&root), 1024, 30);
     let names: Vec<String> = candidates
         .iter()
         .map(|c| c.path.rsplit('/').next().unwrap().to_string())
@@ -481,7 +481,7 @@ fn cold_candidates_never_include_a_git_tracked_directory() {
         .args(["add", "tracked.txt"])
         .status();
 
-    let candidates = find_cold_candidates(&[root.clone()], 1024, 0);
+    let candidates = find_cold_candidates(std::slice::from_ref(&root), 1024, 0);
     let names: Vec<String> = candidates
         .iter()
         .map(|c| c.path.rsplit('/').next().unwrap().to_string())
@@ -500,7 +500,7 @@ fn cold_candidates_never_include_the_scan_root_itself() {
     let root = test_root("cold-root");
     std::fs::create_dir_all(&root).unwrap();
     aged_dir(&root, "child", 64 * 1024, 90);
-    let candidates = find_cold_candidates(&[root.clone()], 1024, 0);
+    let candidates = find_cold_candidates(std::slice::from_ref(&root), 1024, 0);
     for c in &candidates {
         assert_ne!(
             c.path.trim_end_matches('/'),
@@ -560,7 +560,7 @@ fn aged_node_modules(root: &Path, age_days: u64) -> PathBuf {
     std::fs::write(nm.join("pkg").join("index.js"), vec![b'j'; 2048]).unwrap();
     filetime_set(&nm.join("pkg"), age_days);
     filetime_set(&nm, age_days);
-    filetime_set(&nm.parent().unwrap(), age_days);
+    filetime_set(nm.parent().unwrap(), age_days);
     nm
 }
 
@@ -575,9 +575,16 @@ async fn node_modules_dry_run_deletes_nothing_and_leaves_the_tree_intact() {
     std::fs::create_dir_all(&quarantine).unwrap();
     assert!(nm.exists(), "fixture must exist before the run");
 
-    let (_, cleaned) = clean_old_node_modules(&[root.clone()], 30, false, &[], false, &quarantine)
-        .await
-        .expect("dry run must not error");
+    let (_, cleaned) = clean_old_node_modules(
+        std::slice::from_ref(&root),
+        30,
+        false,
+        &[],
+        false,
+        &quarantine,
+    )
+    .await
+    .expect("dry run must not error");
 
     assert!(
         !cleaned.is_empty(),
@@ -595,9 +602,16 @@ async fn node_modules_quarantine_first_dry_run_also_deletes_nothing() {
     let quarantine = root.join("quarantine");
     std::fs::create_dir_all(&quarantine).unwrap();
 
-    let (_, cleaned) = clean_old_node_modules(&[root.clone()], 30, false, &[], true, &quarantine)
-        .await
-        .expect("dry run must not error");
+    let (_, cleaned) = clean_old_node_modules(
+        std::slice::from_ref(&root),
+        30,
+        false,
+        &[],
+        true,
+        &quarantine,
+    )
+    .await
+    .expect("dry run must not error");
 
     assert!(!cleaned.is_empty(), "must still report candidates");
     assert!(
@@ -624,7 +638,7 @@ async fn node_modules_protected_path_survives_a_real_apply() {
     let protected_str = protected.to_string_lossy().to_string();
 
     clean_old_node_modules(
-        &[root.clone()],
+        std::slice::from_ref(&root),
         30,
         true,
         std::slice::from_ref(&protected_str),
