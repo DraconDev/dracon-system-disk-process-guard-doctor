@@ -586,14 +586,6 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
                 );
             } else if expired.is_empty() {
                 println!("No expired entries (TTL {}d)", ttl);
-                if !pinned.is_empty() {
-                    println!(
-                        "⚠ {} entr{} pinned by the fail-safe (unreadable manifest) and not expired: {}",
-                        pinned.len(),
-                        if pinned.len() == 1 { "y is" } else { "ies are" },
-                        pinned.join(", ")
-                    );
-                }
             } else if apply {
                 println!(
                     "🗑 Expired {} entries: {}",
@@ -607,6 +599,18 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
                     expired.join(", ")
                 );
                 println!("Dry-run: pass --apply to delete.");
+            }
+            // Reported whether or not anything expired. An operator who
+            // just ran a successful expire must still learn that data is
+            // being HELD, or the run looks like the queue is now empty.
+            if !pinned.is_empty() {
+                println!(
+                    "⚠ {} entr{} held by the fail-safe (unreadable manifest) and NOT expired: {}",
+                    pinned.len(),
+                    if pinned.len() == 1 { "y is" } else { "ies are" },
+                    pinned.join(", ")
+                );
+                println!("   clear one with: quarantine purge <name> --apply");
             }
         }
         QuarantineCommands::Purge { name, apply, json } => {
