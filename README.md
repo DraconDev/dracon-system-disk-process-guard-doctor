@@ -104,6 +104,8 @@ defaults are 70/80/90/95 — see Configuration.)
 - Scans configured directories for large log files
 - Alerts on files exceeding size threshold (default 100 MiB)
 - Helps identify runaway logging
+- Empty `log_dirs` disables monitoring (the default: set `log_dirs` to
+  enable it)
 
 ## Installation
 
@@ -231,16 +233,19 @@ dracon-system link doctor
 dracon-system link apply
 
 # Relocate a cold dir to another disk, leave a symlink (dry-run unless --apply)
+# (unreleased: space tiers Phase 2, ships in 0.112.42)
 dracon-system relocate ~/Dev/big-archive --to /mnt/data
 dracon-system relocate ~/Dev/big-archive --to /mnt/data --apply
 
 # Quarantine: hold-then-delete staging with a TTL
+# (unreleased: space tiers Phase 1, ships in 0.112.42)
 dracon-system quarantine move ~/Dev/stale-stuff --apply
 dracon-system quarantine list
 dracon-system quarantine restore stale-stuff.1729958400000000000
 dracon-system quarantine expire --apply
 
 # Check space-tier setup readiness (cold root, quarantine, mounts)
+# (unreleased: space tiers, ships in 0.112.42)
 dracon-system setup
 dracon-system setup --apply   # create missing cold/quarantine dirs
 

@@ -57,6 +57,7 @@ release_after_secs = 120     # Un-renice after 2 min of being non-heavy
 
 # Notifications
 # notify_command must be an absolute path (e.g. /usr/bin/notify-send).
+# Flags are not supported: a value with arguments silently fails to exec.
 # For security, shell commands like "sh -c ..." are not allowed.
 notify = true
 notify_command = "/usr/bin/notify-send"
@@ -86,6 +87,7 @@ proactive_cleanup_interval_cycles = 120
 
 # Auto-cleanup old node_modules
 node_modules_search_roots = "~/Dev"
+# Days before an unused node_modules is a candidate (0 disables).
 node_modules_max_age_days = 30
 
 # Additional protected paths (besides system defaults)
@@ -96,6 +98,7 @@ monitor_inodes = true
 inode_warn_percent = 85
 
 # Monitor zombie processes (diagnostic only; zombies cannot be killed directly).
+# Alert when the count exceeds this (0 disables the alert).
 monitor_zombies = true
 zombie_threshold = 20
 
@@ -110,7 +113,10 @@ bias_oom_on_pressure = true
 cap_offenders_cpu_percent = 0
 
 # Monitor large log files
+# Empty log_dirs disables monitoring (the default). Set log_dirs to
+# enable it.
 monitor_logs = true
+# Alert on files at or above this size in MiB (0 disables).
 log_size_mb = 100
 # FIXED 2026-09-27 (audit F94): this listed /var/log and
 # ~/.local/share/opencode/log, but the shipped dracon-system-guard.service
@@ -143,7 +149,7 @@ docker_prune_all = false
 clean_package_caches = false
 clean_trash = false
 clean_nix_garbage = false
-nix_keep_generations = 5
+nix_keep_generations = 5            # Generations to retain (0 keeps none — deletes everything prunable).
 
 # ADDED 2026-09-09 (audit F48): knobs that exist in code with live defaults
 # but were undocumented here. Several default TRUE — copying this file
@@ -156,9 +162,9 @@ clean_node_modules = false
 clean_tmp = false
 # tmp_search_paths = "/tmp"          # comma-separated roots; only /tmp
                                       # (or descendants) are accepted
-# tmp_min_age_hours = 24              # only entries older than this
+# tmp_min_age_hours = 24              # only entries older than this (0 disables tmp hygiene)
 # Trash recovery window (default 7 — 0 restores empty-everything).
-# trash_min_age_days = 7
+# trash_min_age_days = 7              # days before trash is purged (0 purges immediately)
 # Refuse to purge trash entries whose names look credential-bearing
 # (default TRUE).
 # trash_credential_guard = true
@@ -169,8 +175,8 @@ clean_tmp = false
 # controlling terminal, lifetime CPU under the ceiling, older than the
 # idle floor, command line matches a signature, not in
 # process_exempt_names above.
-# reap_report_min_idle_hours = 24
-# reap_report_max_cpu_seconds = 60
+# reap_report_min_idle_hours = 24   # hours old before listing (0 lists everything idle)
+# reap_report_max_cpu_seconds = 60  # lifetime CPU ceiling for "idle" (0 lists only never-ran)
 # reap_report_signatures = "eve web,vite,playwright,chromium,bun run,bun test,npm run test,.mjs,litestream,stub-auth-api"
 # Rapid-fill trip rate in GiB/hour (default 20.0).
 # disk_rapid_fill_gbph = 20.0
@@ -186,6 +192,7 @@ clean_tmp = false
 
 # Disk trend prediction
 track_trends = true
+# Warn when the trend says the disk fills within this many hours (0 disables).
 trend_warn_hours = 24
 
 # ADDED 2026-09-26 (space tiers, Phase 1): extra mounts reported alongside
@@ -213,7 +220,7 @@ trend_warn_hours = 24
 # relocate_candidate_roots = "~/Dev"
 # relocate_cold_root = "/mnt/data/cold"
 # relocate_min_size_mb = 2048
-# relocate_min_age_days = 14
+# relocate_min_age_days = 14      # idle days before a candidate (0 allows fresh dirs)
 # relocate_max_moves_per_pass = 3
 
 # Storage hotspot analysis (`storage` command). default_root is scanned
