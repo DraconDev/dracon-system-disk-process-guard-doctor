@@ -783,8 +783,7 @@ fn normalize_guard_policy_clamps_cpu_cap_percent() {
 }
 
 #[test]
-fn resolve_bin_falls_back_to_bare_name_off_nixos() {
-    // A name present in no NixOS store dir must come back unchanged, which
+fn resolve_bin_falls_back_to_bare_name_off_nixos() {    // A name present in no NixOS store dir must come back unchanged, which
     // is exactly the old PATH-relative behavior on other distributions.
     assert_eq!(
         crate::resolve_bin("dracon-definitely-not-a-binary"),
@@ -794,6 +793,21 @@ fn resolve_bin_falls_back_to_bare_name_off_nixos() {
     assert_eq!(
         crate::resolve_bin("dracon-definitely-not-a-binary"),
         "dracon-definitely-not-a-binary"
+    );
+}
+
+#[test]
+fn zombie_since_keys_carry_starttime_and_prune() {
+    // A recycled PID must not inherit a dead zombie's age: first-seen is
+    // keyed by (pid, starttime), and keys for vanished pids are pruned.
+    let mut state = crate::GuardRuntimeState::default();
+    state
+        .zombies_since
+        .insert((999_998, 12345), std::time::Instant::now());
+    let _ = crate::zombie_details(&mut state);
+    assert!(
+        !state.zombies_since.contains_key(&(999_998, 12345)),
+        "stale zombie key for a vanished pid must be pruned"
     );
 }
 
