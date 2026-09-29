@@ -1042,3 +1042,30 @@ fn a_near_miss_spelling_gets_a_suggestion() {
     assert!(hint_for("guard.disk_warn_persent").contains("disk_warn_percent"));
     assert!(hint_for("guard.nonsense_key_xyz").is_empty());
 }
+
+/// Tripwire for the one manual part of the key derivation.
+///
+/// TOML omits `Option` fields when serializing a `None`, so they must be
+/// listed in `GUARD_OPTION_FIELDS`. If a new `Option` is added to
+/// `GuardPolicy` and not listed there, it would be reported as an unknown
+/// key on every load — a false positive that trains operators to ignore the
+/// warning. This test fails in that case.
+#[test]
+fn option_field_keys_cover_every_option_field() {
+    let guard = known_policy_keys();
+    let guard = &guard["guard"];
+    for field in GUARD_OPTION_FIELDS {
+        assert!(
+            guard.contains(*field),
+            "{field} is an Option field and must be listed in GUARD_OPTION_FIELDS, \
+             or it will be reported as an unknown key on every load"
+        );
+    }
+    // A guard policy that actually sets log_dirs must not be flagged.
+    let doc = doc_of("[guard]\nlog_dirs = \"/var/log\"\n");
+    assert!(
+        unknown_policy_keys(&doc).is_empty(),
+        "a policy that sets the Option field must be clean, got {:?}",
+        unknown_policy_keys(&doc)
+    );
+}
