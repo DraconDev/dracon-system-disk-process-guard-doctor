@@ -309,6 +309,11 @@ pub(crate) fn quarantine_restore(root: &Path, name: &str) -> Result<PathBuf> {
             copy_tree(&entry_dir, &origin).inspect_err(|_| {
                 let _ = fs::remove_dir_all(&origin);
             })?;
+            // The copy carries the manifest along; drop it from the
+            // restored tree BEFORE verifying, or its file+bytes break the
+            // tally (the manifest was written after the source tally) and
+            // a stray manifest leaks into the restored tree.
+            let _ = fs::remove_file(origin.join(MANIFEST_NAME));
             let (got_files, got_bytes) = walk_stats_strict(&origin)?;
             if got_files != manifest.files || got_bytes != manifest.bytes {
                 let _ = fs::remove_dir_all(&origin);
