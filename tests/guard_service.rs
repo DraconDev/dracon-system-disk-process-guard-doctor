@@ -194,3 +194,54 @@ fn missing_explicit_policy_exits_with_config_status() {
     assert_eq!(output.status.code(), Some(78));
     assert!(String::from_utf8_lossy(&output.stderr).contains("failed to read"));
 }
+
+// ---------------------------------------------------------------------------
+// Reload wiring (DECIDE #2 follow-up)
+// ---------------------------------------------------------------------------
+
+fn unit_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("dracon-system-guard.service")
+}
+
+fn unit_text() -> String {
+    fs::read_to_string(unit_path())
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", unit_path().display()))
+}
+
+/// Without an ExecReload, `systemctl --user reload` has no handler, so the
+/// documented SIGHUP reload path is unreachable through the service manager.
+#[test]
+fn shipped_unit_wires_execreload_to_sighup() {
+    let unit = unit_text();
+    let exec_reload = unit
+        .lines()
+        .find(|l| l.trim_start().starts_with("ExecReload="))
+        .unwrap_or_else(|| {
+            panic!(
+                "the shipped unit declares no ExecReload, so `systemctl --user reload` \
+                 has no handler:\n{unit}"
+            )
+        });
+    assert!(
+        exec_reload.contains("HUP") && exec_reload.contains("$MAINPID"),
+        "ExecReload must signal the daemon's main PID: got {exec_reload:?}"
+    );
+}
+
+/// The reload is documented in README as covering every [guard] setting. If
+/// the unit stops being reloadable, that documentation becomes a lie.
+#[test]
+fn readme_documents_the_reload_path() {
+    let readme = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("README.md"))
+        .expect("README must be readable");
+    assert!(
+        readme.contains("Reloading Configuration"),
+        "README must document which settings reload on SIGHUP and which need a restart"
+    );
+    for needle in ["ExecReload", "kill -HUP", "SIGHUP"] {
+        assert!(
+            readme.contains(needle),
+            "README reload section should mention {needle:?}"
+        );
+    }
+}
