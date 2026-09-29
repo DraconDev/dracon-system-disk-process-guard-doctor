@@ -475,6 +475,35 @@ The guard tracks disk usage over time and uses linear regression to predict when
 
 ### Safety Boundaries
 
+#### Quarantine entries with an unreadable manifest
+
+Every quarantined entry carries a `.quarantine.json` manifest recording the
+directory it came from. If that manifest cannot be read, the entry **cannot
+be restored** — there is no record of where it went — so `quarantine expire`
+**never deletes it**, at any TTL, including with `--apply`. This is a
+deliberate fail-safe, re-examined 2026-09-29: the manifest is the only thing
+standing between "held, recoverable by hand" and "gone", and nothing is
+gained by risking that on a timer. The quarantine root is written only by
+the guard, so an unreadable manifest means corruption or outside
+interference rather than a routine condition a TTL exists to bound, and a
+genuinely transient read error resolves itself — after which the entry ages
+and expires normally.
+
+**The pin is never silent.** `quarantine list` marks such entries `PINNED`
+and prints how many are held and how many bytes they occupy;
+`quarantine expire` says so too rather than reporting "no expired entries"
+while holding data. `--json` carries a `pinned` array and `pinned_bytes`.
+
+**The escape hatch** is `quarantine purge <name>` — one entry you have
+looked at, dry-run unless `--apply`, reporting what it would reclaim first.
+It is deliberately never a bulk "delete everything unreadable" switch: a
+manifest that is unreadable for one entry is often unreadable because
+something is wrong with the whole root, and a bulk sweep would reintroduce
+exactly the unaccountable timer-driven deletion the fail-safe prevents.
+Purging an entry discards it permanently; there is no restore afterwards.
+The purge path shares the restore path's containment checks, so it refuses
+the same traversal attempts and will not operate through a symlinked entry.
+
 The guard never directly kills processes. Process mitigation is limited to
 reversible `renice`, optional `oom_score_adj` biasing, and optional CPUQuota
 throttling; OOM bias can only influence which process the kernel chooses if
