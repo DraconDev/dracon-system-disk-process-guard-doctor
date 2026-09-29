@@ -6313,11 +6313,21 @@ pub(crate) fn load_system_policy() -> Result<(Option<PathBuf>, SystemPolicy)> {
     // active).
     let content = std::fs::read_to_string(&path)
         .map_err(|e| anyhow::anyhow!("failed to read {}: {}", path.display(), e))?;
-    let parsed: SystemPolicy = toml::from_str(&content)
-        .map_err(|e| anyhow::anyhow!("failed to parse {}: {}", path.display(), e))?;
-    let mut parsed = parsed;
-    parsed.normalize();
+    let parsed = parse_system_policy(&content, &path)?;
     Ok((Some(path), parsed))
+}
+
+/// Parse policy TOML and normalize it in one step.
+///
+/// Normalization lives INSIDE this function, not at its call sites, so a
+/// future caller cannot obtain a parsed-but-unnormalized policy by parsing
+/// the file directly. `parse_system_policy_is_the_normalizing_entry_point`
+/// pins that composition.
+pub(crate) fn parse_system_policy(content: &str, path: &Path) -> Result<SystemPolicy> {
+    let mut parsed: SystemPolicy = toml::from_str(content)
+        .map_err(|e| anyhow::anyhow!("failed to parse {}: {}", path.display(), e))?;
+    parsed.normalize();
+    Ok(parsed)
 }
 
 fn effective_system_policy_path() -> Result<PathBuf> {

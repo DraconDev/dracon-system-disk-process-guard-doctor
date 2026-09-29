@@ -723,8 +723,7 @@ pub(crate) fn default_relocate_max_moves_per_pass() -> u64 {
 #[cfg(test)]
 pub(crate) const SENTINEL_ZERO_KNOBS: &[&str] = &[
     // 0 = no trend alert within any horizon.
-    "trend_warn_hours",
-    // 0 = never alert on zombie count.
+    "trend_warn_hours",    // 0 = never alert on zombie count.
     "zombie_threshold",
     // 0 = never alert on log size.
     "log_size_mb",
@@ -732,6 +731,8 @@ pub(crate) const SENTINEL_ZERO_KNOBS: &[&str] = &[
     "node_modules_max_age_days",
     // 0 = sweep /tmp regardless of age.
     "tmp_min_age_hours",
+    // 0 = treat fresh directories as relocation candidates.
+    "relocate_min_age_days",
     // 0 = purge trash immediately (no recovery window).
     "trash_min_age_days",
     // 0 = disable the action-tier age gate (old delete-anything posture).
@@ -759,19 +760,60 @@ pub(crate) const LOG_PRESERVE_HEADER_LINES_MAX: usize = 10_000;
 pub(crate) const RENICE_VALUE_MIN: i32 = 0;
 pub(crate) const RENICE_VALUE_MAX: i32 = 19;
 
+/// The clamped-field set from the most recent `SystemPolicy::normalize` call
+/// in this process, or `None` before the first one. Used to report each
+/// distinct state exactly once.
+static LAST_REPORTED_CLAMPS: std::sync::OnceLock<
+    std::sync::Mutex<Option<Vec<&'static str>>>,
+> = std::sync::OnceLock::new();
+
 impl SystemPolicy {
     /// Normalize every sub-policy and report what was clamped.
+    ///
+    /// FIXED 2026-09-29 (auditor, first review round): the report used to
+    /// print on EVERY load, and the guard re-loads the policy once per pass
+    /// (`check_link_drift` reads it fresh each cycle to pick up link
+    /// entries). `guard once` therefore emitted the line twice and
+    /// `guard daemon` once per interval — about 5,760 lines a day at the
+    /// default 30 s interval, which buries everything else in the journal
+    /// and is exactly the "recurring noise" the docs promised would not
+    /// happen. The clamped set is now reported only when it CHANGES.
     pub(crate) fn normalize(&mut self) {
         let mut adjusted = normalize_storage_policy(&mut self.storage);
         adjusted.append(&mut normalize_guard_policy(&mut self.guard));
-        if !adjusted.is_empty() {
-            // Silent clamping is how DECIDE #8 was allowed to look like a
-            // decision; say what moved so an operator can fix the file.
-            eprintln!(
-                "⚠ policy: out-of-range value(s) clamped to their legal range: {}",
-                adjusted.join(", ")
-            );
+        // Sorted so the comparison below is order-independent.
+        adjusted.sort_unstable();
+        report_clamps(adjusted);
+    }
+}
+
+/// Report a clamped-field set once per distinct state, per process.
+///
+/// A fresh process reports its first non-empty set, so a daemon restart
+/// always re-tells the operator their file is out of range. A repeat of the
+/// same set is silent. A transition back to empty reports the recovery, so
+/// fixing the file is confirmed rather than merely inferred from silence.
+fn report_clamps(adjusted: Vec<&'static str>) {
+    let cell = LAST_REPORTED_CLAMPS.get_or_init(|| std::sync::Mutex::new(None));
+    let mut last = cell.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let previous = last.replace(adjusted.clone());
+    if previous.as_deref() == Some(adjusted.as_slice()) {
+        return;
+    }
+    if adjusted.is_empty() {
+        // Never clamped anything in this process — nothing to recover from.
+        if previous.is_none() {
+            return;
         }
+        let recovered = previous.unwrap_or_default().join(", ");
+        eprintln!("✓ policy: all values now in range (previously clamped: {recovered})");
+    } else {
+        // Silent clamping is how DECIDE #8 was allowed to look like a
+        // decision; say what moved so an operator can fix the file.
+        eprintln!(
+            "⚠ policy: out-of-range value(s) clamped to their legal range: {}",
+            adjusted.join(", ")
+        );
     }
 }
 
