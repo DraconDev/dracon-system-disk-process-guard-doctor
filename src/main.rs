@@ -644,6 +644,12 @@ pub(crate) struct GuardRuntimeState {
     /// the entry after IDENTITY_UNAVAILABLE_RETRY_LIMIT / UNRENICE_RETRY_LIMIT.
     pub(crate) memory_identity_unavailable_attempts: HashMap<i32, u32>,
     pub(crate) memory_unrenice_failures: HashMap<i32, u32>,
+    /// Same bounded defer as the unrenice loops: an oom-restore or
+    /// cpu-uncap whose process identity stays unreadable is dropped after
+    /// IDENTITY_UNAVAILABLE_RETRY_LIMIT instead of retaining the entry
+    /// forever.
+    pub(crate) oom_identity_unavailable_attempts: HashMap<i32, u32>,
+    pub(crate) cap_identity_unavailable_attempts: HashMap<i32, u32>,
     pub(crate) legacy_identity_unavailable_attempts: HashMap<i32, u32>,
     pub(crate) legacy_unrenice_failures: HashMap<i32, u32>,
 }
@@ -2213,11 +2219,13 @@ fn remove_oom_bias(state: &mut GuardRuntimeState, pid: i32) {
     state.oom_biased_pids.remove(&pid);
     state.oom_known_descendants.remove(&pid);
     state.oom_cooled_since.remove(&pid);
+    state.oom_identity_unavailable_attempts.remove(&pid);
 }
 
 fn remove_cpu_cap(state: &mut GuardRuntimeState, pid: i32) {
     state.capped_pids.remove(&pid);
     state.cap_cooled_since.remove(&pid);
+    state.cap_identity_unavailable_attempts.remove(&pid);
 }
 
 /// Restore all process-level mitigations before a policy reload discards the
@@ -4457,13 +4465,29 @@ async fn check_memory_pressure(
                     continue;
                 }
                 ProcessIdentityStatus::Unavailable => {
-                    eprintln!(
-                        "⚠️ oom-restore deferred for pid={} — process identity unavailable",
-                        pid
-                    );
+                    let attempts = state
+                        .oom_identity_unavailable_attempts
+                        .entry(pid)
+                        .or_insert(0);
+                    *attempts += 1;
+                    if *attempts >= IDENTITY_UNAVAILABLE_RETRY_LIMIT {
+                        eprintln!(
+                            "⚠️ oom-restore dropping pid={} after {} unavailable identity reads (will not retry)",
+                            pid, *attempts
+                        );
+                        state.oom_identity_unavailable_attempts.remove(&pid);
+                        remove_oom_bias(state, pid);
+                    } else {
+                        eprintln!(
+                            "⚠️ oom-restore deferred for pid={} — process identity unavailable (attempt {}/{})",
+                            pid, *attempts, IDENTITY_UNAVAILABLE_RETRY_LIMIT
+                        );
+                    }
                     continue;
                 }
             }
+            // Identity was readable: clear any prior unavailability count.
+            state.oom_identity_unavailable_attempts.remove(&pid);
             if oom_root_has_pending_descendants(state, pid) {
                 eprintln!(
                     "⚠️ oom-restore deferred for pid={} until descendants recover",
@@ -4501,13 +4525,29 @@ async fn check_memory_pressure(
                 ProcessIdentityStatus::Match | ProcessIdentityStatus::Gone => true,
                 ProcessIdentityStatus::Mismatch => false,
                 ProcessIdentityStatus::Unavailable => {
-                    eprintln!(
-                        "⚠️ cpu-un cap deferred for pid={} — process identity unavailable",
-                        pid
-                    );
+                    let attempts = state
+                        .cap_identity_unavailable_attempts
+                        .entry(pid)
+                        .or_insert(0);
+                    *attempts += 1;
+                    if *attempts >= IDENTITY_UNAVAILABLE_RETRY_LIMIT {
+                        eprintln!(
+                            "⚠️ cpu-uncap dropping pid={} after {} unavailable identity reads (will not retry)",
+                            pid, *attempts
+                        );
+                        state.cap_identity_unavailable_attempts.remove(&pid);
+                        remove_cpu_cap(state, pid);
+                    } else {
+                        eprintln!(
+                            "⚠️ cpu-un cap deferred for pid={} — process identity unavailable (attempt {}/{})",
+                            pid, *attempts, IDENTITY_UNAVAILABLE_RETRY_LIMIT
+                        );
+                    }
                     continue;
                 }
-            };
+            }
+            // Identity was readable: clear any prior unavailability count.
+            state.cap_identity_unavailable_attempts.remove(&pid);;
             if let Err(e) = uncap_cpu_process_with_bin(
                 Path::new("systemctl"),
                 Path::new("/proc"),
