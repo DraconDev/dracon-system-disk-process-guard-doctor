@@ -796,7 +796,7 @@ impl SystemPolicy {
 /// of (previous, current) with no shared state, so the tests are
 /// order-independent and need no mutex.
 #[derive(Debug, PartialEq, Eq)]
-enum ClampReport {
+pub(crate) enum ClampReport {
     /// In range, and nothing was ever clamped in this process: stay silent
     /// and record nothing. Writing an empty set here would make the first
     /// real clamp look like a transition from a known state.
@@ -814,7 +814,7 @@ enum ClampReport {
 ///
 /// A fresh process reports its first non-empty set, so a daemon restart
 /// always re-tells the operator their file is out of range.
-fn clamp_report_decision(
+pub(crate) fn clamp_report_decision(
     previous: Option<&[&'static str]>,
     current: &[&'static str],
 ) -> ClampReport {
@@ -838,7 +838,10 @@ fn report_clamps(adjusted: Vec<&'static str>) {
     };
     *last = Some(adjusted);
     if matches!(decision, ClampReport::Recovered(_)) {
-        eprintln!("✓ policy: all values now in range (previously clamped: {})", fields.join(", "));
+        eprintln!(
+            "✓ policy: all values now in range (previously clamped: {})",
+            fields.join(", ")
+        );
     } else {
         // Silent clamping is how DECIDE #8 was allowed to look like a
         // decision; say what moved so an operator can fix the file.
