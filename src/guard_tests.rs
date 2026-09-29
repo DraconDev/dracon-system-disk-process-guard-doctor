@@ -798,6 +798,41 @@ fn resolve_bin_falls_back_to_bare_name_off_nixos() {
 }
 
 #[test]
+fn reap_policy_from_guard_maps_thresholds_and_shares_exempts() {
+    // Audit MEDIUM: the daemon wiring between policy knobs and the reap
+    // scanner had zero coverage. The exempt list is shared with pressure
+    // mitigation on purpose (too important to renice ⇒ too important to
+    // look abandoned), so pin that coupling here.
+    let mut guard = crate::GuardPolicy::default();
+    guard.reap_report_min_idle_hours = 48;
+    guard.reap_report_max_cpu_seconds = 120;
+    guard.reap_report_signatures = "vite,mytool".to_string();
+    guard.process_exempt_names = "keepme,alsokeep".to_string();
+    let policy = crate::reap_policy_from_guard(&guard);
+    assert_eq!(policy.min_idle_hours, 48);
+    assert_eq!(policy.max_cpu_seconds, 120);
+    assert_eq!(
+        policy.signatures,
+        vec!["mytool".to_string(), "vite".to_string()]
+    );
+    assert!(policy.exempt_names.contains(&"keepme".to_string()));
+    assert!(policy.exempt_names.contains(&"alsokeep".to_string()));
+}
+
+#[test]
+fn reap_candidates_runs_against_live_proc_without_panicking() {
+    // Shape-only smoke test: the daemon wiring must degrade to an empty
+    // (or populated) Vec on a real machine, never panic or block the pass.
+    let guard = crate::GuardPolicy::default();
+    let found = crate::reap_candidates(&guard);
+    for c in &found {
+        assert!(c.idle_hours >= guard.reap_report_min_idle_hours);
+        assert!(c.cpu_seconds <= guard.reap_report_max_cpu_seconds);
+        assert!(!c.args.is_empty());
+    }
+}
+
+#[test]
 fn zombie_since_keys_carry_starttime_and_prune() {
     // A recycled PID must not inherit a dead zombie's age: first-seen is
     // keyed by (pid, starttime), and keys for vanished pids are pruned.
