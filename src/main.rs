@@ -360,6 +360,18 @@ enum GuardCommands {
     },
     /// Run continuous guard loop. A disabled policy exits 0; invalid startup policy exits 78 (EX_CONFIG).
     Daemon,
+    /// Send one test notification through the configured notify_command.
+    ///
+    /// Exists because a broken notify_command is otherwise invisible until a
+    /// real alert fires, and because it is the only way to confirm that
+    /// argument syntax (`notify-send -u critical`) survives the round trip.
+    /// Bypasses the notify cooldown; does not require `notify = true`.
+    NotifyTest {
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        body: Option<String>,
+    },
     /// Prune system caches and Docker resources.
     Prune {
         #[arg(long)]

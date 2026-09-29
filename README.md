@@ -459,6 +459,24 @@ Everything is configurable in the `[guard]` table of the policy file; see
 machine-readable snapshot (disk state, memory `observed` vs stabilized
 `pressure`, zombies, offenders).
 
+`notify_command` accepts arguments, so
+`notify_command = "/usr/bin/notify-send -u critical"` works with no wrapper
+script. The value is split into a program and an argv array and executed
+directly by `NotifyCommand::parse` in `src/policy.rs` — **no shell is ever
+invoked**, so `;`, `|`, `$(...)`, backticks and globs in either the config or
+the notification text are inert characters rather than syntax, and there is no
+variable or command expansion. Quoting follows shell rules (single quotes,
+double quotes, backslash escapes); an unterminated quote is rejected instead
+of being silently mis-parsed. The program must be an absolute path and may
+not be a shell, a privilege escalator, or an argument pass-through wrapper —
+`NotifyCommand::parse` refuses `sh`, `bash`, `dash`, `zsh`, `ksh`, `csh`,
+`fish`, `busybox`, `sudo`, `su`, `doas`, `pkexec`, `env`, `xargs`, `nohup`,
+`setsid`, `nice`, `ionice`, `timeout`, `watch` and `systemd-run`. That
+restriction is not new policy: before arguments were supported the whole
+string was passed as a single path, so `sh -c ...` was refused only because
+that string was not a file. Argument support would have removed that
+protection, so it is now explicit.
+
 The legal range of each numeric knob is **enforced**, not just documented:
 `normalize_guard_policy` in `src/policy.rs` clamps out-of-range values at the
 policy load boundary, so the daemon, `doctor`, `setup`, `link`, `relocate`,
