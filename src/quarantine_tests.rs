@@ -50,6 +50,43 @@ fn quarantine_move_list_restore_roundtrip() {
 
 #[cfg(unix)]
 #[test]
+fn quarantine_restore_copy_path_drops_manifest_and_verifies() {
+    // Audit falsification round: the copy fallback copied entry_dir
+    // INCLUDING the manifest, so the tally never matched (manifest was
+    // written after the source tally) and every cross-device restore
+    // failed verification and deleted its own work — plus leaked a
+    // manifest on the paths that got that far. /dev/shm is tmpfs, so a
+    // quarantine root there forces the EXDEV copy path against an ext4
+    // origin.
+    if !std::path::Path::new("/dev/shm").is_dir() {
+        return;
+    }
+    let root = test_root("xdev");
+    let src = fixture_dir(&root);
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let qdir = std::path::PathBuf::from(format!(
+        "/dev/shm/dracon-quarantine-test-{}-{stamp}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&qdir);
+    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    assert!(!src.exists(), "move must vacate the source");
+    let restored = crate::quarantine_restore(&qdir, &manifest.name).unwrap();
+    assert_eq!(restored, PathBuf::from(&manifest.origin));
+    assert_eq!(std::fs::read(src.join("a.txt")).unwrap(), b"hello");
+    assert!(
+        !src.join(".quarantine.json").exists(),
+        "restored tree must not contain a stray manifest"
+    );
+    let _ = std::fs::remove_dir_all(&qdir);
+    cleanup(&root);
+}
+
+#[cfg(unix)]
+#[test]
 fn quarantine_move_refuses_symlink() {
     use std::os::unix::fs::symlink;
     let root = test_root("symlink");
