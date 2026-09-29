@@ -301,7 +301,7 @@ fn raw_entry(root: &Path, name: &str, manifest: Option<&str>) -> PathBuf {
     fs::create_dir_all(dir.join("data")).unwrap();
     fs::write(dir.join("data").join("file.bin"), vec![b'x'; 4096]).unwrap();
     if let Some(text) = manifest {
-        fs::write(dir.join(crate::MANIFEST_NAME), text).unwrap();
+        fs::write(dir.join(".quarantine.json"), text).unwrap();
     }
     dir
 }
@@ -319,11 +319,11 @@ fn an_unreadable_manifest_is_reported_as_pinned() {
 
     let list = crate::quarantine_list(&qdir, 30).unwrap();
 
-    let pinned: Vec<&str> = list
+    let pinned: Vec<String> = list
         .entries
         .iter()
         .filter(|e| e.pinned)
-        .map(|e| &e.name)
+        .map(|e| e.name.clone())
         .collect();
     assert_eq!(
         pinned,
