@@ -1,0 +1,39 @@
+# Audit findings — dracon-system (pass of 2026-09-29)
+# Append-only: never delete, rewrite, or reorder existing lines.
+
+- [x] FIX: MEDIUM: capped_pids retain prunes only Gone, not Mismatch — a PID-reused cap entry survives while memory/oom prunes drop Gone|Mismatch (src/main.rs:4559) — fixed in 6279c90
+- [x] FIX: LOW: zombie_details discards starttime and keys zombies_since by pid only — recycled PID inherits prior zombie age (src/main.rs:4687-4725) — fixed in 31fee01
+- [x] FIX: LOW: oom-restore + cpu-uncap Unavailable defers with no retry cap, unlike mem/legacy unrenice bounded at 3 (src/main.rs:4453-4515) — fixed in f06cb16
+- [x] FIX: LOW: renice/systemctl invoked via bare PATH-relative names in live and SIGHUP-restore paths — PATH poisoning redirects a privilege op (src/main.rs:1642,2230,4507) — fixed in c52815b
+- [x] DECIDED: notify_command keeps single-path; no-flags limit documented in example template (2026-09-29)
+- [x] DECIDED: SIGHUP keeps the full runtime; converges within sustain window, no reload-path change (2026-09-29)
+- [x] FIX: HIGH: quarantine restore path traversal — canon_root.join(name) accepts ../ and /, no containment check; can read/copy/delete outside quarantine root (src/quarantine.rs:245) — fixed in c1b0ad8
+- [x] FIX: HIGH: restore deletes manifest before move; failed rename/copy leaves manifest-less orphan that future restore refuses and expire never expires (src/quarantine.rs:259) — fixed in c1b0ad8
+- [x] FIX: HIGH: quarantine_move writes manifest after destructive step; manifest-write failure after remove_dir_all(origin) or rename orphans data with no manifest (src/quarantine.rs:162-178) — fixed in c1b0ad8
+- [x] FIX: HIGH: is_git_tracked misses repo roots — probes parent only; relocating ~/Dev/<repo> returns false so a whole repo can be moved leaving a symlink (src/relocate.rs:114-137) — fixed in 1f9215c
+- [x] FIX: MEDIUM: link apply --force-replace ignores user protected_paths via check_safe_to_delete(&link, &[]) (src/links.rs:211) — fixed in 7129c4b
+- [x] FIX: MEDIUM: clean_tmp judges whole tree by top-level mtime; stale top dir with fresh nested closed files is remove_dir_all'd, open-fd guard doesn't cover it (src/main.rs:~4900-4935) — fixed in c77e855
+- [x] FIX: MEDIUM: copy_tree+verify only files+bytes, filter_map hides unreadable entries; verification can pass while data dropped (src/relocate.rs:48-100) — fixed in edde070
+- [x] FIX: MEDIUM: setup --apply ensure_setup_dir does blind create_dir_all + probe write on policy paths; symlinked root writes into link target, no protected/nesting validation (src/setup.rs:40-53) — fixed in 23d8a7f
+- [x] FIX: MEDIUM: apply_relocate deletes source before symlink; symlink failure leaves original path broken with no rollback (src/relocate.rs:248-250) — fixed in a034ac6
+- [x] FIX: LOW: quarantine_expire ? on dir.canonicalize() aborts batch mid-run; earlier deletions done, removed list lost (src/quarantine.rs:284-291) — fixed in c1b0ad8
+- [x] DECIDED: quarantine expiry keeps fail-safe; corrupt/missing manifests pin garbage rather than risk deleting unknown data (2026-09-29)
+- [x] FIX: LOW: zram --gen-config --memory-percent unbounded u32; nonsense % emits broken NixOS snippet (src/zram.rs) — fixed in c868eb2
+- [x] FIX: HIGH: release-notes compare link is broken and mis-scoped — endpoint v0.112.41 unprefixed does not exist (only dracon-system-v0.112.41 does) and URL points at parent repo instead of standalone (release-notes-v0.112.41.md:26) — fixed in dd9065c
+- [x] FIX: MED: three live reap knobs undiscoverable — reap_report_min_idle_hours, reap_report_max_cpu_seconds, reap_report_signatures appear zero times in example TOML (src/policy.rs:89-97) — fixed in 7b9551d
+- [x] FIX: MED: sync_freeze_marker undocumented — absent from example TOML despite freeze_sync_at_action/unfreeze_below_percent being documented (src/policy.rs) — fixed in 7b9551d
+- [x] FIX: MED: example template has no [storage]/[links] sections — StoragePolicy and LinkEntry policy invisible while README documents those commands (dracon-system.example.toml) — fixed in 7b9551d
+- [x] FIX: MED: BLUEPRINT.md:20 claims target protection "default: 30 minutes" — matches neither old 60s backstop nor current 7-day action gate (BLUEPRINT.md:20) — fixed in 6a1391d
+- [x] FIX: LOW: BLUEPRINT.md:22-26 claims rust search roots "~/Dev, ~/dracon" — code default is "~/Dev" only (BLUEPRINT.md:22-26) — fixed in 6a1391d
+- [x] FIX: LOW: README.md:20 says "version 0.112.40 on crates.io" — Cargo.toml is 0.112.41 (README.md:20) — fixed in dd9065c
+- [x] FIX: LOW: release-notes body omits the release's actual content — 7-day age gate + F36-F48 audit batch (release-notes-v0.112.41.md:1-26) — fixed in dd9065c
+- [x] FIX: MED: no tests for daemon wiring of recent behavior — reap_policy_from_guard/reap_candidates/GuardReport.reap_candidates, clean_quarantine_first branches, auto-relocate daemon path have zero coverage (src/main.rs:4655,4668,6039) — fixed in 4b29a71
+- [x] FIX: LOW: CHANGELOG.md:[0.112.35] names "zombie_details" like a knob — no such policy field exists, it is a main.rs function (CHANGELOG.md) — fixed in 6a1391d
+- [x] DECIDED: log monitoring documents "empty log_dirs = disabled" in README and example header; no default path assumed (2026-09-29)
+- [x] DECIDED: README space-tier sections marked (unreleased); no 0.112.42 cut in this pass (2026-09-29)
+- [x] DECIDED: dead print.rs helpers deleted with their tests; all output uses policy.rs::human_bytes (2026-09-29)
+- [x] DECIDED: dracon-code added to code-default exempt list to match the example template (2026-09-29)
+- [x] DECIDED: legal ranges documented per knob in the example template; no code clamps added (2026-09-29)
+- [x] FIX: MEDIUM: restore copy-fallback copies the manifest into the restored origin and never removes it — rename path cleans origin.join(MANIFEST_NAME), copy path leaves a stray manifest (src/quarantine.rs) — fixed in 845f2bb
+- [x] FIX: MEDIUM: expire still batch-aborts on escaped-root entries — the skip-and-collect fix covered vanished dirs only; the parent-containment bail discards already-collected removals (src/quarantine.rs) — fixed in e36c16d
+- [x] FIX: MEDIUM: resolve_bin falls back to bare PATH-relative names off-NixOS — the renice/systemctl hardening does not hold where store paths miss (src/main.rs) — fixed in b2238c3
