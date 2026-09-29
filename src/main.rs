@@ -6390,6 +6390,22 @@ pub(crate) fn load_system_policy() -> Result<(Option<PathBuf>, SystemPolicy)> {
 pub(crate) fn parse_system_policy(content: &str, path: &Path) -> Result<SystemPolicy> {
     let mut parsed: SystemPolicy = toml::from_str(content)
         .map_err(|e| anyhow::anyhow!("failed to parse {}: {}", path.display(), e))?;
+    // Surface keys the parser dropped instead of letting a config look
+    // applied when it is not. This WARNS rather than fails: a stray key must
+    // not stop a monitoring daemon from starting, because the operator's
+    // need is to be told, not locked out of their machine.
+    if let Ok(doc) = content.parse::<toml::Value>() {
+        let unknown = unknown_policy_keys(&doc);
+        if !unknown.is_empty() {
+            let detail: Vec<String> = unknown.iter().map(|k| format!("{k}{}", hint_for(k))).collect();
+            eprintln!(
+                "⚠ policy: {} unknown key(s) in {} ignored: {}",
+                unknown.len(),
+                path.display(),
+                detail.join("; ")
+            );
+        }
+    }
     parsed.normalize();
     Ok(parsed)
 }

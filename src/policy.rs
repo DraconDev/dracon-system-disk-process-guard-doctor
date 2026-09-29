@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 // ---------------------------------------------------------------------------
@@ -1316,6 +1316,116 @@ pub(crate) fn resolve_guard_log_path_with_home(raw: &str, home: Option<&Path>) -
         return None;
     }
     Some(expand_tilde_with_home(raw, home))
+}
+
+/// Keys the policy parser accepts, derived from the structs THEMSELVES.
+///
+/// Serializing a default emits every field, because every field carries a
+/// serde default and none carries `skip_serializing_if`. That makes this
+/// set exact and self-maintaining: adding a knob to `GuardPolicy` adds it
+/// here automatically, so a hand-kept list of key names — the obvious
+/// implementation, and one that silently rots — is not needed.
+///
+/// Falls back to an empty set if serialization ever fails, in which case the
+/// check reports nothing rather than flagging every key.
+fn known_keys_of<T: Serialize + Default>() -> HashSet<String> {
+    // Round-tripping through a TOML string uses only `to_string` + `FromStr`,
+    // which are available without extra feature flags.
+    toml::to_string(&T::default())
+        .ok()
+        .and_then(|text| text.parse::<toml::Value>().ok())
+        .and_then(|v| v.as_table().cloned())
+        .map(|t| t.keys().cloned().collect())
+        .unwrap_or_default()
+}
+
+/// Every key the policy file accepts, per top-level section.
+pub(crate) fn known_policy_keys() -> HashMap<&'static str, HashSet<String>> {
+    let mut map = HashMap::new();
+    map.insert("guard", known_keys_of::<GuardPolicy>());
+    map.insert("storage", known_keys_of::<StoragePolicy>());
+    map.insert("links", known_keys_of::<LinkPolicy>());
+    map
+}
+
+/// Unknown keys in a parsed policy document, as `section.key` strings.
+///
+/// A misspelled knob, a key appended under the wrong table, or a section
+/// that does not exist are all silently dropped by serde today: the operator
+/// sees a config that looks applied and is not. This surfaces them WITHOUT
+/// failing, because a stray key must not stop a monitoring daemon from
+/// starting — the operator needs to be told, not locked out of their machine.
+pub(crate) fn unknown_policy_keys(doc: &toml::Value) -> Vec<String> {
+    let Some(table) = doc.as_table() else {
+        return Vec::new();
+    };
+    let known = known_policy_keys();
+    let mut unknown = Vec::new();
+    for (section, value) in table {
+        match known.get(section.as_str()) {
+            None => unknown.push(section.clone()),
+            Some(accepted) => {
+                // A section given as a bare key rather than a table is a
+                // shape error, not an unknown key; report it as unknown so
+                // it is not silently accepted as a no-op.
+                let Some(inner) = value.as_table() else {
+                    unknown.push(section.clone());
+                    continue;
+                };
+                for key in inner.keys() {
+                    if !accepted.contains(key) {
+                        unknown.push(format!("{section}.{key}"));
+                    }
+                }
+            }
+        }
+    }
+    unknown.sort();
+    unknown
+}
+
+/// Human-readable guidance for a rejected key, used in the warning.
+/// Suggests a near-miss spelling when one is within two edits.
+fn hint_for(key: &str) -> String {
+    let base = key.rsplit('.').next().unwrap_or(key);
+    let mut best = usize::MAX;
+    let mut close: Vec<&str> = Vec::new();
+    let known = known_policy_keys();
+    for candidates in known.values() {
+        for candidate in candidates {
+            let d = edit_distance(base, candidate);
+            if d < best {
+                best = d;
+                close.clear();
+            }
+            if d == best && d <= 2 {
+                close.push(candidate);
+            }
+        }
+    }
+    if close.is_empty() {
+        String::new()
+    } else {
+        format!(" — did you mean {}?", close.join(" or "))
+    }
+}
+
+/// Levenshtein distance, bounded by the lengths involved. Only used to
+/// suggest a near-miss spelling, so a full table is unnecessary.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut cur = vec![0usize; b.len() + 1];
+    for i in 1..=a.len() {
+        cur[0] = i;
+        for j in 1..=b.len() {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            cur[j] = (prev[j] + 1).min(cur[j - 1] + 1).min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut cur);
+    }
+    prev[b.len()]
 }
 
 pub(crate) fn parse_kinds(csv: &str) -> HashSet<String> {
