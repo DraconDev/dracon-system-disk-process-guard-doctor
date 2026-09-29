@@ -7306,6 +7306,7 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
                 }
             }
         }
+        eprintln!("DBG starting pass");
         if let Err(e) = run_guard_once(guard, &mut runtime).await {
             eprintln!("guard pass failed: {}", e);
             emit_event(&DraconEvent::new(
