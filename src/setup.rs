@@ -193,11 +193,14 @@ pub(crate) fn collect_setup_report() -> SetupReport {
         .all(|c| c.ok);
     SetupReport {
         policy_path: path
+            .as_ref()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "(none — built-in defaults)".to_string()),
-        policy_exists: load_system_policy()
-            .map(|(p, _)| p.is_some())
-            .unwrap_or(false),
+        // Reuse the path from the load above. This used to call
+        // load_system_policy() a second time purely to ask "does it exist?",
+        // which re-parsed the whole file and — now that the load boundary
+        // reports clamps — re-emitted the same out-of-range warning twice.
+        policy_exists: path.is_some(),
         checks,
         ready,
     }
