@@ -2,6 +2,22 @@
 
 use anyhow::Result;
 
+/// Valid zram memoryPercent range. Below 10 the device is too small to
+/// matter; above 400 it promises more virtual swap than compression can
+/// plausibly back, and the emitted NixOS snippet would mislead.
+const MEMORY_PERCENT_MIN: u32 = 10;
+const MEMORY_PERCENT_MAX: u32 = 400;
+
+pub(crate) fn validate_memory_percent(memory_percent: Option<u32>) -> Result<u32> {
+    let mem_pct = memory_percent.unwrap_or(200);
+    if !(MEMORY_PERCENT_MIN..=MEMORY_PERCENT_MAX).contains(&mem_pct) {
+        return Err(anyhow::anyhow!(
+            "Invalid memory percent {mem_pct}: expected {MEMORY_PERCENT_MIN}-{MEMORY_PERCENT_MAX} (default: 200)"
+        ));
+    }
+    Ok(mem_pct)
+}
+
 /// Handle the `zram` CLI subcommand.
 pub(crate) fn cmd_zram(
     status: bool,
@@ -10,7 +26,7 @@ pub(crate) fn cmd_zram(
     algorithm: Option<String>,
 ) -> Result<()> {
     if gen_config {
-        let mem_pct = memory_percent.unwrap_or(200);
+        let mem_pct = validate_memory_percent(memory_percent)?;
         let algo = algorithm.unwrap_or_else(|| "zstd".to_string());
         let valid_algos = ["lzo", "lzo-rle", "lz4", "lz4hc", "zstd", "deflate", "842"];
         if !valid_algos.contains(&algo.as_str()) {
