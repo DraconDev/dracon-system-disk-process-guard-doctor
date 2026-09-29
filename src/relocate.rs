@@ -130,6 +130,17 @@ pub(crate) fn copy_tree(src: &Path, dst: &Path) -> Result<u64> {
     Ok(skipped)
 }
 
+#[cfg(unix)]
+fn make_symlink(dest: &Path, source: &Path) -> Result<()> {
+    std::os::unix::fs::symlink(dest, source)?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn make_symlink(_dest: &Path, _source: &Path) -> Result<()> {
+    anyhow::bail!("relocate is only supported on unix");
+}
+
 fn avail_bytes_for(path: &Path) -> Option<u64> {
     let out = std::process::Command::new("df")
         .args(["-P"])
@@ -296,8 +307,7 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
         );
     }
 
-    let skipped_special = copy_tree(source, dest)?;
-    let (dest_files, dest_bytes) = walk_stats_strict(dest)?;
+    let skipped_special = copy_tree(source, dest)?;    let (dest_files, dest_bytes) = walk_stats_strict(dest)?;
     if dest_files != plan.files || dest_bytes != plan.bytes {
         anyhow::bail!(
             "copy verification failed: expected {} files / {} bytes, got {} / {} — source untouched",
@@ -326,7 +336,7 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
     fs::rename(source, &staging).map_err(|e| {
         anyhow::anyhow!("cannot stage {} aside: {} — source untouched", source.display(), e)
     })?;
-    if let Err(e) = std::os::unix::fs::symlink(dest, source) {
+    if let Err(e) = make_symlink(dest, source) {
         fs::rename(&staging, source).map_err(|restore_err| {
             anyhow::anyhow!(
                 "symlink failed ({e:#}) AND restore failed ({restore_err:#}) — data is intact at {}",
