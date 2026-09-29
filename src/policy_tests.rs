@@ -525,98 +525,100 @@ min_size_mb = 0
 // Report cadence — the guard re-loads the policy every pass
 // ---------------------------------------------------------------------------
 
-/// The guard calls `load_system_policy()` once per pass (via
-/// `check_link_drift`), so a per-load report produced ~5,760 identical
-/// lines a day at the default 30 s interval. `report_clamps` dedupes on the
-/// clamped set; these tests drive that state machine directly.
-fn reset_clamp_report_state() {
-    set_clamp_report_state(None);
-}
-
-fn current_clamp_report_state() -> Option<Vec<&'static str>> {
-    clamp_report_state()
-}
-
-#[test]
-fn clamp_report_records_the_clamped_set() {
-    reset_clamp_report_state();
-    let mut p = SystemPolicy {
-        guard: GuardPolicy {
-            interval_secs: 0,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    p.normalize();
-    assert_eq!(
-        current_clamp_report_state(),
-        Some(vec!["interval_secs"]),
-        "the reported set must be recorded so a repeat can be detected"
-    );
-}
-
-#[test]
-fn a_legal_policy_never_reports() {
-    reset_clamp_report_state();
-    let mut p = SystemPolicy::default();
-    p.normalize();
-    assert_eq!(
-        current_clamp_report_state(),
-        None,
-        "an in-range policy must not record any clamp report"
-    );
-}
-
-#[test]
-fn recovery_is_recorded_when_the_policy_becomes_legal() {
-    reset_clamp_report_state();
-    let mut bad = SystemPolicy {
-        guard: GuardPolicy {
-            interval_secs: 0,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    bad.normalize();
-    assert!(current_clamp_report_state().is_some());
-
-    let mut fixed = SystemPolicy::default();
-    fixed.normalize();
-    assert_eq!(
-        current_clamp_report_state(),
-        Some(Vec::new()),
-        "a transition back to in-range must be recorded so recovery reports once"
-    );
-}
-
-/// The daemon cadence: many passes over the same misconfigured file must
-/// leave exactly one distinct report, not one per pass.
-#[test]
-fn repeated_passes_do_not_accumulate_reports() {
-    reset_clamp_report_state();
-    for _ in 0..50 {
-        let mut p = SystemPolicy {
-            guard: GuardPolicy {
-                interval_secs: 0,
-                disk_warn_percent: 200,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        p.normalize();
+/// Drive the clamp-report state machine the way the production wrapper does,
+/// but over locally-owned state instead of the process-global.
+///
+/// FIXED 2026-09-29 (auditor, second review round): these tests used to
+/// reset and read `LAST_REPORTED_CLAMPS` directly, so libtest's concurrent
+/// threads interleaved and the full suite failed ~7% of runs with another
+/// test's clamped set. Folding the pure decision over local state is
+/// order-independent and needs no mutex.
+fn run_report_sequence(steps: &[&[&'static str]]) -> Vec<ClampReport> {
+    let mut state: Option<Vec<&'static str>> = None;
+    let mut decisions = Vec::with_capacity(steps.len());
+    for step in steps {
+        let decision = clamp_report_decision(state.as_deref(), step);
+        match &decision {
+            ClampReport::SilentNoState | ClampReport::Unchanged => {}
+            _ => state = Some(step.to_vec()),
+        }
+        decisions.push(decision);
     }
+    decisions
+}
+
+const A: &[&str] = &["interval_secs"];
+const B: &[&str] = &["disk_warn_percent", "interval_secs"];
+
+#[test]
+fn first_out_of_range_policy_is_reported() {
     assert_eq!(
-        current_clamp_report_state(),
-        Some(vec![
-            "disk_action_percent",
-            "disk_critical_percent",
-            "disk_warn_percent",
-            "interval_secs"
-        ]),
-        "50 passes over one misconfigured file must leave exactly one distinct \\
-         report set — disk_warn_percent=200 legitimately cascades to the \\
-         action/critical bands, which must be reported too"
+        run_report_sequence(&[A])[0],
+        ClampReport::Clamped(vec!["interval_secs"])
     );
+}
+
+#[test]
+fn an_in_range_policy_on_a_fresh_process_records_nothing() {
+    assert_eq!(
+        run_report_sequence(&[[]])[0],
+        ClampReport::SilentNoState,
+        "an in-range policy must not report, and must not record state — \
+         otherwise the first real clamp looks like a transition from a known state"
+    );
+}
+
+#[test]
+fn repeating_the_same_clamped_set_is_silent() {
+    let d = run_report_sequence(&[A, A, A, A]);
+    assert_eq!(d[0], ClampReport::Clamped(vec!["interval_secs"]));
+    for step in &d[1..] {
+        assert_eq!(*step, ClampReport::Unchanged, "a repeat must stay silent");
+    }
+}
+
+#[test]
+fn returning_to_in_range_reports_the_recovery_once() {
+    let d = run_report_sequence(&[A, A, [], []]);
+    assert_eq!(d[0], ClampReport::Clamped(vec!["interval_secs"]));
+    assert_eq!(d[1], ClampReport::Unchanged);
+    assert_eq!(
+        d[2],
+        ClampReport::Recovered(vec!["interval_secs"]),
+        "the fix must be confirmed, not inferred from silence"
+    );
+    assert_eq!(d[3], ClampReport::Unchanged, "recovery must not repeat");
+}
+
+#[test]
+fn a_changed_clamped_set_reports_again() {
+    let d = run_report_sequence(&[A, B]);
+    assert_eq!(d[0], ClampReport::Clamped(vec!["interval_secs"]));
+    assert_eq!(
+        d[1],
+        ClampReport::Clamped(vec!["disk_warn_percent", "interval_secs"])
+    );
+}
+
+#[test]
+fn already_clean_stays_silent_across_many_passes() {
+    for d in run_report_sequence(&vec![[]; 50]) {
+        assert_eq!(d, ClampReport::SilentNoState);
+    }
+}
+
+/// The daemon cadence: many passes over one misconfigured file must produce
+/// exactly one report, not one per pass.
+#[test]
+fn repeated_passes_over_a_bad_policy_report_exactly_once() {
+    let d = run_report_sequence(&vec![B; 50]);
+    assert_eq!(
+        d[0],
+        ClampReport::Clamped(vec!["disk_warn_percent", "interval_secs"])
+    );
+    for step in &d[1..] {
+        assert_eq!(*step, ClampReport::Unchanged);
+    }
 }
 
 /// The shipped example template documents the ranges, so it must itself be
