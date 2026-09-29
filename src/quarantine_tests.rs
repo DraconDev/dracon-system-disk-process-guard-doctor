@@ -354,22 +354,45 @@ fn an_unreadable_manifest_is_reported_as_pinned() {
     cleanup(&root);
 }
 
+/// Backdate a path's mtime by `days`.
+///
+/// Without this the fail-safe test is unfalsifiable: a fresh entry is age 0,
+/// and `0 > 30` is false under any implementation, so an expiry path that
+/// *did* reach manifest-less entries would still pass. The directory mtime is
+/// what a mtime-based expiry would read, so backdating it puts the entry
+/// genuinely past the TTL.
+fn backdate_mtime(path: &Path, days: u64) {
+    let when = std::time::SystemTime::now() - std::time::Duration::from_secs(days * 86_400);
+    let f = std::fs::File::open(path).unwrap_or_else(|e| panic!("open {}: {e}", path.display()));
+    f.set_modified(when)
+        .unwrap_or_else(|e| panic!("backdate {}: {e}", path.display()));
+}
+
 #[test]
-fn a_pinned_entry_is_never_expired() {
+fn a_pinned_entry_is_never_expired_however_old_it_is() {
+    // Backdated 400 days against a 30-day TTL: no age-based expiry path can
+    // reach this entry, and if one did it would delete the bytes.
     let root = test_root("pin-not-expired");
     let qdir = root.join("q");
-    raw_entry(&qdir, "ancient-broken.1", Some("{{{ not json"));
-    // A TTL of 0 would expire everything, so use a live TTL; the entry is
-    // old only by absence of a manifest, which is exactly the case under
-    // test — the point is that no TTL path can reach it.
+    let entry = raw_entry(&qdir, "ancient-broken.1", Some("{{{ not json"));
+    backdate_mtime(&entry, 400);
+
     let removed = crate::quarantine_expire(&qdir, 30, true).unwrap();
+
     assert!(
         removed.is_empty(),
         "an entry with an unreadable manifest must never be expired, got {removed:?}"
     );
     assert!(
-        qdir.join("ancient-broken.1").exists(),
-        "and must still be on disk"
+        entry.exists(),
+        "a 400-day-old entry with an unreadable manifest must still be on disk"
+    );
+    // And it must still be reported as held, not quietly dropped from the list.
+    let list = crate::quarantine_list(&qdir, 30).unwrap();
+    assert_eq!(
+        list.pinned,
+        vec!["ancient-broken.1".to_string()],
+        "the held entry must still be reported as pinned after an expire run"
     );
     cleanup(&root);
 }
