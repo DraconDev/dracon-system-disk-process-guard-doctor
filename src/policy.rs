@@ -1394,12 +1394,30 @@ pub(crate) fn unknown_policy_keys(doc: &toml::Value) -> Vec<String> {
 }
 
 /// Human-readable guidance for a rejected key, used in the warning.
-/// Suggests a near-miss spelling when one is within two edits.
+///
+/// Reports BOTH a near-miss spelling and, when the key is spelled correctly
+/// but filed under the wrong table, the section it actually belongs to —
+/// that misplacement is the exact confusion this check exists to surface.
 pub(crate) fn hint_for(key: &str) -> String {
-    let base = key.rsplit('.').next().unwrap_or(key);
+    let (section, base) = match key.split_once('.') {
+        Some((s, b)) => (Some(s), b),
+        None => (None, key),
+    };
+    let known = known_policy_keys();
+
+    // Exact name, different table: the key is real but misplaced.
+    for (name, candidates) in &known {
+        if name == section {
+            continue;
+        }
+        if candidates.contains(base) {
+            return format!(" — `{base}` belongs under [{name}]");
+        }
+    }
+
+    // Otherwise a near-miss spelling is the useful hint.
     let mut best = usize::MAX;
     let mut close: Vec<&str> = Vec::new();
-    let known = known_policy_keys();
     for candidates in known.values() {
         for candidate in candidates {
             let d = edit_distance(base, candidate);
