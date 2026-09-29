@@ -7709,6 +7709,33 @@ async fn cmd_guard(cmd: GuardCommands) -> Result<()> {
     match cmd {
         GuardCommands::Once { json } => cmd_guard_once(&guard, json).await,
         GuardCommands::Daemon => cmd_guard_daemon(&mut guard).await,
+        GuardCommands::NotifyTest { title, body } => {
+            let title = title.unwrap_or_else(|| "dracon-system test".to_string());
+            let body = body.unwrap_or_else(|| {
+                "notify_command works — flags are passed as argv, no shell involved".to_string()
+            });
+            // Report what will run, so a misconfiguration is visible here
+            // rather than at the next real alert.
+            match NotifyCommand::parse(&guard.notify_command) {
+                Ok(cmd) => {
+                    let mut rendered = cmd.program.clone();
+                    for arg in &cmd.args {
+                        rendered.push(' ');
+                        rendered.push_str(arg);
+                    }
+                    println!("notify_command: {rendered}");
+                    println!("title: {title}");
+                    println!("body:  {body}");
+                }
+                Err(e) => anyhow::bail!("notify_command rejected: {e}"),
+            }
+            // Force the send regardless of `notify`, so an operator can test
+            // a command before enabling it.
+            let mut test_guard = guard.clone();
+            test_guard.notify = true;
+            send_notification(&test_guard, &title, &body).await;
+            Ok(())
+        }
         GuardCommands::Prune {
             json,
             docker,
