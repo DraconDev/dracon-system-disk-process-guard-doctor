@@ -351,7 +351,8 @@ clean_package_caches = false
 clean_trash = false
 clean_nix_garbage = false
 
-# Notifications (notify_command must be an absolute path)
+# Notifications (notify_command must be an absolute path; arguments allowed)
+# e.g. "/usr/bin/notify-send -u critical" — no wrapper script needed.
 notify = true
 notify_command = "/usr/bin/notify-send"
 notify_cooldown_secs = 300
