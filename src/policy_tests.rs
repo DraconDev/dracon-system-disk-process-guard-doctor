@@ -549,6 +549,7 @@ fn run_report_sequence(steps: &[&[&'static str]]) -> Vec<ClampReport> {
 
 const A: &[&str] = &["interval_secs"];
 const B: &[&str] = &["disk_warn_percent", "interval_secs"];
+const NONE: &[&str] = &[];
 
 #[test]
 fn first_out_of_range_policy_is_reported() {
@@ -561,7 +562,7 @@ fn first_out_of_range_policy_is_reported() {
 #[test]
 fn an_in_range_policy_on_a_fresh_process_records_nothing() {
     assert_eq!(
-        run_report_sequence(&[[]])[0],
+        run_report_sequence(&[NONE])[0],
         ClampReport::SilentNoState,
         "an in-range policy must not report, and must not record state — \
          otherwise the first real clamp looks like a transition from a known state"
@@ -579,7 +580,7 @@ fn repeating_the_same_clamped_set_is_silent() {
 
 #[test]
 fn returning_to_in_range_reports_the_recovery_once() {
-    let d = run_report_sequence(&[A, A, [], []]);
+    let d = run_report_sequence(&[A, A, NONE, NONE]);
     assert_eq!(d[0], ClampReport::Clamped(vec!["interval_secs"]));
     assert_eq!(d[1], ClampReport::Unchanged);
     assert_eq!(
@@ -602,7 +603,7 @@ fn a_changed_clamped_set_reports_again() {
 
 #[test]
 fn already_clean_stays_silent_across_many_passes() {
-    for d in run_report_sequence(&vec![[]; 50]) {
+    for d in run_report_sequence(&vec![NONE; 50]) {
         assert_eq!(d, ClampReport::SilentNoState);
     }
 }
