@@ -784,8 +784,8 @@ fn normalize_guard_policy_clamps_cpu_cap_percent() {
 
 #[test]
 fn resolve_bin_falls_back_to_bare_name_off_nixos() {
-    // A name present in no NixOS store dir must come back unchanged, which
-    // is exactly the old PATH-relative behavior on other distributions.
+    // The lenient helper preserves the old PATH-relative behavior for
+    // non-privilege callers (nix tooling).
     assert_eq!(
         crate::resolve_bin("dracon-definitely-not-a-binary"),
         "dracon-definitely-not-a-binary"
@@ -794,6 +794,18 @@ fn resolve_bin_falls_back_to_bare_name_off_nixos() {
     assert_eq!(
         crate::resolve_bin("dracon-definitely-not-a-binary"),
         "dracon-definitely-not-a-binary"
+    );
+}
+
+#[test]
+fn resolve_bin_strict_refuses_unresolvable_names() {
+    // Audit falsification round: privilege-adjacent execs (renice,
+    // systemctl) must never fall back to a bare PATH-relative name that
+    // PATH poisoning could redirect. Unresolvable names are an error.
+    let err = crate::resolve_bin_strict("dracon-definitely-not-a-binary").unwrap_err();
+    assert!(
+        format!("{err:#}").contains("refusing PATH-relative exec"),
+        "strict resolve must refuse, not fall back: {err:#}"
     );
 }
 

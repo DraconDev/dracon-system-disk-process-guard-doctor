@@ -1908,9 +1908,7 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
     // --no-block returns before the unit's cgroup exists: poll for it.
     let mut cg = String::new();
     for _ in 0..10 {
-        let out = Command::new(
-            resolve_bin_strict("systemctl").map_err(|e| e.to_string())?,
-        )
+        let out = Command::new(resolve_bin_strict("systemctl").map_err(|e| e.to_string())?)
             .args(["--user", "show", &unit, "-p", "ControlGroup", "--value"])
             .output()
             .await
@@ -1925,9 +1923,9 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
         let _ = Command::new(
             resolve_bin_strict("systemctl").map_err(|e| format!("resolve systemctl: {e:#}"))?,
         )
-            .args(["--user", "stop", &unit])
-            .status()
-            .await;
+        .args(["--user", "stop", &unit])
+        .status()
+        .await;
         return Err(format!("unit {unit} has no control group"));
     }
     let procs_file = format!("/sys/fs/cgroup/{cg}/cgroup.procs");
@@ -1935,9 +1933,9 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
         let _ = Command::new(
             resolve_bin_strict("systemctl").map_err(|e| format!("resolve systemctl: {e:#}"))?,
         )
-            .args(["--user", "stop", &unit])
-            .status()
-            .await;
+        .args(["--user", "stop", &unit])
+        .status()
+        .await;
         return Err(format!("move pid {pid} into {procs_file}: {e}"));
     }
     Ok((unit, orig_rel))
@@ -3634,7 +3632,7 @@ fn resolve_bin_opt(name: &str) -> Option<String> {
         RESOLVE_BIN_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
     {
         if let Some(cached) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(name) {
-            return cached.clone();
+            return Some(cached.clone());
         }
     }
     let nixos_paths = [
@@ -4586,8 +4584,15 @@ async fn check_memory_pressure(
             };
             // Identity was readable: clear any prior unavailability count.
             state.cap_identity_unavailable_attempts.remove(&pid);
+            let systemctl_bin = match resolve_bin_strict("systemctl") {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("cpu-uncap unavailable, skipping pid={pid}: {e:#}");
+                    continue;
+                }
+            };
             if let Err(e) = uncap_cpu_process_with_bin(
-                &PathBuf::from(resolve_bin_strict("systemctl")?),
+                &PathBuf::from(systemctl_bin),
                 Path::new("/proc"),
                 pid,
                 &scope,
