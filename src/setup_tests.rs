@@ -54,6 +54,7 @@ fn ensure_setup_dir_refuses_protected_ancestor() {
     // A new managed root under a user-protected path must be refused
     // before anything is created.
     let root = test_root("protected");
+    fs::create_dir_all(&root).unwrap();
     let fresh = root.join("cold");
     let protected = vec![root.display().to_string()];
     let err = crate::ensure_setup_dir(&fresh, &protected).unwrap_err();
