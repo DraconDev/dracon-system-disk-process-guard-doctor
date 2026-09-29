@@ -1326,25 +1326,34 @@ pub(crate) fn resolve_guard_log_path_with_home(raw: &str, home: Option<&Path>) -
 /// here automatically, so a hand-kept list of key names — the obvious
 /// implementation, and one that silently rots — is not needed.
 ///
-/// Falls back to an empty set if serialization ever fails, in which case the
-/// check reports nothing rather than flagging every key.
-fn known_keys_of<T: Serialize + Default>() -> HashSet<String> {
-    // Round-tripping through a TOML string uses only `to_string` + `FromStr`,
-    // which are available without extra feature flags.
-    toml::to_string(&T::default())
+/// One gap needs closing. TOML cannot represent a null, so serializing a
+/// default OMITS every `Option` field (there is no "absent" distinct from
+/// "null" to write). Left unhandled, a perfectly valid `log_dirs = "..."`
+/// would be reported as an unknown key on every load — a false positive that
+/// would train the operator to ignore the warning. `option_field_keys`
+/// supplies those; it is the one place that needs a human, and
+/// `option_field_keys_cover_every_option_field` fails if a new `Option` is
+/// added without adding it there.
+fn known_keys_of<T: Serialize + Default>(extra: &[&str]) -> HashSet<String> {
+    let mut keys: HashSet<String> = toml::to_string(&T::default())
         .ok()
         .and_then(|text| text.parse::<toml::Value>().ok())
         .and_then(|v| v.as_table().cloned())
         .map(|t| t.keys().cloned().collect())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    keys.extend(extra.iter().map(|k| k.to_string()));
+    keys
 }
+
+/// `Option` fields, which TOML serialization omits when they are `None`.
+const GUARD_OPTION_FIELDS: &[&str] = &["log_dirs"];
 
 /// Every key the policy file accepts, per top-level section.
 pub(crate) fn known_policy_keys() -> HashMap<&'static str, HashSet<String>> {
     let mut map = HashMap::new();
-    map.insert("guard", known_keys_of::<GuardPolicy>());
-    map.insert("storage", known_keys_of::<StoragePolicy>());
-    map.insert("links", known_keys_of::<LinkPolicy>());
+    map.insert("guard", known_keys_of::<GuardPolicy>(GUARD_OPTION_FIELDS));
+    map.insert("storage", known_keys_of::<StoragePolicy>(&[]));
+    map.insert("links", known_keys_of::<LinkPolicy>(&[]));
     map
 }
 
