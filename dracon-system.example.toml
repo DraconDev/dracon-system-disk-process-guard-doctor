@@ -183,22 +183,35 @@ bias_oom_on_pressure = true
 cap_offenders_cpu_percent = 0
 
 # Monitor large log files
-# Empty log_dirs disables monitoring (the default). Set log_dirs to
-# enable it.
+# log_dirs is a comma-separated list; `~` expands to the service user's
+# home. There are three states, and they are deliberately distinguishable:
+#
+#   OMITTED  — scan the default, ~/.local/state/dracon. This is the guard's
+#               own state directory: it always exists where the daemon runs,
+#               it is inside the unit's ReadWritePaths (so auto_truncate_logs
+#               can reclaim there), and it holds the guard's own event log —
+#               the one log whose growth the guard most needs to notice.
+#               Log-size monitoring therefore works with no configuration.
+#   SET      — scan exactly the directories you list.
+#   BLANK    — `log_dirs = ""` disables the check. An explicitly blank value
+#               is honoured as "off"; it is not the same as omitting the key.
+#
+# A configured directory that does not exist is now REPORTED on stderr
+# instead of being dropped silently, so a wrong path cannot look the same
+# as monitoring being off.
 monitor_logs = true
 # Alert on files at or above this size in MiB (0 disables).
 log_size_mb = 100
-# FIXED 2026-09-27 (audit F94): this listed /var/log and
-# ~/.local/share/opencode/log, but the shipped dracon-system-guard.service
-# grants neither in ReadWritePaths. Under ProtectSystem=strict +
-# ProtectHome=read-only the write-mode open in truncate_log_file fails
-# EROFS for every configured dir, so auto_truncate_logs (when enabled)
-# logged "failed to truncate" and reclaimed nothing. The list below is
-# inside the unit's writable set. To truncate /var/log you must run
-# dracon-system outside the unit, or add /var/log to ReadWritePaths
-# yourself — an unprivileged user service cannot do it under the shipped
-# hardening.
-log_dirs = "~/.local/share/opencode/log"
+# NOTE on /var/log: the shipped dracon-system-guard.service does NOT grant
+# it in ReadWritePaths. Under ProtectSystem=strict + ProtectHome=read-only
+# the write-mode open in truncate_log_file fails EROFS, so auto_truncate_logs
+# on /var/log logs "failed to truncate" and reclaims nothing (audit F94).
+# Scanning /var/log read-only is fine; truncating it is not. To truncate it
+# you must run dracon-system outside the unit, or add /var/log to
+# ReadWritePaths yourself — an unprivileged user service cannot do that
+# under the shipped hardening. Leave log_dirs unset for the default; set it
+# to "" to switch the check off.
+# log_dirs = "/var/log"          # example of an explicit list
 auto_truncate_logs = false
 log_max_truncate_mb = 50
 # Floor 1 MiB. Capped at 10,000 lines: the preserve step reads this many

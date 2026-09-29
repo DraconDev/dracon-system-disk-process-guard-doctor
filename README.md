@@ -104,8 +104,17 @@ defaults are 70/80/90/95 — see Configuration.)
 - Scans configured directories for large log files
 - Alerts on files exceeding size threshold (default 100 MiB)
 - Helps identify runaway logging
-- Empty `log_dirs` disables monitoring (the default: set `log_dirs` to
-  enable it)
+- **No configuration needed.** Omitting `log_dirs` scans the default,
+  `~/.local/state/dracon` — the guard's own state directory, which always
+  exists where the daemon runs, is inside the unit's `ReadWritePaths` so
+  `auto_truncate_logs` can reclaim there, and holds the guard's own event
+  log. Set `log_dirs` to a comma-separated list to scan your own
+  directories; set `log_dirs = ""` to switch the check off. An explicitly
+  blank value is honoured as "off" and is *not* the same as omitting the
+  key.
+- A configured directory that does not exist is reported on stderr rather
+  than skipped silently, so a wrong path cannot be mistaken for the check
+  being disabled.
 
 ## Installation
 
