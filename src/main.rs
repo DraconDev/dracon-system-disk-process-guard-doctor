@@ -4774,9 +4774,7 @@ fn zombie_details(state: &mut GuardRuntimeState) -> Vec<ZombieInfo> {
             });
         }
     }
-    state
-        .zombies_since
-        .retain(|key, _| seen.contains(key));
+    state.zombies_since.retain(|key, _| seen.contains(key));
     zombies.sort_by_key(|b| std::cmp::Reverse(b.age_secs));
     zombies
 }
