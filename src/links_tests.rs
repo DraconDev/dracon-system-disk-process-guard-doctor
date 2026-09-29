@@ -262,6 +262,43 @@ fn force_replace_preserves_two_same_second_backups() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+#[test]
+fn force_replace_honours_user_protected_paths() {
+    // Audit MEDIUM: force_replace used to check the link against an empty
+    // protected list, so a user-protected file was backed up and replaced.
+    // The guard's protected list must refuse the replacement instead.
+    let base = link_test_dir("protected");
+    std::fs::create_dir_all(&base).unwrap();
+    let target = base.join("target.txt");
+    std::fs::write(&target, "x").unwrap();
+    let link = base.join("config");
+    std::fs::write(&link, "old file").unwrap();
+
+    let mut guard = crate::GuardPolicy::default();
+    guard.protected_paths = vec![base.display().to_string()];
+    let policy = SystemPolicy {
+        links: LinkPolicy {
+            entries: vec![LinkEntry {
+                link: link.display().to_string(),
+                target: target.display().to_string(),
+            }],
+        },
+        guard,
+        ..SystemPolicy::default()
+    };
+    let err = crate::apply_link_policy(&policy, true).unwrap_err();
+    assert!(
+        format!("{err:#}").contains("protected"),
+        "protected link must be refused: {err:#}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&link).unwrap(),
+        "old file",
+        "refused replacement must leave the file untouched"
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 #[cfg(unix)]
 #[test]
 fn scan_broken_symlinks_detects_broken_chains() {
