@@ -601,14 +601,27 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
             // Reported whether or not anything expired. An operator who
             // just ran a successful expire must still learn that data is
             // being HELD, or the run looks like the queue is now empty.
+            //
+            // In --json the warning goes to stderr: stdout must stay exactly
+            // one JSON document, and the pinned set is already carried in the
+            // payload above for a machine to read.
             if !pinned.is_empty() {
-                println!(
-                    "⚠ {} entr{} held by the fail-safe (unreadable manifest) and NOT expired: {}",
-                    pinned.len(),
-                    if pinned.len() == 1 { "y is" } else { "ies are" },
-                    pinned.join(", ")
-                );
-                println!("   clear one with: quarantine purge <name> --apply");
+                if json {
+                    eprintln!(
+                        "⚠ {} entr{} held by the fail-safe (unreadable manifest) and NOT expired: {}",
+                        pinned.len(),
+                        if pinned.len() == 1 { "y is" } else { "ies are" },
+                        pinned.join(", ")
+                    );
+                } else {
+                    println!(
+                        "⚠ {} entr{} held by the fail-safe (unreadable manifest) and NOT expired: {}",
+                        pinned.len(),
+                        if pinned.len() == 1 { "y is" } else { "ies are" },
+                        pinned.join(", ")
+                    );
+                    println!("   clear one with: quarantine purge <name> --apply");
+                }
             }
         }
         QuarantineCommands::Purge { name, apply, json } => {
