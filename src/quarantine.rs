@@ -38,6 +38,11 @@ pub(crate) struct QuarantineEntry {
     pub(crate) age_days: Option<u64>,
     pub(crate) bytes: u64,
     pub(crate) expired: bool,
+    /// True when the manifest is unreadable, so the entry can never age out
+    /// and can never be restored to a known location.
+    pub(crate) pinned: bool,
+    /// Why this entry is pinned, shown to the operator.
+    pub(crate) pin_reason: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -47,6 +52,9 @@ pub(crate) struct QuarantineList {
     pub(crate) entries: Vec<QuarantineEntry>,
     pub(crate) total_bytes: u64,
     pub(crate) expired_bytes: u64,
+    /// Names of entries the fail-safe is holding, and the bytes they hold.
+    pub(crate) pinned: Vec<String>,
+    pub(crate) pinned_bytes: u64,
 }
 
 pub(crate) fn now_unix() -> u64 {
@@ -204,10 +212,31 @@ pub(crate) fn quarantine_move(
     Ok(manifest)
 }
 
+/// Why a fail-safe pin is reported to the operator.
+///
+/// Re-examined 2026-09-29 (DECIDE #3 follow-up). The fail-safe is KEPT.
+/// The manifest is the only record of where the entry came from; without it
+/// the entry is permanently unrestorable, so expiring it would convert
+/// "recoverable by hand" into "gone". Nothing is gained by taking that risk
+/// on a timer: the quarantine root is written only by this daemon, so an
+/// unreadable manifest means corruption or outside interference, not a
+/// routine condition that a TTL is there to bound — and a genuinely
+/// transient read error (EACCES, EIO) resolves itself, after which the entry
+/// ages normally.
+///
+/// The cost of that choice is that bytes can be held indefinitely, so the
+/// pin is never silent: it is listed, counted, and explained, and
+/// `quarantine purge <name>` is the documented operator escape hatch for a
+/// specific entry the operator has inspected.
+pub(crate) const PIN_REASON: &str =
+    "manifest unreadable — cannot age out or restore; clear with `quarantine purge <name> --apply`";
+
 pub(crate) fn quarantine_list(root: &Path, ttl_days: u64) -> Result<QuarantineList> {
     let mut entries = Vec::new();
     let mut total_bytes = 0u64;
     let mut expired_bytes = 0u64;
+    let mut pinned = Vec::new();
+    let mut pinned_bytes = 0u64;
     if fs::symlink_metadata(root).is_ok() {
         let canon_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
         for dir in fs::read_dir(&canon_root)?.flatten() {
@@ -230,9 +259,14 @@ pub(crate) fn quarantine_list(root: &Path, ttl_days: u64) -> Result<QuarantineLi
                 }
                 None => ("unknown".to_string(), None, None, false),
             };
+            let is_pinned = manifest.is_none();
             total_bytes += bytes;
             if expired {
                 expired_bytes += bytes;
+            }
+            if is_pinned {
+                pinned.push(name.clone());
+                pinned_bytes += bytes;
             }
             entries.push(QuarantineEntry {
                 name,
@@ -241,9 +275,12 @@ pub(crate) fn quarantine_list(root: &Path, ttl_days: u64) -> Result<QuarantineLi
                 age_days,
                 bytes,
                 expired,
+                pinned: is_pinned,
+                pin_reason: is_pinned.then(|| PIN_REASON.to_string()),
             });
         }
         entries.sort_by(|a, b| a.name.cmp(&b.name));
+        pinned.sort();
     }
     Ok(QuarantineList {
         root: root.display().to_string(),
@@ -251,17 +288,21 @@ pub(crate) fn quarantine_list(root: &Path, ttl_days: u64) -> Result<QuarantineLi
         entries,
         total_bytes,
         expired_bytes,
+        pinned,
+        pinned_bytes,
     })
 }
 
-/// Restore an entry to its recorded origin. The origin must not exist.
+/// Resolve a caller-supplied entry name to a real directory inside the
+/// quarantine root.
 ///
-/// The entry `name` is a single path component minted by `entry_dir_for`;
-/// separators, parent components, and absolute paths are refused before
-/// they can escape the quarantine root, and a smuggled symlink is refused
-/// rather than followed. The manifest is kept until the move succeeds, so
-/// a failed restore leaves the entry restorable instead of orphaning it.
-pub(crate) fn quarantine_restore(root: &Path, name: &str) -> Result<PathBuf> {
+/// The name is a single path component minted by `entry_dir_for`;
+/// separators, parent components, and absolute paths are refused before they
+/// can escape the quarantine root, and a smuggled symlink is refused rather
+/// than followed. Shared by `restore` and `purge` so the escape hatch
+/// inherits exactly the same containment checks as the safe path — a purge
+/// that validated names differently would be the weakest link in the module.
+pub(crate) fn resolve_entry_dir(root: &Path, name: &str) -> Result<PathBuf> {
     if name.is_empty()
         || name == "."
         || name == ".."
@@ -285,10 +326,50 @@ pub(crate) fn quarantine_restore(root: &Path, name: &str) -> Result<PathBuf> {
         .map_err(|_| anyhow::anyhow!("no such quarantine entry: {name}"))?;
     if !meta.file_type().is_dir() {
         if meta.file_type().is_symlink() {
-            anyhow::bail!("refusing to restore through symlink {name}");
+            anyhow::bail!("refusing to operate on symlink entry {name}");
         }
         anyhow::bail!("no such quarantine entry: {name}");
     }
+    Ok(entry_dir)
+}
+
+/// Delete one named quarantine entry, whatever state its manifest is in.
+///
+/// This is the documented escape hatch for an entry the fail-safe is pinning
+/// (see `PIN_REASON`): the operator names ONE entry they have inspected and
+/// accepts that it cannot be restored. It is deliberately not a bulk
+/// "delete everything unreadable" switch — that would reintroduce exactly the
+/// timer-driven, unaccountable deletion the fail-safe exists to prevent, and
+/// a manifest that is unreadable for one entry is often unreadable because
+/// something is wrong with the whole root.
+///
+/// Dry-run unless `apply`, and it reports the size it would reclaim so the
+/// operator sees what they are about to give up before giving it up.
+pub(crate) fn quarantine_purge(root: &Path, name: &str, apply: bool) -> Result<(String, u64, bool)> {
+    let entry_dir = resolve_entry_dir(root, name)?;
+    let (files, bytes) = walk_stats(&entry_dir);
+    let pinned = read_manifest(&entry_dir).is_none();
+    if apply {
+        fs::remove_dir_all(&entry_dir)?;
+    }
+    Ok((
+        format!("{files} files, {}", human_bytes(bytes)),
+        bytes,
+        pinned,
+    ))
+}
+
+/// Restore an entry to its recorded origin. The origin must not exist.
+///
+/// Uses the shared `resolve_entry_dir` containment check, and the manifest
+/// is kept until the move succeeds, so a failed restore leaves the entry
+/// restorable instead of orphaning it.
+pub(crate) fn quarantine_restore(root: &Path, name: &str) -> Result<PathBuf> {
+    let entry_dir = resolve_entry_dir(root, name)?;
+    let canon_root = entry_dir
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| root.to_path_buf());
     let manifest = read_manifest(&entry_dir)
         .ok_or_else(|| anyhow::anyhow!("entry {name} has no manifest — refusing blind restore"))?;
     let origin = PathBuf::from(&manifest.origin);
