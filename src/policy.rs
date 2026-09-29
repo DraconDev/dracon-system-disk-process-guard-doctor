@@ -204,8 +204,16 @@ pub(crate) struct GuardPolicy {
     pub(crate) monitor_logs: bool,
     #[serde(default = "default_log_size_mb")]
     pub(crate) log_size_mb: u64,
-    #[serde(default = "default_log_dirs")]
-    pub(crate) log_dirs: String,
+    /// Directories scanned for oversized log files.
+    ///
+    /// ADDED 2026-09-29 (DECIDE #4 follow-up): this was a plain `String`
+    /// defaulting to "", so "the operator never mentioned it" and "the
+    /// operator wrote `log_dirs = \"\"`" were indistinguishable — which is
+    /// why no default could be added without silently taking away the only
+    /// way to switch the check off. `Option<String>` separates them: `None`
+    /// (key absent) means "use the default", `Some(blank)` means "off".
+    #[serde(default)]
+    pub(crate) log_dirs: Option<String>,
     #[serde(default)]
     pub(crate) auto_truncate_logs: bool,
     #[serde(default = "default_log_max_truncate_mb")]
@@ -371,7 +379,7 @@ impl Default for GuardPolicy {
             trash_credential_guard: default_true(),
             monitor_logs: default_true(),
             log_size_mb: default_log_size_mb(),
-            log_dirs: default_log_dirs(),
+            log_dirs: None,
             auto_truncate_logs: false,
             log_max_truncate_mb: default_log_max_truncate_mb(),
             log_preserve_header_lines: 0,
@@ -815,8 +823,34 @@ fn default_log_max_truncate_mb() -> u64 {
     50
 }
 
-fn default_log_dirs() -> String {
-    String::new()
+/// Default directories scanned for oversized logs.
+///
+/// The guard's own state directory. Chosen over candidates like `/var/log`
+/// or the service's journal because:
+///   - it always exists on a machine running the daemon, so the check is not
+///     inert on a fresh install;
+///   - `dracon-system-guard.service` lists `%h/.local/state/dracon` in
+///     `ReadWritePaths`, so `auto_truncate_logs` can actually reclaim there,
+///     whereas `/var/log` fails EROFS under the shipped hardening;
+///   - it holds the guard's own event log, the one log whose growth the
+///     guard most needs to notice.
+pub(crate) fn default_log_dirs() -> String {
+    "~/.local/state/dracon".to_string()
+}
+
+/// Resolve the configured log directory list.
+///
+/// Returns the comma-separated list to scan, or `None` when log-size
+/// monitoring is explicitly disabled. `None` in (key absent) resolves to
+/// the default; `Some` holding only whitespace is the operator's explicit
+/// "off" and is honoured as such, so adding a default did not take away the
+/// ability to disable the check.
+pub(crate) fn effective_log_dirs(raw: &Option<String>) -> Option<String> {
+    match raw {
+        None => Some(default_log_dirs()),
+        Some(value) if value.trim().is_empty() => None,
+        Some(value) => Some(value.clone()),
+    }
 }
 
 pub(crate) fn default_node_modules_max_age_days() -> u64 {
