@@ -4465,22 +4465,20 @@ async fn check_memory_pressure(
                     continue;
                 }
                 ProcessIdentityStatus::Unavailable => {
-                    let attempts = state
-                        .oom_identity_unavailable_attempts
-                        .entry(pid)
-                        .or_insert(0);
-                    *attempts += 1;
-                    if *attempts >= IDENTITY_UNAVAILABLE_RETRY_LIMIT {
+                    if record_unavailable_attempt(&mut state.oom_identity_unavailable_attempts, pid)
+                    {
                         eprintln!(
                             "⚠️ oom-restore dropping pid={} after {} unavailable identity reads (will not retry)",
-                            pid, *attempts
+                            pid, IDENTITY_UNAVAILABLE_RETRY_LIMIT
                         );
                         state.oom_identity_unavailable_attempts.remove(&pid);
                         remove_oom_bias(state, pid);
                     } else {
                         eprintln!(
                             "⚠️ oom-restore deferred for pid={} — process identity unavailable (attempt {}/{})",
-                            pid, *attempts, IDENTITY_UNAVAILABLE_RETRY_LIMIT
+                            pid,
+                            state.oom_identity_unavailable_attempts.get(&pid).copied().unwrap_or(0),
+                            IDENTITY_UNAVAILABLE_RETRY_LIMIT
                         );
                     }
                     continue;
@@ -4525,22 +4523,20 @@ async fn check_memory_pressure(
                 ProcessIdentityStatus::Match | ProcessIdentityStatus::Gone => true,
                 ProcessIdentityStatus::Mismatch => false,
                 ProcessIdentityStatus::Unavailable => {
-                    let attempts = state
-                        .cap_identity_unavailable_attempts
-                        .entry(pid)
-                        .or_insert(0);
-                    *attempts += 1;
-                    if *attempts >= IDENTITY_UNAVAILABLE_RETRY_LIMIT {
+                    if record_unavailable_attempt(&mut state.cap_identity_unavailable_attempts, pid)
+                    {
                         eprintln!(
                             "⚠️ cpu-uncap dropping pid={} after {} unavailable identity reads (will not retry)",
-                            pid, *attempts
+                            pid, IDENTITY_UNAVAILABLE_RETRY_LIMIT
                         );
                         state.cap_identity_unavailable_attempts.remove(&pid);
                         remove_cpu_cap(state, pid);
                     } else {
                         eprintln!(
                             "⚠️ cpu-un cap deferred for pid={} — process identity unavailable (attempt {}/{})",
-                            pid, *attempts, IDENTITY_UNAVAILABLE_RETRY_LIMIT
+                            pid,
+                            state.cap_identity_unavailable_attempts.get(&pid).copied().unwrap_or(0),
+                            IDENTITY_UNAVAILABLE_RETRY_LIMIT
                         );
                     }
                     continue;
@@ -4697,6 +4693,15 @@ async fn check_memory_pressure(
 /// Exempt names are shared with the pressure mitigation on purpose: if a
 /// process is too important to renice under memory pressure, it is far too
 /// important to appear on a list of things that look abandoned.
+/// Record one unreadable-identity defer for `pid`. Returns true when the
+/// entry has exhausted IDENTITY_UNAVAILABLE_RETRY_LIMIT and the caller
+/// should drop it instead of retaining it forever.
+fn record_unavailable_attempt(attempts: &mut HashMap<i32, u32>, pid: i32) -> bool {
+    let n = attempts.entry(pid).or_insert(0);
+    *n += 1;
+    *n >= IDENTITY_UNAVAILABLE_RETRY_LIMIT
+}
+
 fn reap_policy_from_guard(guard: &GuardPolicy) -> ReapPolicy {
     ReapPolicy {
         min_idle_hours: guard.reap_report_min_idle_hours,
