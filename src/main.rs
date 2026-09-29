@@ -7218,6 +7218,56 @@ fn rotate_guard_log_for_policy_with_home(guard: &GuardPolicy, startup: bool, hom
     }
 }
 
+/// What a SIGHUP reload attempt did.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ReloadOutcome {
+    /// The new policy is live. Runtime state was cleanly reset, so nothing
+    /// from the previous policy is still in force.
+    Applied,
+    /// The new policy was NOT adopted. The previous policy stays live so its
+    /// mitigations remain armed and the leftover process adjustments are
+    /// retried on the next pass instead of being stranded.
+    Deferred,
+}
+
+/// Adopt a freshly loaded policy, or refuse to.
+///
+/// Bounded by design: this touches the policy and the in-memory runtime
+/// state, and nothing else. It performs no I/O, spawns nothing, and does not
+/// read the policy file, so the whole reload decision is testable in-process.
+///
+/// ADDED 2026-09-29 (DECIDE #2 follow-up): the reload previously swapped the
+/// policy UNCONDITIONALLY, before checking whether the pre-swap restore of
+/// process adjustments had fully succeeded. On a partial restore the leftover
+/// `runtime` entries describe adjustments made under the OLD policy, and
+/// pairing them with the new one can strand them permanently: if the new
+/// policy disables the mitigation that produced them — `auto_renice = false`
+/// or `auto_renice_on_memory = false` — nothing will ever retry the restore,
+/// and the process stays reniced for the lifetime of the daemon. Keeping the
+/// old policy is the safe failure mode: behaviour is exactly what it was
+/// before the SIGHUP, and the still-armed mitigation retries next pass.
+///
+/// `enabled = false` is always applied even after a partial restore: stopping
+/// is the safe direction, and the retained state is retried by the shutdown
+/// restore in the daemon loop before it returns.
+pub(crate) fn apply_policy_reload(
+    guard: &mut GuardPolicy,
+    runtime: &mut GuardRuntimeState,
+    new_policy: GuardPolicy,
+    adjustments_restored: bool,
+) -> ReloadOutcome {
+    let disabling = !new_policy.enabled;
+    if !adjustments_restored && !disabling {
+        return ReloadOutcome::Deferred;
+    }
+    *guard = new_policy;
+    normalize_guard_policy(guard);
+    if adjustments_restored {
+        *runtime = GuardRuntimeState::default();
+    }
+    ReloadOutcome::Applied
+}
+
 async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
     if !guard.enabled {
         println!("guard disabled in policy");
@@ -7303,14 +7353,22 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
                     // memory-renice, OOM-bias, and CPUQuota maps as well as
                     // the legacy heavy-process renice map.
                     let adjustments_restored = restore_runtime_adjustments(&mut runtime).await;
-                    *guard = new_policy.guard;
-                    normalize_guard_policy(guard);
-                    if adjustments_restored {
-                        runtime = GuardRuntimeState::default();
-                    } else {
+                    let outcome =
+                        apply_policy_reload(guard, &mut runtime, new_policy.guard, adjustments_restored);
+                    if outcome == ReloadOutcome::Deferred {
+                        // The previous policy stays live on purpose; see
+                        // apply_policy_reload for why adopting the new one
+                        // here could strand a process adjustment.
                         eprintln!(
-                            "⚠ SIGHUP retaining process-adjustment state after partial restore"
+                            "system: SIGHUP reload deferred: keeping previous policy so pending process adjustments are retried"
                         );
+                        emit_event(&DraconEvent::new(
+                            "system",
+                            EventSeverity::Warn,
+                            "guard/policy-reload",
+                            "SIGHUP reload deferred: process adjustments could not all be restored, previous policy kept".to_string(),
+                        ));
+                        continue;
                     }
                     interval = guard.interval_secs;
                     veprintln!(
