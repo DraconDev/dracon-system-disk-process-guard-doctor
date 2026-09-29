@@ -46,6 +46,26 @@
 #
 # Floats accept TOML `nan` and `inf` literals; those are scrubbed too, since
 # a NaN fails every comparison and would silently disable its own threshold.
+#
+# ---------------------------------------------------------------------------
+# UNKNOWN KEYS ARE REPORTED, NOT REJECTED
+# ---------------------------------------------------------------------------
+# A key this binary does not recognise — a typo, or a knob written under the
+# wrong table header — is IGNORED for behaviour but NAMED on stderr:
+#
+#   ⚠ policy: 2 unknown key(s) in ~/.dracon/.../dracon-system.toml ignored:
+#   guard.disk_warn_persent — did you mean disk_warn_percent?;
+#   storage.cleanup_min_size_mb — `cleanup_min_size_mb` belongs under [guard]
+#
+# The daemon still starts and still applies every key it does understand: a
+# stray key is a configuration mistake, not a reason to refuse to run a
+# monitoring service. What it must never be is silent — a misspelled knob
+# used to look configured and was ignored, which is how a tightened
+# threshold or a disabled cleanup stays in force for months.
+#
+# The accepted key list is derived from the policy structs themselves, so a
+# knob added to the binary is accepted here automatically; it is never a
+# hand-maintained list that can drift.
 # ===========================================================================
 #
 # NOTE: this example is intentionally stricter (more report-only) than the
