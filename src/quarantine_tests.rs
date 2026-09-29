@@ -278,3 +278,213 @@ fn quarantine_list_empty_root() {
     assert_eq!(list.total_bytes, 0);
     cleanup(&root);
 }
+
+// ---------------------------------------------------------------------------
+// DECIDE #3 re-examined (2026-09-29): the fail-safe is KEPT, but it is
+// no longer allowed to be silent, and there is a documented way out.
+//
+// The manifest is the only record of where an entry came from. Without it
+// the entry is unrestorable, so expiring it would turn "recoverable by hand"
+// into "gone". The quarantine root is written only by this daemon, so an
+// unreadable manifest is corruption or outside interference — not a routine
+// condition a TTL exists to bound — and a genuinely transient read error
+// resolves itself, after which the entry ages normally.
+//
+// The defect these tests close: the fail-safe was SILENT. `quarantine list`
+// showed origin "unknown" and `quarantine expire` said "No expired entries",
+// which is indistinguishable from a quarantine holding nothing.
+// ---------------------------------------------------------------------------
+
+/// Create an entry in the quarantine root, optionally with a broken manifest.
+fn raw_entry(root: &Path, name: &str, manifest: Option<&str>) -> PathBuf {
+    let dir = root.join(name);
+    fs::create_dir_all(dir.join("data")).unwrap();
+    fs::write(dir.join("data").join("file.bin"), vec![b'x'; 4096]).unwrap();
+    if let Some(text) = manifest {
+        fs::write(dir.join(crate::MANIFEST_NAME), text).unwrap();
+    }
+    dir
+}
+
+const GOOD_MANIFEST: &str =
+    r#"{"name":"e.1","origin":"/tmp/origin","moved_at_unix":1,"files":1,"bytes":4096}"#;
+
+#[test]
+fn an_unreadable_manifest_is_reported_as_pinned() {
+    let root = test_root("pin-visible");
+    let qdir = root.join("q");
+    raw_entry(&qdir, "good.1", Some(GOOD_MANIFEST));
+    raw_entry(&qdir, "broken.1", Some("{not json"));
+    raw_entry(&qdir, "missing.1", None);
+
+    let list = crate::quarantine_list(&qdir, 30).unwrap();
+
+    let pinned: Vec<&str> = list
+        .entries
+        .iter()
+        .filter(|e| e.pinned)
+        .map(|e| &e.name)
+        .collect();
+    assert_eq!(
+        pinned,
+        vec!["broken.1", "missing.1"],
+        "both a corrupt and an absent manifest must be visible as pinned"
+    );
+    assert!(list.pinned_bytes > 0, "pinned bytes must be reported");
+    assert_eq!(list.pinned.len(), 2);
+    for e in list.entries.iter().filter(|e| e.pinned) {
+        assert!(
+            e.pin_reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("purge"),
+            "the pin must tell the operator how to clear it, got {:?}",
+            e.pin_reason
+        );
+    }
+    // A healthy entry must NOT be flagged.
+    assert!(
+        !list
+            .entries
+            .iter()
+            .find(|e| e.name == "good.1")
+            .unwrap()
+            .pinned
+    );
+    cleanup(&root);
+}
+
+#[test]
+fn a_pinned_entry_is_never_expired() {
+    let root = test_root("pin-not-expired");
+    let qdir = root.join("q");
+    raw_entry(&qdir, "ancient-broken.1", Some("{{{ not json"));
+    // A TTL of 0 would expire everything, so use a live TTL; the entry is
+    // old only by absence of a manifest, which is exactly the case under
+    // test — the point is that no TTL path can reach it.
+    let removed = crate::quarantine_expire(&qdir, 30, true).unwrap();
+    assert!(
+        removed.is_empty(),
+        "an entry with an unreadable manifest must never be expired, got {removed:?}"
+    );
+    assert!(
+        qdir.join("ancient-broken.1").exists(),
+        "and must still be on disk"
+    );
+    cleanup(&root);
+}
+
+#[test]
+fn expire_zero_ttl_still_cannot_reach_a_pinned_entry() {
+    // ttl_days == 0 disables expiry entirely, so this asserts the
+    // fail-safe does not depend on the TTL being non-zero to hold.
+    let root = test_root("pin-ttl0");
+    let qdir = root.join("q");
+    raw_entry(&qdir, "broken.1", Some("nope"));
+    assert!(crate::quarantine_expire(&qdir, 0, true).unwrap().is_empty());
+    assert!(qdir.join("broken.1").exists());
+    cleanup(&root);
+}
+
+#[test]
+fn purge_dry_run_deletes_nothing_and_reports_the_cost() {
+    let root = test_root("purge-dry");
+    let qdir = root.join("q");
+    raw_entry(&qdir, "broken.1", Some("not json"));
+
+    let (contents, bytes, was_pinned) = crate::quarantine_purge(&qdir, "broken.1", false).unwrap();
+
+    assert!(was_pinned, "purge must report that the entry was pinned");
+    assert!(bytes > 0, "purge must report the size it would reclaim");
+    assert!(contents.contains("files"), "got {contents:?}");
+    assert!(
+        qdir.join("broken.1").exists(),
+        "a dry-run purge must never delete anything"
+    );
+    cleanup(&root);
+}
+
+#[test]
+fn purge_apply_removes_a_pinned_entry_that_restore_cannot() {
+    let root = test_root("purge-apply");
+    let qdir = root.join("q");
+    raw_entry(&qdir, "broken.1", Some("not json"));
+
+    // First prove the safe path really cannot handle it — that is why the
+    // escape hatch exists at all.
+    let restore_err = crate::quarantine_restore(&qdir, "broken.1").unwrap_err();
+    assert!(
+        format!("{restore_err:#}").contains("manifest"),
+        "restore must still refuse, got: {restore_err:#}"
+    );
+
+    let (_, bytes, was_pinned) = crate::quarantine_purge(&qdir, "broken.1", true).unwrap();
+    assert!(was_pinned && bytes > 0);
+    assert!(
+        !qdir.exists() || !qdir.join("broken.1").exists(),
+        "purge must remove it"
+    );
+    cleanup(&root);
+}
+
+#[test]
+fn purge_refuses_the_same_names_restore_refuses() {
+    // The escape hatch must not be the weakest link: it shares the
+    // containment check, so traversal is refused here too.
+    let root = test_root("purge-traversal");
+    let qdir = root.join("q");
+    fs::create_dir_all(&qdir).unwrap();
+    let outside = root.join("outside");
+    fs::create_dir_all(&outside).unwrap();
+
+    for bad in ["..", ".", "", "a/b", "a\\b", "../outside"] {
+        let err = crate::quarantine_purge(&qdir, bad, true).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("invalid quarantine entry name")
+                || format!("{err:#}").contains("no such quarantine entry"),
+            "purge must refuse {bad:?}, got: {err:#}"
+        );
+    }
+    assert!(outside.exists(), "nothing outside the root may be touched");
+    cleanup(&root);
+}
+
+#[test]
+fn purge_refuses_to_operate_through_a_symlinked_entry() {
+    let root = test_root("purge-symlink");
+    let qdir = root.join("q");
+    let victim = root.join("precious");
+    fs::create_dir_all(&victim).unwrap();
+    fs::write(victim.join("keep.txt"), b"keep").unwrap();
+    fs::create_dir_all(&qdir).unwrap();
+    std::os::unix::fs::symlink(&victim, qdir.join("sneaky")).unwrap();
+
+    let err = crate::quarantine_purge(&qdir, "sneaky", true).unwrap_err();
+    assert!(
+        format!("{err:#}").contains("symlink"),
+        "purge must refuse a symlinked entry, got: {err:#}"
+    );
+    assert!(
+        victim.join("keep.txt").exists(),
+        "the target must be untouched"
+    );
+    cleanup(&root);
+}
+
+#[test]
+fn purge_also_handles_a_healthy_entry() {
+    // The escape hatch is not only for corrupt entries; a normal entry past
+    // its TTL can be purged by name too, which is the same deliberate
+    // operator action with the same dry-run default.
+    let root = test_root("purge-healthy");
+    let qdir = root.join("q");
+    raw_entry(&qdir, "ok.1", Some(GOOD_MANIFEST));
+
+    let (_, bytes, was_pinned) = crate::quarantine_purge(&qdir, "ok.1", false).unwrap();
+    assert!(!was_pinned, "a healthy entry is not pinned");
+    assert!(bytes > 0);
+    assert!(qdir.join("ok.1").exists(), "dry run keeps it");
+    crate::quarantine_purge(&qdir, "ok.1", true).unwrap();
+    assert!(!qdir.join("ok.1").exists());
+    cleanup(&root);
+}

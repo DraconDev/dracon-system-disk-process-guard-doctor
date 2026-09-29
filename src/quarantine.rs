@@ -345,7 +345,11 @@ pub(crate) fn resolve_entry_dir(root: &Path, name: &str) -> Result<PathBuf> {
 ///
 /// Dry-run unless `apply`, and it reports the size it would reclaim so the
 /// operator sees what they are about to give up before giving it up.
-pub(crate) fn quarantine_purge(root: &Path, name: &str, apply: bool) -> Result<(String, u64, bool)> {
+pub(crate) fn quarantine_purge(
+    root: &Path,
+    name: &str,
+    apply: bool,
+) -> Result<(String, u64, bool)> {
     let entry_dir = resolve_entry_dir(root, name)?;
     let (files, bytes) = walk_stats(&entry_dir);
     let pinned = read_manifest(&entry_dir).is_none();
@@ -540,7 +544,11 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
                     println!(
                         "⚠ {} entr{} pinned by the fail-safe ({}): {PIN_REASON}",
                         list.pinned.len(),
-                        if list.pinned.len() == 1 { "y is" } else { "ies are" },
+                        if list.pinned.len() == 1 {
+                            "y is"
+                        } else {
+                            "ies are"
+                        },
                         human_bytes(list.pinned_bytes)
                     );
                     println!("   {}", list.pinned.join(", "));
