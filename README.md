@@ -293,6 +293,8 @@ dracon-system quarantine move ~/Dev/stale-stuff --apply
 dracon-system quarantine list
 dracon-system quarantine restore stale-stuff.1729958400000000000
 dracon-system quarantine expire --apply
+# Operator escape hatch for one entry the fail-safe is holding
+dracon-system quarantine purge stale-stuff.1729958400000000000 --apply
 
 # Check space-tier setup readiness (cold root, quarantine, mounts)
 dracon-system setup
