@@ -544,3 +544,99 @@ fn extra_mounts_default_is_empty_so_no_mount_is_visibility_only_by_default() {
     // named.
     assert!(parse_extra_mounts(&GuardPolicy::default().disk_extra_mounts).is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// clean_old_node_modules — 130 lines that DELETE directories, and which had
+// no coverage at all before the 0.112.42 release review. Only the two
+// properties that can lose data are asserted here: a dry run must be inert,
+// and a protected path must survive regardless of the quarantine flag.
+// ---------------------------------------------------------------------------
+
+/// Build a node_modules tree whose directory mtime is `age_days` old, so
+/// the age filter selects it deterministically.
+fn aged_node_modules(root: &Path, age_days: u64) -> PathBuf {
+    let nm = root.join("proj").join("node_modules");
+    std::fs::create_dir_all(nm.join("pkg")).unwrap();
+    std::fs::write(nm.join("pkg").join("index.js"), vec![b'j'; 2048]).unwrap();
+    filetime_set(&nm.join("pkg"), age_days);
+    filetime_set(&nm, age_days);
+    filetime_set(&nm.parent().unwrap(), age_days);
+    nm
+}
+
+#[tokio::test]
+async fn node_modules_dry_run_deletes_nothing_and_leaves_the_tree_intact() {
+    // The single most important property: without `apply` the whole function
+    // is a report. A regression here would make a read-only inspection
+    // destructive.
+    let root = test_root("nm-dry");
+    let nm = aged_node_modules(&root, 90);
+    let quarantine = root.join("quarantine");
+    std::fs::create_dir_all(&quarantine).unwrap();
+    assert!(nm.exists(), "fixture must exist before the run");
+
+    let (_, cleaned) = clean_old_node_modules(&[root.clone()], 30, false, &[], false, &quarantine)
+        .await
+        .expect("dry run must not error");
+
+    assert!(
+        !cleaned.is_empty(),
+        "a dry run must still report candidates"
+    );
+    assert!(nm.exists(), "dry run must not delete anything");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test]
+async fn node_modules_quarantine_first_dry_run_also_deletes_nothing() {
+    // The quarantine flag must not turn a dry run into a move.
+    let root = test_root("nm-dry-quarantine");
+    let nm = aged_node_modules(&root, 90);
+    let quarantine = root.join("quarantine");
+    std::fs::create_dir_all(&quarantine).unwrap();
+
+    let (_, cleaned) = clean_old_node_modules(&[root.clone()], 30, false, &[], true, &quarantine)
+        .await
+        .expect("dry run must not error");
+
+    assert!(!cleaned.is_empty(), "must still report candidates");
+    assert!(
+        nm.exists(),
+        "quarantine-first dry run must not move anything"
+    );
+    let entries: Vec<_> = std::fs::read_dir(&quarantine).unwrap().collect();
+    assert!(
+        entries.is_empty(),
+        "nothing may be written to the quarantine root on a dry run"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test]
+async fn node_modules_protected_path_survives_a_real_apply() {
+    // `protected_paths` must be honoured on the apply path, which is the
+    // only path that deletes or moves anything.
+    let root = test_root("nm-protected");
+    let nm = aged_node_modules(&root, 90);
+    let protected = root.join("proj");
+    let quarantine = root.join("quarantine");
+    std::fs::create_dir_all(&quarantine).unwrap();
+    let protected_str = protected.to_string_lossy().to_string();
+
+    clean_old_node_modules(
+        &[root.clone()],
+        30,
+        true,
+        std::slice::from_ref(&protected_str),
+        false,
+        &quarantine,
+    )
+    .await
+    .expect("apply must not error");
+
+    assert!(
+        nm.exists(),
+        "a node_modules under a protected path must never be deleted"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
