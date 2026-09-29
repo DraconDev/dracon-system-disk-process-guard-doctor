@@ -6286,6 +6286,17 @@ fn exit_status_for_error(error: &anyhow::Error) -> i32 {
     }
 }
 
+/// Load the operator policy, already normalized.
+///
+/// ADDED 2026-09-29 (queued audit follow-up, DECIDE #8): normalization runs
+/// HERE, at the load boundary, rather than at each consumer. Nine of the
+/// eleven `load_system_policy` call sites (setup.rs, links.rs, quarantine.rs,
+/// relocate.rs, the link-drift check, the storage default-root lookup) never
+/// called `normalize_guard_policy`, so an out-of-range threshold reached those
+/// subsystems RAW — `quarantine_ttl_days`, `storage.min_size_mb` and the
+/// relocate size/age/move-count knobs had no enforcement at all on that path.
+/// Normalizing once here makes every consumer in-range by construction, so a
+/// new call site cannot reintroduce the gap by forgetting to normalize.
 pub(crate) fn load_system_policy() -> Result<(Option<PathBuf>, SystemPolicy)> {
     let Some(path) = resolve_system_policy_path()? else {
         return Ok((None, SystemPolicy::default()));
@@ -6302,6 +6313,8 @@ pub(crate) fn load_system_policy() -> Result<(Option<PathBuf>, SystemPolicy)> {
         .map_err(|e| anyhow::anyhow!("failed to read {}: {}", path.display(), e))?;
     let parsed: SystemPolicy = toml::from_str(&content)
         .map_err(|e| anyhow::anyhow!("failed to parse {}: {}", path.display(), e))?;
+    let mut parsed = parsed;
+    parsed.normalize();
     Ok((Some(path), parsed))
 }
 
@@ -6342,61 +6355,6 @@ async fn build_status_report() -> Result<StatusReport> {
         system_policy_exists: system_policy_path.exists(),
         sync_service_active: is_user_service_active("dracon-sync.service").await,
     })
-}
-
-pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) {
-    policy.interval_secs = policy.interval_secs.max(5);
-    policy.disk_warn_percent = policy.disk_warn_percent.clamp(1, 100);
-    // ADDED 2026-09-09 (audit F43): an early-warn above warn made the
-    // early band (`used >= early && used < warn`) permanently empty —
-    // the operator's early-warning config silently did nothing.
-    policy.disk_early_warn_percent = policy.disk_early_warn_percent.min(policy.disk_warn_percent);
-    policy.disk_action_percent = policy
-        .disk_action_percent
-        .max(policy.disk_warn_percent)
-        .min(100);
-    policy.disk_critical_percent = policy
-        .disk_critical_percent
-        .max(policy.disk_action_percent)
-        .min(100);
-    policy.proactive_cleanup_percent = policy
-        .proactive_cleanup_percent
-        .min(policy.disk_action_percent.saturating_sub(1));
-    policy.unfreeze_below_percent = policy
-        .unfreeze_below_percent
-        .min(policy.disk_action_percent.saturating_sub(1));
-    policy.process_cpu_percent = policy.process_cpu_percent.max(1.0);
-    policy.process_rss_mb = policy.process_rss_mb.max(64);
-    policy.process_sustain_secs = policy.process_sustain_secs.max(5);
-    policy.process_stuck_after_secs = policy
-        .process_stuck_after_secs
-        .max(policy.process_sustain_secs);
-    policy.mem_available_warn_percent = policy.mem_available_warn_percent.clamp(1, 100);
-    policy.swap_used_warn_percent = policy.swap_used_warn_percent.clamp(1, 100);
-    policy.memory_pressure_sustain_secs = policy.memory_pressure_sustain_secs.max(30);
-    policy.report_repeat_secs = policy.report_repeat_secs.max(60);
-    policy.auto_cleanup_interval_secs = policy.auto_cleanup_interval_secs.max(60);
-    // systemd CPUQuota accepts values above 100%, but this knob is a cap
-    // expressed as a percentage of one CPU. Keep invalid values from
-    // reaching the per-pass cap loop, where they would fail and retry for
-    // every offender on every interval.
-    policy.cap_offenders_cpu_percent = policy.cap_offenders_cpu_percent.min(100);
-    policy.mem_psi_full_warn = policy.mem_psi_full_warn.max(0.0);
-    policy.disk_rapid_fill_gbph = policy.disk_rapid_fill_gbph.max(0.5);
-    policy.notify_cooldown_secs = policy.notify_cooldown_secs.max(5);
-    policy.rust_target_max_age_days = policy.rust_target_max_age_days.max(1);
-    policy.proactive_cleanup_interval_cycles = policy.proactive_cleanup_interval_cycles.max(1);
-    if policy.sync_freeze_marker.trim().is_empty() {
-        policy.sync_freeze_marker = default_sync_freeze_marker();
-    }
-    if policy.quarantine_dir.trim().is_empty() {
-        policy.quarantine_dir = default_quarantine_dir();
-    }
-    policy.relocate_min_size_mb = policy.relocate_min_size_mb.max(1);
-    policy.relocate_max_moves_per_pass = policy.relocate_max_moves_per_pass.max(1);
-    if policy.notify_command.trim().is_empty() {
-        policy.notify_command = default_notify_command();
-    }
 }
 
 async fn is_git_tracked_dir(path: &Path) -> Result<bool> {
