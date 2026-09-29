@@ -30,6 +30,9 @@ disk_critical_percent = 92
 # Report disk pressure without pausing dracon-sync.
 # Automatic synchronization freezes are intentionally disabled by default.
 freeze_sync_at_action = false
+# Marker file the guard creates while frozen (default
+# ~/.dracon/dracon-sync.freeze). dracon-sync watches this path.
+# sync_freeze_marker = "~/.dracon/dracon-sync.freeze"
 
 # Unfreeze sync when disk drops below this level (set to ~warn_percent)
 unfreeze_below_percent = 70
@@ -161,6 +164,14 @@ clean_tmp = false
 # trash_credential_guard = true
 # Stuck-process threshold (default 600s; must be >= process_sustain_secs).
 # process_stuck_after_secs = 600
+# Report-only abandoned dev/test process worklist (never signals or kills;
+# see reap.rs). A process is listed only when ALL hold: sleeping, no
+# controlling terminal, lifetime CPU under the ceiling, older than the
+# idle floor, command line matches a signature, not in
+# process_exempt_names above.
+# reap_report_min_idle_hours = 24
+# reap_report_max_cpu_seconds = 60
+# reap_report_signatures = "eve web,vite,playwright,chromium,bun run,bun test,npm run test,.mjs,litestream,stub-auth-api"
 # Rapid-fill trip rate in GiB/hour (default 20.0).
 # disk_rapid_fill_gbph = 20.0
 # Rust target age gates (2026-09-14: action tier used to delete ANY target
@@ -204,3 +215,16 @@ trend_warn_hours = 24
 # relocate_min_size_mb = 2048
 # relocate_min_age_days = 14
 # relocate_max_moves_per_pass = 3
+
+# Storage hotspot analysis (`storage` command). default_root is scanned
+# when no root argument is passed; kinds selects hotspot classes.
+# [storage]
+# default_root = "/home/dracon/Dev"
+# min_size_mb = 512
+# kinds = "rust-build,node-deps,build-output,cache"
+
+# Managed symlinks (`link status` / `link apply`). Each entry keeps the
+# link path pointed at its target, repairing drift.
+# [[links.entries]]
+# link = "/home/dracon/Dev/dracon-strategy/ai-auto-video/example_output"
+# target = "/mnt/data/cold/example_output"
