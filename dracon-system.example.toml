@@ -291,6 +291,19 @@ trend_warn_hours = 24
 # quarantine_dir = "~/.local/share/dracon/quarantine"
 # Quarantine TTL in days; `expire` deletes older entries, 0 disables expiry.
 # quarantine_ttl_days = 30
+#
+# Every entry carries a `.quarantine.json` manifest recording where it came
+# from. An entry whose manifest cannot be read is NEVER expired, at any TTL
+# and never with --apply: without the manifest there is no record of where it
+# went, so deleting it turns "held, recoverable by hand" into "gone". The
+# quarantine root is written only by the guard, so an unreadable manifest
+# means corruption, not a routine condition a TTL should bound; a genuinely
+# transient read error clears itself and the entry then ages normally.
+# Such entries are marked PINNED in `quarantine list`, counted in
+# `quarantine expire`, and carried in the --json `pinned` array — the pin is
+# never silent. The operator escape hatch is
+# `quarantine purge <name> --apply` for ONE entry they have inspected; it is
+# never a bulk sweep of everything unreadable.
 
 # ADDED 2026-09-27 (space tiers, Phase 2): daemon rust-target and
 # node_modules cleanup moves candidates to quarantine instead of deleting.
