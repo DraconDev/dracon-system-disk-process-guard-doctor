@@ -210,8 +210,16 @@ fn unit_text() -> String {
 
 /// Without an ExecReload, `systemctl --user reload` has no handler, so the
 /// documented SIGHUP reload path is unreachable through the service manager.
+///
+/// The command's absolute path is checked for existence AND the executable
+/// bit, not just for the string "HUP". A string-only assertion passes on a
+/// directive that systemd cannot run: `ExecReload=/bin/kill -HUP $MAINPID`
+/// contains both required tokens and still fails with 203/EXEC on NixOS,
+/// where /bin holds only `sh`.
 #[test]
 fn shipped_unit_wires_execreload_to_sighup() {
+    use std::os::unix::fs::PermissionsExt;
+
     let unit = unit_text();
     let exec_reload = unit
         .lines()
@@ -222,9 +230,25 @@ fn shipped_unit_wires_execreload_to_sighup() {
                  has no handler:\n{unit}"
             )
         });
+    let value = exec_reload.trim_start_matches("ExecReload=").trim();
     assert!(
-        exec_reload.contains("HUP") && exec_reload.contains("$MAINPID"),
-        "ExecReload must signal the daemon's main PID: got {exec_reload:?}"
+        value.contains("HUP") && value.contains("$MAINPID"),
+        "ExecReload must signal the daemon's main PID: got {value:?}"
+    );
+
+    // The first token is the program systemd must exec.
+    let program = value.split_whitespace().next().unwrap_or_default();
+    assert!(
+        program.starts_with('/'),
+        "ExecReload must use an absolute program path (systemd will not resolve a bare \
+         name), got {program:?}"
+    );
+    let path = Path::new(program);
+    let meta = fs::metadata(path)
+        .unwrap_or_else(|e| panic!("ExecReload program {program} does not exist: {e}"));
+    assert!(
+        meta.is_file() && meta.permissions().mode() & 0o111 != 0,
+        "ExecReload program {program} is not executable, so the reload would fail with 203/EXEC"
     );
 }
 
