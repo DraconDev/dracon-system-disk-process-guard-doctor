@@ -257,18 +257,7 @@ pub(crate) fn quarantine_list(root: &Path, ttl_days: u64) -> Result<QuarantineLi
                     let exp = ttl_days > 0 && age > ttl_days;
                     (m.origin.clone(), Some(m.moved_at_unix), Some(age), exp)
                 }
-                None => {
-                    // MUTATION B: realistic declined B-side - age a manifest-less
-                    // entry by its directory mtime and expire it on the TTL.
-                    let mv = fs::metadata(&path)
-                        .ok()
-                        .and_then(|m| m.modified().ok())
-                        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                        .map(|d| d.as_secs());
-                    let age = mv.map(|v| now.saturating_sub(v) / 86_400);
-                    let exp = ttl_days > 0 && age.is_some_and(|a| a > ttl_days);
-                    ("unknown".to_string(), None, age, exp)
-                }
+                None => ("unknown".to_string(), None, None, false),
             };
             let is_pinned = manifest.is_none();
             total_bytes += bytes;
@@ -577,10 +566,12 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
             }
         }
         QuarantineCommands::Expire { apply, json } => {
-            let expired = quarantine_expire(&root, ttl, apply)?;
-            // Count what the fail-safe is holding so "No expired entries"
-            // cannot be read as "nothing is being kept".
+            // Captured BEFORE the expiry runs. After an --apply the entries
+            // are gone, so re-listing would report an empty pinned set and
+            // the warning would be suppressed by the very deletion it is
+            // warning about.
             let pinned = quarantine_list(&root, ttl)?.pinned;
+            let expired = quarantine_expire(&root, ttl, apply)?;
             if json {
                 println!(
                     "{}",
