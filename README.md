@@ -116,6 +116,41 @@ defaults are 70/80/90/95 — see Configuration.)
   than skipped silently, so a wrong path cannot be mistaken for the check
   being disabled.
 
+### Reloading Configuration (SIGHUP)
+
+`systemctl --user reload dracon-system-guard.service` (or `kill -HUP <pid>`)
+re-reads the policy and applies it. The reload is **bounded**: it replaces
+the policy and the in-memory runtime state, and does nothing else — it
+performs no I/O of its own, spawns nothing, and never re-registers signal
+handlers. The policy file itself is re-read by the daemon on every pass
+anyway, so a SIGHUP is for *when you want it to take effect at a known
+point*, not for freshness.
+
+**Reloaded on SIGHUP** — every `[guard]` setting, including `interval_secs`,
+all disk thresholds, the cleanup and quarantine toggles, the log and
+notification settings, and `disk_extra_mounts`. `links` entries are read
+fresh each pass. Setting `enabled = false` stops the guard, which is the
+documented way to stop it without a restart.
+
+**Requires a restart** — the daemon lock (a process-level resource, acquired
+once at startup), the signal handlers, and the one-shot startup log rotation.
+
+**A reload that cannot complete cleanly is refused, not half-applied.** The
+daemon first restores any process adjustments it still has outstanding
+(renice, OOM bias, CPU caps). If that restore only partly succeeds, the new
+policy is **not** adopted: the previous policy stays live, so its mitigations
+remain armed and the outstanding adjustment is retried on the next pass
+instead of being stranded. This matters because the two halves describe
+different worlds — the leftover adjustment was made under the old policy, and
+if the new policy disabled the mitigation that made it, nothing would ever
+retry the restore and the process would stay reniced for the life of the
+daemon. The only exception is `enabled = false`, which is always applied:
+stopping is the safe direction, and the retained state is retried during
+shutdown.
+
+A reload is also refused, with the previous policy kept, if the policy file
+has become corrupt or unreadable.
+
 ## Installation
 
 ### Quick Install (User Service)
@@ -279,6 +314,11 @@ systemctl --user start dracon-system-guard
 
 # Check status
 systemctl --user status dracon-system-guard
+
+# Re-read the policy and apply it (every [guard] setting, including
+# interval_secs and the thresholds; a partly-failed restore refuses the
+# reload and keeps the previous policy — see "Reloading Configuration")
+systemctl --user reload dracon-system-guard
 
 # View logs
 journalctl --user -u dracon-system-guard -f
