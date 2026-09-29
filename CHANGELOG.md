@@ -358,7 +358,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after the sustain window plus this many seconds is reported as
   "POSSIBLY STUCK" (e.g. the 4 svelte-check processes at ~285% CPU
   holding 6 GiB that never finished). Notification only; no auto-kill.
-- **Zombie process detail** (`zombie_details`): zombies are now
+- **Zombie process detail**: zombies are now
   enumerated per-pid with comm, ppid, parent command, whether the
   parent is still alive, and time since first seen in Z state; the
   report and notification include the oldest offenders instead of a
