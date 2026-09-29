@@ -37,3 +37,17 @@
 - [x] FIX: MEDIUM: restore copy-fallback copies the manifest into the restored origin and never removes it — rename path cleans origin.join(MANIFEST_NAME), copy path leaves a stray manifest (src/quarantine.rs) — fixed in 845f2bb
 - [x] FIX: MEDIUM: expire still batch-aborts on escaped-root entries — the skip-and-collect fix covered vanished dirs only; the parent-containment bail discards already-collected removals (src/quarantine.rs) — fixed in e36c16d
 - [x] FIX: MEDIUM: resolve_bin falls back to bare PATH-relative names off-NixOS — the renice/systemctl hardening does not hold where store paths miss (src/main.rs) — fixed in b2238c3
+# --- DECIDE ratification, raised per-finding via ask_user_question (2026-09-29) ---
+# The 8 DECIDED lines above were committed during the pass BEFORE they were
+# raised to the operator — wrong process. They are re-raised here, one question
+# per finding; the operator ratified all eight AS COMMITTED. No reverts, and no
+# new in-pass work was chosen. The declined B-side of each is queued for a
+# later pass rather than done now.
+- [x] DECIDED (ratified 2026-09-29): #1 notify_command stays single-path, no-flags limit documented — ratified as committed (b7acd49)
+- [x] DECIDED (ratified 2026-09-29): #2 SIGHUP keeps the full runtime, no reload path — ratified as-is (no code change)
+- [x] DECIDED (ratified 2026-09-29): #3 quarantine expiry keeps the fail-safe on an unreadable manifest — ratified as-is (no code change)
+- [x] DECIDED (ratified 2026-09-29): #4 empty log_dirs = monitoring disabled, documented opt-in — ratified as committed (b7acd49)
+- [x] DECIDED (ratified 2026-09-29): #5 README space-tier sections marked (unreleased) — ratified as committed (b7acd49)
+- [x] DECIDED (ratified 2026-09-29): #6 dead print.rs helpers stay deleted — ratified as committed (320f29b)
+- [x] DECIDED (ratified 2026-09-29): #7 dracon-code stays in the code-default exempt list — ratified as committed (c58acb4)
+- [x] DECIDED (ratified 2026-09-29): #8 legal ranges documented in the example template, no code clamps — ratified as committed (7b9551d, b7acd49)
