@@ -685,10 +685,16 @@ fn runs_of_whitespace_separate_words() {
 }
 
 #[test]
-fn a_path_containing_spaces_stays_one_program() {
-    let cmd = NotifyCommand::parse("/opt/my notifier/bin/notify").expect("must parse");
-    assert_eq!(cmd.program, "/opt/my notifier/bin/notify");
-    assert!(cmd.args.is_empty());
+fn a_quoted_path_containing_spaces_stays_one_program() {
+    // Unquoted spaces split (as in any shell); quoting is how a path with
+    // a space is expressed.
+    let split = NotifyCommand::parse("/opt/my notifier/bin/notify").expect("must parse");
+    assert_eq!(split.program, "/opt/my");
+    assert_eq!(split.args, vec!["notifier/bin/notify"]);
+
+    let quoted = NotifyCommand::parse("\"/opt/my notifier/bin/notify\"").expect("must parse");
+    assert_eq!(quoted.program, "/opt/my notifier/bin/notify");
+    assert!(quoted.args.is_empty());
 }
 
 // --- quoting ---

@@ -107,8 +107,21 @@ release_after_secs = 120     # Un-renice after 2 min of being non-heavy.
 
 # Notifications
 # notify_command must be an absolute path (e.g. /usr/bin/notify-send).
-# Flags are not supported: a value with arguments silently fails to exec.
-# For security, shell commands like "sh -c ..." are not allowed.
+# Arguments are supported, so `notify-send -u critical` works without a
+# wrapper script. The value is split into a program and an argv array and
+# executed directly — no shell is involved, so `;`, `|`, `$(...)`, backticks
+# and globs are inert characters, never syntax. Quoting follows shell rules
+# (single quotes, double quotes, backslash escapes); an unterminated quote is
+# rejected rather than mis-parsed. The notification title and body are
+# appended after your arguments, which is the order notifiers expect.
+# The program may not be a shell, a privilege escalator, or an argument
+# pass-through wrapper — `sh`, `bash`, `dash`, `zsh`, `ksh`, `csh`, `fish`,
+# `busybox`, `sudo`, `su`, `doas`, `pkexec`, `env`, `xargs`, `nohup`,
+# `setsid`, `nice`, `ionice`, `timeout`, `watch`, `systemd-run` and friends
+# are refused. This is not new policy: before argument support existed the
+# whole string was used as one path, so `sh -c ...` failed only because that
+# string was not a file. Point notify_command at a notifier binary.
+# Enforcement: `NotifyCommand::parse` in src/policy.rs.
 notify = true
 notify_command = "/usr/bin/notify-send"
 notify_cooldown_secs = 300
