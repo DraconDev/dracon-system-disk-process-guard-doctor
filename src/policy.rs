@@ -564,14 +564,39 @@ pub(crate) fn default_notify_command() -> String {
 /// component so `/bin/sh` and `/usr/bin/bash` are both caught.
 pub(crate) const NOTIFY_FORBIDDEN_PROGRAMS: &[&str] = &[
     // Shells: the classic path from "run a notifier" to "run anything".
-    "sh", "bash", "dash", "zsh", "ksh", "mksh", "csh", "tcsh", "fish", "ash", "busybox",
+    "sh",
+    "bash",
+    "dash",
+    "zsh",
+    "ksh",
+    "mksh",
+    "csh",
+    "tcsh",
+    "fish",
+    "ash",
+    "busybox",
     // Privilege escalation: the guard already runs unprivileged; a notifier
     // has no business changing that.
-    "sudo", "su", "doas", "pkexec", "setuidgid",
+    "sudo",
+    "su",
+    "doas",
+    "pkexec",
+    "setuidgid",
     // Argument pass-through wrappers: these re-interpret argv as a command,
     // which is precisely the capability being denied.
-    "env", "xargs", "nohup", "setsid", "nice", "ionice", "timeout", "watch", "stdbuf",
-    "systemd-run", "flatpak-run", "chroot", "unshare",
+    "env",
+    "xargs",
+    "nohup",
+    "setsid",
+    "nice",
+    "ionice",
+    "timeout",
+    "watch",
+    "stdbuf",
+    "systemd-run",
+    "flatpak-run",
+    "chroot",
+    "unshare",
 ];
 
 /// A validated `notify_command`: an absolute program path plus its arguments.

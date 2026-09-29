@@ -640,3 +640,214 @@ fn shipped_example_template_is_already_legal() {
          either fix the example or widen the range in normalize_guard_policy"
     );
 }
+
+// ---------------------------------------------------------------------------
+// notify_command parsing
+// ---------------------------------------------------------------------------
+
+// --- multi-arg values ---
+
+#[test]
+fn plain_path_is_a_program_with_no_arguments() {
+    let cmd = NotifyCommand::parse("/usr/bin/notify-send").expect("must parse");
+    assert_eq!(cmd.program, "/usr/bin/notify-send");
+    assert!(
+        cmd.args.is_empty(),
+        "backwards compatibility: no args expected"
+    );
+}
+
+#[test]
+fn notify_send_urgency_flag_parses_into_two_arguments() {
+    // The case that previously "silently failed to exec" and forced a
+    // wrapper script.
+    let cmd = NotifyCommand::parse("/usr/bin/notify-send -u critical").expect("must parse");
+    assert_eq!(cmd.program, "/usr/bin/notify-send");
+    assert_eq!(cmd.args, vec!["-u", "critical"]);
+}
+
+#[test]
+fn multiple_flags_and_an_equals_style_value_parse() {
+    let cmd = NotifyCommand::parse("/usr/bin/notify-send -u critical -i /tmp/icon.png -t 5s")
+        .expect("must parse");
+    assert_eq!(
+        cmd.args,
+        vec!["-u", "critical", "-i", "/tmp/icon.png", "-t", "5s"]
+    );
+}
+
+#[test]
+fn runs_of_whitespace_separate_words() {
+    let cmd =
+        NotifyCommand::parse("  /usr/bin/notify-send \t -u   critical  ").expect("must parse");
+    assert_eq!(cmd.program, "/usr/bin/notify-send");
+    assert_eq!(cmd.args, vec!["-u", "critical"]);
+}
+
+#[test]
+fn a_path_containing_spaces_stays_one_program() {
+    let cmd = NotifyCommand::parse("/opt/my notifier/bin/notify").expect("must parse");
+    assert_eq!(cmd.program, "/opt/my notifier/bin/notify");
+    assert!(cmd.args.is_empty());
+}
+
+// --- quoting ---
+
+#[test]
+fn single_quotes_preserve_spaces() {
+    let cmd = NotifyCommand::parse("/usr/bin/notify-send -t 'my title'").expect("must parse");
+    assert_eq!(cmd.args, vec!["-t", "my title"]);
+}
+
+#[test]
+fn double_quotes_preserve_spaces() {
+    let cmd = NotifyCommand::parse("/usr/bin/notify-send -t \"my title\"").expect("must parse");
+    assert_eq!(cmd.args, vec!["-t", "my title"]);
+}
+
+#[test]
+fn quoted_empty_string_is_an_empty_argument_not_a_missing_one() {
+    let cmd = NotifyCommand::parse("/usr/bin/notify-send -a '' -b \"\"").expect("must parse");
+    assert_eq!(cmd.args, vec!["-a", "", "-b", ""]);
+}
+
+#[test]
+fn quotes_concatenate_with_adjacent_unquoted_text() {
+    let cmd =
+        NotifyCommand::parse("/usr/bin/notify-send -t pre'fix '\"-suf\"fix").expect("must parse");
+    assert_eq!(cmd.args, vec!["-t", "prefix -suffix"]);
+}
+
+#[test]
+fn backslash_escapes_the_next_character() {
+    let cmd = NotifyCommand::parse("/usr/bin/notify-send -t my\\ title").expect("must parse");
+    assert_eq!(cmd.args, vec!["-t", "my title"]);
+}
+
+#[test]
+fn backslash_inside_double_quotes_only_escapes_the_posix_set() {
+    // "a\"b" -> a"b
+    let cmd = NotifyCommand::parse(r#"/usr/bin/notify-send -t "a\"b""#).expect("must parse");
+    assert_eq!(cmd.args, vec!["-t", "a\"b"]);
+    // POSIX keeps a backslash that does not precede " \ $ ` inside double
+    // quotes, so "\n" is two characters.
+    let cmd = NotifyCommand::parse(r#"/usr/bin/notify-send -t "a\nb""#).expect("must parse");
+    assert_eq!(cmd.args, vec!["-t", "a\\nb"]);
+}
+
+#[test]
+fn single_quotes_are_literal_including_backslashes() {
+    let cmd = NotifyCommand::parse(r#"/usr/bin/notify-send -t 'a\b'"#).expect("must parse");
+    assert_eq!(cmd.args, vec!["-t", "a\\b"]);
+}
+
+#[test]
+fn unterminated_quotes_are_an_error() {
+    for bad in [
+        "/usr/bin/notify-send -t 'oops",
+        "/usr/bin/notify-send -t \"oops",
+        "/usr/bin/notify-send -t oops\\",
+    ] {
+        assert!(
+            NotifyCommand::parse(bad).is_err(),
+            "{bad} must be rejected rather than silently mis-parsed"
+        );
+    }
+}
+
+// --- no shell: metacharacters are inert argv, never syntax ---
+
+#[test]
+fn shell_metacharacters_are_inert_arguments_not_syntax() {
+    let cmd = NotifyCommand::parse(
+        "/usr/bin/notify-send -t 'a; rm -rf /' -b '$(whoami)' -i `id` && echo pwned",
+    )
+    .expect("must parse");
+    // They are passed through verbatim as argv entries. Nothing is expanded
+    // and nothing is executed: Command::new execs the program directly.
+    assert_eq!(
+        cmd.args,
+        vec![
+            "-t",
+            "a; rm -rf /",
+            "-b",
+            "$(whoami)",
+            "-i",
+            "`id`",
+            "&&",
+            "echo",
+            "pwned",
+        ]
+    );
+    assert_eq!(cmd.program, "/usr/bin/notify-send");
+}
+
+// --- the security boundary arg support would otherwise have removed ---
+
+#[test]
+fn a_relative_program_is_rejected() {
+    for bad in ["notify-send -u critical", "./notify-send", "sh -c ls"] {
+        let err = NotifyCommand::parse(bad).expect_err("must reject");
+        assert!(
+            err.contains("absolute path"),
+            "{bad} should be rejected for being relative, got: {err}"
+        );
+    }
+}
+
+#[test]
+fn shell_and_privilege_programs_are_rejected() {
+    for bad in [
+        "/bin/sh -c 'curl evil.example'",
+        "/usr/bin/bash -c ls",
+        "/bin/dash",
+        "/usr/bin/zsh -c ls",
+        "/usr/bin/fish",
+        "/bin/busybox sh",
+        "/usr/bin/sudo /usr/bin/notify-send",
+        "/bin/su - root",
+        "/usr/bin/doas notify-send",
+        "/usr/bin/env FOO=1 /usr/bin/notify-send",
+        "/usr/bin/xargs notify-send",
+        "/usr/bin/systemd-run notify-send",
+    ] {
+        let err = NotifyCommand::parse(bad).expect_err("must reject");
+        assert!(
+            err.contains("may not use"),
+            "{bad} must be refused as a shell/escalator, got: {err}"
+        );
+    }
+}
+
+#[test]
+fn the_forbidden_list_matches_on_the_file_name_not_the_full_path() {
+    // The same shell under different prefixes must all be caught.
+    for path in [
+        "/bin/sh",
+        "/usr/bin/sh",
+        "/usr/local/bin/bash",
+        "/nix/store/x/bin/zsh",
+    ] {
+        let err = NotifyCommand::parse(path).expect_err("must reject");
+        assert!(err.contains("may not use"), "{path} slipped through: {err}");
+    }
+}
+
+#[test]
+fn a_real_notifier_is_not_on_the_forbidden_list() {
+    for good in [
+        "/usr/bin/notify-send -u critical",
+        "/run/current-system/sw/bin/notify-send",
+        "/opt/scripts/my-notifier.sh --channel ops",
+    ] {
+        assert!(
+            NotifyCommand::parse(good).is_ok(),
+            "{good} is a legitimate notifier and must be accepted"
+        );
+    }
+}
+
+#[test]
+fn an_empty_value_is_rejected() {
+    assert!(NotifyCommand::parse("   ").is_err());
+}
