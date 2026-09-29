@@ -6397,7 +6397,10 @@ pub(crate) fn parse_system_policy(content: &str, path: &Path) -> Result<SystemPo
     if let Ok(doc) = content.parse::<toml::Value>() {
         let unknown = unknown_policy_keys(&doc);
         if !unknown.is_empty() {
-            let detail: Vec<String> = unknown.iter().map(|k| format!("{k}{}", hint_for(k))).collect();
+            let detail: Vec<String> = unknown
+                .iter()
+                .map(|k| format!("{k}{}", hint_for(k)))
+                .collect();
             eprintln!(
                 "⚠ policy: {} unknown key(s) in {} ignored: {}",
                 unknown.len(),

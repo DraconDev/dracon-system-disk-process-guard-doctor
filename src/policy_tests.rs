@@ -929,3 +929,116 @@ fn absent_and_blank_behave_differently_end_to_end_through_toml() {
     );
     assert_eq!(effective_log_dirs(&blank.guard.log_dirs), None);
 }
+
+// ---------------------------------------------------------------------------
+// Unknown policy keys
+//
+// Found 2026-09-29 while implementing range enforcement: a key appended
+// under the wrong table header was swallowed with no warning, so the config
+// looked applied and was not. These tests pin that such keys are SURFACED.
+//
+// The contract is that the daemon WARNS rather than fails: a stray key must
+// not stop a monitoring daemon from starting. The operator needs to be told,
+// not locked out of their machine.
+// ---------------------------------------------------------------------------
+
+fn doc_of(toml_src: &str) -> toml::Value {
+    toml_src.parse().expect("fixture must be valid TOML")
+}
+
+#[test]
+fn a_misspelled_knob_is_surfaced() {
+    let doc = doc_of("[guard]\ndisk_warn_persent = 80\n");
+    assert_eq!(
+        unknown_policy_keys(&doc),
+        vec!["guard.disk_warn_persent".to_string()],
+        "a typo must be reported, not dropped"
+    );
+}
+
+#[test]
+fn a_key_under_the_wrong_table_is_surfaced() {
+    // The exact case this item was filed for: `cleanup_min_size_mb` is a
+    // [guard] knob, but written after a [storage] header it lands in
+    // [storage] and used to vanish with no warning.
+    let doc = doc_of("[storage]\nmin_size_mb = 512\ncleanup_min_size_mb = 256\n");
+    let unknown = unknown_policy_keys(&doc);
+    assert!(
+        unknown.contains(&"storage.cleanup_min_size_mb".to_string()),
+        "a [guard] knob filed under [storage] must be surfaced, got {unknown:?}"
+    );
+    // And it must be reported as unknown even though it IS a real knob name
+    // — being spelled correctly does not rescue being in the wrong table.
+    assert!(!unknown.is_empty());
+}
+
+#[test]
+fn an_entirely_unknown_section_is_surfaced() {
+    let doc = doc_of("[guards]\ninterval_secs = 30\n");
+    assert_eq!(unknown_policy_keys(&doc), vec!["guards".to_string()]);
+}
+
+#[test]
+fn a_section_written_as_a_bare_key_is_surfaced() {
+    // `storage = 5` is a shape error, not a valid section.
+    let doc = doc_of("storage = 5\n");
+    assert_eq!(unknown_policy_keys(&doc), vec!["storage".to_string()]);
+}
+
+#[test]
+fn a_fully_valid_policy_reports_nothing() {
+    let src = "[guard]\ninterval_secs = 30\ndisk_warn_percent = 80\n\n\
+               [storage]\nmin_size_mb = 512\nkinds = \"rust-build\"\n\n\
+               [[links.entries]]\nlink = \"/a\"\ntarget = \"/b\"\n";
+    assert!(
+        unknown_policy_keys(&doc_of(src)).is_empty(),
+        "a correct policy must not produce warnings"
+    );
+}
+
+#[test]
+fn the_shipped_example_template_has_no_unknown_keys() {
+    // Guards the derivation against drift in BOTH directions: a knob added
+    // to the struct is accepted automatically, and a key in the template
+    // that no longer matches the struct is reported.
+    let text = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("dracon-system.example.toml"),
+    )
+    .expect("example template must be readable");
+    let unknown = unknown_policy_keys(&text.parse().expect("template must parse"));
+    assert!(
+        unknown.is_empty(),
+        "dracon-system.example.toml contains keys the parser does not accept: {unknown:?}"
+    );
+}
+
+/// The accepted-key set is derived from the structs, so a newly added knob
+/// is accepted without touching a list. This proves the derivation is not
+/// silently returning an empty set, which would disable the whole check.
+#[test]
+fn the_known_key_set_is_derived_from_the_structs() {
+    let known = known_policy_keys();
+    assert!(known.contains_key("guard"), "guard section must be known");
+    let guard = &known["guard"];
+    for knob in [
+        "interval_secs",
+        "disk_warn_percent",
+        "log_dirs",
+        "notify_command",
+    ] {
+        assert!(guard.contains(knob), "{knob} must be an accepted guard key");
+    }
+    assert!(
+        known["storage"].contains("min_size_mb"),
+        "storage keys must be derived too"
+    );
+    assert!(known["links"].contains("entries"));
+    // A representative non-key must NOT be accepted, or the set is bogus.
+    assert!(!guard.contains("definitely_not_a_knob"));
+}
+
+#[test]
+fn a_near_miss_spelling_gets_a_suggestion() {
+    assert!(hint_for("guard.disk_warn_persent").contains("disk_warn_percent"));
+    assert!(hint_for("guard.nonsense_key_xyz").is_empty());
+}
