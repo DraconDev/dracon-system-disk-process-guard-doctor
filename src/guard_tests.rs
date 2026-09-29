@@ -783,6 +783,21 @@ fn normalize_guard_policy_clamps_cpu_cap_percent() {
 }
 
 #[test]
+fn resolve_bin_falls_back_to_bare_name_off_nixos() {
+    // A name present in no NixOS store dir must come back unchanged, which
+    // is exactly the old PATH-relative behavior on other distributions.
+    assert_eq!(
+        crate::resolve_bin("dracon-definitely-not-a-binary"),
+        "dracon-definitely-not-a-binary"
+    );
+    // A repeated lookup hits the cache and agrees with itself.
+    assert_eq!(
+        crate::resolve_bin("dracon-definitely-not-a-binary"),
+        "dracon-definitely-not-a-binary"
+    );
+}
+
+#[test]
 fn unavailable_identity_defer_drops_at_retry_limit() {
     // The oom-restore and cpu-uncap loops must not retain an entry whose
     // process identity stays unreadable forever (audit LOW: unbounded
