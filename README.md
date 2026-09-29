@@ -462,9 +462,12 @@ The legal range of each numeric knob is **enforced**, not just documented:
 `normalize_guard_policy` in `src/policy.rs` clamps out-of-range values at the
 policy load boundary, so the daemon, `doctor`, `setup`, `link`, `relocate`,
 `quarantine` and `storage` all receive in-range values by construction. Each
-clamp is reported once on stderr as `⚠ policy: out-of-range value(s) clamped
+clamp is reported on stderr as `⚠ policy: out-of-range value(s) clamped
 to their legal range: <fields>` — if you see that, the guard is running on
-the clamped value, not yours, so fix the file. Knobs where `0` means
+the clamped value, not yours, so fix the file. Because the guard re-reads
+the policy every pass, the report is emitted once per *distinct* set rather
+than once per load, and a fix is confirmed with `✓ policy: all values now in
+range (previously clamped: …)`. Knobs where `0` means
 "disabled" are deliberately NOT clamped; clamping those would silently re-arm
 a feature you turned off. The full rules, and the list of exempt knobs, are
 at the top of `dracon-system.example.toml`.

@@ -21,11 +21,16 @@
 # Two behaviours, both deliberate:
 #
 #   CLAMPED — the value would make the daemon malfunction, so it is moved
-#     into range and the daemon keeps running. Every clamp is reported once
-#     on stderr as:
+#     into range and the guard keeps running. It is reported on stderr:
 #       ⚠ policy: out-of-range value(s) clamped to their legal range: <fields>
 #     A clamp in the journal means this file needs fixing; the guard is
 #     running on the clamped value, not yours.
+#     The report is emitted once per DISTINCT set, not once per load: the
+#     guard re-reads the policy every pass, so a per-load report would emit
+#     the same line ~5,760 times a day at the default 30 s interval. A new
+#     process reports again, and a fix is confirmed rather than inferred from
+#     silence:
+#       ✓ policy: all values now in range (previously clamped: <fields>)
 #
 #   NOT CLAMPED (0 is meaningful) — several knobs treat 0 as "disabled" and
 #     are left exactly as written. A floor on those would silently RE-ARM a
@@ -35,8 +40,8 @@
 #     trash_min_age_days, rust_target_action_min_age_days,
 #     quarantine_ttl_days, cap_offenders_cpu_percent,
 #     reap_report_min_idle_hours, reap_report_max_cpu_seconds,
-#     nix_keep_generations. The list is pinned by a test
-#     (`sentinel_zero_knobs_are_never_clamped`) so it cannot drift.
+#     nix_keep_generations, relocate_min_age_days. The list is pinned by a
+#     test (`sentinel_zero_knobs_are_never_clamped`) so it cannot drift.
 #
 # Floats accept TOML `nan` and `inf` literals; those are scrubbed too, since
 # a NaN fails every comparison and would silently disable its own threshold.
