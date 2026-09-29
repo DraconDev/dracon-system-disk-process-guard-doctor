@@ -17,7 +17,7 @@ parent repo — a regular nested repo, not a submodule.
 cargo install dracon-system
 ```
 
-The binary lands at `~/.cargo/bin/dracon-system` (version 0.112.40 on
+The binary lands at `~/.cargo/bin/dracon-system` (version 0.112.41 on
 crates.io). The shipped guard unit runs `%h/.local/bin/dracon-system`, so
 for service use either copy it there or install from a checkout:
 
