@@ -7353,8 +7353,12 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
                     // memory-renice, OOM-bias, and CPUQuota maps as well as
                     // the legacy heavy-process renice map.
                     let adjustments_restored = restore_runtime_adjustments(&mut runtime).await;
-                    let outcome =
-                        apply_policy_reload(guard, &mut runtime, new_policy.guard, adjustments_restored);
+                    let outcome = apply_policy_reload(
+                        guard,
+                        &mut runtime,
+                        new_policy.guard,
+                        adjustments_restored,
+                    );
                     if outcome == ReloadOutcome::Deferred {
                         // The previous policy stays live on purpose; see
                         // apply_policy_reload for why adopting the new one

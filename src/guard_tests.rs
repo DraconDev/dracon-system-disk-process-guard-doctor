@@ -905,3 +905,181 @@ fn policy_load_roundtrip_memory_limiter_knobs() {
     assert!(!policy.bias_oom_on_pressure);
     assert_eq!(policy.cap_offenders_cpu_percent, 50);
 }
+
+// ---------------------------------------------------------------------------
+// SIGHUP reload — bounded, and never half-configured
+//
+// DECIDE #2 follow-up. The reload used to swap the policy unconditionally,
+// so a partial restore of process adjustments could pair the NEW policy with
+// the OLD policy's leftover runtime state. The concrete harm: if the new
+// policy disables the mitigation that made an adjustment, nothing retries it
+// and the process stays reniced for the daemon's lifetime.
+// ---------------------------------------------------------------------------
+
+fn runtime_with_pending_nice(pid: i32) -> GuardRuntimeState {
+    let mut state = GuardRuntimeState::default();
+    state.memory_reniced_pids.insert(
+        pid,
+        MemoryReniceState {
+            original_nice: 3,
+            applied_nice: 10,
+            identity: ProcessIdentity {
+                comm: "worker".to_string(),
+                starttime: 42,
+            },
+        },
+    );
+    state
+}
+
+#[test]
+fn a_fully_restored_reload_applies_the_new_policy_and_clears_runtime() {
+    let mut guard = GuardPolicy::default();
+    let mut runtime = runtime_with_pending_nice(4242);
+    let mut new_policy = GuardPolicy::default();
+    new_policy.disk_warn_percent = 55;
+
+    let outcome = apply_policy_reload(&mut guard, &mut runtime, new_policy, true);
+
+    assert_eq!(outcome, ReloadOutcome::Applied);
+    assert_eq!(guard.disk_warn_percent, 55, "new policy must be live");
+    assert!(
+        runtime.memory_reniced_pids.is_empty(),
+        "a clean restore must reset the runtime so no old state survives"
+    );
+}
+
+#[test]
+fn a_partial_restore_keeps_the_previous_policy_live() {
+    let mut guard = GuardPolicy {
+        disk_warn_percent: 80,
+        ..Default::default()
+    };
+    let mut runtime = runtime_with_pending_nice(4242);
+    let mut new_policy = GuardPolicy::default();
+    new_policy.disk_warn_percent = 55;
+
+    let outcome = apply_policy_reload(&mut guard, &mut runtime, new_policy, false);
+
+    assert_eq!(outcome, ReloadOutcome::Deferred);
+    assert_eq!(
+        guard.disk_warn_percent, 80,
+        "a deferred reload must not adopt the new policy"
+    );
+    assert_eq!(
+        runtime.memory_reniced_pids.len(),
+        1,
+        "the pending adjustment must be retained so the still-armed mitigation retries it"
+    );
+}
+
+/// The exact harm the ordering bug caused: a new policy that turns the
+/// renice mitigation OFF, adopted on top of an unrestored adjustment, means
+/// nothing ever restores the process.
+#[test]
+fn a_partial_restore_cannot_strand_an_adjustment_the_new_policy_disables() {
+    let mut guard = GuardPolicy {
+        auto_renice_on_memory: true,
+        ..Default::default()
+    };
+    let mut runtime = runtime_with_pending_nice(4242);
+    let mut new_policy = GuardPolicy {
+        auto_renice_on_memory: false,
+        ..Default::default()
+    };
+
+    let outcome = apply_policy_reload(&mut guard, &mut runtime, new_policy, false);
+
+    assert_eq!(outcome, ReloadOutcome::Deferred);
+    assert!(
+        guard.auto_renice_on_memory,
+        "the mitigation that produced the outstanding adjustment must stay armed, \
+         otherwise the process is reniced forever with no path to restore it"
+    );
+    assert!(
+        runtime.memory_reniced_pids.contains_key(&4242),
+        "the outstanding adjustment must survive so it is retried"
+    );
+}
+
+#[test]
+fn a_partial_restore_with_only_threshold_changes_is_also_deferred() {
+    // Deferral is not limited to mitigation toggles: any new policy is
+    // refused, because the retained state is tied to the old one and we
+    // cannot reason about the combination.
+    let mut guard = GuardPolicy::default();
+    let mut runtime = runtime_with_pending_nice(7);
+    let mut new_policy = GuardPolicy::default();
+    new_policy.interval_secs = 5;
+
+    assert_eq!(
+        apply_policy_reload(&mut guard, &mut runtime, new_policy, false),
+        ReloadOutcome::Deferred
+    );
+    assert_ne!(
+        guard.interval_secs, 5,
+        "the new interval must not be adopted"
+    );
+}
+
+#[test]
+fn disabling_the_guard_is_applied_even_after_a_partial_restore() {
+    // Stopping is the safe direction, and the daemon's shutdown restore
+    // re-tries the retained adjustments before it returns — so `enabled =
+    // false` must not be blocked by a failed restore.
+    let mut guard = GuardPolicy::default();
+    let mut runtime = runtime_with_pending_nice(99);
+    let mut new_policy = GuardPolicy {
+        enabled: false,
+        ..Default::default()
+    };
+
+    let outcome = apply_policy_reload(&mut guard, &mut runtime, new_policy, false);
+
+    assert_eq!(outcome, ReloadOutcome::Applied);
+    assert!(!guard.enabled, "enabled = false must always take effect");
+    assert_eq!(
+        runtime.memory_reniced_pids.len(),
+        1,
+        "state is retained for the shutdown restore, not dropped"
+    );
+}
+
+#[test]
+fn reload_is_idempotent_across_repeated_sighups() {
+    let mut guard = GuardPolicy::default();
+    let mut runtime = GuardRuntimeState::default();
+    for _ in 0..5 {
+        let mut p = GuardPolicy::default();
+        p.disk_warn_percent = 70;
+        assert_eq!(
+            apply_policy_reload(&mut guard, &mut runtime, p, true),
+            ReloadOutcome::Applied
+        );
+    }
+    assert_eq!(guard.disk_warn_percent, 70);
+    assert!(runtime.memory_reniced_pids.is_empty());
+}
+
+#[test]
+fn a_reload_that_succeeds_after_a_deferred_one_recovers() {
+    // A deferred reload must not wedge the daemon: once the restore
+    // succeeds, the next SIGHUP applies normally.
+    let mut guard = GuardPolicy::default();
+    let mut runtime = runtime_with_pending_nice(1);
+    let mut p1 = GuardPolicy::default();
+    p1.disk_warn_percent = 55;
+    assert_eq!(
+        apply_policy_reload(&mut guard, &mut runtime, p1, false),
+        ReloadOutcome::Deferred
+    );
+
+    let mut p2 = GuardPolicy::default();
+    p2.disk_warn_percent = 55;
+    assert_eq!(
+        apply_policy_reload(&mut guard, &mut runtime, p2, true),
+        ReloadOutcome::Applied
+    );
+    assert_eq!(guard.disk_warn_percent, 55);
+    assert!(runtime.memory_reniced_pids.is_empty());
+}
