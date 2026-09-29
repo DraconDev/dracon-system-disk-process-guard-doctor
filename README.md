@@ -120,19 +120,25 @@ defaults are 70/80/90/95 — see Configuration.)
 
 `systemctl --user reload dracon-system-guard.service` (or `kill -HUP <pid>`)
 re-reads the policy and applies it. The shipped unit wires this through
-`ExecReload=/bin/kill -HUP $MAINPID`, so the reload is reachable from the
-service manager. The reload is **bounded**: it replaces
-the policy and the in-memory runtime state, and does nothing else — it
-performs no I/O of its own, spawns nothing, and never re-registers signal
-handlers. The policy file itself is re-read by the daemon on every pass
-anyway, so a SIGHUP is for *when you want it to take effect at a known
-point*, not for freshness.
+`ExecReload=/bin/sh -c 'kill -HUP $MAINPID'`, so the reload is reachable from
+the service manager. (`/bin/sh` rather than `/bin/kill` because this unit
+serves NixOS *and* plain distros, and on NixOS `/bin` holds only `sh` — a
+`/bin/kill` directive fails there with 203/EXEC. `kill` is a POSIX shell
+builtin, so no PATH lookup is involved.) The reload is **bounded**: it
+replaces the policy and the in-memory runtime state, and does nothing else —
+it performs no I/O of its own, spawns nothing, and never re-registers
+signal handlers.
 
 **Reloaded on SIGHUP** — every `[guard]` setting, including `interval_secs`,
 all disk thresholds, the cleanup and quarantine toggles, the log and
-notification settings, and `disk_extra_mounts`. `links` entries are read
-fresh each pass. Setting `enabled = false` stops the guard, which is the
-documented way to stop it without a restart.
+notification settings, and `disk_extra_mounts`. Setting `enabled = false`
+stops the guard, which is the documented way to stop it without a restart.
+
+**Read fresh on every pass, no signal needed** — only `links` entries. The
+daemon re-reads the policy file every pass to pick up link changes, but it
+takes just `links` from it; `[guard]` and `[storage]` are used only from the
+copy the daemon holds, so a threshold change does **not** take effect until
+you reload or restart.
 
 **Requires a restart** — the daemon lock (a process-level resource, acquired
 once at startup), the signal handlers, and the one-shot startup log rotation.
