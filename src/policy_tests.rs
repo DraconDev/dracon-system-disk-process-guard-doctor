@@ -530,15 +530,11 @@ min_size_mb = 0
 /// lines a day at the default 30 s interval. `report_clamps` dedupes on the
 /// clamped set; these tests drive that state machine directly.
 fn reset_clamp_report_state() {
-    let cell = crate::policy::LAST_REPORTED_CLAMPS.get_or_init(|| std::sync::Mutex::new(None));
-    *cell.lock().unwrap_or_else(|p| p.into_inner()) = None;
+    set_clamp_report_state(None);
 }
 
 fn current_clamp_report_state() -> Option<Vec<&'static str>> {
-    let cell = crate::policy::LAST_REPORTED_CLAMPS.get_or_init(|| std::sync::Mutex::new(None));
-    cell.lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .clone()
+    clamp_report_state()
 }
 
 #[test]
@@ -611,7 +607,15 @@ fn repeated_passes_do_not_accumulate_reports() {
     }
     assert_eq!(
         current_clamp_report_state(),
-        Some(vec!["disk_warn_percent", "interval_secs"])
+        Some(vec![
+            "disk_action_percent",
+            "disk_critical_percent",
+            "disk_warn_percent",
+            "interval_secs"
+        ]),
+        "50 passes over one misconfigured file must leave exactly one distinct \\
+         report set — disk_warn_percent=200 legitimately cascades to the \\
+         action/critical bands, which must be reported too"
     );
 }
 

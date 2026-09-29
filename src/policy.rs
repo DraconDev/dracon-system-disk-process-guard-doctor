@@ -766,6 +766,22 @@ pub(crate) const RENICE_VALUE_MAX: i32 = 19;
 static LAST_REPORTED_CLAMPS: std::sync::OnceLock<std::sync::Mutex<Option<Vec<&'static str>>>> =
     std::sync::OnceLock::new();
 
+/// Read or clear the report state. Test-only, so the private static is not
+/// widened to `pub(crate)` for production callers.
+#[cfg(test)]
+pub(crate) fn clamp_report_state() -> Option<Vec<&'static str>> {
+    let cell = LAST_REPORTED_CLAMPS.get_or_init(|| std::sync::Mutex::new(None));
+    cell.lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+#[cfg(test)]
+pub(crate) fn set_clamp_report_state(state: Option<Vec<&'static str>>) {
+    let cell = LAST_REPORTED_CLAMPS.get_or_init(|| std::sync::Mutex::new(None));
+    *cell.lock().unwrap_or_else(|p| p.into_inner()) = state;
+}
+
 impl SystemPolicy {
     /// Normalize every sub-policy and report what was clamped.
     ///
@@ -795,6 +811,12 @@ impl SystemPolicy {
 fn report_clamps(adjusted: Vec<&'static str>) {
     let cell = LAST_REPORTED_CLAMPS.get_or_init(|| std::sync::Mutex::new(None));
     let mut last = cell.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    // In range, and nothing was ever clamped in this process: there is no
+    // state worth recording, and writing an empty set here would make the
+    // first real clamp look like a transition from a known state.
+    if adjusted.is_empty() && last.is_none() {
+        return;
+    }
     let previous = last.replace(adjusted.clone());
     if previous.as_deref() == Some(adjusted.as_slice()) {
         return;
