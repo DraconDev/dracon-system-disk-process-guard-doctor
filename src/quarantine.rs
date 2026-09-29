@@ -257,7 +257,17 @@ pub(crate) fn quarantine_list(root: &Path, ttl_days: u64) -> Result<QuarantineLi
                     let exp = ttl_days > 0 && age > ttl_days;
                     (m.origin.clone(), Some(m.moved_at_unix), Some(age), exp)
                 }
-                None => ("unknown".to_string(), None, None, false),
+                None => {
+                    // MUTATION B (audit re-check): exact mutation from d68bfc5
+                    let mv = fs::metadata(&path)
+                        .ok()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs());
+                    let age = mv.map(|v| now.saturating_sub(v) / 86_400);
+                    let exp = ttl_days > 0 && age.is_some_and(|a| a > ttl_days);
+                    ("unknown".to_string(), None, age, exp)
+                }
             };
             let is_pinned = manifest.is_none();
             total_bytes += bytes;
