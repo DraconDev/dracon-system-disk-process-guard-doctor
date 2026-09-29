@@ -300,3 +300,18 @@ fn plan_relocate_allows_untracked_in_repo() {
     let _ = sub;
     cleanup(&root);
 }
+
+#[test]
+fn is_git_tracked_sees_repo_roots() {
+    // A repo root holds tracked content even though its parent is not a
+    // work tree — the case the parent-only probe missed.
+    let root = test_root("reporoot");
+    let sub = git_repo_with_tracked_subdir(&root);
+    let repo = sub.parent().unwrap().to_path_buf();
+    assert!(crate::is_git_tracked(&repo).unwrap());
+    let dest_root = root.join("cold");
+    fs::create_dir_all(&dest_root).unwrap();
+    let err = crate::plan_relocate(&repo, &dest_root, &[], false).unwrap_err();
+    assert!(format!("{err:#}").contains("git-tracked"));
+    cleanup(&root);
+}
