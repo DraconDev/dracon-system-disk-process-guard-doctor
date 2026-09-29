@@ -6037,7 +6037,6 @@ async fn run_auto_relocate(guard: &GuardPolicy) -> Result<(usize, u64, Vec<ColdC
 /// Loads link entries fresh (cheap TOML read) to avoid threading
 /// SystemPolicy through the guard-only daemon state.
 async fn check_link_drift(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
-    eprintln!("DBG check_link_drift entered");
     let entries = match load_system_policy() {
         Ok((_, policy)) => policy.links.entries,
         Err(_) => return,
@@ -7231,7 +7230,6 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
     );
     let mut interval = guard.interval_secs;
     let mut runtime = GuardRuntimeState::default();
-    eprintln!("DBG outer while reached");
     while !shutdown.load(Ordering::SeqCst) {
         if reload_sighup.load(Ordering::SeqCst) {
             reload_sighup.store(false, Ordering::SeqCst);
@@ -7307,7 +7305,6 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
                 }
             }
         }
-        eprintln!("DBG starting pass");
         if let Err(e) = run_guard_once(guard, &mut runtime).await {
             eprintln!("guard pass failed: {}", e);
             emit_event(&DraconEvent::new(
