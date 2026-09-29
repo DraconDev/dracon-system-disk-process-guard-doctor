@@ -1,7 +1,5 @@
 //! Tests for zram.rs (NixOS config snippet generation).
 
-use super::*;
-
 #[test]
 fn memory_percent_default_and_bounds() {
     assert_eq!(crate::validate_memory_percent(None).unwrap(), 200);
