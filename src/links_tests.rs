@@ -274,8 +274,10 @@ fn force_replace_honours_user_protected_paths() {
     let link = base.join("config");
     std::fs::write(&link, "old file").unwrap();
 
-    let mut guard = crate::GuardPolicy::default();
-    guard.protected_paths = vec![base.display().to_string()];
+    let guard = crate::GuardPolicy {
+        protected_paths: vec![base.display().to_string()],
+        ..Default::default()
+    };
     let policy = SystemPolicy {
         links: LinkPolicy {
             entries: vec![LinkEntry {
