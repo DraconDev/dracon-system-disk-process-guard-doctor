@@ -7231,6 +7231,7 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
     );
     let mut interval = guard.interval_secs;
     let mut runtime = GuardRuntimeState::default();
+    eprintln!("DBG outer while reached");
     while !shutdown.load(Ordering::SeqCst) {
         if reload_sighup.load(Ordering::SeqCst) {
             reload_sighup.store(false, Ordering::SeqCst);
