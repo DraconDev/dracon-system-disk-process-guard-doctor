@@ -537,6 +537,166 @@ pub(crate) fn default_notify_command() -> String {
     "/usr/bin/notify-send".to_string()
 }
 
+// ---------------------------------------------------------------------------
+// notify_command parsing
+// ---------------------------------------------------------------------------
+//
+// `notify_command` is a policy value, so it is interpreted here rather than
+// in the notification call site.
+//
+// Security model: the string is split into a program and an argv array and
+// handed to execve. NO SHELL IS EVER INVOKED, so `;`, `|`, `&&`, `$(...)`,
+// backticks and globs are inert characters, not syntax. There is no variable,
+// command, or arithmetic expansion either. The notification title and body
+// are appended as ordinary argv entries, so a message that happens to
+// contain shell metacharacters cannot become code.
+//
+// The one thing argv-splitting alone does NOT stop is the operator naming an
+// arbitrary program — `/bin/sh -c '...'` is an absolute path and would
+// otherwise run. Before argument support existed that was blocked only
+// ACCIDENTALLY, because the whole string was used as one path and
+// `/bin/sh -c foo` does not exist as a file. Splitting the string would have
+// quietly turned notify_command into a general-purpose command-execution
+// knob, so NOTIFY_FORBIDDEN_PROGRAMS makes that refusal explicit instead of
+// incidental.
+
+/// Programs `notify_command` may not name, matched on the file name
+/// component so `/bin/sh` and `/usr/bin/bash` are both caught.
+pub(crate) const NOTIFY_FORBIDDEN_PROGRAMS: &[&str] = &[
+    // Shells: the classic path from "run a notifier" to "run anything".
+    "sh", "bash", "dash", "zsh", "ksh", "mksh", "csh", "tcsh", "fish", "ash", "busybox",
+    // Privilege escalation: the guard already runs unprivileged; a notifier
+    // has no business changing that.
+    "sudo", "su", "doas", "pkexec", "setuidgid",
+    // Argument pass-through wrappers: these re-interpret argv as a command,
+    // which is precisely the capability being denied.
+    "env", "xargs", "nohup", "setsid", "nice", "ionice", "timeout", "watch", "stdbuf",
+    "systemd-run", "flatpak-run", "chroot", "unshare",
+];
+
+/// A validated `notify_command`: an absolute program path plus its arguments.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NotifyCommand {
+    pub(crate) program: String,
+    pub(crate) args: Vec<String>,
+}
+
+/// Split a configured command into words using shell-like QUOTING only.
+///
+/// This deliberately implements the tokenizer half of shell word splitting
+/// and none of the evaluation half: no `$VAR`, no `$(...)`, no backticks, no
+/// globs, no operator parsing. Inside double quotes a backslash escapes only
+/// `" \ $` and a backslash (POSIX); elsewhere it escapes the next character
+/// literally, and `\<newline>` is a line continuation that vanishes.
+///
+/// A quoted empty string yields an empty argument (`''` is one empty word,
+/// not zero words) — that distinction is why `has_word` is tracked
+/// separately from whether the buffer is empty.
+pub(crate) fn split_command_words(input: &str) -> Result<Vec<String>, String> {
+    let mut words: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut has_word = false;
+    let mut chars = input.chars();
+
+    while let Some(c) = chars.next() {
+        match c {
+            c if c.is_whitespace() => {
+                if has_word {
+                    words.push(std::mem::take(&mut current));
+                    has_word = false;
+                }
+            }
+            '\'' => {
+                has_word = true;
+                loop {
+                    match chars.next() {
+                        Some('\'') => break,
+                        Some(inner) => current.push(inner),
+                        None => return Err("unterminated single quote".to_string()),
+                    }
+                }
+            }
+            '"' => {
+                has_word = true;
+                loop {
+                    match chars.next() {
+                        Some('"') => break,
+                        Some('\\') => match chars.next() {
+                            Some(escaped @ ('"' | '\\' | '$' | '`')) => current.push(escaped),
+                            // A backslash-newline inside double quotes is a
+                            // line continuation and produces nothing.
+                            Some('\n') => {}
+                            // POSIX keeps the backslash for every other char
+                            // inside double quotes, so "\n" stays two chars.
+                            Some(other) => {
+                                current.push('\\');
+                                current.push(other);
+                            }
+                            None => {
+                                return Err("trailing backslash inside double quotes".to_string())
+                            }
+                        },
+                        Some(inner) => current.push(inner),
+                        None => return Err("unterminated double quote".to_string()),
+                    }
+                }
+            }
+            '\\' => {
+                has_word = true;
+                match chars.next() {
+                    Some('\n') => {}
+                    Some(escaped) => current.push(escaped),
+                    None => return Err("trailing backslash".to_string()),
+                }
+            }
+            plain => {
+                has_word = true;
+                current.push(plain);
+            }
+        }
+    }
+    if has_word {
+        words.push(current);
+    }
+    Ok(words)
+}
+
+impl NotifyCommand {
+    /// Parse and validate a configured `notify_command`.
+    ///
+    /// The first word is the program and must be an absolute path and must
+    /// not be a shell, privilege escalator, or argument pass-through wrapper
+    /// (see `NOTIFY_FORBIDDEN_PROGRAMS`). The remaining words are its
+    /// arguments, passed through verbatim.
+    pub(crate) fn parse(raw: &str) -> Result<Self, String> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err("notify_command is empty".to_string());
+        }
+        let mut words = split_command_words(trimmed)?;
+        let program = words.remove(0);
+        if !program.starts_with('/') {
+            return Err(format!(
+                "notify_command must start with an absolute path, got: {program}"
+            ));
+        }
+        let file_name = std::path::Path::new(&program)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&program);
+        if NOTIFY_FORBIDDEN_PROGRAMS.contains(&file_name) {
+            return Err(format!(
+                "notify_command may not use `{file_name}` (shell, privilege escalator, \
+                 or argument pass-through wrapper) — point it at a notifier binary"
+            ));
+        }
+        Ok(Self {
+            program,
+            args: words,
+        })
+    }
+}
+
 pub(crate) fn default_notify_cooldown_secs() -> u64 {
     300
 }
