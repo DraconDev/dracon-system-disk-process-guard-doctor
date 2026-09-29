@@ -783,7 +783,8 @@ fn normalize_guard_policy_clamps_cpu_cap_percent() {
 }
 
 #[test]
-fn resolve_bin_falls_back_to_bare_name_off_nixos() {    // A name present in no NixOS store dir must come back unchanged, which
+fn resolve_bin_falls_back_to_bare_name_off_nixos() {
+    // A name present in no NixOS store dir must come back unchanged, which
     // is exactly the old PATH-relative behavior on other distributions.
     assert_eq!(
         crate::resolve_bin("dracon-definitely-not-a-binary"),
