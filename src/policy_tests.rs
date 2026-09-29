@@ -1043,6 +1043,17 @@ fn a_near_miss_spelling_gets_a_suggestion() {
     assert!(hint_for("guard.nonsense_key_xyz").is_empty());
 }
 
+#[test]
+fn a_correctly_spelled_key_in_the_wrong_table_names_its_table() {
+    // The precise confusion this check exists to surface: the name is right,
+    // the table is not, and "did you mean <the same word>" would not help.
+    let hint = hint_for("storage.cleanup_min_size_mb");
+    assert!(
+        hint.contains("[guard]"),
+        "a misplaced key must be told which table it belongs under, got {hint:?}"
+    );
+}
+
 /// Tripwire for the one manual part of the key derivation.
 ///
 /// TOML omits `Option` fields when serializing a `None`, so they must be
