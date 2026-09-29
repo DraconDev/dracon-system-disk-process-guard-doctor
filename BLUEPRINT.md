@@ -17,9 +17,9 @@
 - Smart protection for active builds:
   - Detects running `cargo`, `rustc`, `clippy-driver` processes
   - Protects target dirs in their working directories
-  - Protects recently modified target dirs (default: 30 minutes)
+  - Protects recently modified target dirs (action tier: `rust_target_action_min_age_days`, default 7 days)
 - Configurable minimum size threshold (default: 256 MiB)
-- Searches configurable directories: `~/Dev`, `~/dracon`
+- Searches configurable directories: `~/Dev` (`rust_search_roots`)
 
 #### 3. Build-Aware Monitoring
 - Detects active Rust build processes
