@@ -1646,7 +1646,10 @@ async fn renice_process_with_bin(bin: &Path, pid: i32, value: i32) -> Result<()>
 }
 
 async fn renice_process(pid: i32, value: i32) -> Result<()> {
-    renice_process_with_bin(Path::new("renice"), pid, value).await
+    // Never exec a bare PATH-relative name for a privilege op: resolve the
+    // NixOS store path first (falls back to the bare name off NixOS, which
+    // is the old behavior there).
+    renice_process_with_bin(&PathBuf::from(resolve_bin("renice")), pid, value).await
 }
 
 /// OOM-killer steering target (v0.112.36). Higher oom_score_adj =
@@ -1903,7 +1906,7 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
     // --no-block returns before the unit's cgroup exists: poll for it.
     let mut cg = String::new();
     for _ in 0..10 {
-        let out = Command::new("systemctl")
+        let out = Command::new(resolve_bin("systemctl"))
             .args(["--user", "show", &unit, "-p", "ControlGroup", "--value"])
             .output()
             .await
@@ -1915,7 +1918,7 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
     if cg.is_empty() {
-        let _ = Command::new("systemctl")
+        let _ = Command::new(resolve_bin("systemctl"))
             .args(["--user", "stop", &unit])
             .status()
             .await;
@@ -1923,7 +1926,7 @@ async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), Str
     }
     let procs_file = format!("/sys/fs/cgroup/{cg}/cgroup.procs");
     if let Err(e) = std::fs::write(&procs_file, format!("{pid}\n")) {
-        let _ = Command::new("systemctl")
+        let _ = Command::new(resolve_bin("systemctl"))
             .args(["--user", "stop", &unit])
             .status()
             .await;
@@ -2235,10 +2238,12 @@ fn remove_cpu_cap(state: &mut GuardRuntimeState, pid: i32) {
 /// adjustment.
 async fn restore_runtime_adjustments(state: &mut GuardRuntimeState) -> bool {
     let samples = process_samples().await.unwrap_or_default();
+    let renice_bin = PathBuf::from(resolve_bin("renice"));
+    let systemctl_bin = PathBuf::from(resolve_bin("systemctl"));
     restore_runtime_adjustments_with_samples(
         state,
-        Path::new("renice"),
-        Path::new("systemctl"),
+        &renice_bin,
+        &systemctl_bin,
         Path::new("/proc"),
         &samples,
     )
@@ -4545,7 +4550,7 @@ async fn check_memory_pressure(
             // Identity was readable: clear any prior unavailability count.
             state.cap_identity_unavailable_attempts.remove(&pid);
             if let Err(e) = uncap_cpu_process_with_bin(
-                Path::new("systemctl"),
+                &PathBuf::from(resolve_bin("systemctl")),
                 Path::new("/proc"),
                 pid,
                 &scope,
@@ -6223,7 +6228,7 @@ fn effective_system_policy_path() -> Result<PathBuf> {
 }
 
 async fn is_user_service_active(service: &str) -> bool {
-    let output = Command::new("systemctl")
+    let output = Command::new(resolve_bin("systemctl"))
         .args(["--user", "is-active", service])
         .output()
         .await;
