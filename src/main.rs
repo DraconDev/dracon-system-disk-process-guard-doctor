@@ -1415,12 +1415,26 @@ async fn send_notification(guard: &GuardPolicy, title: &str, body: &str) {
     if !guard.notify || guard.notify_command.trim().is_empty() {
         return;
     }
-    let cmd = guard.notify_command.trim();
-    if !cmd.starts_with('/') {
-        eprintln!("⚠️ notify_command must be an absolute path, got: {}", cmd);
-        return;
-    }
-    if let Err(e) = Command::new(cmd).arg(title).arg(body).output().await {
+    // Argument support (audit DECIDE #1 follow-up, 2026-09-29): the value is
+    // split into a program plus an argv array, so
+    // `/usr/bin/notify-send -u critical` works without a wrapper script.
+    // Parsing happens in policy.rs::NotifyCommand::parse, which rejects
+    // unterminated quotes, relative programs, and shell / privilege /
+    // pass-through programs. `Command::new` execs directly — no shell is
+    // involved, so metacharacters in the title or body are inert.
+    let cmd = match NotifyCommand::parse(&guard.notify_command) {
+        Ok(cmd) => cmd,
+        Err(e) => {
+            eprintln!("⚠️ notify_command rejected: {e}");
+            return;
+        }
+    };
+    // Operator-supplied arguments come first, then the notification text —
+    // which is the order `notify-send` and friends expect (flags, summary,
+    // body).
+    let mut command = Command::new(&cmd.program);
+    command.args(&cmd.args).arg(title).arg(body);
+    if let Err(e) = command.output().await {
         eprintln!("⚠️ notification failed: {}", e);
     }
 }
