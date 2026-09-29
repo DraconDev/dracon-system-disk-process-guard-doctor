@@ -43,7 +43,23 @@ fn df_avail(path: &Path) -> Option<(u8, u64)> {
 
 /// Ensure `dir` exists and is writable (creates it, including parents).
 /// Returns a human detail string; Err only on failure.
-pub(crate) fn ensure_setup_dir(dir: &Path) -> Result<String> {
+///
+/// Refuses symlinked paths outright (create_dir_all would build into the
+/// link target) and validates the nearest existing ancestor against the
+/// protected lists before creating anything new underneath it.
+pub(crate) fn ensure_setup_dir(dir: &Path, user_protected: &[String]) -> Result<String> {
+    if let Ok(meta) = fs::symlink_metadata(dir) {
+        if meta.file_type().is_symlink() {
+            anyhow::bail!("refusing to set up symlinked dir {}", dir.display());
+        }
+    }
+    let anchor = dir
+        .ancestors()
+        .find(|a| !a.as_os_str().is_empty() && a.exists())
+        .unwrap_or(Path::new("/"));
+    // Reuse the delete-guard as a manage-guard: a path it refuses to
+    // delete is not a path to build managed roots under either.
+    crate::check_safe_to_delete_guard(anchor, user_protected)?;
     fs::create_dir_all(dir)
         .map_err(|e| anyhow::anyhow!("cannot create {}: {}", dir.display(), e))?;
     let probe = dir.join(".dracon-system-write-test");
@@ -197,8 +213,25 @@ pub(crate) fn cmd_setup(apply: bool, json: bool) -> Result<()> {
             anyhow::bail!("cannot apply: relocate_cold_root is not configured");
         }
         let qdir = crate::quarantine_root(&policy.guard);
-        println!("cold root: {}", ensure_setup_dir(&expand_tilde(cold_raw))?);
-        println!("quarantine: {}", ensure_setup_dir(&qdir)?);
+        // The two managed roots must not nest: a cold root inside the
+        // quarantine root (or vice versa) would make cleanup and expiry
+        // operate on each other's trees.
+        let cold_path = expand_tilde(cold_raw);
+        if cold_path != qdir
+            && (cold_path.starts_with(&qdir) || qdir.starts_with(&cold_path))
+        {
+            anyhow::bail!(
+                "cannot apply: cold root {} nests inside quarantine root {} (or vice versa)",
+                cold_path.display(),
+                qdir.display()
+            );
+        }
+        let protected = &policy.guard.protected_paths;
+        println!(
+            "cold root: {}",
+            ensure_setup_dir(&cold_path, protected)?
+        );
+        println!("quarantine: {}", ensure_setup_dir(&qdir, protected)?);
     }
 
     let report = collect_setup_report();
