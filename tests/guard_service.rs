@@ -269,3 +269,38 @@ fn readme_documents_the_reload_path() {
         );
     }
 }
+
+/// The unit comment and the README must not disagree about what re-reads the
+/// policy per pass.
+///
+/// The daemon DOES re-read the file every pass, but `check_link_drift` takes
+/// only `policy.links.entries` from it — `[guard]` and `[storage]` come from
+/// the copy the daemon holds. A comment that says "the policy re-reads every
+/// pass anyway" therefore implies a threshold change applies without the
+/// signal, which is the opposite of the truth and contradicts the README's
+/// reload section. If the unit ever mentions the per-pass read again, it has
+/// to name the narrow thing that is actually re-read.
+#[test]
+fn unit_per_pass_comment_agrees_with_the_readme() {
+    let unit = unit_text();
+    let reloading_comment: String = unit
+        .lines()
+        .filter(|l| l.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if reloading_comment.contains("re-read") {
+        assert!(
+            reloading_comment.contains("links"),
+            "the unit mentions a per-pass policy re-read without saying what is \
+             actually re-read; only `links` entries are, so a threshold change \
+             still needs SIGHUP or a restart:\n{reloading_comment}"
+        );
+    }
+    // And the README must carry the same three-way split, not just the signal.
+    let readme = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("README.md"))
+        .expect("README must be readable");
+    assert!(
+        readme.contains("Read fresh on every pass"),
+        "README must state what refreshes without a signal, so the two files cannot drift apart"
+    );
+}
