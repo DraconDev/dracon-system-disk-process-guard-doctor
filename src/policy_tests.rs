@@ -857,3 +857,75 @@ fn a_real_notifier_is_not_on_the_forbidden_list() {
 fn an_empty_value_is_rejected() {
     assert!(NotifyCommand::parse("   ").is_err());
 }
+
+// ---------------------------------------------------------------------------
+// log_dirs default vs. explicit disable
+// ---------------------------------------------------------------------------
+
+// ADDED 2026-09-29 (DECIDE #4 follow-up). The two cases must stay
+// distinguishable: before, `log_dirs` was a `String` defaulting to "", so
+// "the operator never mentioned it" and "the operator wrote an empty value"
+// were the same thing, which is why no default could be added without
+// taking away the only way to switch the check off.
+
+#[test]
+fn an_absent_log_dirs_resolves_to_the_default() {
+    let raw: Option<String> = None;
+    assert_eq!(
+        effective_log_dirs(&raw).as_deref(),
+        Some(default_log_dirs().as_str()),
+        "an unset key must resolve to the default, not to 'disabled'"
+    );
+}
+
+#[test]
+fn an_explicitly_blank_log_dirs_stays_disabled() {
+    for blank in ["", "   ", "\t"] {
+        let raw = Some(blank.to_string());
+        assert_eq!(
+            effective_log_dirs(&raw),
+            None,
+            "{blank:?} is the operator's explicit off-switch and must stay honoured"
+        );
+    }
+}
+
+#[test]
+fn a_configured_log_dirs_passes_through() {
+    let raw = Some("/var/log,~/.local/state/dracon".to_string());
+    assert_eq!(
+        effective_log_dirs(&raw).as_deref(),
+        Some("/var/log,~/.local/state/dracon")
+    );
+}
+
+#[test]
+fn the_default_log_dirs_is_the_guards_own_state_directory() {
+    let default = default_log_dirs();
+    assert_eq!(default, "~/.local/state/dracon");
+    // It must live where the shipped unit grants write access, otherwise
+    // auto_truncate_logs would fail EROFS exactly as /var/log does.
+    let unit = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("dracon-system-guard.service"),
+    )
+    .expect("guard unit must be readable");
+    assert!(
+        unit.contains("%h/.local/state/dracon"),
+        "the default log dir must be inside the unit's ReadWritePaths"
+    );
+}
+
+#[test]
+fn absent_and_blank_behave_differently_end_to_end_through_toml() {
+    let absent: SystemPolicy =
+        toml::from_str("[guard]\nmonitor_logs = true\n").expect("absent must parse");
+    let blank: SystemPolicy =
+        toml::from_str("[guard]\nmonitor_logs = true\nlog_dirs = \"\"\n").expect("blank parses");
+    assert_eq!(absent.guard.log_dirs, None);
+    assert_eq!(blank.guard.log_dirs, Some(String::new()));
+    assert_eq!(
+        effective_log_dirs(&absent.guard.log_dirs),
+        Some(default_log_dirs())
+    );
+    assert_eq!(effective_log_dirs(&blank.guard.log_dirs), None);
+}
