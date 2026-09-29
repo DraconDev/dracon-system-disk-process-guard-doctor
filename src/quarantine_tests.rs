@@ -186,14 +186,54 @@ fn quarantine_expire_deletes_only_past_ttl() {
 }
 
 #[test]
-fn quarantine_expire_zero_ttl_disables() {
-    let root = test_root("zerottl");
+fn quarantine_expire_zero_ttl_disables() {    let root = test_root("zerottl");
     let src = fixture_dir(&root);
     let qdir = root.join("q");
     let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
     let out = crate::quarantine_expire(&qdir, 0, true).unwrap();
     assert!(out.is_empty());
     assert!(qdir.join(&manifest.name).exists());
+    cleanup(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn quarantine_expire_skips_escaped_entries_without_aborting_batch() {
+    // Audit falsification round: an entry that resolves outside the root
+    // used to abort the whole batch (bail), discarding removals already
+    // collected. It must now be skipped loudly while the batch completes.
+    let root = test_root("expireskip");
+    let src = fixture_dir(&root);
+    let qdir = root.join("q");
+    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let aged = crate::QuarantineManifest {
+        name: manifest.name.clone(),
+        origin: manifest.origin.clone(),
+        moved_at_unix: crate::now_unix().saturating_sub(40 * 86_400),
+        bytes: manifest.bytes,
+        files: manifest.files,
+    };
+    let entry_dir = qdir.join(&manifest.name);
+    fs::write(
+        entry_dir.join(".quarantine.json"),
+        serde_json::to_string_pretty(&aged).unwrap(),
+    )
+    .unwrap();
+    // Smuggled symlink entry with an old manifest, resolving outside.
+    let outside = root.join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(
+        outside.join(".quarantine.json"),
+        serde_json::to_string_pretty(&aged).unwrap(),
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(&outside, qdir.join("evil")).unwrap();
+    let removed = crate::quarantine_expire(&qdir, 30, true).unwrap();
+    assert_eq!(removed, vec![manifest.name.clone()]);
+    assert!(!entry_dir.exists(), "expired entry removed");
+    assert!(qdir.join("evil").exists() || qdir.join("evil").is_symlink() || fs::symlink_metadata(qdir.join("evil")).is_ok(),
+        "escaped entry must survive");
+    assert!(outside.is_dir(), "escape target untouched");
     cleanup(&root);
 }
 
