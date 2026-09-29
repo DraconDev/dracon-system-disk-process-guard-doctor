@@ -119,7 +119,9 @@ defaults are 70/80/90/95 — see Configuration.)
 ### Reloading Configuration (SIGHUP)
 
 `systemctl --user reload dracon-system-guard.service` (or `kill -HUP <pid>`)
-re-reads the policy and applies it. The reload is **bounded**: it replaces
+re-reads the policy and applies it. The shipped unit wires this through
+`ExecReload=/bin/kill -HUP $MAINPID`, so the reload is reachable from the
+service manager. The reload is **bounded**: it replaces
 the policy and the in-memory runtime state, and does nothing else — it
 performs no I/O of its own, spawns nothing, and never re-registers signal
 handlers. The policy file itself is re-read by the daemon on every pass
