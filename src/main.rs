@@ -4534,6 +4534,8 @@ async fn check_memory_pressure(
     }
     // Prune only known-gone or PID-reused entries. Identity read errors are
     // retained so a transient /proc failure cannot silently lose a limiter.
+    // A recycled PID (same number, different starttime) must not keep
+    // throttling an innocent new process.
     state.memory_reniced_pids.retain(|pid, entry| {
         !matches!(
             process_identity_status(Path::new("/proc"), *pid, &entry.identity),
@@ -4555,9 +4557,12 @@ async fn check_memory_pressure(
         .oom_known_descendants
         .retain(|pid, _| state.oom_biased_pids.contains_key(pid));
     state.capped_pids.retain(|pid, (_, _, identity)| {
+        // Same rule as the memory and OOM prunes above: a recycled PID
+        // (same number, different starttime) must not keep throttling an
+        // innocent new process.
         !matches!(
             process_identity_status(Path::new("/proc"), *pid, identity),
-            ProcessIdentityStatus::Gone
+            ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch
         )
     });
 
