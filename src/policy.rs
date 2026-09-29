@@ -515,7 +515,11 @@ pub(crate) fn default_reap_report_signatures() -> String {
 }
 
 pub(crate) fn default_process_exempt_names() -> String {
-    "systemd,dbus-daemon,Xorg,kwin_wayland,plasmashell".to_string()
+    // dracon-code (agent sessions) is exempt out of the box: the fleet
+    // runs dozens of them, and renicing or biasing an interactive agent
+    // session degrades the work the operator is watching. Decided
+    // 2026-09-29 (audit DECIDE): match the example template.
+    "systemd,dbus-daemon,Xorg,kwin_wayland,plasmashell,dracon-code".to_string()
 }
 
 pub(crate) fn default_notify_command() -> String {
