@@ -186,7 +186,8 @@ fn quarantine_expire_deletes_only_past_ttl() {
 }
 
 #[test]
-fn quarantine_expire_zero_ttl_disables() {    let root = test_root("zerottl");
+fn quarantine_expire_zero_ttl_disables() {
+    let root = test_root("zerottl");
     let src = fixture_dir(&root);
     let qdir = root.join("q");
     let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
@@ -231,8 +232,10 @@ fn quarantine_expire_skips_escaped_entries_without_aborting_batch() {
     let removed = crate::quarantine_expire(&qdir, 30, true).unwrap();
     assert_eq!(removed, vec![manifest.name.clone()]);
     assert!(!entry_dir.exists(), "expired entry removed");
-    assert!(qdir.join("evil").exists() || qdir.join("evil").is_symlink() || fs::symlink_metadata(qdir.join("evil")).is_ok(),
-        "escaped entry must survive");
+    assert!(
+        fs::symlink_metadata(qdir.join("evil")).is_ok(),
+        "escaped entry must survive"
+    );
     assert!(outside.is_dir(), "escape target untouched");
     cleanup(&root);
 }
