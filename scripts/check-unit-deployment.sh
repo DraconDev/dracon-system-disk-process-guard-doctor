@@ -21,20 +21,40 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UNIT_NAME="dracon-system-guard.service"
 REPO_UNIT="${1:-$SCRIPT_DIR/../$UNIT_NAME}"
-# HOME may be unset in a stripped container or CI environment, and `set -u`
-# turns "${HOME}/..." into a hard abort. An unset HOME is not drift — it means
-# there is no user unit directory to compare against — so it takes the same
-# exit-0 path as a unit that was never deployed. An explicit second argument
-# always wins, which is what the regression suite passes.
+# systemd searches BOTH "$XDG_CONFIG_HOME/systemd/user" and
+# "$HOME/.config/systemd/user" for user units, so this script searches both.
+# Checking only one lets a drifted, deployed unit hide behind the other path and
+# the script reports "nothing to compare" — a silent false pass, which is the
+# exact failure this script exists to prevent. HOME may also be unset in a
+# stripped container or CI environment, where `set -u` would turn "${HOME}/..."
+# into a hard abort; an unset HOME is not drift either, it means there is no
+# user unit directory to compare against. An explicit second argument always
+# wins, which is what the regression suite passes.
 if [ -n "${2:-}" ]; then
     DEPLOYED_UNIT="$2"
 else
-    user_config_home="${XDG_CONFIG_HOME:-${HOME:-}}"
-    if [ -z "$user_config_home" ]; then
+    unit_dirs=()
+    [ -n "${XDG_CONFIG_HOME:-}" ] && unit_dirs+=("$XDG_CONFIG_HOME/systemd/user")
+    [ -n "${HOME:-}" ] && unit_dirs+=("$HOME/.config/systemd/user")
+    if [ ${#unit_dirs[@]} -eq 0 ]; then
         echo "• neither XDG_CONFIG_HOME nor HOME is set — no user unit directory to compare"
         exit 0
     fi
-    DEPLOYED_UNIT="$user_config_home/systemd/user/$UNIT_NAME"
+    # First candidate that actually holds the unit wins; with both present the
+    # one systemd reports is preferred by the loaded-unit check further down.
+    DEPLOYED_UNIT=""
+    for dir in "${unit_dirs[@]}"; do
+        if [ -f "$dir/$UNIT_NAME" ]; then
+            DEPLOYED_UNIT="$dir/$UNIT_NAME"
+            break
+        fi
+    done
+    if [ -z "$DEPLOYED_UNIT" ]; then
+        primary="${unit_dirs[0]}/$UNIT_NAME"
+        echo "• no deployed unit at $primary — nothing to compare (install it with:"
+        echo "    mkdir -p \$(dirname \"$primary\") && install -m 644 $REPO_UNIT $primary && systemctl --user daemon-reload)"
+        exit 0
+    fi
 fi
 REDEPLOY_CMD="install -m 644 $REPO_UNIT $DEPLOYED_UNIT && systemctl --user daemon-reload"
 # Overridable so the regression suite can drive the systemd-dependent steps
