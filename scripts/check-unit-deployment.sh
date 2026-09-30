@@ -23,6 +23,10 @@ UNIT_NAME="dracon-system-guard.service"
 REPO_UNIT="${1:-$SCRIPT_DIR/../$UNIT_NAME}"
 DEPLOYED_UNIT="${2:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$UNIT_NAME}"
 REDEPLOY_CMD="install -m 644 $REPO_UNIT $DEPLOYED_UNIT && systemctl --user daemon-reload"
+# Overridable so the regression suite can drive the systemd-dependent steps
+# deterministically instead of depending on the host's user manager.
+SYSTEMCTL="${SYSTEMCTL:-systemctl}"
+SYSTEMD_ANALYZE="${SYSTEMD_ANALYZE:-systemd-analyze}"
 
 stale() {
     echo "✗ deployed unit is STALE: $DEPLOYED_UNIT" >&2
@@ -54,27 +58,40 @@ fi
 
 # 4. The deployed file is the one systemd is running. If it is not, the file was
 #    copied without `daemon-reload` and the drift is still live even though the
-#    two files agree. Best-effort: hosts without a user manager report nothing.
-if command -v systemctl >/dev/null 2>&1; then
-    loaded="$(systemctl --user show "$UNIT_NAME" -p ExecReload --value 2>/dev/null || true)"
-    repo_has_reload=no
-    grep -qE '^ExecReload=' "$REPO_UNIT" && repo_has_reload=yes
-    if [ "$repo_has_reload" = yes ] && [ -z "$loaded" ]; then
-        echo "✗ systemd is running a unit without ExecReload although the shipped" >&2
-        echo "  unit has one: the file was copied but never reloaded. Run:" >&2
-        echo "    systemctl --user daemon-reload && systemctl --user reload $UNIT_NAME" >&2
-        exit 1
+#    two files agree.
+#
+#    Both this step and step 5 need a running user manager, and a host without
+#    one (CI, a container, a bare ssh session) has no opinion about the loaded
+#    unit. Probing first keeps "cannot ask systemd" from being reported as
+#    "systemd says no" — with no bus reachable, `systemctl --user show` and
+#    `systemd-analyze --user verify` both exit non-zero ("Failed to connect to
+#    user scope bus", "Failed to initialize manager") and would otherwise turn
+#    an in-sync unit into a false alarm with a wrong remediation.
+if command -v "$SYSTEMCTL" >/dev/null 2>&1 &&
+    "$SYSTEMCTL" --user show -p Version --value >/dev/null 2>&1; then
+    if [[ "$UNIT_NAME" == "dracon-system-guard.service" ]] &&
+        grep -qE '^ExecReload=' "$REPO_UNIT"; then
+        loaded="$("$SYSTEMCTL" --user show "$UNIT_NAME" -p ExecReload --value 2>/dev/null || true)"
+        if [ -z "$loaded" ]; then
+            echo "✗ systemd is running a unit without ExecReload although the shipped" >&2
+            echo "  unit has one: the file was copied but never reloaded. Run:" >&2
+            echo "    systemctl --user daemon-reload && systemctl --user reload $UNIT_NAME" >&2
+            exit 1
+        fi
     fi
-fi
 
-# 5. The deployed unit must be a valid unit file, so a redeploy that "succeeded"
-#    can never leave the guard unstartable.
-if command -v systemd-analyze >/dev/null 2>&1; then
-    if ! verify_out="$(systemd-analyze --user verify "$DEPLOYED_UNIT" 2>&1)"; then
-        echo "✗ systemd-analyze --user verify rejected $DEPLOYED_UNIT" >&2
-        printf '%s\n' "$verify_out" | sed -e 's/^/  /' | head -20 >&2
-        exit 1
+    # 5. The deployed unit must be a valid unit file, so a redeploy that
+    #    "succeeded" can never leave the guard unstartable. Only meaningful when
+    #    there is a user manager to initialise (see step 4).
+    if command -v "$SYSTEMD_ANALYZE" >/dev/null 2>&1; then
+        if ! verify_out="$("$SYSTEMD_ANALYZE" --user verify "$DEPLOYED_UNIT" 2>&1)"; then
+            echo "✗ systemd-analyze --user verify rejected $DEPLOYED_UNIT" >&2
+            printf '%s\n' "$verify_out" | sed -e 's/^/  /' | head -20 >&2
+            exit 1
+        fi
     fi
+else
+    echo "• no reachable user systemd — skipped the loaded-unit and verify checks"
 fi
 
 echo "✓ OK: deployed unit matches the shipped unit ($DEPLOYED_UNIT)."
