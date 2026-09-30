@@ -496,6 +496,19 @@ warn ""
 warn "after 'cargo install dracon-system --version ${VERSION}', run the fixture check:"
 warn "    ${RELPFX}scripts/verify-install.sh"
 
+# A released unit that is never copied to ~/.config/systemd/user leaves the live
+# service on the old unit, silently: F94 (2026-09-27) and ExecReload (2026-09-29)
+# both shipped and only surfaced later as a command that would not work. Nothing
+# in a release can own host deployment state, so surface it here instead —
+# advisory, never fatal, because a stale local unit must not block a release.
+if [[ -x "${RELPFX}scripts/check-unit-deployment.sh" ]]; then
+    warn ""
+    if ! "${RELPFX}scripts/check-unit-deployment.sh"; then
+        warn "the deployed systemd unit is out of date with this release (see above)."
+        warn "    install -m 644 ${RELPFX}dracon-system-guard.service ~/.config/systemd/user/dracon-system-guard.service && systemctl --user daemon-reload"
+    fi
+fi
+
 if [[ $DRY_RUN -eq 1 ]]; then
     echo ""
     warn "This was a --dry-run. Local release surfaces were modified but no remote state was changed."

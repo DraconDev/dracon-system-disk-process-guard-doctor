@@ -14,6 +14,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A unit-drift check, because a shipped unit change was never actually
+  deployed (2026-09-30)** — `scripts/check-unit-deployment.sh` fails when
+  `~/.config/systemd/user/dracon-system-guard.service` is not byte-identical
+  to the unit in this repo, when systemd is running a unit without an
+  `ExecReload` that the shipped one has (file copied, `daemon-reload`
+  forgotten), or when `systemd-analyze --user verify` rejects the deployed
+  file. `scripts/release.sh` runs it at the end of a release and prints the
+  redeploy command when it fails — advisory, because host deployment state
+  must never block a release. A host that never installed the unit reports
+  "nothing to compare" and passes, so CI and containers stay green.
+  This is the second silent case of the same class: audit F94 widened
+  `ReadWritePaths` with `~/.local/share` on 2026-09-27 and `ExecReload`
+  landed on 2026-09-29, and both sat in the repo while the live unit stayed
+  at its 2026-09-20 copy — the deployed guard could neither truncate its
+  logs nor be reloaded, and only a failing command revealed it. The live
+  unit has been redeployed from the repo copy; the previous file is kept at
+  `~/.config/systemd/user/dracon-system-guard.service.bak-20260930-203742`.
+
 ### Fixed
 
 - **The intermittent `ETXTBSY` failures in the guard fixture tests are
