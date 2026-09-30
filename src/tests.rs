@@ -3,6 +3,74 @@ use super::*;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
+/// Serializes the "create an executable fixture, then exec it" window
+/// across the test binary's threads. ADDED 2026-09-30.
+///
+/// WHY THIS EXISTS (root cause of the long-standing ETXTBSY flakes in
+/// `renice_process_with_bin_reports_success_and_failure`,
+/// `nix_cleanup_apply_preserves_configured_profile_generations`,
+/// `restore_runtime_adjustments_composes_overlapping_nice_limiters`,
+/// `restore_runtime_adjustments_preserves_current_pid_incarnation`,
+/// `restore_runtime_adjustments_restores_renice_and_oom` and
+/// `restore_runtime_adjustments_retains_failed_cpu_cap`):
+///
+/// `execve()` of a file that this process created milliseconds earlier
+/// can fail with `ETXTBSY` ("Text file busy", os error 26). The kernel
+/// refuses to execute an inode it still considers write-busy, and the
+/// window in which a just-written ext4 inode stays in that state is
+/// long enough for a sibling test thread to collide with it. `libtest`
+/// runs tests in parallel threads inside one process, so several
+/// fixtures are being written and exec'd concurrently by construction.
+///
+/// Measured with a standalone 4-thread reproducer that contains none of
+/// this crate's code (write fixture -> chmod -> fork -> execv, unique
+/// paths, 6000 execs per configuration):
+///
+///   | configuration                        | ETXTBSY |
+///   |--------------------------------------|---------|
+///   | 1 thread, no contention              |       0 |
+///   | 4 threads                            |  27-155 |
+///   | 4 threads, create->exec serialized   |       0 |
+///   | 4 threads, exec one PRE-WRITTEN script |     0 |
+///   | 4 threads, per-thread interpreter copy |    53  |
+///   | 4 threads, path reuse (O_TRUNC)      |     155 |
+///   | 4 threads, fsync(fd) before close    |    3033 |
+///
+/// `exec`ing a pre-written script is safe, so the trigger is the
+/// *fresh write*, not concurrency alone, not a shared interpreter inode
+/// (private copies do not help), and not inode reuse. `fsync` before
+/// close makes it roughly 70x worse because it forces the writeback
+/// that the busy window tracks.
+///
+/// THE PRODUCTION CODE IS NOT INVOLVED and needs no change: it only ever
+/// execs resolved system binaries (`resolve_bin_strict("renice")`,
+/// `nix-env`, `systemctl`, `ps`), which the process never writes. Only
+/// these tests create a file and immediately exec it, so only they need
+/// the guard.
+///
+/// INVARIANT: any test that writes an executable fixture and then execs
+/// it must hold `fixture_exec_guard()` from before the first
+/// `write_test_script` until after the last exec. `libtest` prints
+/// captured stdout only for failing tests, which is why the earlier
+/// instrumentation also reported `Is a directory (os error 21)` and
+/// `process identity unavailable` — those are by-design fixtures in
+/// `restore_runtime_adjustments_restores_renice_and_oom` (a missing
+/// proc root, a `renice` that exits 1, and a directory standing in for
+/// an unwritable `oom_score_adj`), not additional failure modes.
+#[cfg(unix)]
+static FIXTURE_EXEC_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Hold the fixture-exec lock for the whole create->exec window.
+///
+/// Poisoning is recovered rather than propagated: one panicking fixture
+/// test must not cascade into every other test that needs the lock.
+#[cfg(unix)]
+fn fixture_exec_guard() -> std::sync::MutexGuard<'static, ()> {
+    FIXTURE_EXEC_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 #[test]
 fn defaults_are_expected() {
     assert_eq!(default_min_size_mb(), 512);
@@ -19,6 +87,7 @@ fn nix_delete_generations_arg_means_keep_last_n() {
 #[cfg(unix)]
 #[tokio::test]
 async fn nix_cleanup_apply_preserves_configured_profile_generations() {
+    let _fixture_exec = fixture_exec_guard();
     fn shell_quote(value: &str) -> String {
         format!("'{}'", value.replace('\'', "'\\''"))
     }
@@ -141,6 +210,7 @@ fn guard_clean_target_flags_remain_selective_and_all_overrides_them() {
 #[cfg(unix)]
 #[tokio::test]
 async fn renice_process_with_bin_reports_success_and_failure() {
+    let _fixture_exec = fixture_exec_guard();
     let tmp = std::env::temp_dir().join(format!(
         "dracon_system_renice_test_{}_{}",
         std::process::id(),
@@ -213,6 +283,7 @@ fn write_test_script(path: &std::path::Path, body: &str) {
 #[cfg(unix)]
 #[tokio::test]
 async fn restore_runtime_adjustments_restores_renice_and_oom() {
+    let _fixture_exec = fixture_exec_guard();
     let tmp = std::env::temp_dir().join(format!(
         "dracon_system_restore_test_{}_{}",
         std::process::id(),
@@ -397,6 +468,7 @@ async fn restore_runtime_adjustments_restores_renice_and_oom() {
 #[cfg(unix)]
 #[tokio::test]
 async fn restore_runtime_adjustments_composes_overlapping_nice_limiters() {
+    let _fixture_exec = fixture_exec_guard();
     let tmp = std::env::temp_dir().join(format!(
         "dracon_system_overlap_restore_test_{}_{}",
         std::process::id(),
@@ -459,6 +531,7 @@ async fn restore_runtime_adjustments_composes_overlapping_nice_limiters() {
 #[cfg(unix)]
 #[tokio::test]
 async fn restore_runtime_adjustments_retains_overlapping_nice_limiters_on_failure() {
+    let _fixture_exec = fixture_exec_guard();
     let tmp = std::env::temp_dir().join(format!(
         "dracon_system_overlap_failure_test_{}_{}",
         std::process::id(),
@@ -508,6 +581,7 @@ async fn restore_runtime_adjustments_retains_overlapping_nice_limiters_on_failur
 #[cfg(unix)]
 #[tokio::test]
 async fn restore_runtime_adjustments_preserves_current_pid_incarnation() {
+    let _fixture_exec = fixture_exec_guard();
     let tmp = std::env::temp_dir().join(format!(
         "dracon_system_pid_reuse_restore_test_{}_{}",
         std::process::id(),
@@ -792,6 +866,7 @@ fn sweep_stranded_oom_descendants_uses_nearest_biased_ancestor() {
 #[cfg(unix)]
 #[tokio::test]
 async fn restore_runtime_adjustments_retains_failed_cpu_cap() {
+    let _fixture_exec = fixture_exec_guard();
     let tmp = std::env::temp_dir().join(format!(
         "dracon_system_cap_restore_test_{}_{}",
         std::process::id(),
@@ -1489,6 +1564,7 @@ async fn empty_trash_zero_age_with_flagged_keeps_flagged() {
 #[cfg(unix)]
 #[tokio::test]
 async fn nix_cleanup_gen_prune_failure_still_runs_gc() {
+    let _fixture_exec = fixture_exec_guard();
     // 2026-09-20 (space audit): nix-env prune failures (a user-session
     // guard can never prune the root-owned system profile) must not fail
     // the pass or discard store-GC results.
@@ -2401,6 +2477,7 @@ fn package_cache_process_detection_rejects_malformed_ps_output() {
 #[cfg(unix)]
 #[tokio::test]
 async fn package_cache_process_listing_failure_is_an_error() {
+    let _fixture_exec = fixture_exec_guard();
     let proc_root = unique_test_home("package_proc_failed_ps");
     let bin_root = unique_test_home("package_ps_failed");
     fs::create_dir_all(proc_root.join("self")).expect("create proc fixture");
