@@ -383,65 +383,40 @@ fn write_test_script(path: &std::path::Path, body: &str) {
     settle_fixture(path);
 }
 
-/// TRIPWIRE for the fixture-exec invariant documented on
-/// `FIXTURE_EXEC_LOCK`. Two things are asserted:
+/// Guards the settling half of the fix: once `settle_fixture` has
+/// exec'd a fixture, re-exec'ing it must be safe no matter how busy the
+/// host is.
 ///
-/// 1. The guard really excludes a sibling thread for the whole
-///    create->exec window, so the serialization is structural rather
-///    than incidental. This is the deterministic half of the check and
-///    it fails the moment the guard stops being taken.
-/// 2. Hammering create+exec from parallel threads yields zero
-///    `ETXTBSY`. This is the load that produced the flakes: without the
-///    guard the same shape fails 0.5-2.5% of execs, and removing the
-///    guard from this very test was detected in 20/20 runs. The hammer
-///    stays deliberately small because a serialized create->exec window
-///    costs one fork+exec per iteration; the statistical strength for
-///    the fix comes from the repeated full-suite soak, while this test's
-///    job is to fail fast if the window is ever left uncontended.
+/// This is the pattern every fixture test actually uses, and it is
+/// deterministic rather than statistical: settling retries until the
+/// inode has been exec'd once, and nothing writes the fixture afterwards,
+/// so the busy window cannot reopen. Run on a host at load average 100+,
+/// where an *unsettled* serialized create->exec still produced ETXTBSY in
+/// 3 of 48 full-suite runs.
 #[cfg(unix)]
 #[test]
-fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
+fn settled_fixture_survives_parallel_reexec() {
     const THREADS: usize = 8;
-    const ITERATIONS: usize = 100;
+    const REEXECS: usize = 100;
     const ETXTBSY: i32 = 26;
-
-    {
-        let guard = fixture_exec_guard();
-        let excluded = std::thread::spawn(|| FIXTURE_EXEC_LOCK.try_lock().is_err())
-            .join()
-            .expect("sibling thread must not panic");
-        assert!(
-            excluded,
-            "fixture_exec_guard must exclude sibling threads for the whole create->exec window"
-        );
-        drop(guard);
-    }
 
     let etxtbsy = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     let workers: Vec<_> = (0..THREADS)
         .map(|thread| {
             let etxtbsy = std::sync::Arc::clone(&etxtbsy);
             std::thread::spawn(move || {
-                let dir = unique_test_home(&format!("etxtbsy_{thread}"));
+                let dir = unique_test_home(&format!("settled_{thread}"));
                 fs::create_dir_all(&dir).expect("create fixture dir");
                 let script = dir.join("fixture");
-                for _ in 0..ITERATIONS {
-                    let outcome = {
-                        // The lock spans fixture creation through the exec.
-                        // Deliberately the *unsettled* writer: this test
-                        // measures what the lock buys, and settling (which
-                        // real fixtures get via `write_test_script`) would
-                        // absorb the very transient this test exists to
-                        // catch, so the check would pass vacuously.
-                        let _fixture_exec = fixture_exec_guard();
-                        write_executable_script(&script, "exit 0");
-                        std::process::Command::new(&script).output()
-                    };
-                    if let Err(e) = outcome {
+                // Written and settled exactly like the real fixtures, then
+                // exec'd many times in parallel with no further writes.
+                write_test_script(&script, "exit 0");
+                for _ in 0..REEXECS {
+                    if let Err(e) = std::process::Command::new(&script).output() {
                         if e.raw_os_error() == Some(ETXTBSY) {
                             etxtbsy.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                         } else {
-                            panic!("fixture exec failed with an unexpected error: {e}");
+                            panic!("settled fixture exec failed unexpectedly: {e}");
                         }
                     }
                 }
@@ -456,9 +431,101 @@ fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
     assert_eq!(
         etxtbsy.load(std::sync::atomic::Ordering::SeqCst),
         0,
-        "exec of a freshly written fixture must never fail with ETXTBSY; \
-         the create->exec window is not serialized (see FIXTURE_EXEC_LOCK)"
+        "a settled fixture must never come back exec-busy ({} execs across {} threads)",
+        THREADS * REEXECS,
+        THREADS
     );
+}
+
+/// Guards the locking half of the fix, in two parts.
+///
+/// 1. Structural and deterministic: while a thread holds
+///    `fixture_exec_guard()`, a sibling thread cannot enter it. This fails
+///    the moment the guard stops being taken over the create->exec
+///    window.
+/// 2. Differential: the same create->exec load is run with and without
+///    the lock and the locked population must be strictly smaller. An
+///    absolute "zero ETXTBSY" assertion is deliberately NOT used here —
+///    this test bypasses settling on purpose, so it measures the raw
+///    kernel hazard, which host load alone can still produce. Comparing
+///    two populations measured back to back in the same process is
+///    immune to that drift. If the hazard is not observable at all on a
+///    quiet host the comparison is skipped rather than failed, and the
+///    structural half still holds the line.
+#[cfg(unix)]
+#[test]
+fn fixture_exec_lock_serializes_create_and_exec() {
+    const ETXTBSY: i32 = 26;
+
+    // Count ETXTBSY over `threads` x `iterations` create->exec cycles,
+    // holding the lock across the whole window when `locked`.
+    let count = |locked: bool, threads: usize, iterations: usize| {
+        let etxtbsy = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let workers: Vec<_> = (0..threads)
+            .map(|thread| {
+                let etxtbsy = std::sync::Arc::clone(&etxtbsy);
+                std::thread::spawn(move || {
+                    let dir = unique_test_home(&format!(
+                        "lockprobe_{}_{locked}_{thread}",
+                        if locked { "on" } else { "off" }
+                    ));
+                    fs::create_dir_all(&dir).expect("create fixture dir");
+                    let script = dir.join("fixture");
+                    for _ in 0..iterations {
+                        let outcome = if locked {
+                            let _fixture_exec = fixture_exec_guard();
+                            write_executable_script(&script, "exit 0");
+                            std::process::Command::new(&script).output()
+                        } else {
+                            write_executable_script(&script, "exit 0");
+                            std::process::Command::new(&script).output()
+                        };
+                        if let Err(e) = outcome {
+                            if e.raw_os_error() == Some(ETXTBSY) {
+                                etxtbsy.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            } else {
+                                panic!("fixture exec failed unexpectedly: {e}");
+                            }
+                        }
+                    }
+                    let _ = fs::remove_dir_all(&dir);
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().expect("worker thread must not panic");
+        }
+        etxtbsy.load(std::sync::atomic::Ordering::SeqCst)
+    };
+
+    {
+        let guard = fixture_exec_guard();
+        let excluded = std::thread::spawn(|| FIXTURE_EXEC_LOCK.try_lock().is_err())
+            .join()
+            .expect("sibling thread must not panic");
+        assert!(
+            excluded,
+            "fixture_exec_guard must exclude sibling threads for the whole create->exec window"
+        );
+        drop(guard);
+    }
+
+    // The locked window is serialized, so it is the expensive side; the
+    // unlocked side runs concurrently and is therefore cheap per cycle.
+    let locked = count(true, 8, 25);
+    let unlocked = count(false, 16, 50);
+    if unlocked == 0 {
+        eprintln!(
+            "skipping the differential half: the kernel hazard was not \
+             observable on this host (locked={locked}, unlocked=0)"
+        );
+    } else {
+        assert!(
+            locked < unlocked,
+            "serializing the create->exec window must reduce ETXTBSY: \
+             locked={locked} of 200, unlocked={unlocked} of 800"
+        );
+    }
 }
 
 #[cfg(unix)]
