@@ -57,11 +57,15 @@ use std::os::unix::fs::PermissionsExt;
 /// therefore the invariant: with the guard held across
 /// `write_test_script` and the exec, the tripwire gave 140 consecutive
 /// clean runs (112,000 create->exec cycles), while removing the guard
-/// from the same test was detected in 20/20 runs.
+/// from the same test was detected in 20/20 runs. That statistical
+/// tripwire has since been replaced by the deterministic guards named
+/// below, for the reason given under "SERIALIZATION IS NECESSARY BUT NOT
+/// SUFFICIENT".
 ///
 /// SERIALIZATION IS NECESSARY BUT NOT SUFFICIENT UNDER LOAD. With the
 /// lock in place the flake still appeared in 3 of 48 full-suite runs
-/// (all inside the tripwire, 1-2 ETXTBSY per 800 cycles) while this host
+/// (all inside the test that measures the raw hazard, 1-2 ETXTBSY per 800
+/// cycles) while this host
 /// was running at load average 87: with the process descheduled between
 /// the write and the exec, a serialized create->exec can still land
 /// inside the busy window. So the lock removes the in-process collision
@@ -87,9 +91,13 @@ use std::os::unix::fs::PermissionsExt;
 /// `write_test_script` until after the last exec — the write must be
 /// inside the critical section, not just the exec — and must obtain the
 /// fixture through `write_test_script`, which settles it.
-/// `fixture_script_exec_never_hits_etxtbsy_under_parallel_load` is the
-/// tripwire for the first half; it deliberately bypasses settling so
-/// that removing the lock cannot be masked. `libtest` prints captured
+/// `fixture_writing_tests_hold_the_fixture_exec_guard` enforces the first
+/// half on every fixture-writing test in this module;
+/// `settle_fixture_probes_without_side_effects_and_fails_loudly` and
+/// `settled_fixture_survives_parallel_reexec` cover the second. All three
+/// are deterministic, because an assertion of the form "zero ETXTBSY" on
+/// the raw hazard is statistical and host load alone breaks it. `libtest`
+/// prints captured
 /// stdout only for failing tests, which is why the earlier
 /// instrumentation also reported `Is a directory (os error 21)` and
 /// `process identity unavailable` — those are by-design fixtures in
