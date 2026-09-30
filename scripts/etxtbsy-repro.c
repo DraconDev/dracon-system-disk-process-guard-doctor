@@ -20,12 +20,14 @@
  * fork, execv — so it separates the mechanism from our test code.
  *
  * WHICH PART OF THE WINDOW MATTERS (measured on the development host,
- * Linux 7.1, /tmp on ext4; 4800-6400 execs per configuration):
+ * Linux 7.1, /tmp on ext4, 8 threads x 600 iterations = 4800 execs;
+ * the counts move between runs, the zeros do not):
  *
- *   MODE=0  nothing serialized                        -> 52..120
+ *   MODE=0  nothing serialized                        -> ~25  (52..120 across runs)
  *   MODE=7  ONLY the exec serialized (writes free)    ->  0
- *   MODE=8  ONLY the write serialized (execs free)    ->  8
+ *   MODE=8  ONLY the write serialized (execs free)    ->  5  (5..8 across runs)
  *   MODE=9  the whole create->exec window serialized  ->  0
+ *   MODE=0  but a single thread                        ->  0
  *
  * Concurrent *execs* are what collide; serializing the writes alone does not
  * help. Thread count alone does not explain it either — a single thread
@@ -34,7 +36,7 @@
  *
  *   ./etxtbsy-repro 1500 1  -> threads=1  etxtbsy=0        (no contention)
  *   ./etxtbsy-repro 1500 4  -> threads=4  etxtbsy=27..155  (the flake)
- *   ./etxtbsy-repro  600 8  -> threads=8  etxtbsy=52..120
+ *   ./etxtbsy-repro  600 8  -> threads=8  etxtbsy=25..120
  *
  * Variants that confirm what the trigger is NOT — none of them fix it:
  *
@@ -59,11 +61,16 @@
  *
  * SCOPE NOTE
  * ----------
- * These C numbers are a mechanism sketch, not the acceptance evidence. This
- * program opens fixtures with plain O_WRONLY, whereas `std::fs` always adds
- * O_CLOEXEC, so the crate's own measurements — the tripwire test
- * `fixture_script_exec_never_hits_etxtbsy_under_parallel_load` and the
- * repeated full-suite soak — are the authoritative ones.
+ * These C numbers are a mechanism sketch, not the acceptance evidence. In
+ * this sketch serializing the exec half (MODE=7) is already enough, but the
+ * Rust harness disagreed: the crate's own tripwire, written that way, failed
+ * twice in ~89 full-suite runs, so the crate holds the lock across the write
+ * as well (MODE=9 behaviour). The authoritative measurements are the tripwire
+ * test `fixture_script_exec_never_hits_etxtbsy_under_parallel_load` and the
+ * repeated full-suite soak. This program also sets O_CLOEXEC on its fixtures
+ * because `std::fs` always does, so it matches the Rust tests on the wire;
+ * without it a concurrent fork can inherit the write fd and hold the fixture
+ * write-busy for the whole life of the exec'd child.
  *
  * BUILD / RUN
  * -----------

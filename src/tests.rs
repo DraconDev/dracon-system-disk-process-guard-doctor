@@ -31,9 +31,10 @@ use std::os::unix::fs::PermissionsExt;
 ///   | configuration                          | ETXTBSY |
 ///   |----------------------------------------|---------|
 ///   | 1 thread, no contention                |       0 |
-///   | 4-8 threads, nothing serialized        |  27-155 |
+///   | 4 threads, nothing serialized          |  27-155 |
+///   | 8 threads, nothing serialized          |      25 |
 ///   | 8 threads, whole create->exec serialized|       0 |
-///   | 8 threads, ONLY the write serialized   |       8 |
+///   | 8 threads, ONLY the write serialized   |       5 |
 ///   | 8 threads, ONLY the exec serialized    |       0 |
 ///   | 8 threads, per-thread interpreter copy  |      53 |
 ///   | 8 threads, path reuse (O_TRUNC)        |     155 |
@@ -49,23 +50,22 @@ use std::os::unix::fs::PermissionsExt;
 /// zero failures, so a test binary running twice at once, or any other
 /// process on the host, cannot reintroduce the flake.
 ///
-/// THE LOCK MUST SPAN THE WRITE *AND* THE EXEC. Serializing only the
-/// exec half is not enough: the tripwire below was first written that
-/// way and still failed (`left: 1`) in two of ~89 suite runs, because
-/// with the write outside the critical section a fixture can be
-/// exec'd while its own inode is still in the busy window. Holding the
-/// guard across `write_test_script` and the exec gave 140 consecutive
-/// clean runs (112,000 create->exec cycles) while removing the guard
+/// THE LOCK MUST SPAN THE WRITE *AND* THE EXEC. In the C sketch
+/// serializing only the exec half looks sufficient, but the Rust harness
+/// disagrees: the tripwire below was first written that way and still
+/// failed (`left: 1`) twice in ~89 suite runs. The broader window is
+/// therefore the invariant: with the guard held across
+/// `write_test_script` and the exec, the tripwire gave 140 consecutive
+/// clean runs (112,000 create->exec cycles), while removing the guard
 /// from the same test was detected in 20/20 runs.
 ///
 /// Re-verify any of the above without this crate, in seconds:
-/// `cc -O2 -pthread -o repro scripts/etxtbsy-repro.c && ./repro 1500 1`
-/// (0 failures) versus `./repro 1500 4` (dozens of ETXTBSY). The shipped
-/// copy of that program documents every variant measured here, and its
-/// numbers are a mechanism sketch; the authoritative measurements are
-/// the Rust ones above and in the tripwire below, because the C program
-/// opens its fixtures without the `O_CLOEXEC` that `std::fs` always
-/// sets.
+/// `cc -O2 -pthread -o repro scripts/etxtbsy-repro.c && ./repro 600 1`
+/// (0 failures) versus `./repro 600 8` (dozens of ETXTBSY). The shipped
+/// copy of that program documents every variant measured here and sets
+/// `O_CLOEXEC` on its fixtures because `std::fs` always does; its numbers
+/// are a mechanism sketch, and the authoritative measurements are the
+/// Rust ones in the tripwire below.
 ///
 /// INVARIANT: any test that writes an executable fixture and then execs
 /// it must hold `fixture_exec_guard()` from before the first
