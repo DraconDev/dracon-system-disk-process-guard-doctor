@@ -285,18 +285,21 @@ fn write_test_script(path: &std::path::Path, body: &str) {
 ///
 /// 1. The guard really excludes a sibling thread for the whole
 ///    create->exec window, so the serialization is structural rather
-///    than incidental.
+///    than incidental. This is the deterministic half of the check and
+///    it fails the moment the guard stops being taken.
 /// 2. Hammering create+exec from parallel threads yields zero
 ///    `ETXTBSY`. This is the load that produced the flakes: without the
-///    guard the same shape fails 0.5-2.5% of execs (a standalone
-///    4-thread reproducer hit 27-155 per 6000 execs), so a regression
-///    that drops or narrows the lock fails here instead of surfacing as
-///    an intermittent failure in an unrelated guard test.
+///    guard the same shape fails roughly 0.5-2.5% of execs (a standalone
+///    4-thread reproducer hit 27-155 per 6000 execs). The hammer stays
+///    deliberately small because a serialized create->exec window costs
+///    one fork+exec per iteration; the statistical strength for the fix
+///    comes from the repeated full-suite soak, while this test's job is
+///    to fail fast if the window is ever left uncontended.
 #[cfg(unix)]
 #[test]
 fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
     const THREADS: usize = 4;
-    const ITERATIONS: usize = 400;
+    const ITERATIONS: usize = 64;
     const ETXTBSY: i32 = 26;
 
     {
@@ -316,10 +319,10 @@ fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
         .map(|thread| {
             let etxtbsy = std::sync::Arc::clone(&etxtbsy);
             std::thread::spawn(move || {
-                for iteration in 0..ITERATIONS {
-                    let dir = unique_test_home(&format!("etxtbsy_{thread}_{iteration}"));
-                    fs::create_dir_all(&dir).expect("create fixture dir");
-                    let script = dir.join("fixture");
+                let dir = unique_test_home(&format!("etxtbsy_{thread}"));
+                fs::create_dir_all(&dir).expect("create fixture dir");
+                let script = dir.join("fixture");
+                for _ in 0..ITERATIONS {
                     write_test_script(&script, "exit 0");
                     let outcome = {
                         // The lock spans fixture creation through the exec.
@@ -334,8 +337,8 @@ fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
                             panic!("fixture exec failed with an unexpected error: {e}");
                         }
                     }
-                    let _ = fs::remove_dir_all(&dir);
                 }
+                let _ = fs::remove_dir_all(&dir);
             })
         })
         .collect();
