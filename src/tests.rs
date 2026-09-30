@@ -42,18 +42,28 @@ use std::os::unix::fs::PermissionsExt;
 /// close makes it roughly 70x worse because it forces the writeback
 /// that the busy window tracks.
 ///
+/// Re-verify any of the above without this crate, in seconds:
+/// `cc -O2 -pthread -o repro scripts/etxtbsy-repro.c && ./repro 1500 1`
+/// (0 failures) versus `./repro 1500 4` (dozens of ETXTBSY). The shipped
+/// copy of that program documents every variant measured here.
+///
 /// THE PRODUCTION CODE IS NOT INVOLVED and needs no change: it only ever
 /// execs resolved system binaries (`resolve_bin_strict("renice")`,
 /// `nix-env`, `systemctl`, `ps`), which the process never writes. Only
 /// these tests create a file and immediately exec it, so only they need
-/// the guard.
+/// the guard. That is also why "400 concurrent /bin/sh spawns succeed"
+/// never disproved this: spawning a pre-existing binary concurrently is
+/// safe; it is the write immediately before the exec that opens the
+/// window.
 ///
 /// INVARIANT: any test that writes an executable fixture and then execs
 /// it must hold `fixture_exec_guard()` from before the first
-/// `write_test_script` until after the last exec. `libtest` prints
-/// captured stdout only for failing tests, which is why the earlier
-/// instrumentation also reported `Is a directory (os error 21)` and
-/// `process identity unavailable` — those are by-design fixtures in
+/// `write_test_script` until after the last exec.
+/// `fixture_script_exec_never_hits_etxtbsy_under_parallel_load` is the
+/// tripwire for that invariant. `libtest` prints captured stdout only
+/// for failing tests, which is why the earlier instrumentation also
+/// reported `Is a directory (os error 21)` and `process identity
+/// unavailable` — those are by-design fixtures in
 /// `restore_runtime_adjustments_restores_renice_and_oom` (a missing
 /// proc root, a `renice` that exits 1, and a directory standing in for
 /// an unwritable `oom_score_adj`), not additional failure modes.
