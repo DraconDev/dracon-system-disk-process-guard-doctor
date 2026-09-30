@@ -820,7 +820,6 @@ async fn restore_runtime_adjustments_retains_overlapping_nice_limiters_on_failur
 #[cfg(unix)]
 #[tokio::test]
 async fn restore_runtime_adjustments_preserves_current_pid_incarnation() {
-    let _fixture_exec = fixture_exec_guard();
     let tmp = std::env::temp_dir().join(format!(
         "dracon_system_pid_reuse_restore_test_{}_{}",
         std::process::id(),
