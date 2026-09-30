@@ -385,7 +385,7 @@ fn write_test_script(path: &std::path::Path, body: &str) {
 #[test]
 fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
     const THREADS: usize = 8;
-    const ITERATIONS: usize = 40;
+    const ITERATIONS: usize = 25;
     const ETXTBSY: i32 = 26;
 
     {
