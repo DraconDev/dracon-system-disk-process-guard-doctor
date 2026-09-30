@@ -328,9 +328,7 @@ fn settle_fixture(path: &std::path::Path) {
         {
             Ok(_) => return,
             Err(e) if e.raw_os_error() == Some(ETXTBSY) => {
-                std::thread::sleep(std::time::Duration::from_millis(
-                    1 + (attempt as u64) / 8,
-                ));
+                std::thread::sleep(std::time::Duration::from_millis(1 + (attempt as u64) / 8));
             }
             Err(e) => panic!("fixture {} is not executable: {e}", path.display()),
         }
@@ -341,10 +339,9 @@ fn settle_fixture(path: &std::path::Path) {
     );
 }
 
-/// Write an executable `#!/bin/sh` fixture and settle it before any test
-/// can depend on it.
+/// Write an executable `#!/bin/sh` fixture without settling it.
 ///
-/// The settle marker guard is prepended here rather than in each body so
+/// The settle-marker guard is prepended here rather than in each body so
 /// that no test can forget it: a fixture invoked with the marker exits
 /// immediately, so probing it can never append to the log file (or emit
 /// the stderr) that the real invocation is asserted against. Fixtures
@@ -352,15 +349,20 @@ fn settle_fixture(path: &std::path::Path) {
 /// without arguments — are covered by the marker too, because the probe
 /// always passes exactly one argument.
 #[cfg(unix)]
-fn write_test_script(path: &std::path::Path, body: &str) {
+fn write_executable_script(path: &std::path::Path, body: &str) {
     fs::write(
         path,
-        format!(
-            "#!/bin/sh\ncase \"$1\" in\n{FIXTURE_SETTLE_ARG}) exit 0;;\nesac\n{body}\n"
-        ),
+        format!("#!/bin/sh\ncase \"$1\" in\n{FIXTURE_SETTLE_ARG}) exit 0;;\nesac\n{body}\n"),
     )
     .expect("write test script");
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("chmod test script");
+}
+
+/// Write an executable fixture and settle it before any test can depend
+/// on it. Every fixture a test actually asserts on goes through here.
+#[cfg(unix)]
+fn write_test_script(path: &std::path::Path, body: &str) {
+    write_executable_script(path, body);
     settle_fixture(path);
 }
 
@@ -409,8 +411,13 @@ fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
                 for _ in 0..ITERATIONS {
                     let outcome = {
                         // The lock spans fixture creation through the exec.
+                        // Deliberately the *unsettled* writer: this test
+                        // measures what the lock buys, and settling (which
+                        // real fixtures get via `write_test_script`) would
+                        // absorb the very transient this test exists to
+                        // catch, so the check would pass vacuously.
                         let _fixture_exec = fixture_exec_guard();
-                        write_test_script(&script, "exit 0");
+                        write_executable_script(&script, "exit 0");
                         std::process::Command::new(&script).output()
                     };
                     if let Err(e) = outcome {
