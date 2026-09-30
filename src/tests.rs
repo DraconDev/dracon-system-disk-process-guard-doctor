@@ -331,8 +331,7 @@ fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
                     };
                     if let Err(e) = outcome {
                         if e.raw_os_error() == Some(ETXTBSY) {
-                            etxtbsy
-                                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            etxtbsy.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                         } else {
                             panic!("fixture exec failed with an unexpected error: {e}");
                         }
@@ -348,7 +347,8 @@ fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
 
     assert_eq!(
         etxtbsy.load(std::sync::atomic::Ordering::SeqCst),
-        0,        "exec of a freshly written fixture must never fail with ETXTBSY; \
+        0,
+        "exec of a freshly written fixture must never fail with ETXTBSY; \
          the create->exec window is not serialized (see FIXTURE_EXEC_LOCK)"
     );
 }
