@@ -21,7 +21,21 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UNIT_NAME="dracon-system-guard.service"
 REPO_UNIT="${1:-$SCRIPT_DIR/../$UNIT_NAME}"
-DEPLOYED_UNIT="${2:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$UNIT_NAME}"
+# HOME may be unset in a stripped container or CI environment, and `set -u`
+# turns "${HOME}/..." into a hard abort. An unset HOME is not drift — it means
+# there is no user unit directory to compare against — so it takes the same
+# exit-0 path as a unit that was never deployed. An explicit second argument
+# always wins, which is what the regression suite passes.
+if [ -n "${2:-}" ]; then
+    DEPLOYED_UNIT="$2"
+else
+    user_config_home="${XDG_CONFIG_HOME:-${HOME:-}}"
+    if [ -z "$user_config_home" ]; then
+        echo "• neither XDG_CONFIG_HOME nor HOME is set — no user unit directory to compare"
+        exit 0
+    fi
+    DEPLOYED_UNIT="$user_config_home/systemd/user/$UNIT_NAME"
+fi
 REDEPLOY_CMD="install -m 644 $REPO_UNIT $DEPLOYED_UNIT && systemctl --user daemon-reload"
 # Overridable so the regression suite can drive the systemd-dependent steps
 # deterministically instead of depending on the host's user manager.
