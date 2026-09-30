@@ -251,16 +251,10 @@ async fn renice_process_with_bin_reports_success_and_failure() {
     ));
     fs::create_dir_all(&tmp).expect("temp dir");
     let success = tmp.join("renice-success");
-    fs::write(&success, "#!/bin/sh\necho 'ok' >&2\nexit 0\n").expect("write success script");
-    fs::set_permissions(&success, fs::Permissions::from_mode(0o755)).expect("chmod");
+    write_test_script(&success, "echo 'ok' >&2\nexit 0");
 
     let failure = tmp.join("renice-failure");
-    fs::write(
-        &failure,
-        "#!/bin/sh\necho 'permission denied' >&2\nexit 1\n",
-    )
-    .expect("write failure script");
-    fs::set_permissions(&failure, fs::Permissions::from_mode(0o755)).expect("chmod");
+    write_test_script(&failure, "echo 'permission denied' >&2\nexit 1");
 
     renice_process_with_bin(&success, 123, 5)
         .await
@@ -304,10 +298,70 @@ fn write_process_fixture(
     }
 }
 
+/// Marker argument used only by `settle_fixture`. No production caller
+/// passes it, so a fixture that short-circuits on it is a no-op.
+const FIXTURE_SETTLE_ARG: &str = "--dracon-fixture-settle";
+
+/// Prove that `path` is executable *now*.
+///
+/// `execve` of a file this process just wrote can fail with `ETXTBSY`
+/// because the kernel still considers the inode write-busy, and the
+/// window survives a millisecond or two of quiet. That transient is
+/// indistinguishable from a real test failure, so rather than retrying
+/// an assertion this establishes the invariant the tests actually need:
+/// *a fixture that has been exec'd once is no longer write-busy.*
+/// Measured: re-exec'ing an already-exec'd script is always safe even
+/// from many threads at once, so once this probe succeeds every later
+/// exec of the same inode is safe too.
+///
+/// Bounded and loud by design — it is fixture construction, not a
+/// swallow: a fixture that cannot be exec'd within the budget is a real
+/// bug (missing interpreter, no execute bit) and must fail loudly.
+#[cfg(unix)]
+fn settle_fixture(path: &std::path::Path) {
+    const ETXTBSY: i32 = 26;
+    const ATTEMPTS: usize = 40;
+    for attempt in 0..ATTEMPTS {
+        match std::process::Command::new(path)
+            .arg(FIXTURE_SETTLE_ARG)
+            .output()
+        {
+            Ok(_) => return,
+            Err(e) if e.raw_os_error() == Some(ETXTBSY) => {
+                std::thread::sleep(std::time::Duration::from_millis(
+                    1 + (attempt as u64) / 8,
+                ));
+            }
+            Err(e) => panic!("fixture {} is not executable: {e}", path.display()),
+        }
+    }
+    panic!(
+        "fixture {} stayed exec-busy (ETXTBSY) across {ATTEMPTS} settle attempts",
+        path.display()
+    );
+}
+
+/// Write an executable `#!/bin/sh` fixture and settle it before any test
+/// can depend on it.
+///
+/// The settle marker guard is prepended here rather than in each body so
+/// that no test can forget it: a fixture invoked with the marker exits
+/// immediately, so probing it can never append to the log file (or emit
+/// the stderr) that the real invocation is asserted against. Fixtures
+/// that must observe a zero-argument call — `nix-collect-garbage` runs
+/// without arguments — are covered by the marker too, because the probe
+/// always passes exactly one argument.
 #[cfg(unix)]
 fn write_test_script(path: &std::path::Path, body: &str) {
-    fs::write(path, format!("#!/bin/sh\n{body}\n")).expect("write test script");
+    fs::write(
+        path,
+        format!(
+            "#!/bin/sh\ncase \"$1\" in\n{FIXTURE_SETTLE_ARG}) exit 0;;\nesac\n{body}\n"
+        ),
+    )
+    .expect("write test script");
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("chmod test script");
+    settle_fixture(path);
 }
 
 /// TRIPWIRE for the fixture-exec invariant documented on
