@@ -103,18 +103,25 @@ static int threads = 4;
 static volatile long etxtbsy = 0;
 static volatile long other_errors = 0;
 static volatile long succeeded = 0;
-static pthread_mutex_t window = PTHREAD_MUTEX_INITIALIZER;
+/* Only the serializing MODEs touch it. */
+static pthread_mutex_t window __attribute__((unused)) = PTHREAD_MUTEX_INITIALIZER;
 
-/* Write the fixture. Mirrors fs::write + set_permissions. */
+/* Write the fixture. Mirrors fs::write + set_permissions.
+ *
+ * O_CLOEXEC is set because `std::fs` always sets it, so this program
+ * matches what the Rust tests actually do on the wire. Without it a
+ * concurrent fork can inherit this write fd and hold the fixture
+ * write-busy for the whole life of the exec'd child, which changes the
+ * numbers. */
 static int write_fixture(const char *path) {
-    char staged[PATH_MAX];
+    char staged[PATH_MAX] __attribute__((unused));
     const char *target = path;
 #if MODE == 5
     /* Write under a temporary name and rename into place. */
     snprintf(staged, sizeof staged, "%s.tmp", path);
     target = staged;
 #endif
-    int fd = open(target, O_WRONLY | O_CREAT | O_TRUNC, 0755);
+    int fd = open(target, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0755);
     if (fd < 0) {
         perror("open");
         return -1;
@@ -167,13 +174,10 @@ static int exec_fixture(const char *path) {
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
-/* One create->exec cycle, serializing only the halves each MODE selects. */
+/* One create->exec cycle, serializing only the halves each MODE selects:
+ * MODE 7 locks the exec only, MODE 8 the write only, MODE 9 both. */
 static int create_and_exec(const char *path) {
-#if MODE == 9
-    pthread_mutex_lock(&window);
-#elif MODE == 8
-    pthread_mutex_lock(&window);
-#endif
+    if (MODE == 8 || MODE == 9) pthread_mutex_lock(&window);
     if (write_fixture(path) != 0) return -1;
 #if MODE == 2 || MODE == 3
     int fd = open(path, O_RDONLY);
@@ -189,16 +193,15 @@ static int create_and_exec(const char *path) {
     if (fsync(fd) < 0) { perror("dirfsync"); close(fd); return -1; }
     close(fd);
 #endif
-#if MODE == 8
-    pthread_mutex_unlock(&window);
+    if (MODE == 8) {
+        /* Write half done; the exec stays unsynchronized. */
+        pthread_mutex_unlock(&window);
+        return exec_fixture(path);
+    }
+    if (MODE == 7) pthread_mutex_lock(&window);
     int status = exec_fixture(path);
+    if (MODE == 7 || MODE == 9) pthread_mutex_unlock(&window);
     return status;
-#elif MODE == 7 || MODE == 9
-    pthread_mutex_unlock(&window);
-    return exec_fixture(path);
-#else
-    return exec_fixture(path);
-#endif
 }
 
 static void *worker(void *arg) {
