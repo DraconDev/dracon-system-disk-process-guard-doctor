@@ -380,6 +380,7 @@ fn write_executable_script(path: &std::path::Path, body: &str) {
 #[cfg(unix)]
 fn write_test_script(path: &std::path::Path, body: &str) {
     write_executable_script(path, body);
+    settle_fixture(path);
 }
 
 /// Guards the settling half of the fix: once `settle_fixture` has
