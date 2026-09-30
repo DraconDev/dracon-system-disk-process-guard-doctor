@@ -6520,6 +6520,15 @@ async fn is_git_tracked_dir(path: &Path) -> Result<bool> {
 
 #[cfg(test)]
 #[allow(clippy::items_after_test_module)]
+// `await_holding_lock`: the fixture tests below hold `FIXTURE_EXEC_LOCK`
+// (see src/tests.rs) across their awaits on purpose. The exec of a
+// freshly written fixture happens *inside* the awaited production call,
+// so the lock has to span the await to cover the whole create->exec
+// window. The guard is never held while acquiring another lock, and
+// `#[tokio::test]` runs each test on its own current-thread runtime, so
+// the holder always makes progress independently of a waiter and the
+// serialization cannot deadlock.
+#[allow(clippy::await_holding_lock)]
 mod tests;
 
 mod print;
