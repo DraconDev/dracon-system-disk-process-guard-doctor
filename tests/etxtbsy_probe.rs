@@ -73,10 +73,10 @@ fn probe_etxtbsy_single_thread() {
 
 #[test]
 fn probe_etxtbsy_four_threads() {
-    let n = AtomicU64::new(0);
+    let n: &'static AtomicU64 = Box::leak(Box::new(AtomicU64::new(0)));
     let handles: Vec<_> = (0..4)
         .map(|t| {
-            let n = &n;
+            let n = n;
             std::thread::spawn(move || one_worker(&format!("t{t}"), 1500, n))
         })
         .collect();
