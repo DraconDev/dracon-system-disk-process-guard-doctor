@@ -408,9 +408,13 @@ fn settled_fixture_survives_parallel_reexec() {
                 let dir = unique_test_home(&format!("settled_{thread}"));
                 fs::create_dir_all(&dir).expect("create fixture dir");
                 let script = dir.join("fixture");
-                // Written and settled exactly like the real fixtures, then
-                // exec'd many times in parallel with no further writes.
-                write_test_script(&script, "exit 0");
+                {
+                    // Settling happens inside the guard; the re-execs below
+                    // need no lock because settling already proved the
+                    // inode has been exec'd.
+                    let _fixture_exec = fixture_exec_guard();
+                    write_test_script(&script, "exit 0");
+                }
                 for _ in 0..REEXECS {
                     if let Err(e) = std::process::Command::new(&script).output() {
                         if e.raw_os_error() == Some(ETXTBSY) {
