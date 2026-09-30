@@ -333,10 +333,10 @@ fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
                 fs::create_dir_all(&dir).expect("create fixture dir");
                 let script = dir.join("fixture");
                 for _ in 0..ITERATIONS {
-                    write_test_script(&script, "exit 0");
                     let outcome = {
                         // The lock spans fixture creation through the exec.
                         let _fixture_exec = fixture_exec_guard();
+                        write_test_script(&script, "exit 0");
                         std::process::Command::new(&script).output()
                     };
                     if let Err(e) = outcome {
