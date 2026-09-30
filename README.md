@@ -190,6 +190,8 @@ cp target/release/dracon-system ~/.local/bin/
 mkdir -p ~/.config/systemd/user
 cp dracon-system-guard.service ~/.config/systemd/user/
 systemctl --user daemon-reload
+# A unit change is not live until it is redeployed this way. After a release
+# that touched the unit, `scripts/check-unit-deployment.sh` reports drift.
 ```
 
 ### Server Deployment (System-wide)
