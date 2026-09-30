@@ -24,10 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   forgotten), or when `systemd-analyze --user verify` rejects the deployed
   file. `scripts/release.sh` runs it at the end of a release and prints the
   redeploy command when it fails — advisory, because host deployment state
-  must never block a release. A host that never installed the unit reports
-  "nothing to compare" and passes, and a host with no reachable user manager
-  (CI, a container, a bare ssh session) skips the two systemd-facing checks
-  and passes too, so CI and containers stay green.
+  must never block a release. Everything the check cannot know is a pass, not
+  a false alarm: a host that never installed the unit reports "nothing to
+  compare", a host with no reachable user manager (CI, a container, a bare ssh
+  session) skips both systemd-facing steps, and a host with neither
+  `XDG_CONFIG_HOME` nor `HOME` has no directory to compare. The unit is
+  located in *both* directories systemd searches
+  (`$XDG_CONFIG_HOME/systemd/user` and `~/.config/systemd/user`), because
+  checking only one would let a drifted, deployed unit hide behind the other
+  and report a silent false pass — the exact failure this check exists to
+  prevent. Its own regression suite (14 cases) stubs `systemctl` and
+  `systemd-analyze` so it passes identically with and without a user bus.
   This is the second silent case of the same class: audit F94 widened
   `ReadWritePaths` with `~/.local/share` on 2026-09-27 and `ExecReload`
   landed on 2026-09-29, and both sat in the repo while the live unit stayed
