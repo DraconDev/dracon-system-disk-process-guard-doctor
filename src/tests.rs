@@ -59,6 +59,21 @@ use std::os::unix::fs::PermissionsExt;
 /// clean runs (112,000 create->exec cycles), while removing the guard
 /// from the same test was detected in 20/20 runs.
 ///
+/// SERIALIZATION IS NECESSARY BUT NOT SUFFICIENT UNDER LOAD. With the
+/// lock in place the flake still appeared in 3 of 48 full-suite runs
+/// (all inside the tripwire, 1-2 ETXTBSY per 800 cycles) while this host
+/// was running at load average 87: with the process descheduled between
+/// the write and the exec, a serialized create->exec can still land
+/// inside the busy window. So the lock removes the in-process collision
+/// — the reported root cause — and `settle_fixture` closes what is left.
+/// Settling is not a retry of an assertion: it establishes a real
+/// invariant, namely that the fixture has been exec'd at least once, and
+/// a fixture that has been exec'd once is provably no longer write-busy
+/// (re-exec'ing a pre-written script never failed, even from many
+/// threads at once). `write_test_script` therefore settles every fixture
+/// it creates, so the tests' own execs always run against a settled
+/// inode no matter how busy the machine is.
+///
 /// Re-verify any of the above without this crate, in seconds:
 /// `cc -O2 -pthread -o repro scripts/etxtbsy-repro.c && ./repro 600 1`
 /// (0 failures) versus `./repro 600 8` (dozens of ETXTBSY). The shipped
@@ -70,12 +85,14 @@ use std::os::unix::fs::PermissionsExt;
 /// INVARIANT: any test that writes an executable fixture and then execs
 /// it must hold `fixture_exec_guard()` from before the first
 /// `write_test_script` until after the last exec — the write must be
-/// inside the critical section, not just the exec.
+/// inside the critical section, not just the exec — and must obtain the
+/// fixture through `write_test_script`, which settles it.
 /// `fixture_script_exec_never_hits_etxtbsy_under_parallel_load` is the
-/// tripwire for that invariant. `libtest` prints captured stdout only
-/// for failing tests, which is why the earlier instrumentation also
-/// reported `Is a directory (os error 21)` and `process identity
-/// unavailable` — those are by-design fixtures in
+/// tripwire for the first half; it deliberately bypasses settling so
+/// that removing the lock cannot be masked. `libtest` prints captured
+/// stdout only for failing tests, which is why the earlier
+/// instrumentation also reported `Is a directory (os error 21)` and
+/// `process identity unavailable` — those are by-design fixtures in
 /// `restore_runtime_adjustments_restores_renice_and_oom` (a missing
 /// proc root, a `renice` that exits 1, and a directory standing in for
 /// an unwritable `oom_score_adj`), not additional failure modes.

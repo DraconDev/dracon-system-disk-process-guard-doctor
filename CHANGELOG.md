@@ -35,14 +35,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unchanged: it only execs resolved system binaries (`renice`, `nix-env`,
   `systemctl`, `ps`), never a file it just wrote.
 
-  The fix is a documented process-wide lock in `src/tests.rs` held across
-  fixture creation *and* the exec, plus a tripwire test
-  (`fixture_script_exec_never_hits_etxtbsy_under_parallel_load`) that
-  fails if the lock stops being taken. Holding only the exec half is not
-  enough: the tripwire was first written that way and still failed twice
-  in ~89 suite runs. The lock must span both halves, and with that the
-  tripwire gave 140 consecutive clean runs (112,000 create->exec cycles)
-  while removing the lock from the same test was detected in 20/20 runs.
+  The fix has two halves, because the first one alone was measured to be
+  necessary but not sufficient. (1) A documented process-wide lock in
+  `src/tests.rs` held across fixture creation *and* the exec removes the
+  in-process collision, which is the reported root cause; holding only
+  the exec half is not enough, since a tripwire written that way still
+  failed twice in ~89 suite runs. (2) `write_test_script` now settles
+  each fixture: it execs the fixture once with a marker argument that
+  makes the fixture a no-op, which proves the inode has left the kernel's
+  exec-busy window, and a fixture that has been exec'd once is provably
+  no longer write-busy. Half (1) alone still produced 3 failures in 48
+  full-suite runs while this host was at load average 87, where
+  descheduling between the write and the exec can stretch the window even
+  with the lock held. A tripwire
+  (`fixture_script_exec_never_hits_etxtbsy_under_parallel_load`)
+  measures the lock specifically — it bypasses settling so a removed lock
+  cannot be masked — and detected the regression in 20/20 runs.
 
   Scope was settled by measurement rather than assumption. The contended
   resource is the fixture inode of the test process itself, so the lock is

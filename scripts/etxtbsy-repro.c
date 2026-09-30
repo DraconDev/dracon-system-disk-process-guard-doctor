@@ -65,12 +65,22 @@
  * this sketch serializing the exec half (MODE=7) is already enough, but the
  * Rust harness disagreed: the crate's own tripwire, written that way, failed
  * twice in ~89 full-suite runs, so the crate holds the lock across the write
- * as well (MODE=9 behaviour). The authoritative measurements are the tripwire
- * test `fixture_script_exec_never_hits_etxtbsy_under_parallel_load` and the
- * repeated full-suite soak. This program also sets O_CLOEXEC on its fixtures
- * because `std::fs` always does, so it matches the Rust tests on the wire;
- * without it a concurrent fork can inherit the write fd and hold the fixture
- * write-busy for the whole life of the exec'd child.
+ * as well (MODE=9 behaviour). Serialization is also not sufficient on its own
+ * under load: with the lock in place the flake still appeared in 3 of 48
+ * full-suite runs while the host was at load average 87, because
+ * descheduling between the write and the exec can stretch the busy window
+ * even with nothing else creating a fixture. That is why the crate also
+ * *settles* every fixture — it execs it once with a marker argument that
+ * makes the fixture a no-op, which proves the inode has left the busy
+ * window, and a fixture that has been exec'd once is provably safe to
+ * re-exec. The authoritative measurements are the tripwire test
+ * `fixture_script_exec_never_hits_etxtbsy_under_parallel_load` and the
+ * repeated full-suite soak.
+ *
+ * This program also sets O_CLOEXEC on its fixtures because `std::fs` always
+ * does, so it matches the Rust tests on the wire; without it a concurrent
+ * fork can inherit the write fd and hold the fixture write-busy for the whole
+ * life of the exec'd child.
  *
  * BUILD / RUN
  * -----------
