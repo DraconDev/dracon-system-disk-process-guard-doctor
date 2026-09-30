@@ -416,7 +416,6 @@ fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
                         // real fixtures get via `write_test_script`) would
                         // absorb the very transient this test exists to
                         // catch, so the check would pass vacuously.
-                        let _fixture_exec = fixture_exec_guard();
                         write_executable_script(&script, "exit 0");
                         std::process::Command::new(&script).output()
                     };
