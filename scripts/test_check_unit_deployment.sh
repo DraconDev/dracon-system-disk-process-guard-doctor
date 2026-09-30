@@ -62,15 +62,26 @@ EOF
     printf '%s' "$stub"
 }
 
-# systemd-analyze stub that always rejects, for the verify-failure case.
+# systemd-analyze stubs. Every case that stubs SYSTEMCTL also pins one of these,
+# so the suite never inherits the invoking shell's real systemd-analyze: on a
+# host with no user manager the real one exits 1 ("Failed to initialize
+# manager"), which would make a clean case fail for a reason that has nothing to
+# do with the condition under test — and would make a case expecting failure
+# pass for the wrong reason.
+analyze_clean="$work/bin/systemd-analyze-clean"
 analyze_rejects="$work/bin/systemd-analyze-rejects"
 mkdir -p "$work/bin"
+cat > "$analyze_clean" <<'EOF'
+#!/usr/bin/env bash
+# Fixture: the unit verifies clean.
+exit 0
+EOF
 cat > "$analyze_rejects" <<'EOF'
 #!/usr/bin/env bash
 echo "fixture.service: Command /nonexistent is not executable: No such file or directory" >&2
 exit 1
 EOF
-chmod +x "$analyze_rejects"
+chmod +x "$analyze_clean" "$analyze_rejects"
 
 # --- fixtures ----------------------------------------------------------------
 repo="$work/repo.service"
@@ -88,14 +99,14 @@ EOF
 
 # 1. Identical copies, and the loaded unit really carries ExecReload: in sync.
 cp "$repo" "$deployed"
-out="$(SYSTEMCTL="$(make_systemctl present)" \
+out="$(SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
     "$SCRIPT_UNDER_TEST" "$repo" "$deployed" 2>&1)" ||
     fail "identical units reported stale: $out"
 
 # 2. The files agree but systemd is running a unit without ExecReload — the file
 #    was copied and `daemon-reload` was forgotten, so the drift is still live.
 #    This is the step the earlier version of this suite never reached.
-out="$(SYSTEMCTL="$(make_systemctl empty)" \
+out="$(SYSTEMCTL="$(make_systemctl empty)" SYSTEMD_ANALYZE="$analyze_clean" \
     "$SCRIPT_UNDER_TEST" "$repo" "$deployed" 2>&1)" &&
     fail "a copied-but-not-reloaded unit was reported as in sync"
 grep -q 'daemon-reload' <<<"$out" || fail "no redeploy hint: $out"
@@ -104,7 +115,7 @@ grep -q 'ExecReload' <<<"$out" || fail "the divergent directive is not named: $o
 # 3. A host with no reachable user manager (CI, container, bare ssh) has no
 #    opinion about the loaded unit. "Cannot ask systemd" must never be reported
 #    as "systemd says no" — that is a false alarm with a wrong remediation.
-out="$(SYSTEMCTL="$(make_systemctl unreachable)" \
+out="$(SYSTEMCTL="$(make_systemctl unreachable)" SYSTEMD_ANALYZE="$analyze_clean" \
     "$SCRIPT_UNDER_TEST" "$repo" "$deployed" 2>&1)" ||
     fail "an unreachable user manager was reported as stale: $out"
 grep -q 'no reachable user systemd' <<<"$out" ||
@@ -119,7 +130,7 @@ out="$(env -u DBUS_SESSION_BUS_ADDRESS -u XDG_RUNTIME_DIR \
 # 5. A deployed copy missing ExecReload is the 2026-09-29 bug in the file
 #    itself: the reload handler is shipped but never deployed.
 grep -v '^ExecReload=' "$repo" > "$deployed"
-out="$(SYSTEMCTL="$(make_systemctl present)" \
+out="$(SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
     "$SCRIPT_UNDER_TEST" "$repo" "$deployed" 2>&1)" &&
     fail "a deployed unit missing ExecReload was reported as in sync"
 grep -q 'daemon-reload' <<<"$out" || fail "stale-unit output has no redeploy command"
@@ -143,7 +154,7 @@ fi
 #    quietly shadow a shipped directive.
 cp "$repo" "$deployed"
 printf '# local operator note\n' >> "$deployed"
-if SYSTEMCTL="$(make_systemctl present)" \
+if SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
     "$SCRIPT_UNDER_TEST" "$repo" "$deployed" >/dev/null 2>&1; then
     fail "a locally edited deployed unit was reported as in sync"
 fi
@@ -161,5 +172,14 @@ grep -q 'rejected' <<<"$out" || fail "the verify failure is not named: $out"
 out="$(SYSTEMCTL="$(make_systemctl unreachable)" SYSTEMD_ANALYZE="$analyze_rejects" \
     "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" ||
     fail "an unreachable manager made a reachable-verdict check fail: $out"
+
+# 11. Hermeticity guard for this suite itself: a stubbed run must reach the same
+#     verdict with the bus env stripped as with it present. This is the case that
+#     catches a stubbed SYSTEMCTL paired with the real systemd-analyze, which
+#     passes only on a host that happens to have a user manager.
+out="$(env -u DBUS_SESSION_BUS_ADDRESS -u XDG_RUNTIME_DIR \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" ||
+    fail "a stubbed run without a bus disagreed with a stubbed run with one: $out"
 
 echo "check-unit-deployment regression tests: ok"
