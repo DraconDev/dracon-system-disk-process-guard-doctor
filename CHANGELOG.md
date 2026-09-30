@@ -25,7 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file. `scripts/release.sh` runs it at the end of a release and prints the
   redeploy command when it fails — advisory, because host deployment state
   must never block a release. A host that never installed the unit reports
-  "nothing to compare" and passes, so CI and containers stay green.
+  "nothing to compare" and passes, and a host with no reachable user manager
+  (CI, a container, a bare ssh session) skips the two systemd-facing checks
+  and passes too, so CI and containers stay green.
   This is the second silent case of the same class: audit F94 widened
   `ReadWritePaths` with `~/.local/share` on 2026-09-27 and `ExecReload`
   landed on 2026-09-29, and both sat in the repo while the live unit stayed
