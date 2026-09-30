@@ -10,6 +10,9 @@
 set -euo pipefail
 
 SCRIPT_UNDER_TEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-unit-deployment.sh"
+# The unit name is fixed in the script under test (it is about this repo's
+# unit); the file paths are what the suite varies.
+UNIT_NAME="dracon-system-guard.service"
 work=$(mktemp -d "${TMPDIR:-/tmp}/dracon-system-unit-check-XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
@@ -191,5 +194,44 @@ out="$(env -u HOME -u XDG_CONFIG_HOME -u XDG_RUNTIME_DIR -u DBUS_SESSION_BUS_ADD
     fail "an unset HOME was treated as drift: $out"
 grep -q 'no user unit directory to compare' <<<"$out" ||
     fail "the unset-HOME note is missing: $out"
+
+# 13. Unit discovery must follow systemd, which searches BOTH
+#     "$HOME/.config/systemd/user" and "$XDG_CONFIG_HOME/systemd/user". Checking
+#     only one of them is a silent false pass: a drifted, deployed unit hides
+#     behind the path that was not checked. In sync first...
+fake_home="$work/home-fixture"
+mkdir -p "$fake_home/.config/systemd/user"
+cp "$repo" "$fake_home/.config/systemd/user/$UNIT_NAME"
+out="$(env -u XDG_CONFIG_HOME HOME="$fake_home" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" ||
+    fail "a unit deployed under HOME/.config was not found: $out"
+grep -q "$fake_home/.config/systemd/user/$UNIT_NAME" <<<"$out" ||
+    fail "the unit under HOME/.config was not the one compared: $out"
+# ...then drifted, so discovery is proven to lead to a real verdict.
+printf '# drifted\n' >> "$fake_home/.config/systemd/user/$UNIT_NAME"
+if out="$(env -u XDG_CONFIG_HOME HOME="$fake_home" \
+        SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+        "$SCRIPT_UNDER_TEST" "$repo" 2>&1)"; then
+    fail "a drifted unit under HOME/.config was reported as in sync: $out"
+fi
+grep -q 'STALE' <<<"$out" || fail "drift under HOME/.config was not reported: $out"
+
+# 14. The same for the XDG_CONFIG_HOME location, with a HOME that holds nothing.
+xdg_home="$work/xdg-fixture"
+empty_home="$work/home-empty"
+mkdir -p "$xdg_home/systemd/user" "$empty_home"
+cp "$repo" "$xdg_home/systemd/user/$UNIT_NAME"
+out="$(env HOME="$empty_home" XDG_CONFIG_HOME="$xdg_home" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" ||
+    fail "a unit deployed under XDG_CONFIG_HOME was not found: $out"
+printf '# drifted\n' >> "$xdg_home/systemd/user/$UNIT_NAME"
+if out="$(env HOME="$empty_home" XDG_CONFIG_HOME="$xdg_home" \
+        SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+        "$SCRIPT_UNDER_TEST" "$repo" 2>&1)"; then
+    fail "a drifted unit under XDG_CONFIG_HOME was reported as in sync: $out"
+fi
+grep -q 'STALE' <<<"$out" || fail "drift under XDG_CONFIG_HOME was not reported: $out"
 
 echo "check-unit-deployment regression tests: ok"
