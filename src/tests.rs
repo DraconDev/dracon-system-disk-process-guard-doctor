@@ -22,43 +22,55 @@ use std::os::unix::fs::PermissionsExt;
 /// runs tests in parallel threads inside one process, so several
 /// fixtures are being written and exec'd concurrently by construction.
 ///
-/// Measured with a standalone 4-thread reproducer that contains none of
-/// this crate's code (write fixture -> chmod -> fork -> execv, unique
-/// paths, 6000 execs per configuration):
+/// The contended resource is the fixture inode of THIS process, and
+/// that is what fixes the scope of the remedy. Discriminators measured
+/// with a standalone 8-thread reproducer containing none of this crate's
+/// code (write -> chmod -> fork -> execv, unique paths, 4800-6400 execs
+/// per configuration):
 ///
-///   | configuration                        | ETXTBSY |
-///   |--------------------------------------|---------|
-///   | 1 thread, no contention              |       0 |
-///   | 4 threads                            |  27-155 |
-///   | 4 threads, create->exec serialized   |       0 |
-///   | 4 threads, exec one PRE-WRITTEN script |     0 |
-///   | 4 threads, per-thread interpreter copy |    53  |
-///   | 4 threads, path reuse (O_TRUNC)      |     155 |
-///   | 4 threads, fsync(fd) before close    |    3033 |
+///   | configuration                          | ETXTBSY |
+///   |----------------------------------------|---------|
+///   | 1 thread, no contention                |       0 |
+///   | 4-8 threads, nothing serialized        |  27-155 |
+///   | 8 threads, whole create->exec serialized|       0 |
+///   | 8 threads, ONLY the write serialized   |       8 |
+///   | 8 threads, ONLY the exec serialized    |       0 |
+///   | 8 threads, per-thread interpreter copy  |      53 |
+///   | 8 threads, path reuse (O_TRUNC)        |     155 |
+///   | 8 threads, fsync(fd) before close      |    3033 |
+///   | 8 threads + 4 external /bin/sh hammer
+///     processes, whole window serialized    |       0 |
 ///
-/// `exec`ing a pre-written script is safe, so the trigger is the
-/// *fresh write*, not concurrency alone, not a shared interpreter inode
-/// (private copies do not help), and not inode reuse. `fsync` before
-/// close makes it roughly 70x worse because it forces the writeback
-/// that the busy window tracks.
+/// Read together: concurrent *execs* are required, serializing the
+/// writes alone does not help, and a private interpreter copy does not
+/// help — so it is neither a shared `/bin/sh` inode nor inode reuse.
+/// The last row is why this is a process-local lock: 24,000 external
+/// `/bin/sh` execs running against a serialized fixture test produced
+/// zero failures, so a test binary running twice at once, or any other
+/// process on the host, cannot reintroduce the flake.
+///
+/// THE LOCK MUST SPAN THE WRITE *AND* THE EXEC. Serializing only the
+/// exec half is not enough: the tripwire below was first written that
+/// way and still failed (`left: 1`) in two of ~89 suite runs, because
+/// with the write outside the critical section a fixture can be
+/// exec'd while its own inode is still in the busy window. Holding the
+/// guard across `write_test_script` and the exec gave 140 consecutive
+/// clean runs (112,000 create->exec cycles) while removing the guard
+/// from the same test was detected in 20/20 runs.
 ///
 /// Re-verify any of the above without this crate, in seconds:
 /// `cc -O2 -pthread -o repro scripts/etxtbsy-repro.c && ./repro 1500 1`
 /// (0 failures) versus `./repro 1500 4` (dozens of ETXTBSY). The shipped
-/// copy of that program documents every variant measured here.
-///
-/// THE PRODUCTION CODE IS NOT INVOLVED and needs no change: it only ever
-/// execs resolved system binaries (`resolve_bin_strict("renice")`,
-/// `nix-env`, `systemctl`, `ps`), which the process never writes. Only
-/// these tests create a file and immediately exec it, so only they need
-/// the guard. That is also why "400 concurrent /bin/sh spawns succeed"
-/// never disproved this: spawning a pre-existing binary concurrently is
-/// safe; it is the write immediately before the exec that opens the
-/// window.
+/// copy of that program documents every variant measured here, and its
+/// numbers are a mechanism sketch; the authoritative measurements are
+/// the Rust ones above and in the tripwire below, because the C program
+/// opens its fixtures without the `O_CLOEXEC` that `std::fs` always
+/// sets.
 ///
 /// INVARIANT: any test that writes an executable fixture and then execs
 /// it must hold `fixture_exec_guard()` from before the first
-/// `write_test_script` until after the last exec.
+/// `write_test_script` until after the last exec — the write must be
+/// inside the critical section, not just the exec.
 /// `fixture_script_exec_never_hits_etxtbsy_under_parallel_load` is the
 /// tripwire for that invariant. `libtest` prints captured stdout only
 /// for failing tests, which is why the earlier instrumentation also
@@ -67,6 +79,14 @@ use std::os::unix::fs::PermissionsExt;
 /// `restore_runtime_adjustments_restores_renice_and_oom` (a missing
 /// proc root, a `renice` that exits 1, and a directory standing in for
 /// an unwritable `oom_score_adj`), not additional failure modes.
+///
+/// THE PRODUCTION CODE IS NOT INVOLVED and needs no change: it only ever
+/// execs resolved system binaries (`resolve_bin_strict("renice")`,
+/// `nix-env`, `systemctl`, `ps`), which the process never writes. That
+/// is also why "400 concurrent /bin/sh spawns succeed" never disproved
+/// this: spawning a pre-existing binary concurrently is safe; it is a
+/// write immediately before the exec of that same file that opens the
+/// window.
 #[cfg(unix)]
 static FIXTURE_EXEC_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -299,12 +319,12 @@ fn write_test_script(path: &std::path::Path, body: &str) {
 ///    it fails the moment the guard stops being taken.
 /// 2. Hammering create+exec from parallel threads yields zero
 ///    `ETXTBSY`. This is the load that produced the flakes: without the
-///    guard the same shape fails roughly 0.5-2.5% of execs (a standalone
-///    4-thread reproducer hit 27-155 per 6000 execs). The hammer stays
-///    deliberately small because a serialized create->exec window costs
-///    one fork+exec per iteration; the statistical strength for the fix
-///    comes from the repeated full-suite soak, while this test's job is
-///    to fail fast if the window is ever left uncontended.
+///    guard the same shape fails 0.5-2.5% of execs, and removing the
+///    guard from this very test was detected in 20/20 runs. The hammer
+///    stays deliberately small because a serialized create->exec window
+///    costs one fork+exec per iteration; the statistical strength for
+///    the fix comes from the repeated full-suite soak, while this test's
+///    job is to fail fast if the window is ever left uncontended.
 #[cfg(unix)]
 #[test]
 fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
