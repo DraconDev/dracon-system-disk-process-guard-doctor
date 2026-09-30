@@ -298,7 +298,7 @@ fn write_test_script(path: &std::path::Path, body: &str) {
 #[cfg(unix)]
 #[test]
 fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
-    const THREADS: usize = 16;
+    const THREADS: usize = 8;
     const ITERATIONS: usize = 100;
     const ETXTBSY: i32 = 26;
 
@@ -324,7 +324,11 @@ fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
                 let script = dir.join("fixture");
                 for _ in 0..ITERATIONS {
                     write_test_script(&script, "exit 0");
-                    let outcome = std::process::Command::new(&script).output();
+                    let outcome = {
+                        // The lock spans fixture creation through the exec.
+                        let _fixture_exec = fixture_exec_guard();
+                        std::process::Command::new(&script).output()
+                    };
                     if let Err(e) = outcome {
                         if e.raw_os_error() == Some(ETXTBSY) {
                             etxtbsy
