@@ -73,9 +73,12 @@
  * *settles* every fixture — it execs it once with a marker argument that
  * makes the fixture a no-op, which proves the inode has left the busy
  * window, and a fixture that has been exec'd once is provably safe to
- * re-exec. The authoritative measurements are the tripwire test
- * `fixture_script_exec_never_hits_etxtbsy_under_parallel_load` and the
- * repeated full-suite soak.
+ * re-exec. The authoritative measurements are the crate's three
+ * deterministic guards in src/tests.rs —
+ * `fixture_writing_tests_hold_the_fixture_exec_guard`,
+ * `settle_fixture_probes_without_side_effects_and_fails_loudly` and
+ * `settled_fixture_survives_parallel_reexec` — plus the repeated
+ * full-suite soak.
  *
  * This program also sets O_CLOEXEC on its fixtures because `std::fs` always
  * does, so it matches the Rust tests on the wire; without it a concurrent
