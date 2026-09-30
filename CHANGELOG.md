@@ -13,6 +13,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > is the canonical record.
 
 ## [Unreleased]
+
+### Fixed
+
+- **The intermittent `ETXTBSY` failures in the guard fixture tests are
+  gone, and the cause is identified (2026-09-30)** —
+  `renice_process_with_bin_reports_success_and_failure`,
+  `nix_cleanup_apply_preserves_configured_profile_generations`,
+  `restore_runtime_adjustments_composes_overlapping_nice_limiters` and
+  `restore_runtime_adjustments_preserves_current_pid_incarnation` failed
+  roughly once per 30-250 full-suite runs with
+  `failed to invoke <tmpdir>/renice: Text file busy (os error 26)`.
+  `restore_runtime_adjustments_restores_renice_and_oom` and
+  `restore_runtime_adjustments_retains_failed_cpu_cap` were hit by the
+  same cause and are fixed with them. The cause is in the *tests*, not
+  the production path: `execve()` of a `#!/bin/sh` fixture that the test
+  process itself created milliseconds earlier returns `ETXTBSY` while the
+  kernel still considers that inode write-busy, and `libtest` runs tests
+  in parallel threads inside one process, so several fixtures are written
+  and exec'd concurrently by construction. A standalone 4-thread
+  reproducer containing none of this crate's code shows 0 failures at one
+  thread, 27-155 per 6000 execs at four threads, and 0 when the
+  create->exec window is serialized. Production is unaffected and
+  unchanged: it only execs resolved system binaries (`renice`, `nix-env`,
+  `systemctl`, `ps`), never a file it just wrote. The fix is a
+  documented process-wide lock in `src/tests.rs` that spans fixture
+  creation through exec, plus a tripwire test
+  (`fixture_script_exec_never_hits_etxtbsy_under_parallel_load`) that
+  fails if the lock stops being taken — measured to detect the
+  regression in 20/20 runs when the lock is removed.
+
+  Two long-standing misreadings are corrected by the same evidence. The
+  `Is a directory (os error 21)` and `process identity unavailable`
+  messages that appeared beside these failures are **not** additional
+  failure modes: they are by-design fixtures in
+  `restore_runtime_adjustments_restores_renice_and_oom` (a missing proc
+  root, a `renice` that exits 1, and a directory standing in for an
+  unwritable `oom_score_adj`), and `libtest` prints captured test stdout
+  only for *failing* tests, so they surface next to whatever real
+  assertion failed. External interference was also ruled out by
+  measurement rather than assumed: 13,523 planted fixture directories in
+  `/tmp` survived with zero deletions while the flake fired 10 times in
+  293 full-suite runs, and the guard daemon's age-based `/tmp` cleanup
+  (`tmp_min_age_hours`, default 24) skips freshly written content.
+
 ## [0.112.42] - 2026-09-29
 
 ### Removed
