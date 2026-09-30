@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   necessary but not sufficient. (1) A documented process-wide lock in
   `src/tests.rs` held across fixture creation *and* the exec removes the
   in-process collision, which is the reported root cause; holding only
-  the exec half is not enough, since a tripwire written that way still
+  the exec half is not enough, since a probe written that way still
   failed twice in ~89 suite runs. (2) `write_test_script` now settles
   each fixture: it execs the fixture once with a marker argument that
   makes the fixture a no-op, which proves the inode has left the kernel's
@@ -47,10 +47,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no longer write-busy. Half (1) alone still produced 3 failures in 48
   full-suite runs while this host was at load average 87, where
   descheduling between the write and the exec can stretch the window even
-  with the lock held. A tripwire
-  (`fixture_script_exec_never_hits_etxtbsy_under_parallel_load`)
-  measures the lock specifically — it bypasses settling so a removed lock
-  cannot be masked — and detected the regression in 20/20 runs.
+  with the lock held.
+
+  The three guards are deterministic by design — deliberately *not*
+  assertions of "zero ETXTBSY", which is statistical and which host load
+  alone broke 3 times in 48 runs:
+  `fixture_writing_tests_hold_the_fixture_exec_guard` fails instantly and
+  names the test if any fixture-writing test forgets the lock (the same
+  shape as this fleet's other coverage tripwires);
+  `settle_fixture_probes_without_side_effects_and_fails_loudly` checks
+  that settling cannot pollute the log a test asserts on and that a
+  fixture it cannot exec panics with a named reason instead of being
+  swallowed; and `settled_fixture_survives_parallel_reexec` is the
+  runtime smoke check. Each was verified to fail when its mechanism is
+  removed.
 
   Scope was settled by measurement rather than assumption. The contended
   resource is the fixture inode of the test process itself, so the lock is
