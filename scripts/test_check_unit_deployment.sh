@@ -182,4 +182,14 @@ out="$(env -u DBUS_SESSION_BUS_ADDRESS -u XDG_RUNTIME_DIR \
     "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" ||
     fail "a stubbed run without a bus disagreed with a stubbed run with one: $out"
 
+# 12. No HOME and no XDG_CONFIG_HOME either: `set -u` must not turn an unset
+#     HOME into a hard failure. With no second argument there is no user unit
+#     directory to compare, which is the same exit-0 "nothing to compare" path
+#     as case 6.
+out="$(env -u HOME -u XDG_CONFIG_HOME -u XDG_RUNTIME_DIR -u DBUS_SESSION_BUS_ADDRESS \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" ||
+    fail "an unset HOME was treated as drift: $out"
+grep -q 'no user unit directory to compare' <<<"$out" ||
+    fail "the unset-HOME note is missing: $out"
+
 echo "check-unit-deployment regression tests: ok"
