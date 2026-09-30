@@ -299,7 +299,7 @@ fn write_test_script(path: &std::path::Path, body: &str) {
 #[test]
 fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
     const THREADS: usize = 16;
-    const ITERATIONS: usize = 50;
+    const ITERATIONS: usize = 100;
     const ETXTBSY: i32 = 26;
 
     {
