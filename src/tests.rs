@@ -280,6 +280,76 @@ fn write_test_script(path: &std::path::Path, body: &str) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("chmod test script");
 }
 
+/// TRIPWIRE for the fixture-exec invariant documented on
+/// `FIXTURE_EXEC_LOCK`. Two things are asserted:
+///
+/// 1. The guard really excludes a sibling thread for the whole
+///    create->exec window, so the serialization is structural rather
+///    than incidental.
+/// 2. Hammering create+exec from parallel threads yields zero
+///    `ETXTBSY`. This is the load that produced the flakes: without the
+///    guard the same shape fails 0.5-2.5% of execs (a standalone
+///    4-thread reproducer hit 27-155 per 6000 execs), so a regression
+///    that drops or narrows the lock fails here instead of surfacing as
+///    an intermittent failure in an unrelated guard test.
+#[cfg(unix)]
+#[test]
+fn fixture_script_exec_never_hits_etxtbsy_under_parallel_load() {
+    const THREADS: usize = 4;
+    const ITERATIONS: usize = 400;
+    const ETXTBSY: i32 = 26;
+
+    {
+        let guard = fixture_exec_guard();
+        let excluded = std::thread::spawn(|| FIXTURE_EXEC_LOCK.try_lock().is_err())
+            .join()
+            .expect("sibling thread must not panic");
+        assert!(
+            excluded,
+            "fixture_exec_guard must exclude sibling threads for the whole create->exec window"
+        );
+        drop(guard);
+    }
+
+    let etxtbsy = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let workers: Vec<_> = (0..THREADS)
+        .map(|thread| {
+            let etxtbsy = std::sync::Arc::clone(&etxtbsy);
+            std::thread::spawn(move || {
+                for iteration in 0..ITERATIONS {
+                    let dir = unique_test_home(&format!("etxtbsy_{thread}_{iteration}"));
+                    fs::create_dir_all(&dir).expect("create fixture dir");
+                    let script = dir.join("fixture");
+                    write_test_script(&script, "exit 0");
+                    let outcome = {
+                        // The lock spans fixture creation through the exec.
+                        let _fixture_exec = fixture_exec_guard();
+                        std::process::Command::new(&script).output()
+                    };
+                    if let Err(e) = outcome {
+                        if e.raw_os_error() == Some(ETXTBSY) {
+                            etxtbsy
+                                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        } else {
+                            panic!("fixture exec failed with an unexpected error: {e}");
+                        }
+                    }
+                    let _ = fs::remove_dir_all(&dir);
+                }
+            })
+        })
+        .collect();
+    for worker in workers {
+        worker.join().expect("worker thread must not panic");
+    }
+
+    assert_eq!(
+        etxtbsy.load(std::sync::atomic::Ordering::SeqCst),
+        0,        "exec of a freshly written fixture must never fail with ETXTBSY; \
+         the create->exec window is not serialized (see FIXTURE_EXEC_LOCK)"
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn restore_runtime_adjustments_restores_renice_and_oom() {
