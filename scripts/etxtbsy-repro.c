@@ -6,7 +6,7 @@
  * --------------------
  * The flakes were reported with three different-looking messages:
  *
- *   failed to invoke /tmp/.../renice            (ENOENT)
+ *   failed to invoke /tmp/.../renice            (ENOENT-looking)
  *   oom_score_adj ... Is a directory            (os error 21)
  *   retaining ... process identity unavailable
  *
@@ -17,32 +17,60 @@
  * written and exec'd at the same time by construction.
  *
  * This program contains NONE of the crate's code — just write fixture, chmod,
- * fork, execv — so it separates the mechanism from our test code. Measured on
- * the development host (Linux 7.1, /tmp on ext4), 6000 execs per configuration:
+ * fork, execv — so it separates the mechanism from our test code.
  *
- *   ./etxtbsy-repro 1500 1     -> threads=1  etxtbsy=0        (no contention)
- *   ./etxtbsy-repro 1500 4     -> threads=4  etxtbsy=27..155   (the flake)
- *   ./etxtbsy-repro 1500 8     -> threads=8  etxtbsy=57..123
+ * WHICH PART OF THE WINDOW MATTERS (measured on the development host,
+ * Linux 7.1, /tmp on ext4; 4800-6400 execs per configuration):
  *
- * Serializing the create->exec window with a mutex (the fix in src/tests.rs)
- * takes the 4-thread case to 0. These variants confirm what the trigger is
- * and is not:
+ *   MODE=0  nothing serialized                        -> 52..120
+ *   MODE=7  ONLY the exec serialized (writes free)    ->  0
+ *   MODE=8  ONLY the write serialized (execs free)    ->  8
+ *   MODE=9  the whole create->exec window serialized  ->  0
+ *
+ * Concurrent *execs* are what collide; serializing the writes alone does not
+ * help. Thread count alone does not explain it either — a single thread
+ * never fails, and exec'ing one PRE-WRITTEN script from many threads is also
+ * always safe:
+ *
+ *   ./etxtbsy-repro 1500 1  -> threads=1  etxtbsy=0        (no contention)
+ *   ./etxtbsy-repro 1500 4  -> threads=4  etxtbsy=27..155  (the flake)
+ *   ./etxtbsy-repro  600 8  -> threads=8  etxtbsy=52..120
+ *
+ * Variants that confirm what the trigger is NOT — none of them fix it:
  *
  *   MODE=1  fsync(fd) before close        -> ~3033  (about 70x WORSE)
  *   MODE=2  reopen + read after chmod     -> ~47     (no help)
+ *   MODE=3  reopen without reading        -> ~38     (no help)
  *   MODE=4  fsync the parent directory    -> ~45     (no help)
  *   MODE=5  write to a temp name, rename  -> ~33     (no help)
  *   MODE=6  no chmod (mode from open)     -> ~27     (no help)
  *
- * A script written ONCE and exec'd concurrently is always safe, and giving
- * each thread its own private interpreter copy does not help — so the trigger
- * is the fresh write, not a shared interpreter inode and not inode reuse.
+ * A private per-thread interpreter copy does not help either, so the contended
+ * inode is not a shared `/bin/sh`. The resource is the fixture inode of THIS
+ * process, which is why the fix in src/tests.rs is a process-local lock:
+ * running
+ *
+ *   MODE=9 ./etxtbsy-repro 600 8 &
+ *   for k in 1 2 3 4; do sh -c : ; done      # or any /bin/sh spammers
+ *
+ * against it produced 0 failures across 24000 external /bin/sh execs, so a
+ * second test binary — or any other process on the host — cannot reintroduce
+ * the flake.
+ *
+ * SCOPE NOTE
+ * ----------
+ * These C numbers are a mechanism sketch, not the acceptance evidence. This
+ * program opens fixtures with plain O_WRONLY, whereas `std::fs` always adds
+ * O_CLOEXEC, so the crate's own measurements — the tripwire test
+ * `fixture_script_exec_never_hits_etxtbsy_under_parallel_load` and the
+ * repeated full-suite soak — are the authoritative ones.
  *
  * BUILD / RUN
  * -----------
  *   cc -O2 -pthread -o etxtbsy-repro etxtbsy-repro.c
  *   mkdir -p /tmp/etxtbsy-repro
  *   ./etxtbsy-repro 1500 4
+ *   cc -O2 -pthread -DMODE=9 -o etxtbsy-repro-9 etxtbsy-repro.c && ./etxtbsy-repro-9 600 8
  *
  * Exit status is 0 when no ETXTBSY occurred, 1 otherwise. Diagnostics print
  * only counts; nothing here is needed at runtime.
@@ -60,27 +88,38 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+/* 0 = nothing serialized, 1..6 = single-operation variants documented above,
+ * 7 = only the exec serialized, 8 = only the write serialized,
+ * 9 = the whole create->exec window serialized. */
 #ifndef MODE
 #define MODE 0
 #endif
 
 #define FIXTURE_DIR "/tmp/etxtbsy-repro"
+#define BODY "#!/bin/sh\nexit 0\n"
 
 static long iterations = 1500;
 static int threads = 4;
 static volatile long etxtbsy = 0;
 static volatile long other_errors = 0;
 static volatile long succeeded = 0;
+static pthread_mutex_t window = PTHREAD_MUTEX_INITIALIZER;
 
-/* One create->exec cycle. Mirrors fs::write -> set_permissions -> Command. */
-static int create_and_exec(const char *path) {
-    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0755);
+/* Write the fixture. Mirrors fs::write + set_permissions. */
+static int write_fixture(const char *path) {
+    char staged[PATH_MAX];
+    const char *target = path;
+#if MODE == 5
+    /* Write under a temporary name and rename into place. */
+    snprintf(staged, sizeof staged, "%s.tmp", path);
+    target = staged;
+#endif
+    int fd = open(target, O_WRONLY | O_CREAT | O_TRUNC, 0755);
     if (fd < 0) {
         perror("open");
         return -1;
     }
-    static const char body[] = "#!/bin/sh\nexit 0\n";
-    if (write(fd, body, sizeof body - 1) < 0) {
+    if (write(fd, BODY, sizeof BODY - 1) < 0) {
         perror("write");
         close(fd);
         return -1;
@@ -94,11 +133,25 @@ static int create_and_exec(const char *path) {
     }
 #endif
     close(fd);
-    if (chmod(path, 0755) < 0) {
+#if MODE == 6
+    /* Mode already came from open(); skip chmod entirely. */
+#else
+    if (chmod(target, 0755) < 0) {
         perror("chmod");
         return -1;
     }
+#endif
+#if MODE == 5
+    if (rename(staged, path) < 0) {
+        perror("rename");
+        return -1;
+    }
+#endif
+    return 0;
+}
 
+/* Exec the fixture. Mirrors Command::new(path).output(). */
+static int exec_fixture(const char *path) {
     pid_t pid = fork();
     if (pid == 0) {
         char *argv[] = {(char *)path, NULL};
@@ -114,20 +167,61 @@ static int create_and_exec(const char *path) {
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
+/* One create->exec cycle, serializing only the halves each MODE selects. */
+static int create_and_exec(const char *path) {
+#if MODE == 9
+    pthread_mutex_lock(&window);
+#elif MODE == 8
+    pthread_mutex_lock(&window);
+#endif
+    if (write_fixture(path) != 0) return -1;
+#if MODE == 2 || MODE == 3
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) { perror("reopen"); return -1; }
+#if MODE == 2
+    char buf[64];
+    if (read(fd, buf, sizeof buf) < 0) { perror("read"); close(fd); return -1; }
+#endif
+    close(fd);
+#elif MODE == 4
+    int fd = open(FIXTURE_DIR, O_RDONLY | O_DIRECTORY);
+    if (fd < 0) { perror("opendir"); return -1; }
+    if (fsync(fd) < 0) { perror("dirfsync"); close(fd); return -1; }
+    close(fd);
+#endif
+#if MODE == 8
+    pthread_mutex_unlock(&window);
+    int status = exec_fixture(path);
+    return status;
+#elif MODE == 7 || MODE == 9
+    pthread_mutex_unlock(&window);
+    return exec_fixture(path);
+#else
+    return exec_fixture(path);
+#endif
+}
+
 static void *worker(void *arg) {
     long id = (long)arg;
     char path[PATH_MAX];
     for (long i = 0; i < iterations; i++) {
-        snprintf(path, sizeof path, FIXTURE_DIR "/fixture_%ld_%ld", id, i);
-        int code = create_and_exec(path);
-        if (code == 0) {
+        snprintf(path, sizeof path, FIXTURE_DIR "/fixture_%d_%ld_%ld", MODE, id, i);
+        int status = create_and_exec(path);
+        if (status == 0) {
             __sync_fetch_and_add(&succeeded, 1);
-        } else if (code == 98) {
+        } else if (status == 98) {
             __sync_fetch_and_add(&etxtbsy, 1);
         } else {
             __sync_fetch_and_add(&other_errors, 1);
         }
         unlink(path);
+#if MODE == 5
+        {
+            char staged[PATH_MAX];
+            snprintf(staged, sizeof staged, "%s.tmp", path);
+            unlink(staged);
+        }
+#endif
     }
     return NULL;
 }
@@ -155,7 +249,8 @@ int main(int argc, char **argv) {
         pthread_join(handles[t], NULL);
     }
 
-    printf("mode=%d threads=%d iterations=%ld ok=%ld etxtbsy=%ld other=%ld\n",
-           MODE, threads, iterations, succeeded, etxtbsy, other_errors);
+    printf("mode=%d threads=%d iterations=%ld execs=%ld ok=%ld etxtbsy=%ld other=%ld\n",
+           MODE, threads, iterations, iterations * threads,
+           succeeded, etxtbsy, other_errors);
     return etxtbsy ? 1 : 0;
 }
