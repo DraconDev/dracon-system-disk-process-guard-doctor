@@ -69,8 +69,7 @@ fi
 #    an in-sync unit into a false alarm with a wrong remediation.
 if command -v "$SYSTEMCTL" >/dev/null 2>&1 &&
     "$SYSTEMCTL" --user show -p Version --value >/dev/null 2>&1; then
-    if [[ "$UNIT_NAME" == "dracon-system-guard.service" ]] &&
-        grep -qE '^ExecReload=' "$REPO_UNIT"; then
+    if grep -qE '^ExecReload=' "$REPO_UNIT"; then
         loaded="$("$SYSTEMCTL" --user show "$UNIT_NAME" -p ExecReload --value 2>/dev/null || true)"
         if [ -z "$loaded" ]; then
             echo "✗ systemd is running a unit without ExecReload although the shipped" >&2
