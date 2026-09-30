@@ -31,17 +31,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   process itself created milliseconds earlier returns `ETXTBSY` while the
   kernel still considers that inode write-busy, and `libtest` runs tests
   in parallel threads inside one process, so several fixtures are written
-  and exec'd concurrently by construction. A standalone 4-thread
-  reproducer containing none of this crate's code shows 0 failures at one
-  thread, 27-155 per 6000 execs at four threads, and 0 when the
-  create->exec window is serialized. Production is unaffected and
+  and exec'd concurrently by construction. Production is unaffected and
   unchanged: it only execs resolved system binaries (`renice`, `nix-env`,
-  `systemctl`, `ps`), never a file it just wrote. The fix is a
-  documented process-wide lock in `src/tests.rs` that spans fixture
-  creation through exec, plus a tripwire test
+  `systemctl`, `ps`), never a file it just wrote.
+
+  The fix is a documented process-wide lock in `src/tests.rs` held across
+  fixture creation *and* the exec, plus a tripwire test
   (`fixture_script_exec_never_hits_etxtbsy_under_parallel_load`) that
-  fails if the lock stops being taken — measured to detect the
-  regression in 20/20 runs when the lock is removed.
+  fails if the lock stops being taken. Holding only the exec half is not
+  enough: the tripwire was first written that way and still failed twice
+  in ~89 suite runs. The lock must span both halves, and with that the
+  tripwire gave 140 consecutive clean runs (112,000 create->exec cycles)
+  while removing the lock from the same test was detected in 20/20 runs.
+
+  Scope was settled by measurement rather than assumption. The contended
+  resource is the fixture inode of the test process itself, so the lock is
+  process-local: 24,000 external `/bin/sh` execs against a serialized
+  fixture test produced zero failures, and a private per-thread
+  interpreter copy does not help either (so it is not a shared `/bin/sh`
+  inode). A standalone reproducer is committed at
+  `scripts/etxtbsy-repro.c` and documents every variant measured: 1 thread
+  0, 4 threads 27-155, 8 threads ~25, whole window serialized 0, only the
+  write serialized 5, `fsync` before close ~3033 (about 70x worse), plus
+  non-fixes (reopen, directory fsync, rename, skipping chmod).
 
   Two long-standing misreadings are corrected by the same evidence. The
   `Is a directory (os error 21)` and `process identity unavailable`
@@ -51,11 +63,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   root, a `renice` that exits 1, and a directory standing in for an
   unwritable `oom_score_adj`), and `libtest` prints captured test stdout
   only for *failing* tests, so they surface next to whatever real
-  assertion failed. External interference was also ruled out by
-  measurement rather than assumed: 13,523 planted fixture directories in
-  `/tmp` survived with zero deletions while the flake fired 10 times in
-  293 full-suite runs, and the guard daemon's age-based `/tmp` cleanup
-  (`tmp_min_age_hours`, default 24) skips freshly written content.
+  assertion failed. External interference was also ruled out: 13,523
+  planted fixture directories in `/tmp` survived with zero deletions while
+  the flake fired 10 times in 293 full-suite runs, and the guard daemon's
+  age-based `/tmp` cleanup (`tmp_min_age_hours`, default 24) skips freshly
+  written content. The earlier "`nproc`-style parallel spawn is ruled
+  out" note is consistent with this: spawning a pre-existing binary
+  concurrently is safe, which is exactly why it never reproduced.
 
 ## [0.112.42] - 2026-09-29
 
