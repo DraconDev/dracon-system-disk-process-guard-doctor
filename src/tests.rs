@@ -437,95 +437,135 @@ fn settled_fixture_survives_parallel_reexec() {
     );
 }
 
-/// Guards the locking half of the fix, in two parts.
+/// Guards the settling half of the fix, deterministically.
 ///
-/// 1. Structural and deterministic: while a thread holds
-///    `fixture_exec_guard()`, a sibling thread cannot enter it. This fails
-///    the moment the guard stops being taken over the create->exec
-///    window.
-/// 2. Differential: the same create->exec load is run with and without
-///    the lock and the locked population must be strictly smaller. An
-///    absolute "zero ETXTBSY" assertion is deliberately NOT used here —
-///    this test bypasses settling on purpose, so it measures the raw
-///    kernel hazard, which host load alone can still produce. Comparing
-///    two populations measured back to back in the same process is
-///    immune to that drift. If the hazard is not observable at all on a
-///    quiet host the comparison is skipped rather than failed, and the
-///    structural half still holds the line.
+/// `settle_fixture` is what makes the fixture execs safe, so what needs
+/// guarding is its contract rather than the raw kernel hazard it absorbs:
+/// that the probe it runs has no side effects, and that a fixture it
+/// cannot exec fails loudly instead of being swallowed. Asserting "zero
+/// ETXTBSY" here instead would be a 1-in-20 statistical check that host
+/// load alone can break.
 #[cfg(unix)]
 #[test]
-fn fixture_exec_lock_serializes_create_and_exec() {
-    const ETXTBSY: i32 = 26;
+fn settle_fixture_probes_without_side_effects_and_fails_loudly() {
+    let dir = unique_test_home("settle_contract");
+    fs::create_dir_all(&dir).expect("create fixture dir");
 
-    // Count ETXTBSY over `threads` x `iterations` create->exec cycles,
-    // holding the lock across the whole window when `locked`.
-    let count = |locked: bool, threads: usize, iterations: usize| {
-        let etxtbsy = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
-        let workers: Vec<_> = (0..threads)
-            .map(|thread| {
-                let etxtbsy = std::sync::Arc::clone(&etxtbsy);
-                std::thread::spawn(move || {
-                    let dir = unique_test_home(&format!(
-                        "lockprobe_{}_{locked}_{thread}",
-                        if locked { "on" } else { "off" }
-                    ));
-                    fs::create_dir_all(&dir).expect("create fixture dir");
-                    let script = dir.join("fixture");
-                    for _ in 0..iterations {
-                        let outcome = if locked {
-                            let _fixture_exec = fixture_exec_guard();
-                            write_executable_script(&script, "exit 0");
-                            std::process::Command::new(&script).output()
-                        } else {
-                            write_executable_script(&script, "exit 0");
-                            std::process::Command::new(&script).output()
-                        };
-                        if let Err(e) = outcome {
-                            if e.raw_os_error() == Some(ETXTBSY) {
-                                etxtbsy.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                            } else {
-                                panic!("fixture exec failed unexpectedly: {e}");
-                            }
-                        }
-                    }
-                    let _ = fs::remove_dir_all(&dir);
-                })
-            })
-            .collect();
-        for worker in workers {
-            worker.join().expect("worker thread must not panic");
+    // (1) The probe must not touch what the test asserts on. A fixture
+    // that appends its argv to a log must leave that log untouched by
+    // settling, and must still record exactly the real invocation later.
+    let log = dir.join("calls.log");
+    let escaped = log.to_string_lossy().replace('\'', "'\\''");
+    let script = dir.join("recording");
+    write_test_script(&script, &format!("printf '%s\\n' \"$*\" >> '{escaped}'"));
+    assert!(
+        !log.exists(),
+        "settling must not run the fixture body: the probe created the log"
+    );
+    std::process::Command::new(&script)
+        .args(["-n", "5", "-p", "123"])
+        .output()
+        .expect("a settled fixture must exec");
+    assert_eq!(
+        fs::read_to_string(&log).expect("log written by the real exec"),
+        "-n 5 -p 123\n",
+        "the real invocation must record exactly one line, probe or no probe"
+    );
+
+    // (2) A fixture that cannot be exec'd must fail loudly, naming the
+    // path, rather than hanging or silently succeeding. The panic is
+    // caught so the expectation is explicit instead of fatal.
+    let broken = dir.join("not-executable");
+    fs::write(&broken, "#!/bin/sh\nexit 0\n").expect("write broken fixture");
+    fs::set_permissions(&broken, fs::Permissions::from_mode(0o644)).expect("clear the execute bit");
+    let outcome = std::panic::catch_unwind(|| settle_fixture(&broken));
+    let payload = outcome
+        .err()
+        .expect("settling a non-executable fixture must panic, not swallow");
+    let message = payload
+        .downcast_ref::<String>()
+        .cloned()
+        .unwrap_or_else(|| "<non-string panic payload>".to_string());
+    assert!(
+        message.contains("is not executable") && message.contains("not-executable"),
+        "the panic must name the fixture and the reason, got: {message}"
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// Guards the locking half of the fix, deterministically and without
+/// running any fixture.
+///
+/// Rather than assert a property of the raw kernel hazard — which is
+/// statistical, and which host load alone can still produce even with the
+/// lock correctly held — this checks the invariant directly: every test in
+/// this module that writes an executable fixture obtains
+/// `fixture_exec_guard()` in the same body. A fixture test that forgets
+/// the guard is the actual regression, and it is caught here instantly
+/// instead of resurfacing as a 1-in-125 flake. Same shape as the coverage
+/// tripwires elsewhere in this fleet: a developer adding a fixture test
+/// cannot make the suite flaky by omission, they make this test fail.
+#[cfg(unix)]
+#[test]
+fn fixture_writing_tests_hold_the_fixture_exec_guard() {
+    const SOURCE: &str = include_str!("tests.rs");
+    // The two writer helpers themselves: their bodies name them in the
+    // signature and they create no fixtures of their own.
+    const HELPERS: [&str; 2] = ["write_test_script", "write_executable_script"];
+
+    // Slice the module into top-level function bodies. Every test and
+    // helper here is a free function, so a body spans from one
+    // column-zero `fn`/`async fn` line to the next.
+    let mut bodies: Vec<(String, String)> = Vec::new();
+    for line in SOURCE.lines() {
+        if line.starts_with("fn ") || line.starts_with("async fn ") {
+            let name = line
+                .split_once('(')
+                .map(|(head, _)| head)
+                .unwrap_or(line)
+                .trim_start_matches("async fn ")
+                .trim_start_matches("fn ")
+                .trim()
+                .to_string();
+            bodies.push((name, String::new()));
+            continue;
         }
-        etxtbsy.load(std::sync::atomic::Ordering::SeqCst)
-    };
-
-    {
-        let guard = fixture_exec_guard();
-        let excluded = std::thread::spawn(|| FIXTURE_EXEC_LOCK.try_lock().is_err())
-            .join()
-            .expect("sibling thread must not panic");
-        assert!(
-            excluded,
-            "fixture_exec_guard must exclude sibling threads for the whole create->exec window"
-        );
-        drop(guard);
+        if let Some((_, body)) = bodies.last_mut() {
+            body.push_str(line);
+            body.push('\n');
+        }
     }
 
-    // The locked window is serialized, so it is the expensive side; the
-    // unlocked side runs concurrently and is therefore cheap per cycle.
-    let locked = count(true, 8, 25);
-    let unlocked = count(false, 16, 50);
-    if unlocked == 0 {
-        eprintln!(
-            "skipping the differential half: the kernel hazard was not \
-             observable on this host (locked={locked}, unlocked=0)"
-        );
-    } else {
-        assert!(
-            locked < unlocked,
-            "serializing the create->exec window must reduce ETXTBSY: \
-             locked={locked} of 200, unlocked={unlocked} of 800"
-        );
+    let mut guarded = 0usize;
+    let mut offenders: Vec<&str> = Vec::new();
+    for (name, body) in &bodies {
+        if HELPERS.contains(&name.as_str()) {
+            continue;
+        }
+        let writes_fixture = ["write_test_script(", "write_executable_script("]
+            .iter()
+            .any(|call| body.contains(call));
+        if !writes_fixture {
+            continue;
+        }
+        guarded += 1;
+        if !body.contains("fixture_exec_guard()") {
+            offenders.push(name.as_str());
+        }
     }
+
+    assert!(
+        guarded >= 10,
+        "the source scan should find every fixture-writing test; found {guarded}, \
+         which means the top-level body parser drifted from this module's layout"
+    );
+    assert!(
+        offenders.is_empty(),
+        "these tests write an executable fixture and then exec it but never hold \
+         fixture_exec_guard() for the create->exec window (see FIXTURE_EXEC_LOCK): \
+         {offenders:?}"
+    );
 }
 
 #[cfg(unix)]
