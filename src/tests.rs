@@ -483,8 +483,7 @@ fn settle_fixture_probes_without_side_effects_and_fails_loudly() {
     fs::write(&broken, "#!/bin/sh\nexit 0\n").expect("write broken fixture");
     fs::set_permissions(&broken, fs::Permissions::from_mode(0o644)).expect("clear the execute bit");
     let outcome = std::panic::catch_unwind(|| settle_fixture(&broken));
-    let payload = outcome
-        .expect_err("settling a non-executable fixture must panic, not swallow");
+    let payload = outcome.expect_err("settling a non-executable fixture must panic, not swallow");
     let message = payload
         .downcast_ref::<String>()
         .cloned()
