@@ -473,7 +473,6 @@ fn fixture_exec_lock_serializes_create_and_exec() {
                     let script = dir.join("fixture");
                     for _ in 0..iterations {
                         let outcome = if locked {
-                            let _fixture_exec = fixture_exec_guard();
                             write_executable_script(&script, "exit 0");
                             std::process::Command::new(&script).output()
                         } else {
