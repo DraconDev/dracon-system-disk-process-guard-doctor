@@ -203,10 +203,14 @@ pub(crate) fn collect_setup_report() -> SetupReport {
 
     // Ready = cold root + quarantine both usable. Mounts/candidates inform
     // but do not gate: a single-disk user can still quarantine locally.
-    let ready = checks
-        .iter()
-        .filter(|c| c.name == "cold root" || c.name == "quarantine")
-        .all(|c| c.ok);
+    // A policy that failed to parse means every check below ran on built-in
+    // defaults, so "ready" would be a statement about a configuration the
+    // operator never wrote (audit 2026-10-01).
+    let ready = policy_error.is_none()
+        && checks
+            .iter()
+            .filter(|c| c.name == "cold root" || c.name == "quarantine")
+            .all(|c| c.ok);
     SetupReport {
         policy_path: path
             .as_ref()
@@ -278,7 +282,11 @@ pub(crate) fn cmd_setup(apply: bool, json: bool) -> Result<()> {
             ]);
         }
         println!("{table}");
-        println!("policy: {}", report.policy_path);
+        if let Some(err) = &report.policy_error {
+            println!("policy: FAILED TO PARSE — {err}");
+        } else {
+            println!("policy: {}", report.policy_path);
+        }
         if report.ready {
             println!("✅ Space-tier automation is ready.");
         } else {
