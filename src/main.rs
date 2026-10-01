@@ -444,18 +444,18 @@ pub(crate) struct DoctorReport {
     pub(crate) sync_policy_exists: bool,
     pub(crate) legacy_config_dracon_exists: bool,
     pub(crate) sync_service_active: bool,
-}
-
-impl DoctorReport {
-    fn all_ok(&self) -> bool {
-        self.system_root_exists
-            && self.nixos_root_exists
-            && self.canonical_libs_exists
-            && self.canonical_utils_exists
-            && self.sync_policy_exists
-            && !self.legacy_config_dracon_exists
-            && self.sync_service_active
-    }
+    // ADDED 2026-10-01 (audit): the guard's OWN policy and service. This is the
+    // guard utility — `doctor` used to audit only dracon-sync, so it said
+    // nothing about whether the guard it ships is even configured or running.
+    // `system_policy_exists` is resolved through effective_system_policy_path(),
+    // so a DRACON_SYSTEM_POLICY override is honoured.
+    pub(crate) system_policy_exists: bool,
+    pub(crate) guard_service_active: bool,
+    /// Whether systemctl could be found at all. `sync_service_active` /
+    /// `guard_service_active` are `false` when it could not, and before this
+    /// field existed that was indistinguishable from "the service is down":
+    //  a host without systemd was told to run `systemctl --user enable`.
+    pub(crate) service_probe_available: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -3661,6 +3661,10 @@ fn resolve_bin(name: &str) -> String {
 /// falling back to a bare PATH-relative name that PATH poisoning could
 /// redirect. Returns the absolute path.
 fn resolve_bin_strict(name: &str) -> Result<String> {
+    crate::doctor_probe_available(name)
+}
+
+fn doctor_probe_available(name: &str) -> Result<String> {
     resolve_bin_opt(name).ok_or_else(|| {
         anyhow::anyhow!(
             "cannot resolve absolute path for `{name}` (not in NixOS store dirs) — refusing PATH-relative exec"
