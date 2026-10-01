@@ -2122,10 +2122,6 @@ async fn systemctl_user_action(
     ))
 }
 
-/// Lift a CPUQuota cap: move the pid back to its original cgroup and
-/// stop the now-empty transient scope. Every read, move, and systemd
-/// operation is checked so callers retain the cap entry when restoration
-/// cannot be verified.
 /// Where a capped pid has to be written back to before the transient unit is
 /// stopped. The recorded cgroup is authoritative when the ledger has one.
 ///
@@ -2144,6 +2140,10 @@ fn restore_cgroup_target(orig_cgroup: &str, current_rel: &str) -> Option<String>
     (!parent.is_empty() && parent != "/").then(|| parent.to_string())
 }
 
+/// Lift a CPUQuota cap: move the pid back to its original cgroup and
+/// stop the now-empty transient scope. Every read, move, and systemd
+/// operation is checked so callers retain the cap entry when restoration
+/// cannot be verified.
 async fn uncap_cpu_process_with_bin(
     systemctl_bin: &Path,
     proc_root: &Path,
