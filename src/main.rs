@@ -590,6 +590,34 @@ pub(crate) struct OomPendingDescendant {
     pub(crate) root_pid: i32,
     pub(crate) original_adj: i32,
     pub(crate) identity: ProcessIdentity,
+    /// ADDED 2026-10-01 (audit): bounded retries. An unavailable identity, an
+    /// unreadable `oom_score_adj` and a failed write each used to just
+    /// `deferred += 1` forever, so one such child pinned its root at
+    /// `oom_score_adj=250` for the lifetime of the process, grew this map
+    /// without bound, and made `restore_runtime_adjustments` return false on
+    /// every SIGHUP — i.e. the reload path was permanently Deferred.
+    pub(crate) attempts: u32,
+}
+
+/// How many passes a single descendant restoration is retried before the guard
+/// gives up on it and lets the root be released. The same shape as
+/// IDENTITY_UNAVAILABLE_RETRY_LIMIT, for the same reason: an EACCES on
+/// `/proc/<pid>/oom_score_adj` will not fix itself, and an entry that can never
+/// succeed must not be retried forever.
+const OOM_DESCENDANT_RETRY_LIMIT: u32 = 5;
+
+/// Cap on remembered descendant incarnations per biased root. ADDED
+/// 2026-10-01 (audit): the set grew by one entry per descendant ever seen and
+/// was only cleared when the root left `oom_biased_pids`, so a long
+/// critical-pressure episode under a forking root accumulated thousands of dead
+/// keys. Dropping an entry is safe: the worst case is that a re-forked PID is
+/// treated as new, which is exactly what happens for a genuinely new child.
+const OOM_KNOWN_DESCENDANTS_CAP: usize = 256;
+
+/// Bump the attempt counter; true once the entry must be given up on.
+fn oom_descendant_attempts_exhausted(pending: &mut OomPendingDescendant) -> bool {
+    pending.attempts += 1;
+    pending.attempts >= OOM_DESCENDANT_RETRY_LIMIT
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1790,6 +1818,21 @@ fn restore_pending_oom_descendants(
             }
             ProcessIdentityStatus::Unavailable => {
                 result.deferred += 1;
+                if oom_descendant_attempts_exhausted(&mut pending.pending) {
+                    eprintln!(
+                        "⚠️ oom-descendant-restore dropping pid={} parent={} after {} unavailable identity reads (will not retry)",
+                        key.0,
+                        pending.pending.root_pid,
+                        pending.pending.attempts
+                    );
+                    state.oom_pending_descendants.remove(&key);
+                    remember_oom_descendant_identity(
+                        state,
+                        pending.pending.root_pid,
+                        key.0,
+                        &pending.pending.identity,
+                    );
+                }
                 continue;
             }
             ProcessIdentityStatus::Match => {}
@@ -1802,6 +1845,21 @@ fn restore_pending_oom_descendants(
             Some(current) => current,
             None => {
                 result.deferred += 1;
+                if oom_descendant_attempts_exhausted(&mut pending.pending) {
+                    eprintln!(
+                        "⚠️ oom-descendant-restore dropping pid={} parent={} after {} unreadable oom_score_adj reads (will not retry)",
+                        key.0,
+                        pending.pending.root_pid,
+                        pending.pending.attempts
+                    );
+                    state.oom_pending_descendants.remove(&key);
+                    remember_oom_descendant_identity(
+                        state,
+                        pending.pending.root_pid,
+                        key.0,
+                        &pending.pending.identity,
+                    );
+                }
                 continue;
             }
         };
@@ -1816,6 +1874,21 @@ fn restore_pending_oom_descendants(
                 key.0, pending.root_pid, error
             );
             result.deferred += 1;
+            if oom_descendant_attempts_exhausted(&mut pending.pending) {
+                eprintln!(
+                    "⚠️ oom-descendant-restore dropping pid={} parent={} after {} failed writes (will not retry)",
+                    key.0,
+                    pending.pending.root_pid,
+                    pending.pending.attempts
+                );
+                state.oom_pending_descendants.remove(&key);
+                remember_oom_descendant_identity(
+                    state,
+                    pending.pending.root_pid,
+                    key.0,
+                    &pending.pending.identity,
+                );
+            }
             continue;
         }
         eprintln!(
@@ -4693,9 +4766,22 @@ async fn check_memory_pressure(
             ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch
         ) || pending_oom_roots.contains(pid)
     });
-    state
-        .oom_known_descendants
-        .retain(|pid, _| state.oom_biased_pids.contains_key(pid));
+    // Roots that are no longer biased lose their bookkeeping; a root that IS
+    // still biased keeps only the descendants that are still alive, once its
+    // set grows past the cap (2026-10-01 audit).
+    let live_descendants: HashSet<(i32, u64)> = all_processes
+        .iter()
+        .map(|p| (p.pid, p.starttime))
+        .collect();
+    state.oom_known_descendants.retain(|pid, known| {
+        if !state.oom_biased_pids.contains_key(pid) {
+            return false;
+        }
+        if known.len() > OOM_KNOWN_DESCENDANTS_CAP {
+            known.retain(|key| live_descendants.contains(key));
+        }
+        true
+    });
     state.capped_pids.retain(|pid, (_, _, identity)| {
         // Same rule as the memory and OOM prunes above: a recycled PID
         // (same number, different starttime) must not keep throttling an
