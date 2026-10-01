@@ -176,7 +176,24 @@ pub(crate) fn quarantine_move(
                     skipped
                 );
             }
-            let (got_files, got_bytes) = walk_stats_strict(&entry_dir)?;
+            // FIXED 2026-10-01 (audit): the verification walk propagated with `?`
+            // while the two paths beside it clean the entry dir up. A read error
+            // here (EIO, or a concurrent chmod on the tree just copied) left a
+            // fully copied entry directory with NO manifest: `restore` refuses a
+            // manifest-less entry and `expire` pins it as unknown data, so the
+            // bytes were held forever. Clean up on this path too — the origin is
+            // untouched, so nothing is lost and a retry can start over.
+            let (got_files, got_bytes) =
+                match walk_stats_strict(&entry_dir) {
+                    Ok(stats) => stats,
+                    Err(verify_err) => {
+                        let _ = fs::remove_dir_all(&entry_dir);
+                        anyhow::bail!(
+                            "copy verification could not read the copied entry ({verify_err:#}) — \
+                             entry directory removed, origin untouched"
+                        );
+                    }
+                };
             if got_files != files || got_bytes != bytes {
                 let _ = fs::remove_dir_all(&entry_dir);
                 anyhow::bail!("copy verification failed — origin untouched");
