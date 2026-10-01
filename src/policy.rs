@@ -1321,6 +1321,31 @@ pub(crate) fn expand_tilde(raw: &str) -> PathBuf {
     expand_tilde_with_home(raw, dirs::home_dir().as_deref())
 }
 
+/// Expand `~` AND make the result absolute, resolving a relative policy path
+/// against the user's home rather than the process's current directory.
+///
+/// ADDED 2026-10-01 (audit). The shipped unit sets `WorkingDirectory=%h` with
+/// the explicit comment "Keep any intentionally relative policy paths stable
+/// for the user service", so a relative path in the policy means "under $HOME".
+/// `setup --apply` used the plain lexical expansion, so `relocate_cold_root =
+/// "cold"` created `./cold` under the invoking shell's CWD and reported ready,
+/// while the daemon — running with CWD=$HOME — looked for `~/cold`, warned
+/// "cold root missing — run dracon-system setup" on every pass, and any future
+/// canonicalised nesting check disagreed with the lexical one. Both call sites
+/// now resolve through here, so the two agree by construction.
+pub(crate) fn resolve_policy_path(raw: &str) -> PathBuf {
+    let expanded = expand_tilde(raw);
+    if expanded.is_absolute() {
+        return expanded;
+    }
+    match dirs::home_dir() {
+        Some(home) => home.join(expanded),
+        // No home to resolve against: keep the lexical path rather than
+        // inventing a root-relative one.
+        None => expanded,
+    }
+}
+
 /// Resolve the optional guard event-log path using the same config-path
 /// semantics at every call site. A blank value disables persistent logging;
 /// `~` and `~/...` refer to the service user's home directory. Non-empty
