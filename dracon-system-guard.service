@@ -87,7 +87,7 @@ ProtectHome=read-only
 # (src/policy_tests.rs); the daemon additionally names any root the operator has
 # repointed elsewhere at startup instead of failing silently per candidate.
 # Both are '-'-prefixed: a host with no second drive must still start.
-ReadWritePaths=%h/.dracon %h/.local/state/dracon %h/.local/share -%h/Dev -%h/.local/share/Trash -%h/.cargo -%h/.cache -%h/.npm -%h/.local/state/nix /tmp
+ReadWritePaths=%h/.dracon %h/.local/state/dracon %h/.local/share -%h/Dev -%h/.local/share/Trash -%h/.cargo -%h/.cache -%h/.npm -%h/.local/state/nix /tmp -/mnt/data/quarantine -/mnt/data/cold
 PrivateTmp=false
 
 # Kernel-level sandboxing (all certain — these daemons never use these privileges)
