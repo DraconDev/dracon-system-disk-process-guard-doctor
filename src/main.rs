@@ -7299,6 +7299,18 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
     use comfy_table::{presets::UTF8_FULL_CONDENSED, Cell, ContentArrangement, Table};
 
     let mut runtime = GuardRuntimeState::default();
+    // AUDIT 2026-10-01: a previous run may have died (panic, OOM kill) with
+    // mitigations applied. Adopt them into the live state and drain them through
+    // the EXISTING restore path before the first pass, so no process is left
+    // reniced/biased/capped forever. Identity is re-verified on adoption, so a
+    // recycled PID is never touched.
+    hydrate_mitigations_from_disk(&mut runtime);
+    if !runtime.memory_reniced_pids.is_empty()
+        || !runtime.oom_biased_pids.is_empty()
+        || !runtime.capped_pids.is_empty()
+    {
+        restore_runtime_adjustments(&mut runtime).await;
+    }
     let report_result = run_guard_once(guard, &mut runtime).await;
     // A one-shot invocation has no daemon runtime to carry these entries into
     // a later retry. Restore every limiter before handling either a report or
