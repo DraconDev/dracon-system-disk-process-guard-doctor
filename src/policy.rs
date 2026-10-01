@@ -1429,12 +1429,56 @@ pub(crate) fn unknown_policy_keys(doc: &toml::Value) -> Vec<String> {
                 for key in inner.keys() {
                     if !accepted.contains(key) {
                         unknown.push(format!("{section}.{key}"));
+                        continue;
+                    }
+                    // ADDED 2026-10-01 (audit): one more level, for the only
+                    // section with a nested table. A typo inside a
+                    // `[[links.entries]]` body was accepted silently while the
+                    // same typo one level up was reported, which contradicts
+                    // the template's promise that an unrecognised key is at
+                    // least NAMED. `entries` is the single known nested key, so
+                    // the check is explicit rather than recursive.
+                    if section == "links" && key == "entries" {
+                        unknown.extend(unknown_link_entry_keys(value));
                     }
                 }
             }
         }
     }
     unknown.sort();
+    unknown
+}
+
+/// Keys accepted inside one `[[links.entries]]` table. Derived from the struct
+/// so it cannot drift from the real shape (audit 2026-10-01).
+fn known_link_entry_keys() -> HashSet<String> {
+    known_keys_of::<LinkEntry>(&[])
+}
+
+/// Unknown keys inside `[[links.entries]]` bodies, as `links.entries.<key>`.
+fn unknown_link_entry_keys(links_value: &toml::Value) -> Vec<String> {
+    let Some(entries) = links_value
+        .as_table()
+        .and_then(|t| t.get("entries"))
+        .and_then(|e| e.as_array())
+    else {
+        return Vec::new();
+    };
+    let accepted = known_link_entry_keys();
+    let mut unknown = Vec::new();
+    for entry in entries {
+        let Some(table) = entry.as_table() else {
+            // A non-table entry is a shape error; report the key itself so it is
+            // not silently dropped.
+            unknown.push("links.entries".to_string());
+            continue;
+        };
+        for key in table.keys() {
+            if !accepted.contains(key) {
+                unknown.push(format!("links.entries.{key}"));
+            }
+        }
+    }
     unknown
 }
 
