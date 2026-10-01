@@ -25,6 +25,11 @@ pub(crate) struct SetupCheck {
 pub(crate) struct SetupReport {
     pub(crate) policy_path: String,
     pub(crate) policy_exists: bool,
+    /// ADDED 2026-10-01 (audit): a policy file that exists but fails to parse
+    /// used to be reported as "no policy — built-in defaults" with
+    /// `policy_exists: false`, which tells the operator to go configure
+    /// something when the real problem is that their file is broken.
+    pub(crate) policy_error: Option<String>,
     pub(crate) checks: Vec<SetupCheck>,
     pub(crate) ready: bool,
 }
@@ -108,7 +113,18 @@ fn check_dir_configured(raw: &str, what: &str) -> SetupCheck {
 }
 
 pub(crate) fn collect_setup_report() -> SetupReport {
-    let (path, policy) = load_system_policy().unwrap_or((None, crate::SystemPolicy::default()));
+    // ADDED 2026-10-01 (audit): keep the two failure modes apart. `Err` means
+    // the file is there and BROKEN; `Ok((None, _))` means there is no file.
+    // Collapsing both into "built-in defaults" hid a typo like
+    // `disk_warn_percent = "80"` behind advice to go configure something.
+    let (loaded, policy_error) = match load_system_policy() {
+        Ok(loaded) => (loaded, None),
+        Err(e) => ((
+            None,
+            crate::SystemPolicy::default(),
+        ), Some(format!("{e:#}"))),
+    };
+    let (path, policy) = loaded;
     let guard = &policy.guard;
     let mut checks = Vec::new();
 
@@ -200,7 +216,8 @@ pub(crate) fn collect_setup_report() -> SetupReport {
         // load_system_policy() a second time purely to ask "does it exist?",
         // which re-parsed the whole file and — now that the load boundary
         // reports clamps — re-emitted the same out-of-range warning twice.
-        policy_exists: path.is_some(),
+        policy_exists: path.is_some() || policy_error.is_some(),
+        policy_error,
         checks,
         ready,
     }
@@ -218,8 +235,11 @@ pub(crate) fn cmd_setup(apply: bool, json: bool) -> Result<()> {
         let qdir = crate::quarantine_root(&policy.guard);
         // The two managed roots must not nest: a cold root inside the
         // quarantine root (or vice versa) would make cleanup and expiry
-        // operate on each other's trees.
-        let cold_path = expand_tilde(cold_raw);
+        // operate on each other's trees. Both sides are resolved through
+        // resolve_policy_path so the comparison is absolute-vs-absolute — the
+        // lexical check missed nesting whenever one side was relative
+        // (audit 2026-10-01).
+        let cold_path = crate::resolve_policy_path(cold_raw);
         if cold_path != qdir && (cold_path.starts_with(&qdir) || qdir.starts_with(&cold_path)) {
             anyhow::bail!(
                 "cannot apply: cold root {} nests inside quarantine root {} (or vice versa)",
