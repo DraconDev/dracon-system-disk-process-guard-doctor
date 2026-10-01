@@ -548,7 +548,7 @@ fn a_failed_symlink_restores_the_backed_up_file() {
     let backup = base.join("config.dracon-system-backup-test");
     std::fs::write(&backup, "original contents").unwrap();
 
-    let err = std::io::Error::new(std::io::ErrorKind::Other, "injected symlink failure");
+    let err = std::io::Error::other("injected symlink failure");
     crate::links_restore_after_failed_symlink_for_tests(&backup, &link, &err);
 
     assert!(
