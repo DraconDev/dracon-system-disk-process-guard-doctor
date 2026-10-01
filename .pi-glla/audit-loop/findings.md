@@ -109,3 +109,4 @@
 - [ ] FIX: LOW: events.rs colours a "critical" severity that the EventSeverity enum does not have (src/events.rs:490 vs 29)
 - [x] DECIDED: test_release_standalone.sh is folded into test_release_pipeline.sh and deleted — the monorepo-era `dracon-system/` subdir assertion cannot pass in either layout since the parent gitignored the crate on 2026-09-11, so the suite's unique deny-gate cases move to the pipeline fixture instead (2026-10-01)
 - [x] DECIDED: release.sh enforces VERSION > the current Cargo.toml version and dies with a clear message otherwise, instead of leaving monotonicity to operator discipline (2026-10-01)
+- [x] DISMISSED: events.rs colours a "critical" severity that the enum lacks — NOT a defect: that match runs on a `severity` STRING read back from the persisted JSONL (src/events.rs:524), not on `EventSeverity`, so it is forward-compatible rendering, and a future version that writes "critical" must colour it red. No change made (2026-10-01).
