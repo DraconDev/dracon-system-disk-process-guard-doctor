@@ -479,7 +479,7 @@ if [[ -d "$PKG_DIR" ]]; then
         printf '   $ cargo install --path %s --root %s --force  (skipped: --dry-run)\n' "$PKG_DIR" "$FIXTURE_ROOT"
     else
         run cargo install --path "$PKG_DIR" --root "$FIXTURE_ROOT" --force
-        if ! "$SCRIPT_DIR/verify-install.sh" "$FIXTURE_ROOT/bin/dracon-system"; then
+        if ! "$SCRIPT_DIR/verify-install.sh" "$FIXTURE_ROOT/bin/dracon-system" "$VERSION"; then
             die_pub "fixture check FAILED on the packaged artifact — release is broken, do NOT tag"
         fi
     fi

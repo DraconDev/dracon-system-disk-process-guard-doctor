@@ -6,11 +6,17 @@
 # the source checkout: the binary must report a semantic version and produce
 # valid JSON from the read-only status command with the expected schema.
 #
-# Usage: scripts/verify-install.sh [binary-path]
+# Usage: scripts/verify-install.sh [binary-path] [expected-version]
 # Exit codes: 0 = fixture clean; 1 = fixture failed.
+#
+# ADDED 2026-10-01 (audit): the optional second argument is the version being
+# released. Without it the check only validated the SHAPE of `--version`, so a
+# stale binary already sitting at the fixture root passed the pre-release gate
+# even though `release.sh` had just published a new version.
 set -euo pipefail
 
 BIN="${1:-dracon-system}"
+EXPECTED_VERSION="${2:-}"
 if ! command -v "$BIN" >/dev/null 2>&1; then
     echo "✗ binary '$BIN' not found on PATH" >&2
     exit 1
@@ -22,6 +28,23 @@ VERSION_OUT="$("$BIN" --version 2>&1)" || {
 }
 if ! grep -Eq '^dracon-system [0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$' <<<"$VERSION_OUT"; then
     echo "✗ FAIL: unexpected version output from '$BIN': $VERSION_OUT" >&2
+    exit 1
+fi
+
+# The version must be the one under release, not merely a well-formed one: a
+# fixture root that still holds an older build would otherwise pass.
+if [ -n "$EXPECTED_VERSION" ]; then
+    if ! grep -Fxq "dracon-system $EXPECTED_VERSION" <<<"$VERSION_OUT"; then
+        echo "✗ FAIL: '$BIN' reports '$VERSION_OUT' but this release is $EXPECTED_VERSION" >&2
+        exit 1
+    fi
+fi
+
+# The schema step below pipes into python3. Without this check a missing
+# interpreter was reported as "returned an unexpected JSON schema", which points
+# at the wrong thing entirely (audit 2026-10-01).
+if ! command -v python3 >/dev/null 2>&1; then
+    echo "✗ FAIL: python3 is required for the status JSON schema check but was not found on PATH" >&2
     exit 1
 fi
 
