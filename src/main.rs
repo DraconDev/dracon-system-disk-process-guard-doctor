@@ -4993,7 +4993,7 @@ fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) {
     // Atomic: a torn ledger would be worse than none, because it is the record
     // of what still needs restoring.
     let tmp = path.with_extension("json.tmp");
-    if let Err(e) = fs::write(&tmp, &encoded).and_then(|()| fs::rename(&tmp, &path)) {
+    if let Err(e) = fs::write(&tmp, &encoded).and_then(|()| fs::rename(&tmp, path)) {
         eprintln!(
             "⚠️ could not persist the mitigation ledger to {}: {e}",
             path.display()
