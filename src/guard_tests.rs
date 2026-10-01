@@ -1453,10 +1453,15 @@ fn a_legacy_ledger_without_the_cgroup_still_hydrates_and_never_guesses_a_path() 
     let (path, me, identity) = cap_cgroup_fixture("ledger-cap-legacy");
     // A ledger written before cap_orig_cgroup existed: the field is absent, and
     // serde must read it as None instead of rejecting the whole file.
-    let legacy = format!(
-        r#"{{"records":[{{"pid":{me},"original_nice":null,"original_oom_adj":null,"cap_scope":"run-r9.service","identity":{{"starttime":{},"comm":"self"}}}}}]}}"#,
-        identity.starttime
-    );
+    let legacy = [
+        r#"{"records":[{"pid":"#,
+        &me.to_string(),
+        r#","original_nice":null,"original_oom_adj":null,"cap_scope":"run-r9.service","#,
+        r#""identity":{"starttime":"#,
+        &identity.starttime.to_string(),
+        r#","comm":"self"}}}]}"#,
+    ]
+    .concat();
     std::fs::write(&path, legacy).unwrap();
 
     let mut after_restart = GuardRuntimeState::default();
