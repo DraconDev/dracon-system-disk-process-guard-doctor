@@ -618,6 +618,29 @@ const OOM_DESCENDANT_RETRY_LIMIT: u32 = 5;
 /// treated as new, which is exactly what happens for a genuinely new child.
 const OOM_KNOWN_DESCENDANTS_CAP: usize = 256;
 
+/// Keep the remembered-descendant bookkeeping bounded.
+///
+/// ADDED 2026-10-01 (audit): a root that is no longer biased loses its set
+/// entirely; a root that IS still biased keeps only descendants that are still
+/// alive, once its set grows past `OOM_KNOWN_DESCENDANTS_CAP`. Dropping an entry
+/// is safe — the worst case is that a re-forked PID is treated as new, which is
+/// exactly what happens for a genuinely new child.
+fn prune_oom_known_descendants(state: &mut GuardRuntimeState, all_processes: &[ProcSample]) {
+    let live: HashSet<(i32, u64)> = all_processes
+        .iter()
+        .map(|p| (p.pid, p.starttime))
+        .collect();
+    state.oom_known_descendants.retain(|pid, known| {
+        if !state.oom_biased_pids.contains_key(pid) {
+            return false;
+        }
+        if known.len() > OOM_KNOWN_DESCENDANTS_CAP {
+            known.retain(|key| live.contains(key));
+        }
+        true
+    });
+}
+
 /// Bump the attempt counter; true once the entry must be given up on.
 fn oom_descendant_attempts_exhausted(pending: &mut OomPendingDescendant) -> bool {
     pending.attempts += 1;
@@ -4775,22 +4798,7 @@ async fn check_memory_pressure(
             ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch
         ) || pending_oom_roots.contains(pid)
     });
-    // Roots that are no longer biased lose their bookkeeping; a root that IS
-    // still biased keeps only the descendants that are still alive, once its
-    // set grows past the cap (2026-10-01 audit).
-    let live_descendants: HashSet<(i32, u64)> = all_processes
-        .iter()
-        .map(|p| (p.pid, p.starttime))
-        .collect();
-    state.oom_known_descendants.retain(|pid, known| {
-        if !state.oom_biased_pids.contains_key(pid) {
-            return false;
-        }
-        if known.len() > OOM_KNOWN_DESCENDANTS_CAP {
-            known.retain(|key| live_descendants.contains(key));
-        }
-        true
-    });
+    prune_oom_known_descendants(state, all_processes);
     state.capped_pids.retain(|pid, (_, _, identity)| {
         // Same rule as the memory and OOM prunes above: a recycled PID
         // (same number, different starttime) must not keep throttling an

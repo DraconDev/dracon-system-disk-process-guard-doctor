@@ -1240,11 +1240,53 @@ fn pending_oom_descendant_retries_are_bounded() {
 /// 2026-10-01 (audit): `oom_known_descendants` grew by one entry per descendant
 /// incarnation ever seen and was only cleared when the root left
 /// `oom_biased_pids`, so a long critical episode under a forking root
-/// accumulated thousands of dead keys. The cap must be finite.
+/// accumulated thousands of dead keys. The cap must actually prune.
 #[test]
-fn remembered_oom_descendants_are_capped() {
+fn remembered_oom_descendants_are_pruned_past_the_cap() {
+    use std::collections::HashSet;
+
+    // A biased root with many dead descendants and one live one.
+    let mut state = GuardRuntimeState::default();
+    let identity = ProcessIdentity {
+        starttime: 1,
+        comm: "root".to_string(),
+    };
+    state.oom_biased_pids.insert(100, (0, identity.clone()));
+    let live = (999, 42u64);
+    let mut known: HashSet<(i32, u64)> = HashSet::new();
+    known.insert(live);
+    for i in 0..OOM_KNOWN_DESCENDANTS_CAP {
+        known.insert((1000 + i as i32, u64::MAX - i as u64));
+    }
     assert!(
-        OOM_KNOWN_DESCENDANTS_CAP > 0 && OOM_KNOWN_DESCENDANTS_CAP < 100_000,
-        "the cap must exist and be finite, got {OOM_KNOWN_DESCENDANTS_CAP}"
+        known.len() > OOM_KNOWN_DESCENDANTS_CAP,
+        "the fixture must exceed the cap to exercise the prune"
+    );
+    state.oom_known_descendants.insert(100, known);
+    // An unrelated, unbiased root must be dropped outright.
+    state
+        .oom_known_descendants
+        .insert(200, HashSet::from([(1, 1)]));
+
+    let all_processes = vec![crate::ProcSample {
+        pid: live.0,
+        starttime: live.1,
+        ..Default::default()
+    }];
+    prune_oom_known_descendants(&mut state, &all_processes);
+
+    assert!(
+        !state.oom_known_descendants.contains_key(&200),
+        "a root that is no longer biased must lose its bookkeeping"
+    );
+    let kept = &state.oom_known_descendants[&100];
+    assert!(
+        kept.len() <= OOM_KNOWN_DESCENDANTS_CAP,
+        "the set must not stay above the cap, got {}",
+        kept.len()
+    );
+    assert!(
+        kept.contains(&live),
+        "a descendant that is still alive must be remembered"
     );
 }
