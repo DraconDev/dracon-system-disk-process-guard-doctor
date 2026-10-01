@@ -123,3 +123,15 @@
 # in the source at HEAD: the renice half alone stays inside `can_restore_nice`
 # (src/main.rs:4586) and the oom/cpu releases run on `pressure == "ok"` alone
 # (src/main.rs:4581).
+# Traceability note (append-only; boxes above are NOT rewritten). The rehearsal
+# reviewer flagged three boxes that cited no commit, and each maps to exactly
+# one, verified against the patch itself:
+#   findings.md:76 (BLUEPRINT.md pinned normalize_guard_policy "at line 837")
+#     -> 794dfe2, which replaces that line number with "find it, do not trust a
+#        line number here" and states the 13 sentinel-zero knobs are deliberate.
+#   findings.md:77 (template listed cap_offenders_cpu_percent as NOT CLAMPED)
+#     -> 794dfe2 as well, in dracon-system.example.toml, same commit.
+#   findings.md:94 (shipped unit's ReadWritePaths listed optional paths)
+#     -> 6303074d, which prefixes the six optional entries with '-' ("ignore if
+#        missing") and keeps %h/.dracon and %h/.local/state/dracon REQUIRED; the
+#        rationale in the added comment records the live 226/NOPERM evidence.
