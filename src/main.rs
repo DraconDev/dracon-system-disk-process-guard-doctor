@@ -1818,19 +1818,19 @@ fn restore_pending_oom_descendants(
             }
             ProcessIdentityStatus::Unavailable => {
                 result.deferred += 1;
-                if oom_descendant_attempts_exhausted(&mut pending.pending) {
+                if oom_descendant_attempts_exhausted(&mut pending) {
                     eprintln!(
                         "⚠️ oom-descendant-restore dropping pid={} parent={} after {} unavailable identity reads (will not retry)",
                         key.0,
-                        pending.pending.root_pid,
-                        pending.pending.attempts
+                        pending.root_pid,
+                        pending.attempts
                     );
                     state.oom_pending_descendants.remove(&key);
                     remember_oom_descendant_identity(
                         state,
-                        pending.pending.root_pid,
+                        pending.root_pid,
                         key.0,
-                        &pending.pending.identity,
+                        &pending.identity,
                     );
                 }
                 continue;
@@ -1845,19 +1845,19 @@ fn restore_pending_oom_descendants(
             Some(current) => current,
             None => {
                 result.deferred += 1;
-                if oom_descendant_attempts_exhausted(&mut pending.pending) {
+                if oom_descendant_attempts_exhausted(&mut pending) {
                     eprintln!(
                         "⚠️ oom-descendant-restore dropping pid={} parent={} after {} unreadable oom_score_adj reads (will not retry)",
                         key.0,
-                        pending.pending.root_pid,
-                        pending.pending.attempts
+                        pending.root_pid,
+                        pending.attempts
                     );
                     state.oom_pending_descendants.remove(&key);
                     remember_oom_descendant_identity(
                         state,
-                        pending.pending.root_pid,
+                        pending.root_pid,
                         key.0,
-                        &pending.pending.identity,
+                        &pending.identity,
                     );
                 }
                 continue;
@@ -1874,19 +1874,19 @@ fn restore_pending_oom_descendants(
                 key.0, pending.root_pid, error
             );
             result.deferred += 1;
-            if oom_descendant_attempts_exhausted(&mut pending.pending) {
+            if oom_descendant_attempts_exhausted(&mut pending) {
                 eprintln!(
                     "⚠️ oom-descendant-restore dropping pid={} parent={} after {} failed writes (will not retry)",
                     key.0,
-                    pending.pending.root_pid,
-                    pending.pending.attempts
+                    pending.root_pid,
+                    pending.attempts
                 );
                 state.oom_pending_descendants.remove(&key);
                 remember_oom_descendant_identity(
                     state,
-                    pending.pending.root_pid,
+                    pending.root_pid,
                     key.0,
-                    &pending.pending.identity,
+                    &pending.identity,
                 );
             }
             continue;
