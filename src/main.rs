@@ -4446,9 +4446,11 @@ async fn check_memory_pressure(
     // renice half stays gated, which is the flag that actually governs a
     // reversible renice.
     if pressure == "ok" {
+        // Shared by all three release halves below: the renice, oom and CPU
+        // cooldown stamps are all measured from the same release window.
+        let now = Instant::now();
+        let release_dur = Duration::from_secs(guard.release_after_secs);
         if can_restore_nice {
-            let now = Instant::now();
-            let release_dur = Duration::from_secs(guard.release_after_secs);
             // Un-renice memory-limited pids after the release window.
             let mut to_unrenice = Vec::new();
             for &pid in state.memory_reniced_pids.keys() {
