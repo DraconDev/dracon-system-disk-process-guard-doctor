@@ -4985,6 +4985,7 @@ fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) {
             original_nice: Some(entry.original_nice),
             original_oom_adj: None,
             cap_scope: None,
+            cap_orig_cgroup: None,
             identity: entry.identity.clone(),
         });
     }
@@ -4994,6 +4995,7 @@ fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) {
             original_nice: None,
             original_oom_adj: Some(*original_adj),
             cap_scope: None,
+            cap_orig_cgroup: None,
             identity: identity.clone(),
         });
     }
