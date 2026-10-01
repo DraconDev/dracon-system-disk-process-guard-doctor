@@ -240,3 +240,103 @@ pub(crate) fn is_protected_ancestor(path: &str, protected: &str) -> bool {
     };
     path.starts_with(&prefix)
 }
+
+// ---------------------------------------------------------------------------
+// Storage roots vs the shipped unit's hardening (2026-10-01)
+// ---------------------------------------------------------------------------
+
+/// The guard unit this binary ships with, compiled in.
+///
+/// `include_str!` rather than reading the deployed copy: this check must
+/// describe the unit THIS release would install, and stay testable on a host
+/// where nothing is deployed. `scripts/check-unit-deployment.sh` is what keeps
+/// the deployed copy identical to it.
+pub(crate) const SHIPPED_GUARD_UNIT: &str = include_str!("../dracon-system-guard.service");
+
+/// The paths `ReadWritePaths=` in `unit` grants write access to, with `%h`
+/// expanded and the `-` ("ignore if missing") prefix stripped.
+///
+/// A leading `-` does NOT narrow what is granted — it only stops systemd from
+/// refusing to START when the path is absent. On a host where it exists, the
+/// path is still made writable, so it must count as covered here. Multiple
+/// `ReadWritePaths=` lines accumulate, exactly as systemd accumulates them.
+pub(crate) fn unit_readwrite_paths(unit: &str, home: &Path) -> Vec<PathBuf> {
+    let mut granted = Vec::new();
+    for line in unit.lines() {
+        let line = line.trim();
+        // Comments and non-directives are skipped; a directive is `Key=value`.
+        let Some(value) = line.strip_prefix("ReadWritePaths=") else {
+            continue;
+        };
+        for token in value.split_whitespace() {
+            let token = token.strip_prefix('-').unwrap_or(token);
+            granted.push(expand_unit_path(token, home));
+        }
+    }
+    granted
+}
+
+/// Expand one `ReadWritePaths=` token against `home`. Absolute paths pass
+/// through; `%h` is the unit specifier for the user's home.
+fn expand_unit_path(token: &str, home: &Path) -> PathBuf {
+    if let Some(rest) = token.strip_prefix("%h") {
+        return home.join(rest.trim_start_matches('/'));
+    }
+    PathBuf::from(token)
+}
+
+/// Whether the unit's `ReadWritePaths=` makes `path` writable.
+///
+/// `ProtectSystem=strict` remounts the whole hierarchy read-only inside the
+/// service's namespace, and `ProtectHome=read-only` does the same for `$HOME`.
+/// Only these paths are exempted, so a root that is not under one of them fails
+/// every write with EROFS — which is exactly how quarantine silently stopped
+/// working on 2026-10-01.
+pub(crate) fn unit_grants_write(unit: &str, home: &Path, path: &Path) -> bool {
+    unit_readwrite_paths(unit, home)
+        .iter()
+        .any(|granted| path.starts_with(granted))
+}
+
+/// The storage roots this policy writes to that the shipped unit would leave
+/// read-only, as `(policy key, resolved path)` pairs.
+///
+/// Only roots that are actually configured are reported: an unset
+/// `relocate_cold_root` means relocation is off, and naming a path nothing will
+/// ever write to would be noise.
+pub(crate) fn uncovered_storage_roots(
+    unit: &str,
+    guard: &crate::GuardPolicy,
+) -> Vec<(&'static str, PathBuf)> {
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+    let cold_root = guard.relocate_cold_root.trim();
+    let roots: [(&'static str, PathBuf); 2] = [
+        ("quarantine_dir", crate::quarantine_root(guard)),
+        ("relocate_cold_root", crate::expand_tilde(cold_root)),
+    ];
+    roots
+        .into_iter()
+        .filter(|(_, path)| !path.as_os_str().is_empty() && path != &PathBuf::from("."))
+        .filter(|(_, path)| !unit_grants_write(unit, &home, path))
+        .collect()
+}
+
+/// Say ONCE, on stderr, which configured storage roots the shipped unit would
+/// leave read-only, naming the exact entry to add.
+///
+/// Printed to stderr so `guard once --json` stays machine-parseable. Emitted
+/// once per process from the command entry point, NOT per pass: the old
+/// behaviour was one "failed to quarantine … Read-only file system" line per
+/// candidate per pass, which buried the single actionable fact under thousands
+/// of identical errors.
+pub(crate) fn warn_uncovered_storage_roots(guard: &crate::GuardPolicy) {
+    for (key, path) in uncovered_storage_roots(SHIPPED_GUARD_UNIT, guard) {
+        eprintln!(
+            "⚠️ {key} = {} is not in the guard unit's ReadWritePaths — writes there \
+             fail EROFS under ProtectSystem=strict. Add: -{} to ReadWritePaths= in \
+             dracon-system-guard.service, then reinstall the unit.",
+            path.display(),
+            path.display()
+        );
+    }
+}
