@@ -1960,6 +1960,7 @@ fn sweep_stranded_oom_descendants(
                 root_pid,
                 original_adj: *original_adj,
                 identity: process_sample_identity(child),
+                attempts: 0,
             },
         );
     }
