@@ -135,3 +135,61 @@
 #     -> 6303074d, which prefixes the six optional entries with '-' ("ignore if
 #        missing") and keeps %h/.dracon and %h/.local/state/dracon REQUIRED; the
 #        rationale in the added comment records the live 226/NOPERM evidence.
+
+# PROVENANCE CORRECTION (append-only; the boxes above are NOT rewritten)
+# The first pass over this file recorded, for many boxes, the commit that was
+# HEAD when the box was ticked. Because the auto-commit daemon commits each edit
+# as its own commit, that was frequently the TEST commit while the production
+# change sat in an earlier commit — so "fixed in <sha>" pointed at a real commit
+# that cannot contain the described fix. Every mapping below was re-derived with
+# `git show <sha> --stat` plus a patch-level read of the cited hunk, NOT with
+# `git cat-file -e` (which only proves existence). The fixes are all present in
+# the tree; only the pointers were wrong.
+#   box  finding file cited in box      ACTUAL production commit (verified patch)
+#   L63  src/main.rs        24fba49 (tests only) -> 21984f7 + test 24fba49
+#   L64  src/main.rs        a89e733 (tests only) -> b7b6e60 (adds `attempts` to
+#                                     the oom pending map; retries now bounded)
+#   L65  src/policy.rs+main 9841ddd/91232b6     -> bc36e32 (policy.rs clamps the
+#                                     knob; main.rs switches the subtraction to
+#                                     checked_sub) + tests 91232b6
+#   L66  src/main.rs        a89e733 (tests only) -> 70458f6 (main.rs + guard_tests)
+#   L71  src/policy.rs      9841ddd/91232b6     -> bc36e32 (band!(unfreeze_...))
+#   L72  src/policy.rs      9841ddd/91232b6     -> bc36e32 (band!(disk_early...))
+#   L73  src/policy.rs      800e58e (tests only) -> 81d8888 (adds
+#                                     unknown_link_entry_keys, so a typo inside
+#                                     [[links.entries]] is reported)
+#   L74  src/policy.rs      800e58e (tests only) -> 7c94861 (hint_for consults
+#                                     section names)
+#   L75  src/policy.rs      800e58e (tests only) -> 87d68c2 (tier-aware hints)
+#   L78  src/setup.rs       e4fe91e (import only) -> 2edc909 (adds
+#                                     SetupReport.policy_error) + fd90cc5
+#                                     (reports "FAILED TO PARSE") + test 19fb0fa
+#   L79  src/setup.rs       e4fe91e (import only) -> 2edc909 (both roots resolved
+#                                     through resolve_policy_path before the
+#                                     nesting compare) + test 19fb0fa
+#   L84  src/relocate.rs    800e58e (tests only) -> 26e75db (staging removal is
+#                                     reported, not propagated)
+#   L86  src/quarantine.rs  800e58e (tests only) -> 3016e71 (the verification walk
+#                                     cleans up instead of propagating with `?`)
+#   L89  src/doctor.rs      55a6542 (a #[derive] only) -> 25096de (+246/-78: the
+#                                     guard's own policy + service + probe flag)
+#   L90  src/doctor.rs      55a6542 (a #[derive] only) -> 25096de (required flag)
+#   L91  src/main.rs        55a6542 (a #[derive] only) -> 25096de (doctor.rs
+#                                     cannot-ask reporting)
+#   L98  src/events.rs      9841ddd (main.rs only) -> bc36e32 (removes ROLLING_LOG
+#                                     and the Mutex import)
+#   L99  check-unit-deployment 2042fc5 (one of two sites) -> 5985fc3 (the discovery
+#                                     loop's `-e || -L`) + 2042fc5 (the deployed-
+#                                     path check)
+#   L106 check-unit-deployment 2042fc5                  -> 5985fc3 (quotes the paths
+#                                     interpolated into the remediation echo)
+#   L107 scripts/verify-install.sh 2042fc5 (test only) -> 77f7bcb (python3 presence
+#                                     check) + tests eb46925/a5a5ea4/2042fc5
+#   L108 scripts/verify-install.sh 2042fc5 (test only) -> 77f7bcb (the expected-
+#                                     version argument) + the same three test commits
+# Boxes whose citation was already correct and needed no correction: L67 (9841ddd),
+# L68 (73e931d), L82/L83/L85 (10554b3+5a25763+0e91aa4), L95/L96/L97/L103/L104/L105
+# (2e39cd2 family), L100/L101/L102 (24926eb family), and the addendum box at L119.
+# Method note: this correction was derived from the pass's own commit table
+# (every commit and its touched files, ec8d27a..HEAD) and then confirmed by
+# reading each cited patch, not from the box text.
