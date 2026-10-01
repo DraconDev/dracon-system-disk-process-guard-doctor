@@ -1095,3 +1095,71 @@ fn a_reload_that_succeeds_after_a_deferred_one_recovers() {
     assert_eq!(guard.disk_warn_percent, 55);
     assert!(runtime.memory_reniced_pids.is_empty());
 }
+
+/// 2026-10-01 (audit HIGH): the `oom_score_adj` and CPUQuota RELEASES were inside
+/// `if pressure == "ok" && can_restore_nice`, but their APPLIES are not gated by
+/// that flag. On a host without CAP_SYS_NICE — a manual `guard daemon` run, or a
+/// unit predating v0.112.39's `AmbientCapabilities` — the guard wrote
+/// `oom_score_adj=250` and a CPUQuota cap under critical pressure and could then
+/// never release either: the only recovery was SIGHUP or a restart, while the
+/// sole warning printed said "renice mitigation disabled".
+///
+/// The defect is structural, so the guard is structural too: the two release
+/// halves must live OUTSIDE the `can_restore_nice` gate, which now wraps only
+/// the renice half. Behavioural coverage would need the capability absent, which
+/// this process cannot arrange.
+#[test]
+fn oom_and_cpu_releases_are_not_gated_by_the_nice_capability() {
+    let src = include_str!("main.rs");
+
+    // Isolate the release block in check_memory_pressure.
+    let start = src
+        .find("if pressure == \"ok\" {")
+        .expect("the pressure-release block must exist");
+    let gate = src[start..]
+        .find("if can_restore_nice {")
+        .map(|i| start + i)
+        .expect("the renice half must stay gated on the restore capability");
+    let gate_body = &src[gate..];
+
+    // Find the matching close of the gate by brace counting.
+    let mut depth = 0i32;
+    let mut gate_end = None;
+    for (i, ch) in gate_body.char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    gate_end = Some(gate + i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let gate_end = gate_end.expect("the gate must be brace-balanced");
+    let gated = &src[gate..gate_end];
+
+    for marker in [
+        "Restore oom_score_adj after the release window",
+        "Lift CPUQuota scopes after the release window",
+    ] {
+        assert!(
+            !gated.contains(marker),
+            "'{marker}' is still inside the can_restore_nice gate, so a host without \
+             CAP_SYS_NICE can never release it again"
+        );
+        assert!(
+            src[start..].contains(marker),
+            "'{marker}' must still exist: the release was not deleted, it was ungated"
+        );
+    }
+
+    // And the renice half must still be gated — it is the one that really does
+    // need CAP_SYS_NICE, and its apply is gated too.
+    assert!(
+        gated.contains("mem-unrenice"),
+        "the renice release must stay inside the can_restore_nice gate"
+    );
+}
