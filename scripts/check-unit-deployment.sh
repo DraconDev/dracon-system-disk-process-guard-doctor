@@ -180,11 +180,16 @@ effective_mount_for() {
     while IFS= read -r line; do
         point="$(printf '%s\n' "$line" | awk '{print $5}')"
         flags="$(printf '%s\n' "$line" | awk '{print $6}')"
-        case "$target" in
-            "$point") ;;
-            "$point"/*) ;;
-            *) continue ;;
-        esac
+        # The root mount is a prefix of everything, but "/foo" does not match
+        # the shell pattern "//*", so it has to be handled before the case.
+        # Skipping it would report a perfectly ordinary root — one that lives
+        # under / with no mount of its own — as "not covered by any mount".
+        if [ "$point" != "/" ] && [ "$target" != "$point" ]; then
+            case "$target" in
+                "$point"/*) ;;
+                *) continue ;;
+            esac
+        fi
         if [ "${#point}" -ge "$best_len" ]; then
             best_len=${#point}
             best_point="$point"

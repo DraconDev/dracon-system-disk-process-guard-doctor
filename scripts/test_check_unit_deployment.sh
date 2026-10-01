@@ -432,4 +432,19 @@ out="$(GUARD_MOUNTINFO="$work/no-such-mountinfo" POLICY_FILE="$p_ok" \
     "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     && fail "an unreadable mountinfo source was reported as in sync: $out"
 
+# 24. A root that lives under / with no mount of its own resolves through the
+#     root mount. "/foo" does not match the shell pattern "//*", so an
+#     implementation that only compares prefixes in `case` reports this ordinary
+#     arrangement as "not covered by any mount" — a false failure that would
+#     tell the operator to add a ReadWritePaths entry that changes nothing.
+write_policy "$work/policy-root-mount.toml" /var/tmp/quarantine ""
+out="$(GUARD_MOUNTINFO="$bare" POLICY_FILE="$work/policy-root-mount.toml" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
+    && fail "a root reachable through the root mount was rejected: $out"
+case "$out" in
+    *"is read-write in the running namespace"*) : ;;
+    *) fail "the root mount was not treated as covering /var/tmp: $out" ;;
+esac
+
 echo "check-unit-deployment regression tests: ok"
