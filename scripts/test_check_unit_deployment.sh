@@ -234,4 +234,32 @@ if out="$(env HOME="$empty_home" XDG_CONFIG_HOME="$xdg_home" \
 fi
 grep -q 'STALE' <<<"$out" || fail "drift under XDG_CONFIG_HOME was not reported: $out"
 
+# 15. A DANGLING symlink at the deployed path is still "deployed": `-f` follows
+#     symlinks, so a unit linked to a GC'd nix store path tested false and the
+#     script reported "nothing to compare" — a silent false pass over a broken
+#     deployment (audit 2026-10-01).
+dangling_home="$work/home-dangling"
+mkdir -p "$dangling_home/.config/systemd/user"
+ln -s "$xdg_home/removed-by-gc" "$dangling_home/.config/systemd/user/$UNIT_NAME"
+out="$(env -u XDG_CONFIG_HOME HOME="$dangling_home" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    && fail "a dangling unit symlink was reported as in sync: $out"
+case "$out" in
+    *"nothing to compare"*)
+        fail "a dangling symlink must not be treated as 'not deployed': $out" ;;
+    *"STALE"*|*"differs"*) : ;;
+    *) fail "unexpected verdict for a dangling symlink: $out" ;;
+esac
+
+# 16. A REMOVED target of an otherwise-identical unit is likewise reported, not
+#     silently accepted.
+good_home="$work/home-good"
+mkdir -p "$good_home/.config/systemd/user"
+cp "$repo" "$good_home/.config/systemd/user/$UNIT_NAME"
+out="$(env -u XDG_CONFIG_HOME HOME="$good_home" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    || fail "an identical unit was reported as drifted: $out"
+
 echo "check-unit-deployment regression tests: ok"
