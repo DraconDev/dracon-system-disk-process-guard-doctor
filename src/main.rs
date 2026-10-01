@@ -4923,6 +4923,11 @@ struct MitigationRecord {
     original_nice: Option<i32>,
     original_oom_adj: Option<i32>,
     cap_scope: Option<String>,
+    /// The cgroup the capped pid was moved OUT of when the cap was applied, so
+    /// a later run can put it back before stopping the transient unit. Absent
+    /// only in a ledger written before this field existed (audit 2026-10-01).
+    #[serde(default)]
+    cap_orig_cgroup: Option<String>,
     identity: ProcessIdentity,
 }
 
@@ -4971,12 +4976,13 @@ fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) {
             identity: identity.clone(),
         });
     }
-    for (pid, (scope, _orig_cgroup, identity)) in &state.capped_pids {
+    for (pid, (scope, orig_cgroup, identity)) in &state.capped_pids {
         records.push(MitigationRecord {
             pid: *pid,
             original_nice: None,
             original_oom_adj: None,
             cap_scope: Some(scope.clone()),
+            cap_orig_cgroup: Some(orig_cgroup.clone()),
             identity: identity.clone(),
         });
     }
@@ -5081,7 +5087,11 @@ fn hydrate_mitigations_from(path: &Path, state: &mut GuardRuntimeState) {
         if let Some(scope) = record.cap_scope {
             state.capped_pids.insert(
                 record.pid,
-                (scope, String::new(), record.identity.clone()),
+                (
+                    scope,
+                    record.cap_orig_cgroup.unwrap_or_default(),
+                    record.identity.clone(),
+                ),
             );
         }
         adopted += 1;

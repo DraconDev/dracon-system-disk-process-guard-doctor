@@ -110,3 +110,10 @@
 - [x] DECIDED: test_release_standalone.sh is folded into test_release_pipeline.sh and deleted — the monorepo-era `dracon-system/` subdir assertion cannot pass in either layout since the parent gitignored the crate on 2026-09-11, so the suite's unique deny-gate cases move to the pipeline fixture instead (2026-10-01)
 - [x] DECIDED: release.sh enforces VERSION > the current Cargo.toml version and dies with a clear message otherwise, instead of leaving monotonicity to operator discipline (2026-10-01)
 - [x] DISMISSED: events.rs colours a "critical" severity that the enum lacks — NOT a defect: that match runs on a `severity` STRING read back from the persisted JSONL (src/events.rs:524), not on `EventSeverity`, so it is forward-compatible rendering, and a future version that writes "critical" must colour it red. No change made (2026-10-01).
+
+## Addendum to the 2026-10-01 pass — completeness re-check of the pass's own newest fix
+# The pass closed every box, then the closure was re-verified against the source
+# (all cited SHAs present; cargo test --workspace, clippy -D warnings, and the
+# release-pipeline fixture all green). The verification found ONE real gap in the
+# mitigation-ledger fix this pass shipped (73e931d/6b0d746), recorded below.
+- [ ] FIX: HIGH: the mitigation ledger persists a CPU-cap's SCOPE but not the process's ORIGINAL CGROUP, and hydration inserts an empty cgroup — so after a daemon restart with a cap still applied, uncap builds `/sys/fs/cgroup//cgroup.procs` and its `?` returns Err before `systemctl stop`, leaving the transient unit running, the process throttled forever, and the error re-emitted every pass (src/main.rs:5078-5086 insert; 4974 persist drops cgroup; 2151-2156 write; MitigationRecord has no cgroup field)
