@@ -44,7 +44,12 @@ else
     # one systemd reports is preferred by the loaded-unit check further down.
     DEPLOYED_UNIT=""
     for dir in "${unit_dirs[@]}"; do
-        if [ -f "$dir/$UNIT_NAME" ]; then
+        # `-e || -L`, not `-f`: `-f` follows symlinks, so a unit symlinked to a
+        # GC'd nix store path (or any dangling link) tested false and the script
+        # reported "nothing to compare" — a silent false pass over a unit that IS
+        # deployed and IS broken. A dangling link must reach the comparison so
+        # it is reported (audit 2026-10-01).
+        if [ -e "$dir/$UNIT_NAME" ] || [ -L "$dir/$UNIT_NAME" ]; then
             DEPLOYED_UNIT="$dir/$UNIT_NAME"
             break
         fi
@@ -52,11 +57,11 @@ else
     if [ -z "$DEPLOYED_UNIT" ]; then
         primary="${unit_dirs[0]}/$UNIT_NAME"
         echo "• no deployed unit at $primary — nothing to compare (install it with:"
-        echo "    mkdir -p \$(dirname \"$primary\") && install -m 644 $REPO_UNIT $primary && systemctl --user daemon-reload)"
+        echo "    mkdir -p \"\$(dirname \"$primary\")\" && install -m 644 \"$REPO_UNIT\" \"$primary\" && systemctl --user daemon-reload)"
         exit 0
     fi
 fi
-REDEPLOY_CMD="install -m 644 $REPO_UNIT $DEPLOYED_UNIT && systemctl --user daemon-reload"
+REDEPLOY_CMD="install -m 644 \"$REPO_UNIT\" \"$DEPLOYED_UNIT\" && systemctl --user daemon-reload"
 # Overridable so the regression suite can drive the systemd-dependent steps
 # deterministically instead of depending on the host's user manager.
 SYSTEMCTL="${SYSTEMCTL:-systemctl}"
