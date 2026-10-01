@@ -363,8 +363,8 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
         eprintln!(
             "relocate: moved {} -> {}, but the staging copy at {} could not be removed: {cleanup_err:#}\n  \
              the move is complete; delete that directory by hand when convenient",
-            plan.source.display(),
-            plan.dest.display(),
+            plan.source,
+            plan.dest,
             staging
         );
     }
