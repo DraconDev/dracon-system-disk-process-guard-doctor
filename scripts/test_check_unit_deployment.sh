@@ -263,3 +263,157 @@ out="$(env -u XDG_CONFIG_HOME HOME="$good_home" \
     || fail "an identical unit was reported as drifted: $out"
 
 echo "check-unit-deployment regression tests: ok"
+
+# --- runtime storage-root check ----------------------------------------------
+# Steps 1-5 compare files; none of them can see that a ReadWritePaths entry
+# which is correct on disk still granted nothing at runtime. That is the
+# 2026-09-28..10-01 breakage: the reclaim path moved real trees for four days
+# and every move failed on a read-only filesystem, so the guard reclaimed zero
+# bytes while its log looked busy. These cases pin the runtime contract against
+# mountinfo fixtures, so no host with a live service is required.
+
+write_policy() {
+    # $1 = path, $2 = quarantine_dir, $3 = relocate_cold_root
+    cat > "$1" <<EOF
+[storage]
+quarantine_dir = "$2"
+relocate_cold_root = "$3"
+EOF
+}
+
+# A faithful reduction of this host's guard namespace: ProtectSystem=strict
+# remounts the root and the second disk read-only, and only the configured
+# subtrees come back read-write.
+mountinfo_fixed() {
+    cat <<'EOF'
+622 240 259:2 / / ro,nosuid,relatime shared:252 master:1 - ext4 /dev/nvme0n1p2 rw
+637 622 0:7 / /dev rw,nosuid shared:374 master:9 - devtmpfs devtmpfs rw
+650 622 8:2 / /mnt/data ro,nosuid,noatime shared:527 master:129 - ext4 /dev/sda2 rw
+675 650 8:2 /cold /mnt/data/cold rw,nosuid,noatime shared:528 master:129 - ext4 /dev/sda2 rw
+676 650 8:2 /quarantine /mnt/data/quarantine rw,nosuid,noatime shared:529 master:129 - ext4 /dev/sda2 rw
+1123 622 259:2 /tmp /tmp rw,nosuid,relatime shared:881 master:1 - ext4 /dev/nvme0n1p2 rw
+EOF
+}
+mountinfo_fixed > "$work/mountinfo-fixed"
+
+# 17. The pre-fix shape: the second disk is read-only and neither subtree has
+#     its own mount, so every quarantine move fails. This is the exact state the
+#     guard ran in for four days, and it MUST be a failure, not a pass.
+pre="$work/mountinfo-prefix-disk-only"
+mountinfo_fixed | grep -v '^67[56] ' > "$pre"
+p_ok="$work/policy-ok.toml"
+write_policy "$p_ok" /mnt/data/quarantine /mnt/data/cold
+out="$(GUARD_MOUNTINFO="$pre" POLICY_FILE="$p_ok" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    && fail "a read-only storage root was reported as in sync: $out"
+case "$out" in
+    *"resolves read-only"*)
+        case "$out" in
+            *"/mnt/data/quarantine"*) : ;;
+            *) fail "the read-only report did not name quarantine_dir: $out" ;;
+        esac
+        case "$out" in
+            *"/mnt/data/cold"*) : ;;
+            *) fail "the read-only report did not name relocate_cold_root: $out" ;;
+        esac
+        ;;
+    *) fail "unexpected verdict for a read-only storage root: $out" ;;
+esac
+
+# 18. Granting the disk but not the subtree is still broken: the entry has to
+#     name the path itself, because ProtectSystem=strict makes the parent
+#     read-only no matter what the disk itself reports.
+one="$work/mountinfo-only-cold"
+mountinfo_fixed | grep -v '^676 ' > "$one"
+out="$(GUARD_MOUNTINFO="$one" POLICY_FILE="$p_ok" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    && fail "a grant on the disk but not on the subtree was accepted: $out"
+case "$out" in
+    *"quarantine_dir=/mnt/data/quarantine resolves read-only"*) : ;;
+    *) fail "unexpected verdict for a partially granted subtree: $out" ;;
+esac
+case "$out" in
+    *"relocate_cold_root=/mnt/data/cold is read-write"*) : ;;
+    *) fail "the granted root should have passed: $out" ;;
+esac
+
+# 19. The fixed shape passes and names the mounts it relied on.
+out="$(GUARD_MOUNTINFO="$work/mountinfo-fixed" POLICY_FILE="$p_ok" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    || fail "the fixed namespace was reported as broken: $out"
+case "$out" in
+    *"✓ quarantine_dir=/mnt/data/quarantine is read-write"*) : ;;
+    *) fail "no pass line for quarantine_dir: $out" ;;
+esac
+
+# 20. A later mount at the same point shadows an earlier read-write one, which
+#     is how ProtectHome/ProtectSystem end up making XDG_RUNTIME_DIR read-only
+#     here. Reading the first match instead of the effective one would call
+#     /run/user/1000 writable when it is not.
+shadow="$work/mountinfo-shadowed"
+cat <<'EOF' > "$shadow"
+646 642 0:55 / /run/user/1000 rw,nosuid,nodev,relatime shared:519 master:315 - tmpfs tmpfs rw
+1017 642 0:25 /user /run/user ro,nosuid,nodev shared:522 master:12 - tmpfs tmpfs rw
+1018 1017 0:55 / /run/user/1000 ro,nosuid,nodev,relatime shared:523 master:315 - tmpfs tmpfs rw
+EOF
+write_policy "$work/policy-runtime.toml" /run/user/1000/doc ""
+out="$(GUARD_MOUNTINFO="$shadow" POLICY_FILE="$work/policy-runtime.toml" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    && fail "a shadowed read-only mount was reported writable: $out"
+case "$out" in
+    *"resolves read-only"*) : ;;
+    *) fail "the shadowed mount was not detected: $out" ;;
+esac
+
+# 21. A root under an ordinary read-write mount is fine, and a root that no
+#     mount covers at all is reported rather than passed.
+p_tmp="$work/policy-tmp.toml"
+write_policy "$p_tmp" /tmp/quarantine ""
+out="$(GUARD_MOUNTINFO="$work/mountinfo-fixed" POLICY_FILE="$p_tmp" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    || fail "a read-write /tmp subtree was rejected: $out"
+bare="$work/mountinfo-bare"
+printf '622 240 259:2 / / ro,nosuid,relatime shared:252 master:1 - ext4 /dev/nvme0n1p2 rw\n' > "$bare"
+out="$(GUARD_MOUNTINFO="$bare" POLICY_FILE="$p_ok" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    && fail "a root under a read-only root mount was accepted: $out"
+case "$out" in
+    *"resolves read-only"*|*"not covered by any mount"*) : ;;
+    *) fail "unexpected verdict for a root-only namespace: $out" ;;
+esac
+
+# 22. A commented-out knob is not a configured root, and neither is a relative
+#     one — both are skipped rather than failed, because there is nothing
+#     concrete to check.
+p_commented="$work/policy-commented.toml"
+cat > "$p_commented" <<'EOF'
+[storage]
+# quarantine_dir = "/mnt/data/quarantine"
+# relocate_cold_root = "/mnt/data/cold"
+EOF
+out="$(GUARD_MOUNTINFO="$pre" POLICY_FILE="$p_commented" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    || fail "commented-out storage roots were treated as configured: $out"
+
+# 23. "Cannot ask" is never a failure: a stopped service and an unreadable
+#     mountinfo source are notes, not alarms.
+out="$(GUARD_MAINPID=0 POLICY_FILE="$p_ok" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    || fail "a stopped service was reported as a failure: $out"
+case "$out" in
+    *"not running"*) : ;;
+    *) fail "a stopped service was not reported as skipped: $out" ;;
+esac
+out="$(GUARD_MOUNTINFO="$work/no-such-mountinfo" POLICY_FILE="$p_ok" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    && fail "an unreadable mountinfo source was reported as in sync: $out"
+
