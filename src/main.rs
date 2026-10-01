@@ -4887,11 +4887,11 @@ fn manage_sync_freeze(guard: &GuardPolicy, used: u8, dstate: &str, sync_frozen: 
             }
         }
     } else if *sync_frozen && used <= guard.unfreeze_below_percent {
-        if !guard_owns_sync_freeze_marker(&marker) {
+        if !marker.exists() {
             // The marker is already gone — the freeze watchdog auto-clears a
             // stuck marker, and an operator can run `dracon-sync resume`
             // directly. Without this resync the in-memory flag stayed true
-            // forever and every later pass re-entered this branch to log a
+            // forever, so every later pass re-entered this branch to log a
             // remove failure for a file that no longer exists.
             *sync_frozen = false;
             emit_event(&DraconEvent::new(
@@ -4900,6 +4900,14 @@ fn manage_sync_freeze(guard: &GuardPolicy, used: u8, dstate: &str, sync_frozen: 
                 "disk/unfreeze",
                 format!("sync freeze marker was already cleared; resynced at {}%", used),
             ));
+        } else if !guard_owns_sync_freeze_marker(&marker) {
+            // Present but not ours: an operator (or `dracon-sync pause`)
+            // wrote it. Never remove or rewrite another owner's marker, and
+            // do not claim the freeze was lifted either.
+            eprintln!(
+                "sync freeze marker {} is not ours; leaving it in place",
+                marker.display()
+            );
         } else if let Err(e) = fs::remove_file(&marker) {
             eprintln!("failed to remove freeze marker: {}", e);
         } else {
