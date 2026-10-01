@@ -441,10 +441,27 @@ write_policy "$work/policy-root-mount.toml" /var/tmp/quarantine ""
 out="$(GUARD_MOUNTINFO="$bare" POLICY_FILE="$work/policy-root-mount.toml" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
     "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
-    && fail "a root reachable through the root mount was rejected: $out"
+    && fail "a read-only root mount was accepted: $out"
+# The verdict must name the root mount as the effective one. "not covered by
+# any mount" would be the wrong answer: it would tell the operator their root is
+# unreachable when in fact it resolves through / like every ordinary path.
 case "$out" in
-    *"is read-write in the running namespace"*) : ;;
-    *) fail "the root mount was not treated as covering /var/tmp: $out" ;;
+    *"resolves read-only"*"effective mount: / ("*) : ;;
+    *) fail "the root mount was not used to resolve /var/tmp: $out" ;;
+esac
+
+# The same shape with a writable root mount must pass, so the case above cannot
+# be satisfied by simply always reporting read-only.
+cat > "$work/mountinfo-root-rw" <<'EOF'
+622 240 259:2 / / rw,nosuid,relatime shared:252 master:1 - ext4 /dev/nvme0n1p2 rw
+EOF
+out="$(GUARD_MOUNTINFO="$work/mountinfo-root-rw" POLICY_FILE="$work/policy-root-mount.toml" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
+    || fail "a writable root mount was rejected: $out"
+case "$out" in
+    *"is read-write in the running namespace (mount: /)"*) : ;;
+    *) fail "the writable root mount was not accepted: $out" ;;
 esac
 
 echo "check-unit-deployment regression tests: ok"
