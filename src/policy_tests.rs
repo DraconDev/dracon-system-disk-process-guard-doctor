@@ -1315,8 +1315,6 @@ fn a_repointed_storage_root_outside_readwritepaths_is_reported() {
         relocate_cold_root: "/mnt/data/cold".to_string(),
         ..Default::default()
     };
-    let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"));
-
     // The shipped unit grants the documented roots: nothing to report.
     assert!(
         crate::safety::uncovered_storage_roots(&shipped_unit(), &guard).is_empty(),
