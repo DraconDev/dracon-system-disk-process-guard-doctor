@@ -1801,7 +1801,7 @@ fn restore_pending_oom_descendants(
     let pending_keys: Vec<(i32, u64)> = state.oom_pending_descendants.keys().copied().collect();
     let mut result = OomSweepResult::default();
     for key in pending_keys {
-        let Some(pending) = state.oom_pending_descendants.get(&key).cloned() else {
+        let Some(mut pending) = state.oom_pending_descendants.get(&key).cloned() else {
             continue;
         };
         if exempt_names.contains(&pending.identity.comm)
