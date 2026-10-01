@@ -1204,3 +1204,47 @@ fn the_structural_guard_catches_a_reintroduced_defect() {
         "the guard must flag both releases when they are nested in the gate: {wrongly:?}"
     );
 }
+
+/// 2026-10-01 (audit): the three `deferred += 1` sites in the descendant
+/// oom-restoration sweep retried forever, so one child whose identity or
+/// `oom_score_adj` was unreadable pinned its root at 250 for the life of the
+/// process, grew the pending map without bound, and made every SIGHUP reload
+/// permanently `Deferred`. The counter must stop the retries and the entry must
+/// be dropped so the root can be released.
+#[test]
+fn pending_oom_descendant_retries_are_bounded() {
+    let mut pending = OomPendingDescendant {
+        root_pid: 1,
+        original_adj: 0,
+        identity: ProcessIdentity {
+            starttime: 2,
+            comm: "child".to_string(),
+        },
+        attempts: 0,
+    };
+    for attempt in 1..OOM_DESCENDANT_RETRY_LIMIT {
+        assert!(
+            !oom_descendant_attempts_exhausted(&mut pending),
+            "attempt {attempt} must still be retried"
+        );
+        assert_eq!(pending.attempts, attempt);
+    }
+    assert!(
+        oom_descendant_attempts_exhausted(&mut pending),
+        "attempt {} must give up so the root is not pinned forever",
+        OOM_DESCENDANT_RETRY_LIMIT
+    );
+    assert_eq!(pending.attempts, OOM_DESCENDANT_RETRY_LIMIT);
+}
+
+/// 2026-10-01 (audit): `oom_known_descendants` grew by one entry per descendant
+/// incarnation ever seen and was only cleared when the root left
+/// `oom_biased_pids`, so a long critical episode under a forking root
+/// accumulated thousands of dead keys. The cap must be finite.
+#[test]
+fn remembered_oom_descendants_are_capped() {
+    assert!(
+        OOM_KNOWN_DESCENDANTS_CAP > 0 && OOM_KNOWN_DESCENDANTS_CAP < 100_000,
+        "the cap must exist and be finite, got {OOM_KNOWN_DESCENDANTS_CAP}"
+    );
+}
