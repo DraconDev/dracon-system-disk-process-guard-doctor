@@ -51,3 +51,61 @@
 - [x] DECIDED (ratified 2026-09-29): #6 dead print.rs helpers stay deleted — ratified as committed (320f29b)
 - [x] DECIDED (ratified 2026-09-29): #7 dracon-code stays in the code-default exempt list — ratified as committed (c58acb4)
 - [x] DECIDED (ratified 2026-09-29): #8 legal ranges documented in the example template, no code clamps — ratified as committed (7b9551d, b7acd49)
+
+# --- Audit pass of 2026-10-01 (fresh survey: 4 parallel scouts + parent lane) ---
+# Every line below was verified against the source before it was recorded. Two
+# scout claims were REFUTED by experiment and are deliberately not filed:
+# `Instant - Duration` does not panic at 1e12 secs (only at >= 2^63), and
+# `dirs::home_dir()` does honour $HOME here (the events/guard test-isolation
+# premise holds).
+
+## Guard live mitigation loop (src/main.rs)
+- [ ] FIX: HIGH: oom_score_adj and CPUQuota are applied without the capability gate that gates their restore — on a host without CAP_SYS_NICE the guard biases oom to 250 and caps CPU, then `pressure == "ok" && can_restore_nice` never releases either (src/main.rs:4361,4396 apply vs 4439 gate; release at 4529 and 4592)
+- [ ] FIX: MEDIUM: oom descendant pending map has no retry cap — one child whose identity or oom_score_adj read stays EACCES pins its root at 250 forever, grows the map unbounded, and makes every SIGHUP reload permanently Deferred (src/main.rs:1792,1804,1818; pin at 4570)
+- [ ] FIX: MEDIUM: notify_cooldown_secs has a floor but no ceiling and `cleanup_stale_cooldowns` does `Instant::now() - Duration::from_secs(cooldown*2)` — a value >= 2^63 panics the daemon on its first pass (verified: "overflow when subtracting duration from instant"), and a merely huge value disables cooldown pruning forever (src/policy.rs:1206; src/main.rs:5695)
+- [ ] FIX: LOW: oom_known_descendants grows one entry per descendant incarnation ever seen and is only cleared when the root leaves oom_biased_pids — a long critical episode under a forking root accumulates thousands of dead keys (src/main.rs:4681)
+- [ ] FIX: LOW: after the freeze marker is cleared externally, the daemon's in-memory sync_frozen never resyncs and logs a spurious "failed to remove freeze marker" on every qualifying pass (src/main.rs:4889,6158)
+- [ ] FIX: MEDIUM: applied mitigations live only in memory, so a panic or MemoryMax kill during a critical episode restarts the daemon with empty maps and strands renice/oom_score_adj on live processes with no record that they need restoring (src/main.rs:7373; unit Restart=on-failure, MemoryMax=250M)
+
+## Policy, setup and docs
+- [ ] FIX: MEDIUM: unfreeze_below_percent has no floor and the unfreeze test is `used <= value`, so a legal 0 (or 1) freezes sync until the 30m freeze watchdog clears the marker (src/policy.rs:1178; src/main.rs:4890,6158)
+- [ ] FIX: LOW: disk_early_warn_percent is the only percent threshold without a 1..100 band — 0 makes the guard warn on every cycle (src/policy.rs:1151 vs 1183)
+- [ ] FIX: LOW: unknown-key detection stops at depth 1, so a typo inside a `[[links.entries]]` table is accepted silently while the same typo one level up is reported (src/policy.rs:1379)
+- [ ] FIX: LOW: hint_for never considers section names, so the most common config typo (`guards` for `[guard]`) gets no "did you mean" at all (src/policy.rs:1416)
+- [ ] FIX: LOW: the near-miss hint crosses a semantic tier — `rust_target_min_age_days` is suggested for a mistyped action-tier key, pointing the operator at the proactive gate (src/policy.rs:1416)
+- [ ] FIX: LOW: BLUEPRINT.md pins normalize_guard_policy "at line 837" (it is at src/policy.rs:1087) and claims it bounds all values while 13 sentinel-zero knobs are deliberately left alone (BLUEPRINT.md:138)
+- [ ] FIX: LOW: the template header lists cap_offenders_cpu_percent as NOT CLAMPED but the code clamps it to 100 (dracon-system.example.toml:36; src/policy.rs:1217)
+- [ ] FIX: LOW: the setup report swallows a policy parse error and reports built-in defaults as "no policy exists", telling the operator to configure a file that is actually broken (src/setup.rs:111)
+- [ ] FIX: LOW: setup's nesting check is lexical and neither it nor the daemon absolutises relocate_cold_root, so `setup --apply` can create ./cold under the CWD while the daemon resolves ~/cold (src/setup.rs:218; src/main.rs:5996)
+
+## Storage, links and quarantine
+- [ ] FIX: HIGH: `link apply --force-replace` calls the strict check_safe_to_delete, whose SYSTEM_PROTECTED list contains /home — every link under $HOME is refused, so the flag is dead for every real-world link (src/links.rs:214; src/safety.rs:7,45)
+- [ ] FIX: MEDIUM: force_replace renames the user's file to a backup and then creates the symlink with `?` and no rollback, so a symlink failure leaves the path gone and the data only in a backup (src/links.rs:216,224)
+- [ ] FIX: MEDIUM: apply_relocate removes the staging copy with `?` after the symlink is in place, so a removal failure reports the move as failed, never records the relocation, and leaves a full duplicate (src/relocate.rs:353; src/main.rs:6085)
+- [ ] FIX: MEDIUM: apply_link_policy aborts the whole batch on the first failing entry, skipping every later entry and the report (src/links.rs:187)
+- [ ] FIX: MEDIUM: quarantine_move's verification walk propagates with `?` and leaves a fully copied entry dir with no manifest, which restore refuses and expire pins forever (src/quarantine.rs:179)
+
+## doctor / CLI
+- [ ] FIX: MEDIUM: doctor audits only dracon-sync's policy and service — it never checks the guard's own policy or service, and hardcodes a path instead of using effective_system_policy_path() (src/doctor.rs:36; src/main.rs:6416)
+- [ ] FIX: MEDIUM: doctor --strict counts canonical_libs_exists, whose own remediation text calls it "Optional for installed binaries", so strict mode can never pass on a host installed from crates.io (src/main.rs:450; live: `doctor --strict` exits 1 here for exactly that)
+- [ ] FIX: LOW: a missing systemctl is reported as a failed service check with "run systemctl --user enable" advice — cannot-ask is reported as an answer (src/main.rs:6422)
+
+## Release and deploy tooling
+- [ ] FIX: HIGH: the shipped unit's ReadWritePaths lists paths a host may not have, and systemd fails such a unit to start with 226/NOPERM (verified with a scratch unit); ~/.local/share/Trash, ~/.local/state/nix, ~/.cargo, ~/.cache, ~/.npm and ~/Dev are all optional (dracon-system-guard.service:68)
+- [ ] FIX: MEDIUM: the release-notes generator still emits the broken compare link the 2026-09-29 pass hand-fixed in the .md — `git describe | sed 's/^v//'` cannot strip the crate prefix in a nested repo and the base repo no longer contains the crate (scripts/release.sh:374)
+- [ ] FIX: MEDIUM: nothing gates that CHANGELOG [Unreleased] has content, so a release closes an empty section into a bare version header (scripts/release.sh:338)
+- [ ] FIX: MEDIUM: the generated install instructions produce a unit that cannot start — `cargo install` lands the binary in ~/.cargo/bin while the unit's ExecStart is ~/.local/bin (scripts/release.sh:361; dracon-system-guard.service:13)
+- [ ] FIX: MEDIUM: events.rs ROLLING_LOG is write-only dead state — emit_event pushes up to 1000 formatted strings into a process-global buffer that nothing ever reads (src/events.rs:19,217)
+- [ ] FIX: MEDIUM: check-unit-deployment.sh treats a dangling unit symlink as "not deployed" because -f follows symlinks, producing the silent false pass it exists to prevent (scripts/check-unit-deployment.sh:78)
+- [ ] FIX: MEDIUM: both failing release fixtures discard the release output's stderr via the EXIT trap, so a real tooling regression is indistinguishable from a stale fixture (scripts/test_release_pipeline.sh:148)
+- [ ] FIX: HIGH: test_release_pipeline.sh asserts the pre-nested-repo unprefixed tag in six places while release.sh derives dracon-system-v${VERSION}, so the pipeline gate has been red since the standalone-repo flip (scripts/test_release_pipeline.sh:169 vs scripts/release.sh:117)
+- [ ] FIX: HIGH: test_release_standalone.sh asserts a `dracon-system/` subdirectory inside its clone, which a standalone clone does not have, so it dies before running any gate (scripts/test_release_standalone.sh:35, self-admitted in its own comment)
+- [ ] FIX: MEDIUM: --abort reverts only local files, but its header reads as a full undo; a real run followed by --abort leaves tag, publish and GitHub release standing and prints "no local modifications to revert" (scripts/release.sh:206)
+- [ ] FIX: LOW: the release commit is created with --no-verify, bypassing the warden global pre-commit hook on the one commit that must be audited (scripts/release.sh:434)
+- [ ] FIX: LOW: release.sh bumps the first `^version =` line in Cargo.toml, which a future `[workspace.package]` block above `[package]` would capture (scripts/release.sh:308)
+- [ ] FIX: LOW: check-unit-deployment.sh interpolates repo/deployed paths unquoted into the printed remediation, so a space in $HOME makes the command unusable (scripts/check-unit-deployment.sh:59)
+- [ ] FIX: LOW: verify-install.sh has no python3 presence check, so a missing interpreter is reported as a JSON schema failure (scripts/verify-install.sh:33)
+- [ ] FIX: LOW: verify-install.sh checks the shape of --version but never that it equals the version being released, so a stale binary passes the pre-release gate (scripts/verify-install.sh:22)
+- [ ] FIX: LOW: events.rs colours a "critical" severity that the EventSeverity enum does not have (src/events.rs:490 vs 29)
+- [?] DECIDE: test_release_standalone.sh can no longer test what its name says (monorepo-era assertion in a nested repo) — delete the file, or re-point it at the parent monorepo that still has the `dracon-system/` subdirectory; keeping a permanently-red or permanently-skipped release gate is worse than none, but only the operator knows whether this repo will keep a monorepo test at all
+- [?] DECIDE: release.sh accepts any semver with no monotonicity check, so `release.sh 0.0.1` would publish 0.0.1 — enforce VERSION > current, or leave releases to operator discipline
