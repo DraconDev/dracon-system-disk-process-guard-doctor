@@ -216,6 +216,9 @@ test "$(awk -F'"' '/^\[/{p=($0=="[package]");next} p && /^version[[:space:]]*=/{
 awk '1; /^## \[Unreleased\]$/ && !done { print ""; print "### Added"; print ""; print "- second fixture note"; done = 1 }' \
     "$repo/dracon-system/CHANGELOG.md" > "$repo/dracon-system/CHANGELOG.md.new" \
     && mv "$repo/dracon-system/CHANGELOG.md.new" "$repo/dracon-system/CHANGELOG.md"
+# The tree must be clean to release, so the note is a commit of its own.
+git -C "$repo" add -A
+git -C "$repo" commit -qm 'fixture: add a second release note'
 dry_output="$work/dry.out"
 current_capture="$dry_output"
 DRACON_FIXTURE_ROOT="$repo" HOME="$work/home" PATH="$work/bin:$PATH" \
