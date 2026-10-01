@@ -233,6 +233,18 @@ fn restore_after_failed_symlink(backup: &Path, link: &Path, symlink_err: &std::i
     }
 }
 
+/// Test-only seam for `restore_after_failed_symlink` (the helper is private and
+/// its failure path cannot be reached from `apply_link_policy` without racing
+/// the filesystem).
+#[cfg(test)]
+pub(crate) fn links_restore_after_failed_symlink_for_tests(
+    backup: &Path,
+    link: &Path,
+    symlink_err: &std::io::Error,
+) {
+    restore_after_failed_symlink(backup, link, symlink_err);
+}
+
 /// Apply a single link entry. Errors are returned to the caller, which collects
 /// them so one bad entry cannot strand the rest of the batch.
 fn apply_one_link(

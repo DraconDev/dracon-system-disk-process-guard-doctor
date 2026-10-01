@@ -534,3 +534,31 @@ fn evaluate_link_accepts_equivalent_noncanonical_target() {
     assert_eq!(status3.issue, "link_target_mismatch");
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// 2026-10-01 (audit): `force_replace` renamed the user's file to a backup and
+/// then created the symlink with `?`, so a failing `symlink(2)` left the path
+/// gone and the data only in a backup. The restore step is what must not be
+/// wrong, so it is exercised directly (inducing a `symlink(2)` failure inside
+/// the apply would need a race).
+#[test]
+fn a_failed_symlink_restores_the_backed_up_file() {
+    let base = link_test_dir("rollback");
+    std::fs::create_dir_all(&base).unwrap();
+    let link = base.join("config");
+    let backup = base.join("config.dracon-system-backup-test");
+    std::fs::write(&backup, "original contents").unwrap();
+
+    let err = std::io::Error::new(std::io::ErrorKind::Other, "injected symlink failure");
+    crate::links_restore_after_failed_symlink_for_tests(&backup, &link, &err);
+
+    assert!(
+        !backup.exists(),
+        "the backup must be consumed by the restore"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&link).unwrap(),
+        "original contents",
+        "the user's file must be back where it was"
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}
