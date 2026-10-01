@@ -7,7 +7,6 @@ use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 // Keep one active segment and one rotated segment. The record cap also keeps a
 // single unusually large error message from defeating the storage bound.
@@ -15,12 +14,6 @@ const MAX_EVENT_LOG_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_EVENT_RECORD_BYTES: usize = 64 * 1024;
 const MAX_EVENT_TAIL_LINES: usize = 1_000;
 const MAX_EVENT_TAIL_BYTES: usize = MAX_EVENT_LOG_BYTES as usize;
-
-static ROLLING_LOG: std::sync::OnceLock<Mutex<Vec<String>>> = std::sync::OnceLock::new();
-
-fn get_log() -> &'static Mutex<Vec<String>> {
-    ROLLING_LOG.get_or_init(|| Mutex::new(Vec::new()))
-}
 
 /// Severity levels for dracon events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -212,17 +205,14 @@ fn persist_event(path: &Path, json: &str) -> std::io::Result<()> {
     }
 }
 
-/// Emit an event: log to the rolling buffer, print to stderr, and persist to JSONL.
+/// Emit an event: print to stderr and persist to JSONL.
+///
+/// REMOVED 2026-10-01 (audit): this used to also push every event into a
+/// process-global `ROLLING_LOG` Vec (capped at 1000 entries). Nothing ever
+/// read it — `cmd_events` reads the JSONL segments — so every event was
+/// formatted and retained twice for the lifetime of the process. The `Mutex`
+/// import and the static are gone with it.
 pub fn emit_event(event: &DraconEvent) {
-    if let Ok(mut log) = get_log().lock() {
-        if log.len() >= 1000 {
-            log.remove(0);
-        }
-        log.push(format!(
-            "[{}] {:?}: {} - {}",
-            event.timestamp, event.severity, event.path, event.message
-        ));
-    }
     eprintln!(
         "[{}] {:?}: {} - {}",
         event.timestamp, event.severity, event.path, event.message

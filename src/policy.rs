@@ -1145,6 +1145,11 @@ pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) -> Vec<&'static s
 
     // --- disk bands ------------------------------------------------------
     band!(disk_warn_percent, 1, 100);
+    // ADDED 2026-10-01 (audit): every other percent threshold is banded 1..100
+    // precisely because 0 means "match on every sample". Here 0 made the
+    // early band (`used >= early && used < warn`) cover the whole filesystem,
+    // so the guard emitted its early warning on every single pass.
+    band!(disk_early_warn_percent, 1, 100);
     // ADDED 2026-09-09 (audit F43): an early-warn above warn made the
     // early band (`used >= early && used < warn`) permanently empty —
     // the operator's early-warning config silently did nothing.
@@ -1173,11 +1178,19 @@ pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) -> Vec<&'static s
     // leave the band they exist to cover empty.
     if policy.proactive_cleanup_percent >= policy.disk_action_percent {
         adjusted.push("proactive_cleanup_percent");
-        policy.proactive_cleanup_percent = policy.disk_action_percent.saturating_sub(1);
+        // max(1) for the same reason as unfreeze_below_percent: a 0 band here
+        // would run the proactive cleanup on every pass (2026-10-01 audit).
+        policy.proactive_cleanup_percent = policy.disk_action_percent.saturating_sub(1).max(1);
     }
+    // A 0 here would mean "unfreeze only at 0% used", which never happens on
+    // a real filesystem, so the freeze marker would only ever be cleared by
+    // the external freeze watchdog — a foot-gun the 2026-10-01 audit found
+    // had no lower bound at all.
+    band!(unfreeze_below_percent, 1, 100);
     if policy.unfreeze_below_percent >= policy.disk_action_percent {
         adjusted.push("unfreeze_below_percent");
-        policy.unfreeze_below_percent = policy.disk_action_percent.saturating_sub(1);
+        // max(1) keeps the floor even for a pathological action threshold of 1.
+        policy.unfreeze_below_percent = policy.disk_action_percent.saturating_sub(1).max(1);
     }
     // Percent thresholds whose top end is meaningful (100 = "warn only when
     // full") but whose 0 would mean "alert on every sample".
@@ -1204,6 +1217,13 @@ pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) -> Vec<&'static s
     // process would be reniced and restored every cycle.
     floor!(release_after_secs, 5);
     floor!(notify_cooldown_secs, 5);
+    // ADDED 2026-10-01 (audit): no ceiling meant a huge value reached
+    // `cleanup_stale_cooldowns`, which computes a cutoff at 2x the cooldown
+    // with `Instant - Duration`. At >= 2^63 seconds that subtraction panics
+    // and kills the daemon on its first pass; below that it silently disables
+    // cooldown pruning and notification suppression in practice (nothing is
+    // ever "stale"). One day is far beyond any useful notify cooldown.
+    ceil!(notify_cooldown_secs, 86_400);
 
     // --- memory pressure -------------------------------------------------
     // A NaN mem_psi_full_warn fails every comparison, so the pressure state
