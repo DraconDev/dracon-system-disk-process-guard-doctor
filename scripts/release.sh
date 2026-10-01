@@ -359,7 +359,9 @@ else
     # silently leaving a stale version behind.
     toml_tmp="$(mktemp "${CRATE_TOML}.XXXXXX")"
     if ! awk -v v="$VERSION" '
-            /^\[/ { in_package = ($0 == "[package]"); next }
+            # print the section header too — dropping it would leave a
+            # manifest with no [package] at all, which no longer parses.
+            /^\[/ { in_package = ($0 == "[package]"); print; next }
             in_package && /^version[[:space:]]*=/ && !done { print "version = \"" v "\""; done = 1; next }
             { print }
             END { if (!done) exit 1 }

@@ -200,6 +200,13 @@ test "$(git -C "$repo" log --format=%s -1)" = 'release: v0.1.0'
 test "$(git -C "$repo" status --porcelain)" = ''
 test -f "$repo/Cargo.lock"
 
+# The version rewrite must edit the [package] line and keep the header: a
+# rewrite that dropped `version = ...` (or the header itself) would leave a
+# manifest cargo cannot read, and the release would only fail much later.
+grep -q '^\[package\]$' "$repo/dracon-system/Cargo.toml" || fail "the version rewrite dropped the [package] header"
+test "$(awk -F'"' '/^\[/{p=($0=="[package]");next} p && /^version[[:space:]]*=/{print $2;exit}' "$repo/dracon-system/Cargo.toml")" = 0.1.0 \
+    || fail "the [package] version was not rewritten to 0.1.0"
+
 # --- folded in from the deleted test_release_standalone.sh (DECIDED 2026-10-01)
 # The standalone fixture's unique assertions were the lock sync and the
 # dry-run surface message; they belonged here, in the suite that actually runs.
