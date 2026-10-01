@@ -1295,3 +1295,109 @@ fn remembered_oom_descendants_are_pruned_past_the_cap() {
         "a descendant that is still alive must be remembered"
     );
 }
+
+/// 2026-10-01 (audit): applied mitigations lived only in memory, so a panic or a
+/// `MemoryMax=250M` OOM kill during a critical-pressure episode restarted the
+/// guard with empty maps and left `nice`/`oom_score_adj`/CPUQuota applied to live
+/// processes with no record that they needed restoring. The ledger must survive
+/// the round trip that a restart performs.
+#[test]
+fn the_mitigation_ledger_survives_a_restart() {
+    let dir = crate::guard_test_tmp("mitigation-ledger");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("guard-mitigations.json");
+
+    // The CURRENT process stands in for an adjusted one: its identity is
+    // definitely current, so adoption must keep it.
+    let me = std::process::id() as i32;
+    let identity = process_sample_identity(&crate::ProcSample {
+        pid: me,
+        ppid: 1,
+        cpu_percent: 0.0,
+        rss_mb: 0,
+        nice: 0,
+        command: "self".to_string(),
+        args: String::new(),
+        starttime: 0,
+    });
+    // starttime 0 will not match, so pin the real one from procfs instead.
+    let identity = match process_identity_status(
+        std::path::Path::new("/proc"),
+        me,
+        &ProcessIdentity {
+            starttime: 0,
+            comm: String::new(),
+        },
+    ) {
+        _ => identity,
+    };
+    let live_identity = {
+        // Read the real starttime/comm so the identity check passes.
+        let stat = std::fs::read_to_string(format!("/proc/{me}/stat")).unwrap_or_default();
+        let after = stat.rsplit_once(") ").map(|(_, rest)| rest.to_string());
+        let starttime = after
+            .as_deref()
+            .and_then(|rest| rest.split_whitespace().nth(19))
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0);
+        ProcessIdentity {
+            starttime,
+            comm: "self".to_string(),
+        }
+    };
+    let _ = identity;
+
+    let mut before = GuardRuntimeState::default();
+    before.memory_reniced_pids.insert(
+        me,
+        MemoryReniceState {
+            original_nice: 0,
+            applied_nice: 5,
+            identity: live_identity.clone(),
+        },
+    );
+    before
+        .oom_biased_pids
+        .insert(me, (0, live_identity.clone()));
+    persist_mitigations_to(&mut before, &path);
+    assert!(path.exists(), "the ledger must be written");
+    // An unchanged pass must not rewrite the file.
+    let first = std::fs::metadata(&path).unwrap().modified().unwrap();
+    persist_mitigations_to(&mut before, &path);
+    let second = std::fs::metadata(&path).unwrap().modified().unwrap();
+    assert_eq!(first, second, "an unchanged pass must not rewrite the ledger");
+
+    // A fresh process (a restart) adopts them.
+    let mut after_restart = GuardRuntimeState::default();
+    hydrate_mitigations_from(&path, &mut after_restart);
+    assert!(
+        after_restart.memory_reniced_pids.contains_key(&me),
+        "a renice left applied by the previous run must be adopted"
+    );
+    assert!(
+        after_restart.oom_biased_pids.contains_key(&me),
+        "an oom bias left applied by the previous run must be adopted"
+    );
+
+    // A RECYCLED pid is never adopted: a wrong starttime must not match.
+    let mut recycled = GuardRuntimeState::default();
+    let mut bad = std::fs::read_to_string(&path).unwrap();
+    bad = bad.replace(&format!("\"starttime\":{}", live_identity.starttime), "\"starttime\":999999999");
+    std::fs::write(&path, bad).unwrap();
+    hydrate_mitigations_from(&path, &mut recycled);
+    assert!(
+        recycled.memory_reniced_pids.is_empty() && recycled.oom_biased_pids.is_empty(),
+        "a ledger entry whose identity does not match must be ignored, not adopted"
+    );
+
+    // A corrupt ledger is not fatal and not adopted.
+    std::fs::write(&path, "{ not json").unwrap();
+    let mut corrupt = GuardRuntimeState::default();
+    hydrate_mitigations_from(&path, &mut corrupt);
+    assert!(
+        corrupt.memory_reniced_pids.is_empty(),
+        "a corrupt ledger must not block the daemon"
+    );
+
+    let _ = std::fs::remove_dir_all(dir);
+}
