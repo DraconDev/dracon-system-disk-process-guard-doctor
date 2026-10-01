@@ -171,34 +171,12 @@ storage_root_for_key() {
         "$2" 2>/dev/null | head -1
 }
 # The mount a path resolves through: the longest mount point that prefixes it.
-# $2 = mountinfo, $3 = absolute path to resolve. Echoes "<mountpoint>|<flags>".
+# $1 = mountinfo file, $2 = absolute path to resolve. Echoes "<mountpoint>|<flags>".
+# Plain shell rather than awk: the rule is "longest prefix wins, and among equal
+# prefixes the later line shadows the earlier one", which reads more clearly
+# written out than encoded, and this runs for at most a handful of roots.
 effective_mount_for() {
-    awk -v target="$3" '
-        {
-            point = $5
-            if (point == "/" || (target == point) ||
-                (substr(target, 1, length(point) + 1) == point "/")) {
-                # A later mount at the same point shadows earlier ones, so
-                # "longest wins" must also prefer the later line.
-                if (length(point) >= best_len) { best_len = length(point); best_point = point }
-            }
-            # Superblock options live after the "-" separator; the VFS flags
-            # (ro/rw) are field 6, which is what decides write access.
-            for (i = 7; i <= NF; i++) if ($i == "-") { post = i; break }
-            opts[NR] = (post ? $(post + 1) : $6) " " $6
-        }
-        END {
-            # Re-walk to fetch the flags of the winning line, since the arrays
-            # above are indexed by NR and best_point is only known at the end.
-            for (n = 1; n <= NR; n++) {
-                p = ""
-                for (i = 1; i <= NF; i++) {}
-            }
-        }
-    ' "$2" >/dev/null 2>&1 || true
-    # Doing this in pure awk needs two passes over the same file; the shell
-    # loop below is clearer and this path runs at most a handful of times.
-    local best_point="" best_flags="" best_len=-1 line point flags
+    local target="$2" best_point="" best_flags="" best_len=-1 line point flags
     while IFS= read -r line; do
         point="$(printf '%s\n' "$line" | awk '{print $5}')"
         flags="$(printf '%s\n' "$line" | awk '{print $6}')"
@@ -212,48 +190,39 @@ effective_mount_for() {
             best_point="$point"
             best_flags="$flags"
         fi
-    done < "$2"
+    done < "$1"
     [ -n "$best_point" ] || return 1
     printf '%s|%s\n' "$best_point" "$best_flags"
 }
 
 check_storage_root_writable() {
-    local key="$1" root="$2" policy="$3" mountinfo="$4"
+    local key="$1" root="$2" mountinfo="$3"
     [ -n "$root" ] || return 0 # knob unset or commented out: nothing to check
     case "$root" in
-        "~"/*) root="${HOME:-}/$root#\~/}" ;;
+        "~"/*) root="${HOME:-}/${root#\~/}" ;;
         /*) ;;
         *) return 0 # relative root: resolved against the service CWD, not checkable
     esac
     local hit
     if ! hit="$(effective_mount_for "$mountinfo" "$root")"; then
         echo "✗ $key=$root is not covered by any mount in the running namespace" >&2
-        echo "  the guard cannot resolve or write it; every reclaim against this" >&2
-        echo "  root will fail. Add it to ReadWritePaths= in $UNIT_NAME." >&2
+        echo "  the guard cannot resolve or write it, so every reclaim against this" >&2
+        echo "  root fails. Add the path to ReadWritePaths= in $UNIT_NAME." >&2
         return 1
     fi
     local point="${hit%%|*}" flags="${hit##*|}"
-    case "$flags" in
-        *ro*)
+    case ",$flags," in
+        *,ro,*)
             echo "✗ $key=$root resolves read-only inside the running namespace" >&2
             echo "  effective mount: $point ($flags)" >&2
             echo "  ProtectSystem=strict remounts the parent read-only, so only a" >&2
-            echo "  sub-mount restores write access. Add the path itself to" >&2
-            echo "  ReadWritePaths= in $UNIT_NAME (a '-'-prefixed optional entry" >&2
-            echo "  does not help on a host where the directory exists)." >&2
+            echo "  sub-mount restores write access — the entry has to name the path" >&2
+            echo "  itself, not the disk it sits on. Add it to ReadWritePaths=." >&2
             return 1
             ;;
     esac
     echo "  ✓ $key=$root is read-write in the running namespace (mount: $point)"
     return 0
-}
-
-guard_mountinfo() {
-    # $1 = a readable mountinfo file. Prints the path, or nothing if unusable.
-    local info="$1"
-    [ -r "$info" ] || return 1
-    head -1 "$info" >/dev/null 2>&1 || return 1
-    printf '%s\n' "$info"
 }
 
 if [ -n "${GUARD_MAINPID:-}" ]; then
@@ -264,39 +233,37 @@ else
     main_pid=""
 fi
 
-if [ -z "$main_pid" ] || [ "$main_pid" = "0" ] || [ "$main_pid" = "N/A" ]; then
-    echo "• guard service is not running — skipped the runtime storage-root check"
-elif [ -n "${GUARD_MOUNTINFO:-}" ]; then
+# An explicit GUARD_MOUNTINFO replaces the /proc read entirely, so the regression
+# suite can drive this step from a fixture on a host with no running service.
+if [ -n "${GUARD_MOUNTINFO:-}" ]; then
     if [ ! -r "$GUARD_MOUNTINFO" ]; then
-        echo "• GUARD_MOUNTINFO=$GUARD_MOUNTINFO is unreadable — skipped the runtime" >&2
-        echo "  storage-root check" >&2
+        echo "• mountinfo source $GUARD_MOUNTINFO is unreadable — cannot run the" >&2
+        echo "  runtime storage-root check" >&2
         exit 1
     fi
     mountinfo="$GUARD_MOUNTINFO"
-    if storage_rc=0; then :; fi
-    policy_file="${POLICY_FILE:-${HOME:-}/.dracon/utilities/system/dracon-system.toml}"
-    for pair in \
-        "quarantine_dir:$(storage_root_for_key quarantine_dir "${policy_file:-/nonexistent}")" \
-        "relocate_cold_root:$(storage_root_for_key relocate_cold_root "${policy_file:-/nonexistent}")"
-    do
-        check_storage_root_writable "${pair%%:*}" "${pair#*:}" "$policy_file" "$mountinfo" || storage_rc=1
-    done
-    [ "${storage_rc:-0}" -eq 0 ] || exit 1
+elif [ -z "$main_pid" ] || [ "$main_pid" = "0" ] || [ "$main_pid" = "N/A" ]; then
+    echo "• guard service is not running — skipped the runtime storage-root check"
+    mountinfo=""
+elif [ -r "/proc/$main_pid/mountinfo" ]; then
+    mountinfo="/proc/$main_pid/mountinfo"
 else
-    if mountinfo="$(guard_mountinfo "/proc/$main_pid/mountinfo")"; then
-        policy_file="${POLICY_FILE:-${HOME:-}/.dracon/utilities/system/dracon-system.toml}"
-        storage_rc=0
-        for pair in \
-            "quarantine_dir:$(storage_root_for_key quarantine_dir "$policy_file")" \
-            "relocate_cold_root:$(storage_root_for_key relocate_cold_root "$policy_file")"
-        do
-            check_storage_root_writable "${pair%%:*}" "${pair#*:}" "$policy_file" "$mountinfo" || storage_rc=1
-        done
-        [ "$storage_rc" -eq 0 ] || exit 1
-    else
-        echo "• cannot read /proc/$main_pid/mountinfo (process not dumpable, or the" >&2
-        echo "  service exited) — skipped the runtime storage-root check" >&2
-    fi
+    echo "• cannot read /proc/$main_pid/mountinfo (process not dumpable, or the" >&2
+    echo "  service exited) — skipped the runtime storage-root check" >&2
+    mountinfo=""
+fi
+
+if [ -n "${mountinfo:-}" ]; then
+    policy_file="${POLICY_FILE:-${HOME:-}/.dracon/utilities/system/dracon-system.toml}"
+    storage_rc=0
+    for pair in \
+        "quarantine_dir:$(storage_root_for_key quarantine_dir "$policy_file")" \
+        "relocate_cold_root:$(storage_root_for_key relocate_cold_root "$policy_file")"
+    do
+        check_storage_root_writable "${pair%%:*}" "${pair#*:}" "$mountinfo" ||
+            storage_rc=1
+    done
+    [ "$storage_rc" -eq 0 ] || exit 1
 fi
 
 echo "✓ OK: deployed unit matches the shipped unit ($DEPLOYED_UNIT)."
