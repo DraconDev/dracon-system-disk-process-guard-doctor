@@ -193,3 +193,20 @@
 # Method note: this correction was derived from the pass's own commit table
 # (every commit and its touched files, ec8d27a..HEAD) and then confirmed by
 # reading each cited patch, not from the box text.
+
+# PROVENANCE CORRECTION — two clarifications (append-only)
+# 1. Cell fix: the row `L90 src/doctor.rs` in the table above has a wrong FILE
+#    cell. The box at findings.md:90 cites `(src/main.rs:450; live: doctor
+#    --strict exits 1 here for exactly that)`, so the "as cited in box" column
+#    reads src/main.rs; the production commit 25096de touches src/doctor.rs.
+#    The mapping itself is unchanged and correct — only that cell was wrong.
+# 2. Method reproducibility: the "commit table" the table was derived from is
+#    not a checked-in artifact (nothing new is added to this repo for audit
+#    bookkeeping). Reproduce it with, from the repo root:
+#      git log --format='%H' <pass-start>^..HEAD --reverse --name-only --no-merges
+#    where <pass-start> is `git log -S "Audit pass of 2026-10-01" --format=%H --
+#    .pi-glla/audit-loop/findings.md | tail -1` (ec8d27a). Each mapping above was
+#    then confirmed by reading the patch:
+#      git show <sha> --no-color --format="" -- <the finding's file>
+#    23 of 23 box/commit/file triples verified that way (a per-token check over
+#    every row), which is patch-level evidence, not `git cat-file -e` existence.
