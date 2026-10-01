@@ -73,8 +73,8 @@
 - [ ] FIX: LOW: unknown-key detection stops at depth 1, so a typo inside a `[[links.entries]]` table is accepted silently while the same typo one level up is reported (src/policy.rs:1379)
 - [ ] FIX: LOW: hint_for never considers section names, so the most common config typo (`guards` for `[guard]`) gets no "did you mean" at all (src/policy.rs:1416)
 - [ ] FIX: LOW: the near-miss hint crosses a semantic tier — `rust_target_min_age_days` is suggested for a mistyped action-tier key, pointing the operator at the proactive gate (src/policy.rs:1416)
-- [ ] FIX: LOW: BLUEPRINT.md pins normalize_guard_policy "at line 837" (it is at src/policy.rs:1087) and claims it bounds all values while 13 sentinel-zero knobs are deliberately left alone (BLUEPRINT.md:138)
-- [ ] FIX: LOW: the template header lists cap_offenders_cpu_percent as NOT CLAMPED but the code clamps it to 100 (dracon-system.example.toml:36; src/policy.rs:1217)
+- [x] FIX: LOW: BLUEPRINT.md pins normalize_guard_policy "at line 837" (it is at src/policy.rs:1087) and claims it bounds all values while 13 sentinel-zero knobs are deliberately left alone (BLUEPRINT.md:138) — fixed in docs batch
+- [x] FIX: LOW: the template header lists cap_offenders_cpu_percent as NOT CLAMPED but the code clamps it to 100 (dracon-system.example.toml:36; src/policy.rs:1217) — fixed in docs batch
 - [ ] FIX: LOW: the setup report swallows a policy parse error and reports built-in defaults as "no policy exists", telling the operator to configure a file that is actually broken (src/setup.rs:111)
 - [ ] FIX: LOW: setup's nesting check is lexical and neither it nor the daemon absolutises relocate_cold_root, so `setup --apply` can create ./cold under the CWD while the daemon resolves ~/cold (src/setup.rs:218; src/main.rs:5996)
 
@@ -86,9 +86,9 @@
 - [ ] FIX: MEDIUM: quarantine_move's verification walk propagates with `?` and leaves a fully copied entry dir with no manifest, which restore refuses and expire pins forever (src/quarantine.rs:179)
 
 ## doctor / CLI
-- [ ] FIX: MEDIUM: doctor audits only dracon-sync's policy and service — it never checks the guard's own policy or service, and hardcodes a path instead of using effective_system_policy_path() (src/doctor.rs:36; src/main.rs:6416)
-- [ ] FIX: MEDIUM: doctor --strict counts canonical_libs_exists, whose own remediation text calls it "Optional for installed binaries", so strict mode can never pass on a host installed from crates.io (src/main.rs:450; live: `doctor --strict` exits 1 here for exactly that)
-- [ ] FIX: LOW: a missing systemctl is reported as a failed service check with "run systemctl --user enable" advice — cannot-ask is reported as an answer (src/main.rs:6422)
+- [x] FIX: MEDIUM: doctor audits only dracon-sync's policy and service — it never checks the guard's own policy or service, and hardcodes a path instead of using effective_system_policy_path() (src/doctor.rs:36; src/main.rs:6416) — fixed in 55a6542
+- [x] FIX: MEDIUM: doctor --strict counts canonical_libs_exists, whose own remediation text calls it "Optional for installed binaries", so strict mode can never pass on a host installed from crates.io (src/main.rs:450; live: `doctor --strict` exits 1 here for exactly that) — fixed in 55a6542
+- [x] FIX: LOW: a missing systemctl is reported as a failed service check with "run systemctl --user enable" advice — cannot-ask is reported as an answer (src/main.rs:6422) — fixed in 55a6542
 
 ## Release and deploy tooling
 - [x] FIX: HIGH: the shipped unit's ReadWritePaths lists paths a host may not have, and systemd fails such a unit to start with 226/NOPERM (verified with a scratch unit); ~/.local/share/Trash, ~/.local/state/nix, ~/.cargo, ~/.cache, ~/.npm and ~/Dev are all optional (dracon-system-guard.service:68) — fixed in the shipped unit and redeployed (live unit byte-identical, systemd-analyze clean, drift guard green); the namespace change takes effect at the next service start, which is left operator-timed so a restart cannot strand in-flight mitigations
