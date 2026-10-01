@@ -107,5 +107,5 @@
 - [ ] FIX: LOW: verify-install.sh has no python3 presence check, so a missing interpreter is reported as a JSON schema failure (scripts/verify-install.sh:33)
 - [ ] FIX: LOW: verify-install.sh checks the shape of --version but never that it equals the version being released, so a stale binary passes the pre-release gate (scripts/verify-install.sh:22)
 - [ ] FIX: LOW: events.rs colours a "critical" severity that the EventSeverity enum does not have (src/events.rs:490 vs 29)
-- [?] DECIDE: test_release_standalone.sh can no longer test what its name says (monorepo-era assertion in a nested repo) — delete the file, or re-point it at the parent monorepo that still has the `dracon-system/` subdirectory; keeping a permanently-red or permanently-skipped release gate is worse than none, but only the operator knows whether this repo will keep a monorepo test at all
-- [?] DECIDE: release.sh accepts any semver with no monotonicity check, so `release.sh 0.0.1` would publish 0.0.1 — enforce VERSION > current, or leave releases to operator discipline
+- [x] DECIDED: test_release_standalone.sh is folded into test_release_pipeline.sh and deleted — the monorepo-era `dracon-system/` subdir assertion cannot pass in either layout since the parent gitignored the crate on 2026-09-11, so the suite's unique deny-gate cases move to the pipeline fixture instead (2026-10-01)
+- [x] DECIDED: release.sh enforces VERSION > the current Cargo.toml version and dies with a clear message otherwise, instead of leaving monotonicity to operator discipline (2026-10-01)
