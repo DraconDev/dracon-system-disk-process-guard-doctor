@@ -58,11 +58,15 @@ fi
 # 2026-10-01 (audit): a missing python3 was reported as a JSON schema failure,
 # which points at the wrong cause entirely. Run with an empty PATH so python3
 # cannot be found, and require the interpreter-specific message.
-empty_path="$work/empty-bin"
-mkdir -p "$empty_path"
-# A stub `dracon-system` is still needed; only the interpreter is missing.
-ln -sf "$fake" "$empty_path/dracon-system"
-out=$(PATH="$empty_path" "$SCRIPT_UNDER_TEST" "$empty_path/dracon-system" 2>&1) && {
+# Build a PATH that has what the script itself needs (its #!/usr/bin/env bash
+# interpreter plus the few utilities it calls) but deliberately NO python3.
+nopy_path="$work/nopython-bin"
+mkdir -p "$nopy_path"
+for tool in bash env grep sed cat; do
+    resolved="$(command -v "$tool" 2>/dev/null)" && ln -sf "$resolved" "$nopy_path/$tool"
+done
+ln -sf "$fake" "$nopy_path/dracon-system"
+out=$(PATH="$nopy_path" "$SCRIPT_UNDER_TEST" "$nopy_path/dracon-system" 2>&1) && {
     echo "a missing python3 was accepted" >&2
     exit 1
 }
