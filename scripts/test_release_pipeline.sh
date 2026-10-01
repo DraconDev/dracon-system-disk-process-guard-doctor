@@ -193,7 +193,7 @@ run_release >"$second_output" 2>&1
 assert_contains 'already published; continuing'
 assert_contains 'nothing to commit (release commit already exists)'
 assert_contains 'tag dracon-system-v0.1.0 already exists'
-assert_contains 'github release v0.1.0 already exists'
+assert_contains 'github release dracon-system-v0.1.0 already exists'
 
 test "$(cat "$repo/.publish-count")" = 2
 test "$(git -C "$repo" log --format=%s -1)" = 'release: v0.1.0'
