@@ -1146,3 +1146,76 @@ fn notify_cooldown_has_a_ceiling() {
     );
     assert!(adjusted.contains(&"notify_cooldown_secs"));
 }
+
+/// 2026-10-01 (audit): the unknown-key check stopped at depth 1, so a typo
+/// inside a `[[links.entries]]` body was accepted SILENTLY while the identical
+/// typo one level up was reported. The template promises an unrecognised key is
+/// at least named.
+#[test]
+fn unknown_keys_inside_link_entries_are_reported() {
+    let doc: toml::Value = r#"
+[links]
+[[links.entries]]
+link = "/a"
+target = "/b"
+targt = "/c"
+"#
+    .parse()
+    .expect("fixture parses");
+    let unknown = unknown_policy_keys(&doc);
+    assert!(
+        unknown.contains(&"links.entries.targt".to_string()),
+        "a typo inside a link entry must be named, got {unknown:?}"
+    );
+
+    // The accepted shape stays silent.
+    let clean: toml::Value = r#"
+[links]
+[[links.entries]]
+link = "/a"
+target = "/b"
+"#
+    .parse()
+    .expect("fixture parses");
+    assert!(
+        unknown_policy_keys(&clean).is_empty(),
+        "a valid link entry must not be reported: {:?}",
+        unknown_policy_keys(&clean)
+    );
+}
+
+/// 2026-10-01 (audit): a mistyped SECTION name got no hint at all, because only
+/// key names were candidates. `guards` for `[guard]` is the most common config
+/// typo and the nearest key is 4 edits away.
+#[test]
+fn a_mistyped_section_name_is_hinted() {
+    let hint = hint_for("guards");
+    assert!(
+        hint.contains("[guard]"),
+        "a mistyped section must be pointed at the real one, got {hint:?}"
+    );
+}
+
+/// 2026-10-01 (audit): the near-miss hint crossed a semantic tier —
+/// `rust_target_min_age_days` was suggested for a mistyped ACTION-tier key,
+/// pointing the operator at the proactive gate and leaving the action tier
+/// ungated.
+#[test]
+fn a_near_miss_hint_stays_inside_the_typed_tier() {
+    let hint = hint_for("rust_target_action_min_age_day");
+    assert!(
+        hint.contains("rust_target_action_min_age_days"),
+        "the same-tier key must be suggested, got {hint:?}"
+    );
+    assert!(
+        !hint.contains("rust_target_min_age_days"),
+        "the proactive-tier key must NOT be suggested for an action-tier typo: {hint:?}"
+    );
+
+    // ...and a proactive-tier typo still gets the proactive key.
+    let proactive = hint_for("rust_target_min_age_day");
+    assert!(
+        proactive.contains("rust_target_min_age_days"),
+        "got {proactive:?}"
+    );
+}
