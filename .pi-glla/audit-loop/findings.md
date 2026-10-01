@@ -75,8 +75,8 @@
 - [ ] FIX: LOW: the near-miss hint crosses a semantic tier — `rust_target_min_age_days` is suggested for a mistyped action-tier key, pointing the operator at the proactive gate (src/policy.rs:1416)
 - [x] FIX: LOW: BLUEPRINT.md pins normalize_guard_policy "at line 837" (it is at src/policy.rs:1087) and claims it bounds all values while 13 sentinel-zero knobs are deliberately left alone (BLUEPRINT.md:138) — fixed in docs batch
 - [x] FIX: LOW: the template header lists cap_offenders_cpu_percent as NOT CLAMPED but the code clamps it to 100 (dracon-system.example.toml:36; src/policy.rs:1217) — fixed in docs batch
-- [ ] FIX: LOW: the setup report swallows a policy parse error and reports built-in defaults as "no policy exists", telling the operator to configure a file that is actually broken (src/setup.rs:111)
-- [ ] FIX: LOW: setup's nesting check is lexical and neither it nor the daemon absolutises relocate_cold_root, so `setup --apply` can create ./cold under the CWD while the daemon resolves ~/cold (src/setup.rs:218; src/main.rs:5996)
+- [x] FIX: LOW: the setup report swallows a policy parse error and reports built-in defaults as "no policy exists", telling the operator to configure a file that is actually broken (src/setup.rs:111) — fixed in e4fe91e
+- [x] FIX: LOW: setup's nesting check is lexical and neither it nor the daemon absolutises relocate_cold_root, so `setup --apply` can create ./cold under the CWD while the daemon resolves ~/cold (src/setup.rs:218; src/main.rs:5996) — fixed in e4fe91e
 
 ## Storage, links and quarantine
 - [x] FIX: HIGH: `link apply --force-replace` calls the strict check_safe_to_delete, whose SYSTEM_PROTECTED list contains /home — every link under $HOME is refused, so the flag is dead for every real-world link (src/links.rs:214; src/safety.rs:7,45) — fixed in 10554b3, 5a25763, 0e91aa4
