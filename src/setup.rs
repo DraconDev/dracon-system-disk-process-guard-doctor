@@ -113,16 +113,22 @@ fn check_dir_configured(raw: &str, what: &str) -> SetupCheck {
 }
 
 pub(crate) fn collect_setup_report() -> SetupReport {
-    // ADDED 2026-10-01 (audit): keep the two failure modes apart. `Err` means
-    // the file is there and BROKEN; `Ok((None, _))` means there is no file.
-    // Collapsing both into "built-in defaults" hid a typo like
-    // `disk_warn_percent = "80"` behind advice to go configure something.
-    let (loaded, policy_error) = match load_system_policy() {
+    // Split from the report body so the two failure modes can be tested
+    // without a policy file, a HOME, or an environment variable (audit
+    // 2026-10-01).
+    build_setup_report(load_system_policy())
+}
+
+/// Build the report from an already-loaded policy.
+///
+/// ADDED 2026-10-01 (audit): keep the two failure modes apart. `Err` means the
+/// file is there and BROKEN; `Ok((None, _))` means there is no file. Collapsing
+/// both into "built-in defaults" hid a typo like `disk_warn_percent = "80"`
+/// behind advice to go configure something.
+pub(crate) fn build_setup_report(loaded: Result<(Option<PathBuf>, crate::SystemPolicy)>) -> SetupReport {
+    let (loaded, policy_error) = match loaded {
         Ok(loaded) => (loaded, None),
-        Err(e) => ((
-            None,
-            crate::SystemPolicy::default(),
-        ), Some(format!("{e:#}"))),
+        Err(e) => ((None, crate::SystemPolicy::default()), Some(format!("{e:#}"))),
     };
     let (path, policy) = loaded;
     let guard = &policy.guard;
