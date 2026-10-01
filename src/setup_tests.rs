@@ -71,6 +71,7 @@ fn setup_report_serializes() {
     let report = crate::SetupReport {
         policy_path: "/tmp/p.toml".to_string(),
         policy_exists: true,
+        policy_error: None,
         checks: vec![crate::SetupCheck {
             name: "cold root".to_string(),
             ok: true,
@@ -81,4 +82,65 @@ fn setup_report_serializes() {
     let json = serde_json::to_string(&report).unwrap();
     assert!(json.contains("cold root"));
     assert!(json.contains("\"ready\":true"));
+}
+
+/// 2026-10-01 (audit): a policy file that exists but does not parse used to be
+/// reported as "no policy — built-in defaults" with `policy_exists: false` and
+/// `ready: true`, i.e. the operator was told to go configure something when
+/// their file was simply broken.
+#[test]
+fn a_broken_policy_is_reported_as_broken_not_absent() {
+    let home = crate::guard_test_tmp("setup-broken-policy");
+    std::fs::create_dir_all(&home).unwrap();
+    let policy_dir = home.join(".dracon/utilities/system");
+    std::fs::create_dir_all(&policy_dir).unwrap();
+    // A type error: disk_warn_percent is a number in the struct.
+    std::fs::write(
+        policy_dir.join("dracon-system.toml"),
+        "[guard]\ndisk_warn_percent = \"80\"\n",
+    )
+    .unwrap();
+
+    let report = crate::setup::collect_setup_report_in(&home);
+
+    assert!(
+        report.policy_error.is_some(),
+        "a parse failure must be reported as a parse failure, got {report:?}"
+    );
+    assert!(
+        report.policy_exists,
+        "the file exists, so policy_exists must be true"
+    );
+    assert!(
+        !report.ready,
+        "readiness computed on built-in defaults must not claim ready"
+    );
+}
+
+/// 2026-10-01 (audit): a relative `relocate_cold_root` must resolve to the same
+/// absolute path in `setup` and in the daemon. The unit's WorkingDirectory is
+/// %h, so "cold" means ~/cold — `setup --apply` used to create ./cold under
+/// the invoking shell instead and report ready.
+#[test]
+fn relative_policy_paths_resolve_against_home() {
+    let home = std::path::Path::new("/home/dracon");
+    assert_eq!(
+        crate::resolve_policy_path("cold"),
+        home.join("cold"),
+        "a relative policy path must resolve under $HOME (the unit's WorkingDirectory)"
+    );
+    assert_eq!(
+        crate::resolve_policy_path("~/cold"),
+        home.join("cold"),
+        "an explicit ~ path must be unchanged"
+    );
+    assert_eq!(
+        crate::resolve_policy_path("/mnt/cold"),
+        std::path::PathBuf::from("/mnt/cold"),
+        "an absolute path must be untouched"
+    );
+    assert!(
+        crate::resolve_policy_path("cold").is_absolute(),
+        "the nesting check compares absolute paths, so the result must be absolute"
+    );
 }
