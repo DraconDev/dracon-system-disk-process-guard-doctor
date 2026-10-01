@@ -2126,6 +2126,24 @@ async fn systemctl_user_action(
 /// stop the now-empty transient scope. Every read, move, and systemd
 /// operation is checked so callers retain the cap entry when restoration
 /// cannot be verified.
+/// Where a capped pid has to be written back to before the transient unit is
+/// stopped. The recorded cgroup is authoritative when the ledger has one.
+///
+/// A ledger written before the cgroup was persisted leaves it empty, and an
+/// empty cgroup must NEVER be interpolated into a path: it would resolve to
+/// `/sys/fs/cgroup/cgroup.procs`, i.e. the cgroup ROOT. The transient unit's own
+/// cgroup path is known here, and its PARENT is the slice systemd created the
+/// unit under — exactly where the processes go back to when the scope stops, so
+/// deriving the parent is not a guess (audit 2026-10-01).
+fn restore_cgroup_target(orig_cgroup: &str, current_rel: &str) -> Option<String> {
+    let orig = orig_cgroup.trim();
+    if !orig.is_empty() {
+        return Some(orig.to_string());
+    }
+    let parent = current_rel.rsplit_once('/').map(|(parent, _)| parent)?.trim();
+    (!parent.is_empty() && parent != "/").then(|| parent.to_string())
+}
+
 async fn uncap_cpu_process_with_bin(
     systemctl_bin: &Path,
     proc_root: &Path,
@@ -2145,7 +2163,10 @@ async fn uncap_cpu_process_with_bin(
                         "pid {pid} remains in {scope} but its identity changed"
                     ));
                 }
-                let procs_file = format!("/sys/fs/cgroup/{orig_cgroup}/cgroup.procs");
+                let target = restore_cgroup_target(orig_cgroup, rel).ok_or_else(|| {
+                    format!("pid {pid} remains in {scope} and its original cgroup is unknown")
+                })?;
+                let procs_file = format!("/sys/fs/cgroup/{target}/cgroup.procs");
                 std::fs::write(&procs_file, format!("{pid}\n"))
                     .map_err(|e| format!("move pid {pid} back to {procs_file}: {e}"))?;
             }
