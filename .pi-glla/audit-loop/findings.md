@@ -117,3 +117,9 @@
 # release-pipeline fixture all green). The verification found ONE real gap in the
 # mitigation-ledger fix this pass shipped (73e931d/6b0d746), recorded below.
 - [x] FIX: HIGH: the mitigation ledger persists a CPU-cap's SCOPE but not the process's ORIGINAL CGROUP, and hydration inserts an empty cgroup — so after a daemon restart with a cap still applied, uncap builds `/sys/fs/cgroup//cgroup.procs` and its `?` returns Err before `systemctl stop`, leaving the transient unit running, the process throttled forever, and the error re-emitted every pass (src/main.rs:5078-5086 insert; 4974 persist drops cgroup; 2151-2156 write; MitigationRecord has no cgroup field) — fixed in 1427b3d, 03f109b, fc3e885 (fix) and b491999, 2376416, f98f619, 0e225b2, 38394c1 (tests): the ledger now carries `cap_orig_cgroup` (serde default, so a pre-field ledger still parses) and hydration restores the recorded cgroup; when it is absent, `restore_cgroup_target()` falls back to the transient unit's PARENT cgroup — the slice systemd created it under, where the processes go back when the scope stops — and returns None instead of ever interpolating an empty cgroup into a path (which resolved to the cgroup ROOT). Covered by two new tests: the round trip preserves the cgroup, and a legacy ledger hydrates without it while still refusing to guess
+# Attribution note (append-only; the box above is NOT rewritten): the production
+# half of the oom/CPU-release ungating landed in 21984f7 (src/main.rs), which the
+# box cites only its test-hardening commit 24fba49 (src/guard_tests.rs). Verified
+# in the source at HEAD: the renice half alone stays inside `can_restore_nice`
+# (src/main.rs:4586) and the oom/cpu releases run on `pressure == "ok"` alone
+# (src/main.rs:4581).
