@@ -1196,33 +1196,42 @@ fn a_mistyped_section_name_is_hinted() {
     );
 }
 
-/// 2026-10-01 (audit): the near-miss hint crossed a semantic tier —
-/// `rust_target_min_age_days` was suggested for a mistyped ACTION-tier key,
-/// pointing the operator at the proactive gate and leaving the action tier
-/// ungated.
+/// 2026-10-01 (audit): the near-miss hint crossed a semantic family. The
+/// rust-target gates are `rust_target_max_age_days` (what counts as a target)
+/// and `rust_target_action_min_age_days` (what to clean) — two different policy
+/// decisions with confusable names, and plain edit distance pointed a mistyped
+/// action-tier key at the max gate. There is no `rust_target_min_age_days` knob
+/// at all, so that spelling must not be quietly mapped onto one.
 #[test]
-fn a_near_miss_hint_stays_inside_the_typed_tier() {
+fn a_near_miss_hint_stays_inside_the_typed_family() {
+    // A typo of the action-tier knob suggests the action-tier knob.
     let hint = hint_for("rust_target_action_min_age_day");
     assert!(
         hint.contains("rust_target_action_min_age_days"),
         "the same-tier key must be suggested, got {hint:?}"
     );
     assert!(
-        !hint.contains("rust_target_min_age_days"),
-        "the proactive-tier key must NOT be suggested for an action-tier typo: {hint:?}"
+        !hint.contains("rust_target_max_age_days"),
+        "the max-age gate is a DIFFERENT setting and must not be suggested here: {hint:?}"
     );
 
-    // ...and a proactive-tier typo still gets the proactive key.
-    let proactive = hint_for("rust_target_min_age_day");
+    // A name in the family that does not exist is not silently mapped onto a
+    // sibling: the family is listed instead, so the operator picks.
+    let unknown_tier = hint_for("rust_target_min_age_days");
     assert!(
-        proactive.contains("rust_target_min_age_days"),
-        "got {proactive:?}"
+        !unknown_tier.contains("did you mean rust_target_max_age_days"),
+        "a non-existent tier must not be presented as the max-age knob: {unknown_tier:?}"
     );
-}
-#[test]
-fn hint_probe() {
-    for k in ["rust_target_min_age_day", "rust_target_action_min_age_day",
-              "rust_target_min_age_days", "guards", "interval_sec"] {
-        println!("{k:36} -> {:?}", hint_for(k));
-    }
+    assert!(
+        unknown_tier.contains("rust_target_max_age_days")
+            && unknown_tier.contains("rust_target_action_min_age_days"),
+        "both real family members should be offered: {unknown_tier:?}"
+    );
+
+    // Across families, plain near-miss still works.
+    let unrelated = hint_for("interval_sec");
+    assert!(
+        unrelated.contains("interval_secs"),
+        "an unrelated typo must still get a plain near miss, got {unrelated:?}"
+    );
 }
