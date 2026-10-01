@@ -4929,7 +4929,7 @@ fn mitigation_ledger_path() -> PathBuf {
 
 /// Write the currently-applied mitigations to disk, but only when they changed
 /// (an unchanged pass must not rewrite the file every interval).
-fn persist_mitigations(state: &GuardRuntimeState) {
+fn persist_mitigations(state: &mut GuardRuntimeState) {
     let mut records: Vec<MitigationRecord> = Vec::new();
     for (pid, entry) in &state.memory_reniced_pids {
         records.push(MitigationRecord {
