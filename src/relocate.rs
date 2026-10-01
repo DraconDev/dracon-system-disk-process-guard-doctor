@@ -365,7 +365,7 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
              the move is complete; delete that directory by hand when convenient",
             plan.source,
             plan.dest,
-            staging
+            staging.display()
         );
     }
 
