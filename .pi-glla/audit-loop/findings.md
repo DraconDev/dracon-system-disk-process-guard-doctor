@@ -60,7 +60,7 @@
 # premise holds).
 
 ## Guard live mitigation loop (src/main.rs)
-- [x] FIX: HIGH: oom_score_adj and CPUQuota are applied without the capability gate that gates their restore — on a host without CAP_SYS_NICE the guard biases oom to 250 and caps CPU, then `pressure == "ok" && can_restore_nice` never releases either (src/main.rs:4361,4396 apply vs 4439 gate; release at 4529 and 4592)
+- [x] FIX: HIGH: oom_score_adj and CPUQuota are applied without the capability gate that gates their restore — on a host without CAP_SYS_NICE the guard biases oom to 250 and caps CPU, then `pressure == "ok" && can_restore_nice` never releases either (src/main.rs:4361,4396 apply vs 4439 gate; release at 4529 and 4592) — fixed in 24fba49
 - [ ] FIX: MEDIUM: oom descendant pending map has no retry cap — one child whose identity or oom_score_adj read stays EACCES pins its root at 250 forever, grows the map unbounded, and makes every SIGHUP reload permanently Deferred (src/main.rs:1792,1804,1818; pin at 4570)
 - [x] FIX: MEDIUM: notify_cooldown_secs has a floor but no ceiling and `cleanup_stale_cooldowns` does `Instant::now() - Duration::from_secs(cooldown*2)` — a value >= 2^63 panics the daemon on its first pass (verified: "overflow when subtracting duration from instant"), and a merely huge value disables cooldown pruning forever (src/policy.rs:1206; src/main.rs:5695) — fixed in 9841ddd, 91232b6
 - [ ] FIX: LOW: oom_known_descendants grows one entry per descendant incarnation ever seen and is only cleared when the root leaves oom_biased_pids — a long critical episode under a forking root accumulates thousands of dead keys (src/main.rs:4681)
