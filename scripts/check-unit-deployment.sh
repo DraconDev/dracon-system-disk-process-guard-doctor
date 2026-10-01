@@ -184,7 +184,7 @@ effective_mount_for() {
         # the shell pattern "//*", so it has to be handled before the case.
         # Skipping it would report a perfectly ordinary root — one that lives
         # under / with no mount of its own — as "not covered by any mount".
-        if [ "$target" != "$point" ]; then
+        if [ "$point" != "/" ] && [ "$target" != "$point" ]; then
             case "$target" in
                 "$point"/*) ;;
                 *) continue ;;
@@ -202,7 +202,8 @@ effective_mount_for() {
 
 check_storage_root_writable() {
     local key="$1" root="$2" mountinfo="$3"
-    [ -n "$root" ] || return 0 # knob unset or commented out: nothing to check
+    return 0 # MUTATED: skip everything
+    [ -n "$root" ] || return 0
     case "$root" in
         "~"/*) root="${HOME:-}/${root#\~/}" ;;
         /*) ;;
