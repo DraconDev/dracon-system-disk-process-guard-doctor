@@ -3660,11 +3660,10 @@ fn resolve_bin(name: &str) -> String {
 /// refuse to run when no absolute store path resolves, instead of
 /// falling back to a bare PATH-relative name that PATH poisoning could
 /// redirect. Returns the absolute path.
-fn resolve_bin_strict(name: &str) -> Result<String> {
-    crate::doctor_probe_available(name)
-}
-
-fn doctor_probe_available(name: &str) -> Result<String> {
+/// Resolve a required binary to an absolute path, or explain why it cannot be
+/// used. `pub(crate)` so `doctor` can distinguish "systemctl is not installed"
+/// from "the service is not active" (audit 2026-10-01).
+pub(crate) fn resolve_bin_strict(name: &str) -> Result<String> {
     resolve_bin_opt(name).ok_or_else(|| {
         anyhow::anyhow!(
             "cannot resolve absolute path for `{name}` (not in NixOS store dirs) — refusing PATH-relative exec"
