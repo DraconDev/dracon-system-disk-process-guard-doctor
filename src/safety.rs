@@ -15,6 +15,16 @@ pub(crate) const SYSTEM_PROTECTED: &[&str] = &[
 /// canonicalization and deletion where a symlink could be planted.
 /// This is mitigated by the systemd service hardening:
 /// `NoNewPrivileges=true`, `ProtectSystem=strict`, `ProtectHome=read-only`.
+///
+/// Kept as the STRICT classifier on purpose. The guard's own delete paths use
+/// `check_safe_to_delete_guard`, which permits a `$HOME` descendant (the guard
+/// legitimately deletes `~/Dev/*/target`, `~/.cache/*`); this one refuses it.
+/// The 2026-10-01 audit found `link apply --force-replace` calling THIS
+/// variant, which made the flag dead for every link under `$HOME` — having two
+/// near-identical safety functions is exactly how that happened, so the
+/// difference is pinned by tests rather than left to memory. Dead-code allowed
+/// outside test builds, where only those tests use it.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn check_safe_to_delete(path: &Path, user_protected: &[String]) -> Result<PathBuf> {
     let canon = match path.canonicalize() {
         Ok(p) => p,
