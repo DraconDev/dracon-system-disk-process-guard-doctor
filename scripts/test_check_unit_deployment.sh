@@ -16,6 +16,19 @@ UNIT_NAME="dracon-system-guard.service"
 work=$(mktemp -d "${TMPDIR:-/tmp}/dracon-system-unit-check-XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
+# Run the whole suite against an empty HOME so unit discovery can only ever find
+# a fixture. The header above promises the host's real unit is never touched,
+# but a case that omits the second argument falls back to discovery — and on a
+# host that has the guard installed, the synthetic fixture never matches the
+# real deployed unit, so the case failed at the byte-comparison step instead of
+# testing what it was written to test (case 9 did exactly this, and reported
+# "STALE" on any machine with the unit deployed). An empty HOME makes that
+# class of leak a "nothing to compare" exit 0, which is the honest answer for a
+# host that has not deployed anything.
+export HOME="$work/home-isolated"
+mkdir -p "$HOME"
+unset XDG_CONFIG_HOME
+
 fail() {
     echo "FAIL: $1" >&2
     exit 1
@@ -163,9 +176,11 @@ if SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
 fi
 
 # 9. systemd-analyze rejecting the deployed file is a real failure, but only
-#    when there is a manager to ask.
+#    when there is a manager to ask. The deployed copy is named explicitly: this
+#    case is about the verify step, so it must not depend on what unit discovery
+#    happens to find under the caller's HOME.
 out="$(SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_rejects" \
-    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" &&
+    "$SCRIPT_UNDER_TEST" "$repo" "$deployed" 2>&1)" &&
     fail "a unit rejected by systemd-analyze was reported as clean"
 grep -q 'rejected' <<<"$out" || fail "the verify failure is not named: $out"
 
