@@ -6040,7 +6040,7 @@ async fn run_auto_relocate(guard: &GuardPolicy) -> Result<(usize, u64, Vec<ColdC
     if cold_raw.is_empty() {
         return Ok((0, 0, Vec::new()));
     }
-    let cold_root = expand_tilde(cold_raw);
+    let cold_root = crate::resolve_policy_path(cold_raw);
     if !cold_root.is_dir() {
         eprintln!(
             "⚠️ auto-relocate: cold root {} missing — run `dracon-system setup`",
