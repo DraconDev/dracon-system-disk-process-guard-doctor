@@ -165,7 +165,7 @@ fi
 # 9. systemd-analyze rejecting the deployed file is a real failure, but only
 #    when there is a manager to ask.
 out="$(SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_rejects" \
-    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" &&
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" &&
     fail "a unit rejected by systemd-analyze was reported as clean"
 grep -q 'rejected' <<<"$out" || fail "the verify failure is not named: $out"
 
@@ -173,7 +173,7 @@ grep -q 'rejected' <<<"$out" || fail "the verify failure is not named: $out"
 #     `systemd-analyze --user verify` cannot initialise without the bus and exits
 #     non-zero with "Failed to initialize manager", which is not a verdict.
 out="$(SYSTEMCTL="$(make_systemctl unreachable)" SYSTEMD_ANALYZE="$analyze_rejects" \
-    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" ||
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" ||
     fail "an unreachable manager made a reachable-verdict check fail: $out"
 
 # 11. Hermeticity guard for this suite itself: a stubbed run must reach the same
@@ -182,7 +182,7 @@ out="$(SYSTEMCTL="$(make_systemctl unreachable)" SYSTEMD_ANALYZE="$analyze_rejec
 #     passes only on a host that happens to have a user manager.
 out="$(env -u DBUS_SESSION_BUS_ADDRESS -u XDG_RUNTIME_DIR \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" ||
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" ||
     fail "a stubbed run without a bus disagreed with a stubbed run with one: $out"
 
 # 12. No HOME and no XDG_CONFIG_HOME either: `set -u` must not turn an unset
@@ -190,7 +190,7 @@ out="$(env -u DBUS_SESSION_BUS_ADDRESS -u XDG_RUNTIME_DIR \
 #     directory to compare, which is the same exit-0 "nothing to compare" path
 #     as case 6.
 out="$(env -u HOME -u XDG_CONFIG_HOME -u XDG_RUNTIME_DIR -u DBUS_SESSION_BUS_ADDRESS \
-    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" ||
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" ||
     fail "an unset HOME was treated as drift: $out"
 grep -q 'no user unit directory to compare' <<<"$out" ||
     fail "the unset-HOME note is missing: $out"
@@ -204,7 +204,7 @@ mkdir -p "$fake_home/.config/systemd/user"
 cp "$repo" "$fake_home/.config/systemd/user/$UNIT_NAME"
 out="$(env -u XDG_CONFIG_HOME HOME="$fake_home" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" ||
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" ||
     fail "a unit deployed under HOME/.config was not found: $out"
 grep -q "$fake_home/.config/systemd/user/$UNIT_NAME" <<<"$out" ||
     fail "the unit under HOME/.config was not the one compared: $out"
@@ -212,7 +212,7 @@ grep -q "$fake_home/.config/systemd/user/$UNIT_NAME" <<<"$out" ||
 printf '# drifted\n' >> "$fake_home/.config/systemd/user/$UNIT_NAME"
 if out="$(env -u XDG_CONFIG_HOME HOME="$fake_home" \
         SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-        "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)"; then
+        "$SCRIPT_UNDER_TEST" "$repo" 2>&1)"; then
     fail "a drifted unit under HOME/.config was reported as in sync: $out"
 fi
 grep -q 'STALE' <<<"$out" || fail "drift under HOME/.config was not reported: $out"
@@ -224,12 +224,12 @@ mkdir -p "$xdg_home/systemd/user" "$empty_home"
 cp "$repo" "$xdg_home/systemd/user/$UNIT_NAME"
 out="$(env HOME="$empty_home" XDG_CONFIG_HOME="$xdg_home" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" ||
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" ||
     fail "a unit deployed under XDG_CONFIG_HOME was not found: $out"
 printf '# drifted\n' >> "$xdg_home/systemd/user/$UNIT_NAME"
 if out="$(env HOME="$empty_home" XDG_CONFIG_HOME="$xdg_home" \
         SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-        "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)"; then
+        "$SCRIPT_UNDER_TEST" "$repo" 2>&1)"; then
     fail "a drifted unit under XDG_CONFIG_HOME was reported as in sync: $out"
 fi
 grep -q 'STALE' <<<"$out" || fail "drift under XDG_CONFIG_HOME was not reported: $out"
@@ -243,7 +243,7 @@ mkdir -p "$dangling_home/.config/systemd/user"
 ln -s "$xdg_home/removed-by-gc" "$dangling_home/.config/systemd/user/$UNIT_NAME"
 out="$(env -u XDG_CONFIG_HOME HOME="$dangling_home" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
     && fail "a dangling unit symlink was reported as in sync: $out"
 case "$out" in
     *"nothing to compare"*)
@@ -259,7 +259,7 @@ mkdir -p "$good_home/.config/systemd/user"
 cp "$repo" "$good_home/.config/systemd/user/$UNIT_NAME"
 out="$(env -u XDG_CONFIG_HOME HOME="$good_home" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
+    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
     || fail "an identical unit was reported as drifted: $out"
 
 # --- runtime storage-root check ----------------------------------------------
@@ -415,3 +415,4 @@ out="$(GUARD_MOUNTINFO="$work/no-such-mountinfo" POLICY_FILE="$p_ok" \
     "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     && fail "an unreadable mountinfo source was reported as in sync: $out"
 
+echo "check-unit-deployment regression tests: ok"
