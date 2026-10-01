@@ -1283,7 +1283,7 @@ fn the_example_configs_storage_roots_are_inside_the_units_readwritepaths() {
         if value.is_empty() {
             continue;
         }
-        let path = expand_tilde_with_home(value, Some(home));
+        let path = crate::policy::expand_tilde_with_home(value, Some(home));
         assert!(
             crate::safety::unit_grants_write(&unit, home, &path),
             "the example config documents {value} ({}), but the shipped unit's \
