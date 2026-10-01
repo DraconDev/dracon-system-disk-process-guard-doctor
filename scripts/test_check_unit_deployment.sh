@@ -190,7 +190,7 @@ out="$(env -u DBUS_SESSION_BUS_ADDRESS -u XDG_RUNTIME_DIR \
 #     directory to compare, which is the same exit-0 "nothing to compare" path
 #     as case 6.
 out="$(env -u HOME -u XDG_CONFIG_HOME -u XDG_RUNTIME_DIR -u DBUS_SESSION_BUS_ADDRESS \
-    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" ||
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" ||
     fail "an unset HOME was treated as drift: $out"
 grep -q 'no user unit directory to compare' <<<"$out" ||
     fail "the unset-HOME note is missing: $out"
@@ -204,7 +204,7 @@ mkdir -p "$fake_home/.config/systemd/user"
 cp "$repo" "$fake_home/.config/systemd/user/$UNIT_NAME"
 out="$(env -u XDG_CONFIG_HOME HOME="$fake_home" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" ||
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" ||
     fail "a unit deployed under HOME/.config was not found: $out"
 grep -q "$fake_home/.config/systemd/user/$UNIT_NAME" <<<"$out" ||
     fail "the unit under HOME/.config was not the one compared: $out"
@@ -212,7 +212,7 @@ grep -q "$fake_home/.config/systemd/user/$UNIT_NAME" <<<"$out" ||
 printf '# drifted\n' >> "$fake_home/.config/systemd/user/$UNIT_NAME"
 if out="$(env -u XDG_CONFIG_HOME HOME="$fake_home" \
         SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-        "$SCRIPT_UNDER_TEST" "$repo" 2>&1)"; then
+        "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)"; then
     fail "a drifted unit under HOME/.config was reported as in sync: $out"
 fi
 grep -q 'STALE' <<<"$out" || fail "drift under HOME/.config was not reported: $out"
@@ -224,12 +224,12 @@ mkdir -p "$xdg_home/systemd/user" "$empty_home"
 cp "$repo" "$xdg_home/systemd/user/$UNIT_NAME"
 out="$(env HOME="$empty_home" XDG_CONFIG_HOME="$xdg_home" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" ||
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" ||
     fail "a unit deployed under XDG_CONFIG_HOME was not found: $out"
 printf '# drifted\n' >> "$xdg_home/systemd/user/$UNIT_NAME"
 if out="$(env HOME="$empty_home" XDG_CONFIG_HOME="$xdg_home" \
         SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-        "$SCRIPT_UNDER_TEST" "$repo" 2>&1)"; then
+        "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)"; then
     fail "a drifted unit under XDG_CONFIG_HOME was reported as in sync: $out"
 fi
 grep -q 'STALE' <<<"$out" || fail "drift under XDG_CONFIG_HOME was not reported: $out"
@@ -243,7 +243,7 @@ mkdir -p "$dangling_home/.config/systemd/user"
 ln -s "$xdg_home/removed-by-gc" "$dangling_home/.config/systemd/user/$UNIT_NAME"
 out="$(env -u XDG_CONFIG_HOME HOME="$dangling_home" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     && fail "a dangling unit symlink was reported as in sync: $out"
 case "$out" in
     *"nothing to compare"*)
@@ -259,10 +259,8 @@ mkdir -p "$good_home/.config/systemd/user"
 cp "$repo" "$good_home/.config/systemd/user/$UNIT_NAME"
 out="$(env -u XDG_CONFIG_HOME HOME="$good_home" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     || fail "an identical unit was reported as drifted: $out"
-
-echo "check-unit-deployment regression tests: ok"
 
 # --- runtime storage-root check ----------------------------------------------
 # Steps 1-5 compare files; none of them can see that a ReadWritePaths entry
@@ -305,7 +303,7 @@ p_ok="$work/policy-ok.toml"
 write_policy "$p_ok" /mnt/data/quarantine /mnt/data/cold
 out="$(GUARD_MOUNTINFO="$pre" POLICY_FILE="$p_ok" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     && fail "a read-only storage root was reported as in sync: $out"
 case "$out" in
     *"resolves read-only"*)
@@ -328,7 +326,7 @@ one="$work/mountinfo-only-cold"
 mountinfo_fixed | grep -v '^676 ' > "$one"
 out="$(GUARD_MOUNTINFO="$one" POLICY_FILE="$p_ok" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     && fail "a grant on the disk but not on the subtree was accepted: $out"
 case "$out" in
     *"quarantine_dir=/mnt/data/quarantine resolves read-only"*) : ;;
@@ -342,7 +340,7 @@ esac
 # 19. The fixed shape passes and names the mounts it relied on.
 out="$(GUARD_MOUNTINFO="$work/mountinfo-fixed" POLICY_FILE="$p_ok" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     || fail "the fixed namespace was reported as broken: $out"
 case "$out" in
     *"✓ quarantine_dir=/mnt/data/quarantine is read-write"*) : ;;
@@ -362,7 +360,7 @@ EOF
 write_policy "$work/policy-runtime.toml" /run/user/1000/doc ""
 out="$(GUARD_MOUNTINFO="$shadow" POLICY_FILE="$work/policy-runtime.toml" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     && fail "a shadowed read-only mount was reported writable: $out"
 case "$out" in
     *"resolves read-only"*) : ;;
@@ -375,13 +373,13 @@ p_tmp="$work/policy-tmp.toml"
 write_policy "$p_tmp" /tmp/quarantine ""
 out="$(GUARD_MOUNTINFO="$work/mountinfo-fixed" POLICY_FILE="$p_tmp" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     || fail "a read-write /tmp subtree was rejected: $out"
 bare="$work/mountinfo-bare"
 printf '622 240 259:2 / / ro,nosuid,relatime shared:252 master:1 - ext4 /dev/nvme0n1p2 rw\n' > "$bare"
 out="$(GUARD_MOUNTINFO="$bare" POLICY_FILE="$p_ok" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     && fail "a root under a read-only root mount was accepted: $out"
 case "$out" in
     *"resolves read-only"*|*"not covered by any mount"*) : ;;
@@ -399,14 +397,14 @@ cat > "$p_commented" <<'EOF'
 EOF
 out="$(GUARD_MOUNTINFO="$pre" POLICY_FILE="$p_commented" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     || fail "commented-out storage roots were treated as configured: $out"
 
 # 23. "Cannot ask" is never a failure: a stopped service and an unreadable
 #     mountinfo source are notes, not alarms.
 out="$(GUARD_MAINPID=0 POLICY_FILE="$p_ok" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     || fail "a stopped service was reported as a failure: $out"
 case "$out" in
     *"not running"*) : ;;
@@ -414,6 +412,6 @@ case "$out" in
 esac
 out="$(GUARD_MOUNTINFO="$work/no-such-mountinfo" POLICY_FILE="$p_ok" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
-    "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     && fail "an unreadable mountinfo source was reported as in sync: $out"
 
