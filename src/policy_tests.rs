@@ -1080,3 +1080,69 @@ fn option_field_keys_cover_every_option_field() {
         unknown_policy_keys(&doc)
     );
 }
+
+/// The 2026-10-01 audit: `unfreeze_below_percent` and `disk_early_warn_percent`
+/// had no lower bound. A legal 0 meant "unfreeze only at 0% used" — which
+/// never happens, so the sync freeze marker only ever came back via the
+/// external freeze watchdog — and "warn on every single pass" respectively.
+/// Every sibling percent knob is banded 1..100 for exactly that reason.
+#[test]
+fn percent_thresholds_keep_a_one_percent_floor() {
+    let mut p = GuardPolicy {
+        unfreeze_below_percent: 0,
+        disk_early_warn_percent: 0,
+        ..GuardPolicy::default()
+    };
+    let adjusted = normalize_guard_policy(&mut p);
+    assert_eq!(
+        p.unfreeze_below_percent, 1,
+        "0% unfreeze would never lift the freeze; adjusted={adjusted:?}"
+    );
+    assert_eq!(
+        p.disk_early_warn_percent, 1,
+        "a 0% early warn fires on every pass; adjusted={adjusted:?}"
+    );
+    assert!(adjusted.contains(&"unfreeze_below_percent"));
+    assert!(adjusted.contains(&"disk_early_warn_percent"));
+
+    // The relative clamp must not push either knob back down to 0.
+    let mut pathological = GuardPolicy {
+        disk_warn_percent: 1,
+        disk_early_warn_percent: 1,
+        disk_action_percent: 1,
+        disk_critical_percent: 1,
+        unfreeze_below_percent: 1,
+        ..GuardPolicy::default()
+    };
+    normalize_guard_policy(&mut pathological);
+    assert!(
+        pathological.unfreeze_below_percent >= 1,
+        "got {}",
+        pathological.unfreeze_below_percent
+    );
+    assert!(
+        pathological.proactive_cleanup_percent >= 1,
+        "got {}",
+        pathological.proactive_cleanup_percent
+    );
+}
+
+/// The 2026-10-01 audit: `notify_cooldown_secs` had a floor but no ceiling.
+/// A huge value reached `cleanup_stale_cooldowns`, which subtracted 2x it from
+/// `Instant::now()` — a subtraction std PANICS on once the duration underflows
+/// the clock (>= 2^63 seconds), killing the daemon on its first pass. Below
+/// that it silently disabled cooldown pruning entirely.
+#[test]
+fn notify_cooldown_has_a_ceiling() {
+    let mut p = GuardPolicy {
+        notify_cooldown_secs: u64::MAX,
+        ..GuardPolicy::default()
+    };
+    let adjusted = normalize_guard_policy(&mut p);
+    assert!(
+        p.notify_cooldown_secs <= 86_400,
+        "notify_cooldown_secs must be capped, got {}",
+        p.notify_cooldown_secs
+    );
+    assert!(adjusted.contains(&"notify_cooldown_secs"));
+}
