@@ -213,6 +213,26 @@ pub(crate) fn apply_link_policy(
     Ok(report)
 }
 
+/// Put a force-replaced file back where it was after `symlink(2)` failed, so a
+/// failed apply never leaves the operator with an empty path and their data
+/// only in a backup. Split out so the restore logic is directly testable:
+/// making `symlink(2)` itself fail mid-apply needs a race, but the restore is
+/// the part that must not be wrong.
+#[cfg(unix)]
+fn restore_after_failed_symlink(backup: &Path, link: &Path, symlink_err: &std::io::Error) {
+    match fs::rename(backup, link) {
+        Ok(()) => eprintln!(
+            "link {}: symlink failed ({symlink_err}); the original file was restored",
+            link.display()
+        ),
+        Err(rb) => eprintln!(
+            "link {}: symlink failed ({symlink_err}) AND restoring the backup failed ({rb}); the original file is at {}",
+            link.display(),
+            backup.display()
+        ),
+    }
+}
+
 /// Apply a single link entry. Errors are returned to the caller, which collects
 /// them so one bad entry cannot strand the rest of the batch.
 fn apply_one_link(
@@ -269,18 +289,7 @@ fn apply_one_link(
             // The user's file is sitting in the backup; put it back rather than
             // leaving the path empty (see apply_link_policy's note (2)).
             if let Some(backup) = backup_to_restore {
-                if let Err(rb) = fs::rename(&backup, &link) {
-                    eprintln!(
-                        "link {}: symlink failed ({e}) AND restoring the backup failed ({rb}); the original file is at {}",
-                        link.display(),
-                        backup.display()
-                    );
-                } else {
-                    eprintln!(
-                        "link {}: symlink failed ({e}); the original file was restored",
-                        link.display()
-                    );
-                }
+                restore_after_failed_symlink(&backup, &link, &e);
             }
             return Err(e.into());
         }
