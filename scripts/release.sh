@@ -376,11 +376,16 @@ DATE=$(date -u +%Y-%m-%d)
 # Refuse to close an empty [Unreleased]: the closer would write a bare
 # version header with no body, producing a release whose notes say nothing
 # (audit 2026-10-01). Checked before any mutation.
-if ! awk '
+# The idempotent re-run of an already-released version is NOT blocked: a
+# closed "[$VERSION]" header means the notes were shipped by the first run,
+# and refusing there would break the "re-running with the same version is a
+# no-op" hard rule above.
+if ! awk -v want="$VERSION" '
+    $0 == "## [" want "]" || $0 ~ ("^## \\[" want "\\]") { closed = 1 }
     /^## \[Unreleased\]/ { seen = 1; next }
     /^## \[/ { seen = 0 }
     seen && /^[^[:space:]#]/ { found = 1 }
-    END { exit !found }
+    END { exit (closed || found) ? 0 : 1 }
 ' "$CHANGELOG"; then
     die_pre "$CHANGELOG has no content under [Unreleased] — write the release notes first, or there is nothing to ship"
 fi
