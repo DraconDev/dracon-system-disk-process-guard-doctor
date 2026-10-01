@@ -1235,3 +1235,133 @@ fn a_near_miss_hint_stays_inside_the_typed_family() {
         "an unrelated typo must still get a plain near miss, got {unrelated:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Storage roots vs the shipped unit's hardening (2026-10-01)
+// ---------------------------------------------------------------------------
+
+/// The `ReadWritePaths` entries of a unit, as raw text, for mutation testing.
+fn shipped_unit() -> String {
+    std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("dracon-system-guard.service"),
+    )
+    .expect("guard unit must be readable")
+}
+
+/// The example config teaches operators these two storage paths; if the shipped
+/// unit cannot write to them, every quarantine move and every expiry fails
+/// EROFS under `ProtectSystem=strict`.
+///
+/// This is the same regression the default log dir has been pinned against
+/// (`the_default_log_dirs_is_the_guards_own_state_directory`): a path the docs
+/// recommend must be a path the unit grants. It FAILS on the unit as it stood
+/// before 2026-10-01, which is the point — `/mnt/data/cold` was documented and
+/// unreachable.
+#[test]
+fn the_example_configs_storage_roots_are_inside_the_units_readwritepaths() {
+    let example = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("dracon-system.example.toml"),
+    )
+    .expect("example config must be readable");
+    let unit = shipped_unit();
+    let home = std::path::Path::new("/home/tester");
+
+    let mut checked = 0;
+    for line in example.lines() {
+        let line = line.trim_start_matches('#').trim();
+        let Some(rest) = line
+            .strip_prefix("quarantine_dir")
+            .or_else(|| line.strip_prefix("relocate_cold_root"))
+        else {
+            continue;
+        };
+        let Some(value) = rest.trim_start().strip_prefix('=') else {
+            continue;
+        };
+        let value = value.trim().trim_matches('"');
+        // An empty value means the feature is off; nothing will be written.
+        if value.is_empty() {
+            continue;
+        }
+        let path = expand_tilde_with_home(value, Some(home));
+        assert!(
+            crate::safety::unit_grants_write(&unit, home, &path),
+            "the example config documents {value} ({}), but the shipped unit's \
+             ReadWritePaths does not grant it — writes there fail EROFS under \
+             ProtectSystem=strict",
+            path.display()
+        );
+        checked += 1;
+    }
+    assert!(
+        checked >= 2,
+        "expected both documented storage roots to be checked, saw {checked}"
+    );
+}
+
+/// A root the operator repointed outside `ReadWritePaths` must be REPORTED,
+/// not merely tolerated — and reporting must actually stop when the entry is
+/// present. The stripped-unit half is the mutation proof: with the entry
+/// removed, the check catches it.
+#[test]
+fn a_repointed_storage_root_outside_readwritepaths_is_reported() {
+    let guard = GuardPolicy {
+        relocate_cold_root: "/mnt/data/cold".to_string(),
+        ..Default::default()
+    };
+    let home = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"));
+
+    // The shipped unit grants the documented roots: nothing to report.
+    assert!(
+        crate::safety::uncovered_storage_roots(&shipped_unit(), &guard).is_empty(),
+        "the shipped unit grants every configured storage root"
+    );
+
+    // Strip the entry (the state before this fix) and the root must surface.
+    let stripped = shipped_unit().replace(" -/mnt/data/quarantine -/mnt/data/cold", "");
+    assert!(
+        !stripped.contains("/mnt/data/cold"),
+        "the mutation must actually remove the entry"
+    );
+    let reported = crate::safety::uncovered_storage_roots(&stripped, &guard);
+    assert_eq!(
+        reported.len(),
+        1,
+        "expected exactly the cold root to be reported, got {reported:?}"
+    );
+    assert_eq!(reported[0].0, "relocate_cold_root");
+    assert_eq!(reported[0].1, std::path::Path::new("/mnt/data/cold"));
+}
+
+/// Parsing semantics, pinned directly: `%h` expands, the `-` "ignore if missing"
+/// prefix does not narrow what is granted (on a host where the path EXISTS it
+/// is writable), repeated directives accumulate, and a path nobody listed is
+/// not covered.
+#[test]
+fn unit_readwrite_paths_expands_home_and_keeps_optional_entries() {
+    let unit = "\
+ReadWritePaths=%h/.dracon /tmp
+ReadWritePaths=-%h/Dev -/mnt/data/quarantine
+";
+    let home = std::path::Path::new("/home/tester");
+    let granted = crate::safety::unit_readwrite_paths(unit, home);
+    assert!(granted.contains(&"/home/tester/.dracon".into()), "{granted:?}");
+    assert!(granted.contains(&"/home/tester/Dev".into()), "{granted:?}");
+    assert!(
+        granted.contains(&"/mnt/data/quarantine".into()),
+        "a '-' prefix means 'ignore if missing', not 'never granted': {granted:?}"
+    );
+    assert!(granted.contains(&"/tmp".into()), "{granted:?}");
+
+    assert!(crate::safety::unit_grants_write(unit, home, std::path::Path::new("/home/tester/.dracon")));
+    assert!(crate::safety::unit_grants_write(unit, home, std::path::Path::new("/home/tester/Dev/a-repo/target")));
+    assert!(crate::safety::unit_grants_write(unit, home, std::path::Path::new("/tmp/nested/file")));
+    assert!(
+        !crate::safety::unit_grants_write(unit, home, std::path::Path::new("/mnt/data/cold")),
+        "an unlisted path is not covered"
+    );
+    assert!(
+        !crate::safety::unit_grants_write(unit, home, std::path::Path::new("/home/tester/.local/state/dracon")),
+        "a sibling of a granted path is not covered"
+    );
+}
