@@ -202,8 +202,7 @@ effective_mount_for() {
 
 check_storage_root_writable() {
     local key="$1" root="$2" mountinfo="$3"
-    return 0 # MUTATED: skip everything
-    [ -n "$root" ] || return 0
+    [ -n "$root" ] || return 0 # knob unset or commented out: nothing to check
     case "$root" in
         "~"/*) root="${HOME:-}/${root#\~/}" ;;
         /*) ;;
