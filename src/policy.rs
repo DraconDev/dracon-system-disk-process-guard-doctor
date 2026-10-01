@@ -1452,7 +1452,17 @@ pub(crate) fn unknown_policy_keys(doc: &toml::Value) -> Vec<String> {
 /// Keys accepted inside one `[[links.entries]]` table. Derived from the struct
 /// so it cannot drift from the real shape (audit 2026-10-01).
 fn known_link_entry_keys() -> HashSet<String> {
-    known_keys_of::<LinkEntry>(&[])
+    // LinkEntry has no Default (both fields are required), so serialise a
+    // concrete instance rather than `T::default()`.
+    toml::to_string(&LinkEntry {
+        link: String::new(),
+        target: String::new(),
+    })
+    .ok()
+    .and_then(|text| text.parse::<toml::Value>().ok())
+    .and_then(|v| v.as_table().cloned())
+    .map(|t| t.keys().cloned().collect())
+    .unwrap_or_default()
 }
 
 /// Unknown keys inside `[[links.entries]]` bodies, as `links.entries.<key>`.
