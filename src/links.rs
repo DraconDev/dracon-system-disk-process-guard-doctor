@@ -285,10 +285,9 @@ fn apply_one_link(
             return Err(e.into());
         }
     }
-        #[cfg(not(unix))]
-        {
-            return Err(anyhow::anyhow!("link apply is only supported on unix"));
-        }
+    #[cfg(not(unix))]
+    {
+        return Err(anyhow::anyhow!("link apply is only supported on unix"));
     }
 
     Ok(())
