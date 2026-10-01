@@ -1540,25 +1540,29 @@ pub(crate) fn hint_for(key: &str) -> String {
 
     // Otherwise a near-miss spelling is the useful hint.
     //
-    // TIER-AWARE (audit 2026-10-01): the guard's age gates form named tiers
-    // (`*_min_age_days` / `*_max_age_days`, and the rust-target pair where
-    // `rust_target_action_min_age_days` is a different policy decision from
-    // `rust_target_min_age_days`). A raw edit distance happily suggests the
-    // wrong TIER — a mistyped action-tier key was being pointed at the
-    // proactive-tier gate, leaving the action tier with no age gate at all. A
-    // candidate that shares the typed key's tier prefix is preferred, and a
-    // candidate in a DIFFERENT tier is not suggested unless nothing else is
-    // close.
+    // FAMILY-AWARE (audit 2026-10-01): some knobs come in families whose
+    // members are DIFFERENT policy decisions with confusable names — the
+    // rust-target gates are `rust_target_max_age_days` (what counts as a
+    // target) and `rust_target_action_min_age_days` (what to clean), and a raw
+    // edit distance pointed a mistyped action-tier key at the max gate, which
+    // silently changes what the guard does. So: prefer a same-tier near miss;
+    // otherwise never suggest a DIFFERENT tier of the SAME family; otherwise
+    // list the family's real members rather than picking one; and only fall back
+    // to plain edit distance across families.
     let typed_tier = policy_tier(base);
+    let typed_family = policy_family(base);
     let mut best = usize::MAX;
     let mut best_same_tier = usize::MAX;
     let mut close: Vec<&str> = Vec::new();
     let mut close_same_tier: Vec<&str> = Vec::new();
+    let mut family_members: Vec<&str> = Vec::new();
     for candidates in known.values() {
         for candidate in candidates {
             let d = edit_distance(base, candidate);
-            let same_tier = typed_tier.is_some() && policy_tier(candidate) == typed_tier;
-            if same_tier {
+            if typed_family.is_some() && policy_family(candidate) == typed_family {
+                family_members.push(candidate);
+            }
+            if typed_tier.is_some() && policy_tier(candidate) == typed_tier {
                 if d < best_same_tier {
                     best_same_tier = d;
                     close_same_tier.clear();
@@ -1566,6 +1570,10 @@ pub(crate) fn hint_for(key: &str) -> String {
                 if d == best_same_tier && d <= 2 {
                     close_same_tier.push(candidate);
                 }
+                continue;
+            }
+            // A sibling tier of the same family is never a safe suggestion.
+            if typed_family.is_some() && policy_family(candidate) == typed_family {
                 continue;
             }
             if d < best {
@@ -1577,28 +1585,53 @@ pub(crate) fn hint_for(key: &str) -> String {
             }
         }
     }
-    let chosen = if !close_same_tier.is_empty() {
-        close_same_tier
-    } else {
-        close
-    };
-    if chosen.is_empty() {
+    if !close_same_tier.is_empty() {
+        return format!(" — did you mean {}?", close_same_tier.join(" or "));
+    }
+    family_members.sort_unstable();
+    family_members.dedup();
+    if !family_members.is_empty() && family_members.len() <= 4 {
+        return format!(
+            " — did you mean one of {}? (they are different settings)",
+            family_members.join(", ")
+        );
+    }
+    if close.is_empty() {
         String::new()
     } else {
-        format!(" — did you mean {}?", chosen.join(" or "))
+        format!(" — did you mean {}?", close.join(" or "))
     }
 }
 
-/// The semantic tier a knob name belongs to, used to keep a near-miss
-/// suggestion inside the same policy decision. Returns None for knobs with no
-/// tier structure, so they fall back to plain edit distance.
+/// The specific knob a name refers to, inside its family. Two keys in the same
+/// family with different tiers are different policy decisions, so a suggestion
+/// must not cross from one to the other.
 fn policy_tier(key: &str) -> Option<&str> {
-    // rust-target: the two min/max age gates plus the action-tier variant.
     if let Some(rest) = key.strip_prefix("rust_target") {
-        if rest.ends_with("_age_days") || rest == "_age_days" {
-            return Some("rust_target_age");
+        return Some(match rest {
+            "_max_age_days" => "rust_target_max",
+            "_action_min_age_days" => "rust_target_action",
+            _ => "rust_target_other",
+        });
+    }
+    // `trash_min_age_days` and `trash_max_age_days` bound the same decision
+    // (how old is too old for this kind of file), so they share a tier.
+    for suffix in ["_min_age_days", "_max_age_days"] {
+        if key.ends_with(suffix) {
+            return Some(key);
         }
-        return Some("rust_target_other");
+    }
+    None
+}
+
+/// The family a name belongs to, used to refuse cross-tier suggestions and to
+/// list the real members when no single one can be picked.
+fn policy_family(key: &str) -> Option<&str> {
+    if let Some(rest) = key.strip_prefix("rust_target") {
+        if rest.ends_with("_age_days") {
+            return Some("rust_target");
+        }
+        return None;
     }
     for suffix in ["_min_age_days", "_max_age_days"] {
         if let Some(prefix) = key.strip_suffix(suffix) {
