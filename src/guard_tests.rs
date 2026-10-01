@@ -1391,15 +1391,35 @@ fn the_mitigation_ledger_survives_a_restart() {
 // Mitigation ledger: CPU-cap cgroup fidelity (audit 2026-10-01)
 // ---------------------------------------------------------------------------
 
-#[test]
-fn mitigation_ledger_round_trips_the_capped_pids_original_cgroup() {
-    let dir = crate::tests::tempdir("ledger-cap-cgroup");
-    let path = dir.path().join("guard-mitigations.json");
+/// A unique scratch directory, and this process's real identity so the ledger's
+/// identity check matches (same shape as the round-trip test above).
+fn cap_cgroup_fixture(label: &str) -> (std::path::PathBuf, i32, ProcessIdentity) {
+    let dir = std::env::temp_dir().join(format!(
+        "dracon-system-{label}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).expect("scratch dir");
     let me = std::process::id() as i32;
+    let stat = std::fs::read_to_string(format!("/proc/{me}/stat")).unwrap_or_default();
+    let starttime = stat
+        .rsplit_once(") ")
+        .and_then(|(_, rest)| rest.split_whitespace().nth(19))
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(0);
     let identity = ProcessIdentity {
-        starttime: crate::tests::live_starttime(me),
+        starttime,
         comm: "self".to_string(),
     };
+    (dir.join("guard-mitigations.json"), me, identity)
+}
+
+#[test]
+fn mitigation_ledger_round_trips_the_capped_pids_original_cgroup() {
+    let (path, me, identity) = cap_cgroup_fixture("ledger-cap-cgroup");
     let orig_cgroup = "user.slice/user-1000.slice/user@1000.service/app.slice";
 
     let mut before = GuardRuntimeState::default();
@@ -1425,18 +1445,12 @@ fn mitigation_ledger_round_trips_the_capped_pids_original_cgroup() {
         "the cgroup to restore to must survive the restart, not hydrate empty"
     );
 
-    let _ = std::fs::remove_dir_all(dir.path());
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }
 
 #[test]
 fn a_legacy_ledger_without_the_cgroup_still_hydrates_and_never_guesses_a_path() {
-    let dir = crate::tests::tempdir("ledger-cap-legacy");
-    let path = dir.path().join("guard-mitigations.json");
-    let me = std::process::id() as i32;
-    let identity = ProcessIdentity {
-        starttime: crate::tests::live_starttime(me),
-        comm: "self".to_string(),
-    };
+    let (path, me, identity) = cap_cgroup_fixture("ledger-cap-legacy");
     // A ledger written before cap_orig_cgroup existed: the field is absent, and
     // serde must read it as None instead of rejecting the whole file.
     let legacy = format!(
@@ -1472,5 +1486,5 @@ fn a_legacy_ledger_without_the_cgroup_still_hydrates_and_never_guesses_a_path() 
     // No recorded cgroup AND no parent to derive: refuse rather than guess.
     assert_eq!(restore_cgroup_target("", "run-r9.service"), None);
 
-    let _ = std::fs::remove_dir_all(dir.path());
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }
