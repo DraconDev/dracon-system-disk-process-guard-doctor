@@ -1104,62 +1104,103 @@ fn a_reload_that_succeeds_after_a_deferred_one_recovers() {
 /// never release either: the only recovery was SIGHUP or a restart, while the
 /// sole warning printed said "renice mitigation disabled".
 ///
-/// The defect is structural, so the guard is structural too: the two release
+/// The defect was structural, so the guard is structural: the two release
 /// halves must live OUTSIDE the `can_restore_nice` gate, which now wraps only
-/// the renice half. Behavioural coverage would need the capability absent, which
-/// this process cannot arrange.
-#[test]
-fn oom_and_cpu_releases_are_not_gated_by_the_nice_capability() {
-    let src = include_str!("main.rs");
-
-    // Isolate the release block in check_memory_pressure.
+/// the renice half. Behavioural coverage would need the capability absent,
+/// which this process cannot arrange, so `gated_release_markers` is a pure
+/// function over the source text and is itself tested (see the next test).
+fn gated_release_markers(src: &str) -> Result<Vec<String>, String> {
     let start = src
         .find("if pressure == \"ok\" {")
-        .expect("the pressure-release block must exist");
+        .ok_or_else(|| "the pressure-release block was not found".to_string())?;
     let gate = src[start..]
         .find("if can_restore_nice {")
         .map(|i| start + i)
-        .expect("the renice half must stay gated on the restore capability");
-    let gate_body = &src[gate..];
+        .ok_or_else(|| "the renice half is no longer gated on the restore capability".to_string())?;
+    let body = &src[gate..];
 
-    // Find the matching close of the gate by brace counting.
+    // Brace-count to the gate's matching close.
     let mut depth = 0i32;
-    let mut gate_end = None;
-    for (i, ch) in gate_body.char_indices() {
+    let mut end = None;
+    for (i, ch) in body.char_indices() {
         match ch {
             '{' => depth += 1,
             '}' => {
                 depth -= 1;
                 if depth == 0 {
-                    gate_end = Some(gate + i);
+                    end = Some(gate + i);
                     break;
                 }
             }
             _ => {}
         }
     }
-    let gate_end = gate_end.expect("the gate must be brace-balanced");
-    let gated = &src[gate..gate_end];
+    let end = end.ok_or_else(|| "the capability gate is not brace-balanced".to_string())?;
+    let gated = &src[gate..end];
 
+    let mut wrongly_gated = Vec::new();
     for marker in [
         "Restore oom_score_adj after the release window",
         "Lift CPUQuota scopes after the release window",
     ] {
-        assert!(
-            !gated.contains(marker),
-            "'{marker}' is still inside the can_restore_nice gate, so a host without \
-             CAP_SYS_NICE can never release it again"
-        );
-        assert!(
-            src[start..].contains(marker),
-            "'{marker}' must still exist: the release was not deleted, it was ungated"
+        if gated.contains(marker) {
+            wrongly_gated.push(marker.to_string());
+        }
+        if !src[start..].contains(marker) {
+            return Err(format!(
+                "'{marker}' no longer exists: the release was deleted, not just ungated"
+            ));
+        }
+    }
+    // The renice half must still be inside the gate: it is the one that really
+    // needs CAP_SYS_NICE, and its apply is gated too.
+    if !gated.contains("mem-unrenice") {
+        return Err(
+            "the renice release left the can_restore_nice gate, but its apply is still gated"
+                .to_string(),
         );
     }
+    Ok(wrongly_gated)
+}
 
-    // And the renice half must still be gated — it is the one that really does
-    // need CAP_SYS_NICE, and its apply is gated too.
+#[test]
+fn oom_and_cpu_releases_are_not_gated_by_the_nice_capability() {
+    let wrongly = gated_release_markers(include_str!("main.rs"))
+        .expect("the release block must be shaped as the fix requires");
     assert!(
-        gated.contains("mem-unrenice"),
-        "the renice release must stay inside the can_restore_nice gate"
+        wrongly.is_empty(),
+        "these releases are inside the can_restore_nice gate again, so a host without \
+         CAP_SYS_NICE can never release them: {wrongly:?}"
+    );
+}
+
+/// The guard above is only worth having if it FAILS on the old shape. This
+/// feeds it a synthetic snippet with the pre-fix structure and requires it to
+/// report both releases as gated.
+#[test]
+fn the_structural_guard_catches_a_reintroduced_defect() {
+    let pre_fix = r#"
+    if pressure == "ok" {
+        if can_restore_nice {
+            eprintln!("mem-unrenice");
+        }
+        // Restore oom_score_adj after the release window.
+        let x = 1;
+        // Lift CPUQuota scopes after the release window.
+        let y = 2;
+    } else {
+    }
+"#;
+    // Nest the two releases back inside the gate, exactly as the old code had it.
+    let pre_fix_nested = pre_fix.replace(
+        "        if can_restore_nice {\n            eprintln!(\"mem-unrenice\");\n        }\n",
+        "        if can_restore_nice {\n            eprintln!(\"mem-unrenice\");\n            // Restore oom_score_adj after the release window.\n            let x = 1;\n            // Lift CPUQuota scopes after the release window.\n            let y = 2;\n        }\n",
+    );
+    let wrongly = gated_release_markers(&pre_fix_nested)
+        .expect("the synthetic snippet must still be parseable");
+    assert_eq!(
+        wrongly.len(),
+        2,
+        "the guard must flag both releases when they are nested in the gate: {wrongly:?}"
     );
 }
