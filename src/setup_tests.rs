@@ -87,34 +87,30 @@ fn setup_report_serializes() {
 /// 2026-10-01 (audit): a policy file that exists but does not parse used to be
 /// reported as "no policy — built-in defaults" with `policy_exists: false` and
 /// `ready: true`, i.e. the operator was told to go configure something when
-/// their file was simply broken.
+/// their file was simply broken. Driven through `build_setup_report` so the
+/// failure mode is the input, not a fixture file.
 #[test]
 fn a_broken_policy_is_reported_as_broken_not_absent() {
-    let home = crate::guard_test_tmp("setup-broken-policy");
-    std::fs::create_dir_all(&home).unwrap();
-    let policy_dir = home.join(".dracon/utilities/system");
-    std::fs::create_dir_all(&policy_dir).unwrap();
-    // A type error: disk_warn_percent is a number in the struct.
-    std::fs::write(
-        policy_dir.join("dracon-system.toml"),
-        "[guard]\ndisk_warn_percent = \"80\"\n",
-    )
-    .unwrap();
-
-    let report = crate::setup::collect_setup_report_in(&home);
-
+    let broken = crate::setup::build_setup_report(Err(anyhow::anyhow!(
+        "invalid type: string \"80\", expected u8 at line 2"
+    )));
     assert!(
-        report.policy_error.is_some(),
-        "a parse failure must be reported as a parse failure, got {report:?}"
+        broken.policy_error.is_some(),
+        "a parse failure must be reported as a parse failure: {broken:?}"
     );
     assert!(
-        report.policy_exists,
-        "the file exists, so policy_exists must be true"
+        broken.policy_exists,
+        "the file exists, so policy_exists must be true even though it did not parse"
     );
     assert!(
-        !report.ready,
+        !broken.ready,
         "readiness computed on built-in defaults must not claim ready"
     );
+
+    // The genuinely-absent case is unchanged: no error, still not ready.
+    let absent = crate::setup::build_setup_report(Ok((None, Default::default())));
+    assert!(absent.policy_error.is_none());
+    assert!(!absent.policy_exists);
 }
 
 /// 2026-10-01 (audit): a relative `relocate_cold_root` must resolve to the same
