@@ -6552,7 +6552,7 @@ pub(crate) async fn run_guard_once(
     check_large_logs(guard, state).await;
     let memory = check_memory_pressure(guard, state, &samples).await;
 
-    Ok(GuardReport {
+    let report = GuardReport {
         enabled: guard.enabled,
         disk_use_percent: used,
         disk_state: dstate,
@@ -6566,13 +6566,15 @@ pub(crate) async fn run_guard_once(
         zombies,
         reap_candidates,
         disk_fill_gbph: fill_gbph,
-        // AUDIT 2026-10-01: record what is currently applied, so a crash or an
-        // OOM kill during a critical episode cannot strand `nice` /
-        // `oom_score_adj` / CPUQuota adjustments on live processes. Written
-        // after the report's fields are captured, so the file always describes
-        // the state this pass ended in.
-        let _report = GuardReport {
-    })
+    };
+    // AUDIT 2026-10-01: record what this pass left applied, so a panic or an
+    // OOM kill during a critical-pressure episode cannot strand `nice` /
+    // `oom_score_adj` / CPUQuota adjustments on live processes with no record
+    // that they need restoring. Runs after the report fields are captured, so
+    // the ledger always describes the state the pass ended in, and it skips the
+    // write entirely when nothing changed.
+    persist_mitigations(state);
+    Ok(report)
 }
 
 #[derive(Debug, Serialize)]
