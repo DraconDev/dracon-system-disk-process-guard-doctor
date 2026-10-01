@@ -79,10 +79,10 @@
 - [ ] FIX: LOW: setup's nesting check is lexical and neither it nor the daemon absolutises relocate_cold_root, so `setup --apply` can create ./cold under the CWD while the daemon resolves ~/cold (src/setup.rs:218; src/main.rs:5996)
 
 ## Storage, links and quarantine
-- [ ] FIX: HIGH: `link apply --force-replace` calls the strict check_safe_to_delete, whose SYSTEM_PROTECTED list contains /home — every link under $HOME is refused, so the flag is dead for every real-world link (src/links.rs:214; src/safety.rs:7,45)
-- [ ] FIX: MEDIUM: force_replace renames the user's file to a backup and then creates the symlink with `?` and no rollback, so a symlink failure leaves the path gone and the data only in a backup (src/links.rs:216,224)
+- [x] FIX: HIGH: `link apply --force-replace` calls the strict check_safe_to_delete, whose SYSTEM_PROTECTED list contains /home — every link under $HOME is refused, so the flag is dead for every real-world link (src/links.rs:214; src/safety.rs:7,45) — fixed in 10554b3, 5a25763, 0e91aa4
+- [x] FIX: MEDIUM: force_replace renames the user's file to a backup and then creates the symlink with `?` and no rollback, so a symlink failure leaves the path gone and the data only in a backup (src/links.rs:216,224) — fixed in 5a25763, 0e91aa4
 - [ ] FIX: MEDIUM: apply_relocate removes the staging copy with `?` after the symlink is in place, so a removal failure reports the move as failed, never records the relocation, and leaves a full duplicate (src/relocate.rs:353; src/main.rs:6085)
-- [ ] FIX: MEDIUM: apply_link_policy aborts the whole batch on the first failing entry, skipping every later entry and the report (src/links.rs:187)
+- [x] FIX: MEDIUM: apply_link_policy aborts the whole batch on the first failing entry, skipping every later entry and the report (src/links.rs:187) — fixed in 5a25763, 0e91aa4
 - [ ] FIX: MEDIUM: quarantine_move's verification walk propagates with `?` and leaves a fully copied entry dir with no manifest, which restore refuses and expire pins forever (src/quarantine.rs:179)
 
 ## doctor / CLI
