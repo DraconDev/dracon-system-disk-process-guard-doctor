@@ -289,15 +289,132 @@ fn force_replace_honours_user_protected_paths() {
         guard,
         ..SystemPolicy::default()
     };
-    let err = crate::apply_link_policy(&policy, true).unwrap_err();
+    // 2026-10-01 (audit): the refusal is now reported per entry instead of
+    // aborting the batch, so the contract is "a report with an error in it",
+    // not "Err". The safety property is unchanged: the file is untouched.
+    let report = crate::apply_link_policy(&policy, true).expect("batch must return a report");
     assert!(
-        format!("{err:#}").contains("protected"),
-        "protected link must be refused: {err:#}"
+        !report.errors.is_empty(),
+        "a protected link must be reported as a failure, not silently skipped"
+    );
+    assert!(
+        report.errors.iter().any(|e| e.contains("protected")),
+        "the error must name the protected-path refusal: {:?}",
+        report.errors
     );
     assert_eq!(
         std::fs::read_to_string(&link).unwrap(),
         "old file",
         "refused replacement must leave the file untouched"
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// 2026-10-01 (audit HIGH): `force_replace` called the STRICT safety check,
+/// whose SYSTEM_PROTECTED list contains `/home` and whose test is a DESCENDANT
+/// test — so every link under `$HOME` was refused and the flag was dead for
+/// every real-world link, including the one the example config ships. The
+/// guard-specific variant keeps the exact-root, user-protected, symlink and
+/// canonicalisation checks while allowing a $HOME descendant.
+#[test]
+fn force_replace_works_for_a_link_under_home() {
+    let Some(home) = dirs::home_dir() else {
+        return; // no home to test against
+    };
+    let home_str = home.display().to_string();
+    if !home_str.starts_with("/home/") && home_str != "/home" {
+        return; // the defect is specific to a /home descendant
+    }
+    let base = home.join(format!(".cache/dracon-system-links-home-{}", std::process::id()));
+    std::fs::create_dir_all(&base).unwrap();
+    let target = base.join("target.txt");
+    std::fs::write(&target, "payload").unwrap();
+    let link = base.join("config");
+    std::fs::write(&link, "old file").unwrap();
+
+    let policy = SystemPolicy {
+        links: LinkPolicy {
+            entries: vec![LinkEntry {
+                link: link.display().to_string(),
+                target: target.display().to_string(),
+            }],
+        },
+        ..SystemPolicy::default()
+    };
+    let report = crate::apply_link_policy(&policy, true).expect("a $HOME link must be replaceable");
+    assert!(
+        report.errors.is_empty(),
+        "a $HOME link must not be refused: {:?}",
+        report.errors
+    );
+    assert!(
+        std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink(),
+        "the link location must now be a symlink"
+    );
+    // The replaced file must be recoverable from its backup.
+    let backups: Vec<_> = std::fs::read_dir(&base)
+        .unwrap()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.to_string_lossy().contains("dracon-system-backup"))
+        .collect();
+    assert_eq!(backups.len(), 1, "the original file must be backed up");
+    assert_eq!(std::fs::read_to_string(&backups[0]).unwrap(), "old file");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// 2026-10-01 (audit): a `?` inside the entry loop aborted the whole batch, so
+/// one bad entry left every later entry unrepaired and produced no report at
+/// all. The batch must survive a refusal and still apply the good entries.
+#[test]
+fn a_refused_entry_does_not_abort_the_rest_of_the_batch() {
+    let base = link_test_dir("batch");
+    std::fs::create_dir_all(&base).unwrap();
+
+    // Entry 1: inside a user-protected path, so it is refused.
+    let protected_dir = base.join("protected");
+    std::fs::create_dir_all(&protected_dir).unwrap();
+    let refused_target = protected_dir.join("t1.txt");
+    std::fs::write(&refused_target, "one").unwrap();
+    let refused_link = protected_dir.join("l1");
+    std::fs::write(&refused_link, "old one").unwrap();
+
+    // Entry 2: a plain file that must be replaced.
+    let ok_target = base.join("t2.txt");
+    std::fs::write(&ok_target, "two").unwrap();
+    let ok_link = base.join("l2");
+    std::fs::write(&ok_link, "old two").unwrap();
+
+    let policy = SystemPolicy {
+        links: LinkPolicy {
+            entries: vec![
+                LinkEntry {
+                    link: refused_link.display().to_string(),
+                    target: refused_target.display().to_string(),
+                },
+                LinkEntry {
+                    link: ok_link.display().to_string(),
+                    target: ok_target.display().to_string(),
+                },
+            ],
+        },
+        guard: crate::GuardPolicy {
+            protected_paths: vec![protected_dir.display().to_string()],
+            ..Default::default()
+        },
+        ..SystemPolicy::default()
+    };
+
+    let report = crate::apply_link_policy(&policy, true).expect("a refused entry must not abort");
+    assert_eq!(report.errors.len(), 1, "exactly one entry failed: {report:?}");
+    assert_eq!(
+        std::fs::read_to_string(&refused_link).unwrap(),
+        "old one",
+        "the refused entry's file must be untouched"
+    );
+    assert!(
+        std::fs::symlink_metadata(&ok_link).unwrap().file_type().is_symlink(),
+        "the entry AFTER the failure must still be applied"
     );
     let _ = std::fs::remove_dir_all(&base);
 }
