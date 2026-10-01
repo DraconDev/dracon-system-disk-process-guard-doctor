@@ -16,6 +16,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The guard's quarantine and cold relocation were dead under the shipped unit's hardening (2026-10-01)** —
+  `dracon-system-guard.service` runs with `ProtectSystem=strict` and
+  `ProtectHome=read-only`, and its `ReadWritePaths=` granted only `%h` paths and
+  `/tmp`. `quarantine_dir` and `relocate_cold_root` are POLICY values, so an
+  operator who points them at a second drive gets a unit that silently cannot
+  write there: every quarantine move failed with `Read-only file system (os
+  error 30)`, one line per candidate per pass, and — because expiry deletes from
+  the same directory — the entries already in quarantine could never expire
+  either. Measured on this host with `quarantine_dir=/mnt/data/quarantine` and
+  `relocate_cold_root=/mnt/data/cold`: `/` at 83% against an 85% action
+  threshold with the reclaim path inoperable, and ~20G of quarantined build
+  artifacts frozen since 28 Sept.
+  Both roots are now listed (`-`-prefixed, so a host without a second drive
+  still starts), which mirrors the existing decision to put the default log dir
+  inside the unit's `ReadWritePaths` — `/var/log` "fails EROFS under the shipped
+  hardening" (see the `log_dirs` default's rationale). Three changes keep it
+  honest: `the_example_configs_storage_roots_are_inside_the_units_readwritepaths`
+  fails if a storage root the example config teaches is not granted (it fails on
+  the unit as it stood before this fix);
+  `a_repointed_storage_root_outside_readwritepaths_is_reported` pins the
+  reporting half by stripping the entry from a copy of the unit and requiring
+  the root to surface; and the daemon now prints ONE startup line, on stderr so
+  `guard once --json` stays parseable, naming the exact `ReadWritePaths` entry
+  to add — replacing a per-candidate EROFS storm that buried the one actionable
+  fact.
+
 - **The guard's own diagnostics were blind to the guard, and several percent
   knobs had no floor (2026-10-01 audit)** —
   `dracon-system doctor` audited only `dracon-sync`'s policy and service, never
