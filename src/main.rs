@@ -7324,10 +7324,12 @@ fn validate_storage_cleanup_path(path: &Path, user_protected: &[String]) -> Resu
 async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
     use comfy_table::{presets::UTF8_FULL_CONDENSED, Cell, ContentArrangement, Table};
 
-    let mut runtime = GuardRuntimeState::default();
     // Only the daemon persists: a one-shot run restores everything before it
     // exits, and nothing else should write the operator's state dir.
-    runtime.persist_mitigations = true;
+    let mut runtime = GuardRuntimeState {
+        persist_mitigations: true,
+        ..GuardRuntimeState::default()
+    };
     // AUDIT 2026-10-01: a previous run may have died (panic, OOM kill) with
     // mitigations applied. Adopt them into the live state and drain them through
     // the EXISTING restore path before the first pass, so no process is left
