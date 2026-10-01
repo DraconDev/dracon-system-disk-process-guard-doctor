@@ -184,7 +184,7 @@ effective_mount_for() {
         # the shell pattern "//*", so it has to be handled before the case.
         # Skipping it would report a perfectly ordinary root — one that lives
         # under / with no mount of its own — as "not covered by any mount".
-        if [ "$point" != "/" ] && [ "$target" != "$point" ]; then
+        if [ "$target" != "$point" ]; then
             case "$target" in
                 "$point"/*) ;;
                 *) continue ;;
