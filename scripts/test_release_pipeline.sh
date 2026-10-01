@@ -210,6 +210,12 @@ test "$(awk -F'"' '/^\[/{p=($0=="[package]");next} p && /^version[[:space:]]*=/{
 # --- folded in from the deleted test_release_standalone.sh (DECIDED 2026-10-01)
 # The standalone fixture's unique assertions were the lock sync and the
 # dry-run surface message; they belonged here, in the suite that actually runs.
+# A second release needs notes again first: closing 0.1.0 leaves [Unreleased]
+# empty, and the new gate then refuses to close an empty section — which is
+# exactly what this fixture is asserting.
+awk '1; /^## \[Unreleased\]$/ && !done { print ""; print "### Added"; print ""; print "- second fixture note"; done = 1 }' \
+    "$repo/dracon-system/CHANGELOG.md" > "$repo/dracon-system/CHANGELOG.md.new" \
+    && mv "$repo/dracon-system/CHANGELOG.md.new" "$repo/dracon-system/CHANGELOG.md"
 dry_output="$work/dry.out"
 current_capture="$dry_output"
 DRACON_FIXTURE_ROOT="$repo" HOME="$work/home" PATH="$work/bin:$PATH" \
