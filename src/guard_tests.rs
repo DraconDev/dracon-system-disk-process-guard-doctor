@@ -1453,15 +1453,22 @@ fn a_legacy_ledger_without_the_cgroup_still_hydrates_and_never_guesses_a_path() 
     let (path, me, identity) = cap_cgroup_fixture("ledger-cap-legacy");
     // A ledger written before cap_orig_cgroup existed: the field is absent, and
     // serde must read it as None instead of rejecting the whole file.
-    let legacy = [
-        r#"{"records":[{"pid":#,
-        &me.to_string(),
-        r#","original_nice":null,"original_oom_adj":null,"cap_scope":"run-r9.service","#,
-        r#""identity":{"starttime":#,
-        &identity.starttime.to_string(),
-        r#","comm":"self"}}}]}"#,
-    ]
-    .concat();
+    // Built with the real serializer, then asserted to carry no cap_orig_cgroup:
+    // this is exactly the shape a ledger written before that field existed has.
+    let legacy = serde_json::json!({
+        "records": [{
+            "pid": me,
+            "original_nice": serde_json::Value::Null,
+            "original_oom_adj": serde_json::Value::Null,
+            "cap_scope": "run-r9.service",
+            "identity": {"starttime": identity.starttime, "comm": "self"},
+        }]
+    })
+    .to_string();
+    assert!(
+        !legacy.contains("cap_orig_cgroup"),
+        "the legacy fixture must not contain the newer field"
+    );
     std::fs::write(&path, legacy).unwrap();
 
     let mut after_restart = GuardRuntimeState::default();
