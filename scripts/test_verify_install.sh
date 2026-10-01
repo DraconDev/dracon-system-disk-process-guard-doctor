@@ -36,16 +36,24 @@ fi
 # 2026-10-01 (audit): the check only validated the SHAPE of --version, so a
 # stale binary at the fixture root passed the pre-release gate. An explicit
 # expected version must be enforced.
-if "$SCRIPT_UNDER_TEST" "$fake" 9.9.9 >/dev/null 2>&1; then
-    echo "a stale binary passed when an expected version was given" >&2
-    exit 1
-fi
-"$SCRIPT_UNDER_TEST" "$fake" 9.9.9.1 >/dev/null 2>&1 && {
-    echo "a version mismatch was accepted" >&2
+# The fixture reports 9.9.9: asking for that must pass.
+"$SCRIPT_UNDER_TEST" "$fake" 9.9.9 >/dev/null || {
+    echo "a matching expected version was rejected" >&2
     exit 1
 }
-# The happy path still passes when the expected version matches.
-"$SCRIPT_UNDER_TEST" "$fake" 9.9.9 >/dev/null
+# Asking for a different version must fail — that is the stale-binary case.
+if "$SCRIPT_UNDER_TEST" "$fake" 9.9.8 >/dev/null 2>&1; then
+    echo "a stale binary passed the expected-version check" >&2
+    exit 1
+fi
+if out="$("$SCRIPT_UNDER_TEST" "$fake" 9.9.8 2>&1)"; then
+    :
+else
+    case "$out" in
+        *"this release is 9.9.8"*) : ;;
+        *) echo "version mismatch was misdiagnosed: $out" >&2; exit 1 ;;
+    esac
+fi
 
 # 2026-10-01 (audit): a missing python3 was reported as a JSON schema failure,
 # which points at the wrong cause entirely. Run with an empty PATH so python3
