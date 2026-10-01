@@ -1270,8 +1270,13 @@ fn remembered_oom_descendants_are_pruned_past_the_cap() {
 
     let all_processes = vec![crate::ProcSample {
         pid: live.0,
+        ppid: 1,
+        cpu_percent: 0.0,
+        rss_mb: 0,
+        nice: 0,
+        command: "child".to_string(),
+        args: String::new(),
         starttime: live.1,
-        ..Default::default()
     }];
     prune_oom_known_descendants(&mut state, &all_processes);
 
