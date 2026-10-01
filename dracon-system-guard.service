@@ -65,7 +65,16 @@ ProtectHome=read-only
 # is deliberately NOT granted: an unprivileged user service cannot
 # truncate it under this hardening, so shipping it in log_dirs only
 # produced a permanent "failed to truncate" warning.
-ReadWritePaths=%h/.dracon %h/Dev %h/.local/state/dracon %h/.local/share %h/.local/share/Trash %h/.cargo %h/.cache %h/.npm %h/.local/state/nix /tmp
+# CHANGED 2026-10-01 (audit): systemd REFUSES TO START a unit whose
+# ReadWritePaths entry does not exist (verified live with a scratch unit:
+# Result=exit-code, ExecMainStatus=226/NOPERM) unless the entry is prefixed
+# with '-', which means "ignore if missing". Every entry below is a path some
+# tool creates for itself, so on a host that never trashed a file, never ran
+# nix-env, or has no ~/Dev the guard did not start AT ALL — no monitoring, and
+# a Restart=on-failure loop. The guard's own state roots stay REQUIRED: it
+# writes there, and `dracon-system setup` provisions them, so their absence is a
+# real misconfiguration worth failing loudly for.
+ReadWritePaths=%h/.dracon %h/.local/state/dracon %h/.local/share -%h/Dev -%h/.local/share/Trash -%h/.cargo -%h/.cache -%h/.npm -%h/.local/state/nix /tmp
 PrivateTmp=false
 
 # Kernel-level sandboxing (all certain — these daemons never use these privileges)
