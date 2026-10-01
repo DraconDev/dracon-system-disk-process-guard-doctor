@@ -39,10 +39,19 @@
 #     was meant to prevent. Those are: trend_warn_hours, zombie_threshold,
 #     log_size_mb, node_modules_max_age_days, tmp_min_age_hours,
 #     trash_min_age_days, rust_target_action_min_age_days,
-#     quarantine_ttl_days, cap_offenders_cpu_percent,
+#     quarantine_ttl_days,
 #     reap_report_min_idle_hours, reap_report_max_cpu_seconds,
 #     nix_keep_generations, relocate_min_age_days. The list is pinned by a
 #     test (`sentinel_zero_knobs_are_never_clamped`) so it cannot drift.
+#
+#   NOT LISTED ABOVE, but still bounded: cap_offenders_cpu_percent has a
+#     CEILING of 100 (this knob is a cap on a percentage of ONE CPU, so a
+#     systemd-style 400% value is clamped to 100); notify_cooldown_secs has a
+#     floor of 5 and a ceiling of 86400 (a huge value would make the cooldown
+#     cutoff subtraction overflow, and in practice disables notification
+#     pruning); unfreeze_below_percent, disk_early_warn_percent and every other
+#     percent threshold are banded 1..100, because 0 means "match every sample"
+#     (or, for unfreeze, "never lift the freeze").
 #
 # Floats accept TOML `nan` and `inf` literals; those are scrubbed too, since
 # a NaN fails every comparison and would silently disable its own threshold.

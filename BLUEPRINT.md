@@ -135,7 +135,13 @@ actions).
 ## Code Quality Notes
 
 ### Guard Policy Normalization
-- `normalize_guard_policy()` at line 837 ensures all config values are within safe bounds
+- `normalize_guard_policy()` (src/policy.rs — find it, do not trust a line
+  number here; a stale pin is how this file drifted before) bounds the knobs
+  that have a meaningful range: floors, ceilings, and 1..100 bands on percent
+  thresholds. It deliberately leaves 13 sentinel-zero knobs alone, because a
+  floor on those would re-arm a feature the operator turned off; the exact
+  list is pinned by the test `sentinel_zero_knobs_are_never_clamped` and is
+  documented in dracon-system.example.toml.
 - Prevents misconfiguration from causing issues
 
 ### Link Management
