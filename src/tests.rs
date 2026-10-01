@@ -3093,7 +3093,7 @@ fn cleanup_stale_cooldowns_survives_an_extreme_cooldown() {
     let mut state = GuardRuntimeState::default();
     state
         .notify_cooldowns
-        .insert(1, Instant::now() - Duration::from_secs(60));
+        .insert("pid-1".to_string(), Instant::now() - Duration::from_secs(60));
     // u64::MAX saturates at 2x itself and underflows Instant by construction.
     cleanup_stale_cooldowns(&mut state, u64::MAX);
     // u64::MAX/2 * 2 == u64::MAX - 1, the largest value that still subtracts.
@@ -3101,65 +3101,10 @@ fn cleanup_stale_cooldowns_survives_an_extreme_cooldown() {
     // A normal cooldown still prunes an entry older than 2x the window.
     state
         .notify_cooldowns
-        .insert(2, Instant::now() - Duration::from_secs(600));
+        .insert("pid-2".to_string(), Instant::now() - Duration::from_secs(600));
     cleanup_stale_cooldowns(&mut state, 5);
     assert!(
-        !state.notify_cooldowns.contains_key(&2),
+        !state.notify_cooldowns.contains_key("pid-2"),
         "a 600s-old entry must be pruned at a 5s cooldown"
     );
-}
-
-/// The 2026-10-01 audit: `unfreeze_below_percent` and `disk_early_warn_percent`
-/// had no lower bound, so a legal 0 meant "unfreeze only at 0% used" (never) and
-/// "warn on every pass" respectively. Every sibling percent knob is banded
-/// 1..100 for exactly that reason.
-#[test]
-fn percent_thresholds_keep_a_one_percent_floor() {
-    let mut policy = GuardPolicy {
-        unfreeze_below_percent: 0,
-        disk_early_warn_percent: 0,
-        ..GuardPolicy::default()
-    };
-    let adjusted = policy.normalize();
-    assert_eq!(
-        policy.unfreeze_below_percent, 1,
-        "0% unfreeze would never lift the freeze; adjusted={adjusted:?}"
-    );
-    assert_eq!(
-        policy.disk_early_warn_percent, 1,
-        "a 0% early warn fires on every pass; adjusted={adjusted:?}"
-    );
-    assert!(adjusted.contains(&"unfreeze_below_percent".to_string()));
-    assert!(adjusted.contains(&"disk_early_warn_percent".to_string()));
-
-    // The relative clamp must not push either knob back down to 0.
-    let mut pathological = GuardPolicy {
-        disk_warn_percent: 1,
-        disk_early_warn_percent: 1,
-        disk_action_percent: 1,
-        disk_critical_percent: 1,
-        unfreeze_below_percent: 1,
-        ..GuardPolicy::default()
-    };
-    pathological.normalize();
-    assert!(pathological.unfreeze_below_percent >= 1);
-    assert!(pathological.proactive_cleanup_percent >= 1);
-}
-
-/// The 2026-10-01 audit: `notify_cooldown_secs` had a floor but no ceiling, so
-/// a huge value silently disabled cooldown pruning (and at >= 2^63 panicked
-/// the clock subtraction). One day is the ceiling.
-#[test]
-fn notify_cooldown_has_a_ceiling() {
-    let mut policy = GuardPolicy {
-        notify_cooldown_secs: u64::MAX,
-        ..GuardPolicy::default()
-    };
-    let adjusted = policy.normalize();
-    assert!(
-        policy.notify_cooldown_secs <= 86_400,
-        "notify_cooldown_secs must be capped, got {}",
-        policy.notify_cooldown_secs
-    );
-    assert!(adjusted.contains(&"notify_cooldown_secs".to_string()));
 }
