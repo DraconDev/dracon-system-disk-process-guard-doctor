@@ -14,6 +14,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The guard's own diagnostics were blind to the guard, and several percent
+  knobs had no floor (2026-10-01 audit)** —
+  `dracon-system doctor` audited only `dracon-sync`'s policy and service, never
+  the guard's own policy (and hardcoded a path instead of honouring
+  `DRACON_SYSTEM_POLICY`), so the guard utility's diagnostic said nothing about
+  whether the guard was even configured; `doctor --strict` counted
+  `dracon-libs`, whose own remediation text calls it "Optional for installed
+  binaries", so strict mode could never pass on a host installed from
+  crates.io; a missing `systemctl` was reported as a failed service check
+  rather than an unanswerable one. `unfreeze_below_percent` had no lower bound
+  and its test is `used <= value`, so a legal `0` froze sync until the external
+  freeze watchdog cleared the marker; `disk_early_warn_percent` was the only
+  percent threshold without a 1..100 band, so `0` warned on every pass;
+  `notify_cooldown_secs` had no ceiling, and at 2^63 or more the
+  `Instant - Duration` in `cleanup_stale_cooldowns` panics and kills the daemon
+  on its first pass (the subtraction is now `checked_sub` regardless).
+- **`link apply --force-replace` was dead for every real-world link (2026-10-01
+  audit)** — it called the strict `check_safe_to_delete`, whose
+  `SYSTEM_PROTECTED` list contains `/home` and whose test is a descendant test,
+  so every link under `$HOME` was refused (including the one the example config
+  ships). The guard-specific safety variant is used now. The same function
+  renamed the user's file to a backup and then symlinked with no rollback, and a
+  single failing entry aborted the whole batch without producing a report.
+- **The oom and CPU limiters could be applied and never released (2026-10-01
+  audit)** — their release sat behind the `can_restore_nice` gate while their
+  apply did not, so on a host without `CAP_SYS_NICE` (a manual `guard daemon`
+  run, or a unit predating v0.112.39) a critical-pressure episode left
+  `oom_score_adj=250` and a CPU cap in place with no way to undo them except
+  SIGHUP or a restart. Only the renice half is gated now.
+- **The shipped unit could not start on a host missing an optional directory
+  (2026-10-01 audit)** — systemd fails a unit whose `ReadWritePaths` entry does
+  not exist (verified: `Result=exit-code`, `ExecMainStatus=226`) unless the
+  entry is prefixed with `-`, so a host that never trashed a file or never ran
+  `nix-env` had no guard at all. The optional toolchain paths carry the prefix;
+  the guard's own state roots stay required.
+- **A freeze marker cleared by anything but the guard left the daemon frozen
+  forever (2026-10-01)** — the watchdog's auto-clear (or an operator
+  `dracon-sync resume`) removed the marker while the in-memory flag stayed
+  true, so every later pass logged a remove failure for a file that no longer
+  existed. The flag now resyncs; an operator-owned marker is still never
+  touched.
+- **Release tooling and fixtures (2026-10-01 audit)** — the release-notes
+  generator re-emitted the broken compare link the previous pass hand-fixed in
+  the shipped `.md`; nothing stopped a release closing an empty `[Unreleased]`;
+  the generated install instructions produced a unit whose `ExecStart` did not
+  match where `cargo install` puts the binary; `--abort`'s header read as a full
+  undo though it only reverts local files; the release commit used
+  `--no-verify`, bypassing the warden pre-commit hook; the version bump
+  rewrote the first `^version =` line rather than the `[package]` one; and
+  `release.sh` would publish a version that was not newer than the current one.
+  `test_release_pipeline.sh` had been red since the standalone-repo flip
+  because it asserted the pre-nested unprefixed tag names, and
+  `test_release_standalone.sh` because it asserted a monorepo layout that no
+  longer exists; its unique cases are folded into the pipeline fixture and the
+  file is deleted. Both fixtures now print the release output on failure instead
+  of exiting 1 in silence.
+- **Smaller items (2026-10-01 audit)** — `events.rs` pushed every event into a
+  process-global buffer nothing ever read; `check-unit-deployment.sh` treated a
+  dangling unit symlink as "not deployed" (a silent false pass), printed
+  unquoted paths, and `verify-install.sh` neither checked for `python3` nor
+  compared the binary's version against the release under test; the freeze
+  state machine, the `notify_cooldown` ceiling and the `ReadWritePaths` change
+  are documented in `BLUEPRINT.md` and the example template.
+
 ### Added
 
 - **A unit-drift check, because a shipped unit change was never actually
