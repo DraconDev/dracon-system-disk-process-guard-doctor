@@ -207,6 +207,20 @@ grep -q '^\[package\]$' "$repo/dracon-system/Cargo.toml" || fail "the version re
 test "$(awk -F'"' '/^\[/{p=($0=="[package]");next} p && /^version[[:space:]]*=/{print $2;exit}' "$repo/dracon-system/Cargo.toml")" = 0.1.0 \
     || fail "the [package] version was not rewritten to 0.1.0"
 
+# --- new gate: monotonicity (audit 2026-10-01) ------------------------------
+# A version that is not newer than the current one must be refused outright.
+# This runs while the tree is still clean: the dry-run below deliberately
+# mutates local release surfaces, and the dirty-tree check would then fire
+# first and mask the gate under test.
+mono_output="$work/mono.out"
+current_capture="$mono_output"
+if DRACON_FIXTURE_ROOT="$repo" HOME="$work/home" PATH="$work/bin:$PATH" \
+    timeout 180 "$repo/dracon-system/scripts/release.sh" 0.0.0 --yes \
+    >"$mono_output" 2>&1; then
+    fail "release.sh accepted a downgrade (0.0.0 after 0.1.0)"
+fi
+assert_contains 'is not newer than the current'
+
 # --- folded in from the deleted test_release_standalone.sh (DECIDED 2026-10-01)
 # The standalone fixture's unique assertions were the lock sync and the
 # dry-run surface message; they belonged here, in the suite that actually runs.
@@ -228,18 +242,9 @@ assert_contains 'Cargo.lock synchronized'
 assert_contains 'Local release surfaces were modified'
 test -f "$repo/dracon-system/release-notes-v0.1.1.md"
 
-# --- new gates (audit 2026-10-01) -----------------------------------------
-# A version that is not newer than the current one must be refused outright.
-mono_output="$work/mono.out"
-current_capture="$mono_output"
-if DRACON_FIXTURE_ROOT="$repo" HOME="$work/home" PATH="$work/bin:$PATH" \
-    timeout 180 "$repo/dracon-system/scripts/release.sh" 0.0.0 --yes \
-    >"$mono_output" 2>&1; then
-    fail "release.sh accepted a downgrade (0.0.0 after 0.1.1)"
-fi
-assert_contains 'is not newer than the current'
-
-# An empty [Unreleased] must be refused rather than closed into a bare header.
+# --- new gate: an empty [Unreleased] must be refused, not closed -------------
+# Asserted against the gate's own predicate with a fixture CHANGELOG, because
+# driving it through release.sh would need a clean tree at a second version.
 empty_changelog="$work/empty-changelog.md"
 printf '# Changelog\n\n## [Unreleased]\n\n## [0.1.1] - 2026-01-01\n' > "$empty_changelog"
 if ! awk '
