@@ -1283,7 +1283,13 @@ fn the_example_configs_storage_roots_are_inside_the_units_readwritepaths() {
         if value.is_empty() {
             continue;
         }
-        let path = crate::policy::expand_tilde_with_home(value, Some(home));
+        // Inline tilde expansion against a FIXED home: the module-private
+        // helper is not reachable from here, and the test needs a home it
+        // controls so the assertion does not depend on who runs it.
+        let path = match value.strip_prefix("~/") {
+            Some(rest) => home.join(rest),
+            None => std::path::PathBuf::from(value),
+        };
         assert!(
             crate::safety::unit_grants_write(&unit, home, &path),
             "the example config documents {value} ({}), but the shipped unit's \
