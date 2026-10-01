@@ -192,6 +192,12 @@ cp dracon-system-guard.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 # A unit change is not live until it is redeployed this way. After a release
 # that touched the unit, `scripts/check-unit-deployment.sh` reports drift.
+# It also checks the thing a file comparison cannot: that the *running* service
+# can write the storage roots the policy names. A `ReadWritePaths=` entry that
+# is correct on disk still grants nothing when `ProtectSystem=strict` has
+# remounted the parent read-only — which is what kept the reclaim path from
+# moving a single byte for four days in September 2026. See
+# `docs/design/guard-namespace-contract-2026-10-01.md`.
 ```
 
 ### Server Deployment (System-wide)
