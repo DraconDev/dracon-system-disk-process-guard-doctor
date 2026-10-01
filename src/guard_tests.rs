@@ -1303,34 +1303,20 @@ fn remembered_oom_descendants_are_pruned_past_the_cap() {
 /// the round trip that a restart performs.
 #[test]
 fn the_mitigation_ledger_survives_a_restart() {
-    let dir = crate::guard_test_tmp("mitigation-ledger");
+    let dir = std::env::temp_dir().join(format!(
+        "dracon-system-mitigation-ledger-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("guard-mitigations.json");
 
     // The CURRENT process stands in for an adjusted one: its identity is
     // definitely current, so adoption must keep it.
     let me = std::process::id() as i32;
-    let identity = process_sample_identity(&crate::ProcSample {
-        pid: me,
-        ppid: 1,
-        cpu_percent: 0.0,
-        rss_mb: 0,
-        nice: 0,
-        command: "self".to_string(),
-        args: String::new(),
-        starttime: 0,
-    });
-    // starttime 0 will not match, so pin the real one from procfs instead.
-    let identity = match process_identity_status(
-        std::path::Path::new("/proc"),
-        me,
-        &ProcessIdentity {
-            starttime: 0,
-            comm: String::new(),
-        },
-    ) {
-        _ => identity,
-    };
     let live_identity = {
         // Read the real starttime/comm so the identity check passes.
         let stat = std::fs::read_to_string(format!("/proc/{me}/stat")).unwrap_or_default();
@@ -1345,7 +1331,6 @@ fn the_mitigation_ledger_survives_a_restart() {
             comm: "self".to_string(),
         }
     };
-    let _ = identity;
 
     let mut before = GuardRuntimeState::default();
     before.memory_reniced_pids.insert(
