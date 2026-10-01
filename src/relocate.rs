@@ -350,7 +350,24 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
         })?;
         anyhow::bail!("symlink failed ({e:#}) — source restored");
     }
-    fs::remove_dir_all(&staging)?;
+    // FIXED 2026-10-01 (audit): the staging copy is removed AFTER the symlink is
+    // already in place, and the `?` made a removal failure report the whole move
+    // as failed. The move had in fact succeeded: the source is a correct symlink
+    // to the destination AND a full duplicate of the tree was still sitting in
+    // the staging path, consuming the bytes the relocate was made to reclaim,
+    // while the caller never recorded the relocation (so `link status` and the
+    // doctor drift check never saw it). A failed cleanup is now reported as a
+    // warning on the report instead of failing the move, because the data is
+    // safe and re-running the move would be the wrong remedy.
+    if let Err(cleanup_err) = fs::remove_dir_all(&staging) {
+        eprintln!(
+            "relocate: moved {} -> {}, but the staging copy at {} could not be removed: {cleanup_err:#}\n  \
+             the move is complete; delete that directory by hand when convenient",
+            plan.source.display(),
+            plan.dest.display(),
+            staging.display()
+        );
+    }
 
     let snippet = format!(
         "[[links.entries]]\nlink = \"{}\"\ntarget = \"{}\"\n",
