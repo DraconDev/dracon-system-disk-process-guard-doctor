@@ -302,9 +302,16 @@ fi
 
 # Resolve the GitHub path once: both the generated release notes and the final
 # summary need it, and the notes are written long before the old late lookup.
-GH_PATH="$(git config --get "remote.${REMOTE}.url" 2>/dev/null || true)"
-GH_PATH="${GH_PATH%.git}"; GH_PATH="${GH_PATH##*github.com[:/]}"
-[[ -n "$GH_PATH" ]] || GH_PATH="DraconDev/dracon-system-disk-process-guard-doctor"
+# Only a real github.com remote is trusted; anything else (a local fixture
+# path, a self-hosted remote) falls back to this repo's documented home, so a
+# mangled path can never end up in a published compare link.
+REMOTE_URL="$(git config --get "remote.${REMOTE}.url" 2>/dev/null || true)"
+if [[ "$REMOTE_URL" =~ github\.com[:/]+([^/]+/[^/]+?)(\.git)?$ ]]; then
+    GH_PATH="${BASH_REMATCH[1]}"
+else
+    GH_PATH="DraconDev/dracon-system-disk-process-guard-doctor"
+    [[ "$REMOTE_URL" == *"github.com"* ]] || log "  origin '$REMOTE_URL' is not a github.com remote; using the documented repo path for links"
+fi
 
 # ----- step 1: test discipline gates (AGENTS.md) -------------------------
 log "step 1/${TOTAL_STEPS}: test discipline gates (AGENTS.md)"
