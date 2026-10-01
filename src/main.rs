@@ -4938,6 +4938,12 @@ fn mitigation_ledger_path() -> PathBuf {
 /// Write the currently-applied mitigations to disk, but only when they changed
 /// (an unchanged pass must not rewrite the file every interval).
 fn persist_mitigations(state: &mut GuardRuntimeState) {
+    persist_mitigations_to(state, &mitigation_ledger_path());
+}
+
+/// Write the ledger to an explicit path. Split out so the round trip is
+/// testable without touching the real `$HOME` (audit 2026-10-01).
+fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) {
     let mut records: Vec<MitigationRecord> = Vec::new();
     for (pid, entry) in &state.memory_reniced_pids {
         records.push(MitigationRecord {
@@ -4978,7 +4984,6 @@ fn persist_mitigations(state: &mut GuardRuntimeState) {
     if state.last_persisted_mitigations.as_deref() == Some(encoded.as_slice()) {
         return;
     }
-    let path = mitigation_ledger_path();
     if let Some(parent) = path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
             eprintln!("⚠️ could not create {} for the mitigation ledger: {e}", parent.display());
@@ -5007,8 +5012,13 @@ fn persist_mitigations(state: &mut GuardRuntimeState) {
 /// nothing recorded to clean up, and failing to start over it would be worse
 /// than the problem it solves.
 fn hydrate_mitigations_from_disk(state: &mut GuardRuntimeState) {
-    let path = mitigation_ledger_path();
-    let text = match fs::read_to_string(&path) {
+    hydrate_mitigations_from(&mitigation_ledger_path(), state);
+}
+
+/// Adopt the mitigations recorded at `path`. Split out for the same reason as
+/// `persist_mitigations_to`.
+fn hydrate_mitigations_from(path: &Path, state: &mut GuardRuntimeState) {
+    let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
         Err(e) => {
