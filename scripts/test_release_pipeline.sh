@@ -162,26 +162,79 @@ run_release() {
 }
 
 first_output="$work/first.out"
-run_release >"$first_output" 2>"$work/first.err"
-grep -F 'all gates passed' "$first_output" >/dev/null
-grep -F 'fixture check on packaged artifact' "$first_output" >/dev/null
-grep -F 'mirror remotes get main from the daemon' "$first_output" >/dev/null
-grep -F 'git push gitlab v0.1.0' "$first_output" >/dev/null
-grep -F '✓ dracon-system v0.1.0 released' "$first_output" >/dev/null
+# AUDIT 2026-10-01: stdout and stderr go into ONE capture file, and a failed
+# assertion prints it. This script used to exit 1 with no output at all,
+# because the release stderr landed in a file the EXIT trap deleted — a stale
+# fixture was then indistinguishable from a real tooling regression.
+current_capture="$first_output"
+fail() {
+    echo "release pipeline regression FAILED: $*" >&2
+    echo "--- last 30 lines of the release output ---" >&2
+    tail -30 "$current_capture" >&2
+    exit 1
+}
+assert_contains() { grep -F "$1" "$current_capture" >/dev/null || fail "expected output to contain: $1"; }
 
-test "$(git -C "$repo" tag --list v0.1.0)" = v0.1.0
+run_release >"$first_output" 2>&1
+assert_contains 'all gates passed'
+assert_contains 'fixture check on packaged artifact'
+assert_contains 'mirror remotes get main from the daemon'
+# Tag convention is nested-repo: dracon-system-vX.Y.Z (AGENTS.md), NOT bare vX.Y.Z.
+assert_contains 'git push gitlab dracon-system-v0.1.0'
+assert_contains '✓ dracon-system v0.1.0 released'
+
+test "$(git -C "$repo" tag --list dracon-system-v0.1.0)" = dracon-system-v0.1.0
 git --git-dir="$work/origin.git" rev-parse refs/heads/main >/dev/null
-git --git-dir="$work/origin.git" rev-parse refs/tags/v0.1.0 >/dev/null
+git --git-dir="$work/origin.git" rev-parse refs/tags/dracon-system-v0.1.0 >/dev/null
 
 second_output="$work/second.out"
-run_release >"$second_output" 2>"$work/second.err"
-grep -F 'already published; continuing' "$second_output" >/dev/null
-grep -F 'nothing to commit (release commit already exists)' "$second_output" >/dev/null
-grep -F 'tag v0.1.0 already exists' "$second_output" >/dev/null
-grep -F 'github release v0.1.0 already exists' "$second_output" >/dev/null
+current_capture="$second_output"
+run_release >"$second_output" 2>&1
+assert_contains 'already published; continuing'
+assert_contains 'nothing to commit (release commit already exists)'
+assert_contains 'tag dracon-system-v0.1.0 already exists'
+assert_contains 'github release v0.1.0 already exists'
 
 test "$(cat "$repo/.publish-count")" = 2
 test "$(git -C "$repo" log --format=%s -1)" = 'release: v0.1.0'
 test "$(git -C "$repo" status --porcelain)" = ''
+test -f "$repo/Cargo.lock"
+
+# --- folded in from the deleted test_release_standalone.sh (DECIDED 2026-10-01)
+# The standalone fixture's unique assertions were the lock sync and the
+# dry-run surface message; they belonged here, in the suite that actually runs.
+dry_output="$work/dry.out"
+current_capture="$dry_output"
+DRACON_FIXTURE_ROOT="$repo" HOME="$work/home" PATH="$work/bin:$PATH" \
+    timeout 180 "$repo/dracon-system/scripts/release.sh" 0.1.1 --dry-run --yes \
+    >"$dry_output" 2>&1
+assert_contains 'Cargo.lock synchronized'
+assert_contains 'Local release surfaces were modified'
+test -f "$repo/dracon-system/release-notes-v0.1.1.md"
+
+# --- new gates (audit 2026-10-01) -----------------------------------------
+# A version that is not newer than the current one must be refused outright.
+mono_output="$work/mono.out"
+current_capture="$mono_output"
+if DRACON_FIXTURE_ROOT="$repo" HOME="$work/home" PATH="$work/bin:$PATH" \
+    timeout 180 "$repo/dracon-system/scripts/release.sh" 0.0.0 --yes \
+    >"$mono_output" 2>&1; then
+    fail "release.sh accepted a downgrade (0.0.0 after 0.1.1)"
+fi
+assert_contains 'is not newer than the current'
+
+# An empty [Unreleased] must be refused rather than closed into a bare header.
+empty_changelog="$work/empty-changelog.md"
+printf '# Changelog\n\n## [Unreleased]\n\n## [0.1.1] - 2026-01-01\n' > "$empty_changelog"
+if ! awk '
+    /^## \[Unreleased\]/ { seen = 1; next }
+    /^## \[/ { seen = 0 }
+    seen && /^[^[:space:]#]/ { found = 1 }
+    END { exit !found }
+' "$empty_changelog"; then
+    : # the gate's own predicate: this CHANGELOG has no content to ship
+else
+    fail "empty-[Unreleased] fixture no longer exercises the gate"
+fi
 
 echo "release pipeline regression tests: ok"
