@@ -380,6 +380,23 @@ pub(crate) fn cmd_link(cmd: LinkCommands) -> Result<()> {
                     report.total, report.healthy, report.drifted
                 );
             }
+            // Entries that failed are listed (and present in the JSON above),
+            // but the rest of the batch WAS applied — so name the failures and
+            // exit non-zero instead of reporting a clean run.
+            if !report.errors.is_empty() {
+                if !json {
+                    eprintln!();
+                    eprintln!("Some entries could not be applied:");
+                }
+                for e in &report.errors {
+                    eprintln!("  ✗ {e}");
+                }
+                anyhow::bail!(
+                    "{} of {} link entries failed; the rest were applied",
+                    report.errors.len(),
+                    report.total
+                );
+            }
         }
     }
     Ok(())
