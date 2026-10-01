@@ -8229,6 +8229,10 @@ async fn cmd_guard(cmd: GuardCommands) -> Result<()> {
         load_system_policy().map_err(|error| anyhow::Error::new(PolicyLoadError(error)))?;
     let mut guard = policy.guard;
     normalize_guard_policy(&mut guard);
+    // ONCE per process, before any subcommand runs: a configured quarantine or
+    // cold root that the shipped unit leaves read-only would otherwise surface
+    // only as a per-candidate EROFS, once per pass, forever.
+    crate::warn_uncovered_storage_roots(&guard);
     match cmd {
         GuardCommands::Once { json } => cmd_guard_once(&guard, json).await,
         GuardCommands::Daemon => cmd_guard_daemon(&mut guard).await,
