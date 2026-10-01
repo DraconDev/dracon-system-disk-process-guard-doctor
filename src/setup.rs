@@ -10,7 +10,7 @@
 use anyhow::Result;
 use serde::Serialize;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::{expand_tilde, human_bytes, load_system_policy, parse_df_details};
 
