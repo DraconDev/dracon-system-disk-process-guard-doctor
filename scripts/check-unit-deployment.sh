@@ -84,7 +84,11 @@ fi
 
 # 2. A host that never installed the unit has no drift to report (containers,
 #    CI, fresh clones). Silence with a one-line note, not a failure.
-if [ ! -f "$DEPLOYED_UNIT" ]; then
+# `-e || -L` again, for the same reason as the discovery loop: a DANGLING unit
+# symlink (a link into a GC'd nix store path, say) is deployed AND broken, and
+# must reach the comparison below rather than be waved through as "not
+# installed" (audit 2026-10-01).
+if [ ! -e "$DEPLOYED_UNIT" ] && [ ! -L "$DEPLOYED_UNIT" ]; then
     echo "• no deployed unit at $DEPLOYED_UNIT — nothing to compare (install it with:"
     echo "    mkdir -p \$(dirname \"$DEPLOYED_UNIT\") && $REDEPLOY_CMD)"
     exit 0
