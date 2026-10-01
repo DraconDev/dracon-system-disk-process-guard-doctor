@@ -16,6 +16,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The guard's auto-reclaim reclaimed zero bytes for four days, silently (2026-10-01)** —
+  a second, larger consequence of the `ReadWritePaths` gap below, recorded here
+  because the log never said so. When a quarantine move fails,
+  `auto_cleanup_rust_targets` logs the failure and `continue`s rather than
+  falling back to a direct delete — the right call for safety, but it means a
+  reclaim that cannot be made reversible becomes one that does nothing at all.
+  The 2026-09-30 23:41 pass reached the 85% action threshold, selected 11 real
+  trees (including `dracon-platform/target` and `dracon-utilities/target`), and
+  every move failed on a read-only filesystem. No `📦 Rust quarantined:` line was
+  ever printed, and the single `⚠️ failed to quarantine` line competed with
+  ~20 `failed to remove tmp entry … Permission denied` lines per 30s pass.
+  `/mnt/data/quarantine` stayed empty for the whole period.
+  `scripts/check-unit-deployment.sh` now has a sixth step that asserts the
+  *running* service can write the storage roots its own policy names, by
+  resolving each root against `/proc/<pid>/mountinfo` — the longest mount point
+  that prefixes it, later lines shadowing earlier ones. This needs no
+  `CAP_SYS_ADMIN`, so the namespace check that was previously written off as
+  not performable is now a repeatable step in the release pipeline. "Cannot ask"
+  stays a note, never a failure. `scripts/test_check_unit_deployment.sh` gains 8
+  cases (24 total) covering the pre-fix shape, a grant on the disk but not the
+  subtree, shadowed mounts, commented-out and relative knobs, a stopped service,
+  and a root resolved through `/`; all were mutation-checked. That work also
+  fixed two defects the suite was hiding: it was not hermetic (case 9 compared
+  its synthetic fixture against the host's **real** deployed unit and reported
+  drift that did not exist), and a root mount never matched as a prefix, so any
+  ordinary path looked "not covered by any mount". See
+  `docs/design/guard-namespace-contract-2026-10-01.md`.
+
 - **The guard's quarantine and cold relocation were dead under the shipped unit's hardening (2026-10-01)** —
   `dracon-system-guard.service` runs with `ProtectSystem=strict` and
   `ProtectHome=read-only`, and its `ReadWritePaths=` granted only `%h` paths and
