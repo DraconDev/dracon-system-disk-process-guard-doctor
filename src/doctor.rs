@@ -70,6 +70,7 @@ pub(crate) enum CheckState {
 /// installed binaries" — so `doctor --strict` could never pass on a host
 /// installed from crates.io. The check table is now the single source of truth
 /// for what strict means, and the field list is gone.
+#[derive(Debug)]
 struct DoctorCheck {
     label: &'static str,
     state: CheckState,
