@@ -176,9 +176,11 @@ if SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
 fi
 
 # 9. systemd-analyze rejecting the deployed file is a real failure, but only
-#    when there is a manager to ask. The deployed copy is named explicitly: this
-#    case is about the verify step, so it must not depend on what unit discovery
-#    happens to find under the caller's HOME.
+#    when there is a manager to ask. The deployed copy is named explicitly and
+#    reset to the shipped bytes: this case is about the verify step, so it must
+#    not inherit case 8's mutation (which fails at the byte comparison instead)
+#    nor depend on what unit discovery finds under the caller's HOME.
+cp "$repo" "$deployed"
 out="$(SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_rejects" \
     "$SCRIPT_UNDER_TEST" "$repo" "$deployed" 2>&1)" &&
     fail "a unit rejected by systemd-analyze was reported as clean"
