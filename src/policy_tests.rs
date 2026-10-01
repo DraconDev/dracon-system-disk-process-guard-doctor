@@ -1219,3 +1219,10 @@ fn a_near_miss_hint_stays_inside_the_typed_tier() {
         "got {proactive:?}"
     );
 }
+#[test]
+fn hint_probe() {
+    for k in ["rust_target_min_age_day", "rust_target_action_min_age_day",
+              "rust_target_min_age_days", "guards", "interval_sec"] {
+        println!("{k:36} -> {:?}", hint_for(k));
+    }
+}
