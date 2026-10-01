@@ -1514,12 +1514,60 @@ pub(crate) fn hint_for(key: &str) -> String {
         }
     }
 
+    // ADDED 2026-10-01 (audit): a mistyped SECTION name gets no hint at all,
+    // because only key names were ever considered. `guards` for `[guard]` is
+    // the single most common config typo and the nearest key is 4 edits away,
+    // so the operator got a bare "unknown key: guards" with nothing to act on.
+    // Section names are now candidates, but only when the key was NOT found
+    // under a dotted path (i.e. it is a bare section name).
+    if section.is_none() {
+        let mut best = usize::MAX;
+        let mut close_sections: Vec<&str> = Vec::new();
+        for name in known.keys() {
+            let d = edit_distance(base, name);
+            if d < best {
+                best = d;
+                close_sections.clear();
+            }
+            if d == best && d <= 2 {
+                close_sections.push(name);
+            }
+        }
+        if !close_sections.is_empty() {
+            return format!(" — did you mean [{}]?", close_sections.join("] or ["));
+        }
+    }
+
     // Otherwise a near-miss spelling is the useful hint.
+    //
+    // TIER-AWARE (audit 2026-10-01): the guard's age gates form named tiers
+    // (`*_min_age_days` / `*_max_age_days`, and the rust-target pair where
+    // `rust_target_action_min_age_days` is a different policy decision from
+    // `rust_target_min_age_days`). A raw edit distance happily suggests the
+    // wrong TIER — a mistyped action-tier key was being pointed at the
+    // proactive-tier gate, leaving the action tier with no age gate at all. A
+    // candidate that shares the typed key's tier prefix is preferred, and a
+    // candidate in a DIFFERENT tier is not suggested unless nothing else is
+    // close.
+    let typed_tier = policy_tier(base);
     let mut best = usize::MAX;
+    let mut best_same_tier = usize::MAX;
     let mut close: Vec<&str> = Vec::new();
+    let mut close_same_tier: Vec<&str> = Vec::new();
     for candidates in known.values() {
         for candidate in candidates {
             let d = edit_distance(base, candidate);
+            let same_tier = typed_tier.is_some() && policy_tier(candidate) == typed_tier;
+            if same_tier {
+                if d < best_same_tier {
+                    best_same_tier = d;
+                    close_same_tier.clear();
+                }
+                if d == best_same_tier && d <= 2 {
+                    close_same_tier.push(candidate);
+                }
+                continue;
+            }
             if d < best {
                 best = d;
                 close.clear();
@@ -1529,11 +1577,35 @@ pub(crate) fn hint_for(key: &str) -> String {
             }
         }
     }
-    if close.is_empty() {
+    let chosen = if !close_same_tier.is_empty() {
+        close_same_tier
+    } else {
+        close
+    };
+    if chosen.is_empty() {
         String::new()
     } else {
-        format!(" — did you mean {}?", close.join(" or "))
+        format!(" — did you mean {}?", chosen.join(" or "))
     }
+}
+
+/// The semantic tier a knob name belongs to, used to keep a near-miss
+/// suggestion inside the same policy decision. Returns None for knobs with no
+/// tier structure, so they fall back to plain edit distance.
+fn policy_tier(key: &str) -> Option<&str> {
+    // rust-target: the two min/max age gates plus the action-tier variant.
+    if let Some(rest) = key.strip_prefix("rust_target") {
+        if rest.ends_with("_age_days") || rest == "_age_days" {
+            return Some("rust_target_age");
+        }
+        return Some("rust_target_other");
+    }
+    for suffix in ["_min_age_days", "_max_age_days"] {
+        if let Some(prefix) = key.strip_suffix(suffix) {
+            return Some(prefix);
+        }
+    }
+    None
 }
 
 /// Levenshtein distance, bounded by the lengths involved. Only used to
