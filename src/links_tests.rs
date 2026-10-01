@@ -82,6 +82,7 @@ fn link_status_report_debug() {
         drifted: 0,
         missing_target: 0,
         missing_link: 0,
+        errors: vec![],
     };
     let debug = format!("{:?}", report);
     assert!(debug.contains("total"));
