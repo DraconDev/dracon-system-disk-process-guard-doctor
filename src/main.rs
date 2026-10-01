@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::{ArgAction, Parser, Subcommand};
 use fs2::FileExt;
 use print as dr_print;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs::{self, File};
@@ -549,7 +549,11 @@ pub(crate) struct ZombieInfo {
     pub(crate) parent_alive: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// `Serialize`/`Deserialize` are for the on-disk mitigation ledger
+/// (audit 2026-10-01): a crash during a critical-pressure episode used to
+/// restart the guard with empty maps, stranding `nice`/`oom_score_adj`
+/// adjustments on live processes with no record that they needed restoring.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ProcessIdentity {
     /// `/proc/<pid>/comm`, retained for diagnostics and the ps-row check.
     pub(crate) comm: String,
@@ -688,6 +692,10 @@ pub(crate) struct GuardRuntimeState {
     pub(crate) reniced_pids: HashMap<i32, LegacyReniceState>,
     pub(crate) cooled_since: HashMap<i32, Instant>,
     pub(crate) guard_cycle: u64,
+    /// The exact bytes last written to the on-disk mitigation ledger, so an
+    /// unchanged pass does not rewrite the file every interval (audit
+    /// 2026-10-01).
+    pub(crate) last_persisted_mitigations: Option<Vec<u8>>,
     pub(crate) last_proactive_cleanup: Option<Instant>,
     /// Last action-level cleanup scan. Even report-only scans are bounded
     /// because they walk large Rust and Node trees.
@@ -4891,6 +4899,172 @@ fn record_unavailable_attempt(attempts: &mut HashMap<i32, u32>, pid: i32) -> boo
     let n = attempts.entry(pid).or_insert(0);
     *n += 1;
     *n >= IDENTITY_UNAVAILABLE_RETRY_LIMIT
+}
+
+/// One applied, reversible mitigation, as persisted between daemon runs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MitigationRecord {
+    pid: i32,
+    /// The reversible adjustment: the nice value to restore to, the
+    /// `oom_score_adj` to restore, and the transient CPUQuota scope to drop.
+    original_nice: Option<i32>,
+    original_oom_adj: Option<i32>,
+    cap_scope: Option<String>,
+    identity: ProcessIdentity,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct MitigationLedger {
+    records: Vec<MitigationRecord>,
+}
+
+/// Where the ledger lives. `~/.dracon` is a REQUIRED ReadWritePaths entry in the
+/// shipped unit, so a missing state root fails the unit loudly at start rather
+/// than silently skipping persistence.
+fn mitigation_ledger_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("/home"))
+        .join(".dracon/guard-mitigations.json")
+}
+
+/// Write the currently-applied mitigations to disk, but only when they changed
+/// (an unchanged pass must not rewrite the file every interval).
+fn persist_mitigations(state: &GuardRuntimeState) {
+    let mut records: Vec<MitigationRecord> = Vec::new();
+    for (pid, entry) in &state.memory_reniced_pids {
+        records.push(MitigationRecord {
+            pid: *pid,
+            original_nice: Some(entry.original_nice),
+            original_oom_adj: None,
+            cap_scope: None,
+            identity: entry.identity.clone(),
+        });
+    }
+    for (pid, (original_adj, identity)) in &state.oom_biased_pids {
+        records.push(MitigationRecord {
+            pid: *pid,
+            original_nice: None,
+            original_oom_adj: Some(*original_adj),
+            cap_scope: None,
+            identity: identity.clone(),
+        });
+    }
+    for (pid, (scope, _orig_cgroup, identity)) in &state.capped_pids {
+        records.push(MitigationRecord {
+            pid: *pid,
+            original_nice: None,
+            original_oom_adj: None,
+            cap_scope: Some(scope.clone()),
+            identity: identity.clone(),
+        });
+    }
+    records.sort_by_key(|r| r.pid);
+    let ledger = MitigationLedger { records };
+    let encoded = match serde_json::to_vec(&ledger) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            eprintln!("⚠️ could not serialise the mitigation ledger: {e}");
+            return;
+        }
+    };
+    if state.last_persisted_mitigations.as_deref() == Some(encoded.as_slice()) {
+        return;
+    }
+    let path = mitigation_ledger_path();
+    if let Some(parent) = path.parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            eprintln!("⚠️ could not create {} for the mitigation ledger: {e}", parent.display());
+            return;
+        }
+    }
+    // Atomic: a torn ledger would be worse than none, because it is the record
+    // of what still needs restoring.
+    let tmp = path.with_extension("json.tmp");
+    if let Err(e) = fs::write(&tmp, &encoded).and_then(|()| fs::rename(&tmp, &path)) {
+        eprintln!(
+            "⚠️ could not persist the mitigation ledger to {}: {e}",
+            path.display()
+        );
+        let _ = fs::remove_file(&tmp);
+        return;
+    }
+    state.last_persisted_mitigations = Some(encoded);
+}
+
+/// Reload mitigations applied by a previous run and put them back into the live
+/// state maps, so the EXISTING restore path (identity checks, bounded defers,
+/// SIGHUP drain) handles them with no new restore logic of its own.
+///
+/// A missing or unreadable ledger is not an error: it just means there is
+/// nothing recorded to clean up, and failing to start over it would be worse
+/// than the problem it solves.
+fn hydrate_mitigations_from_disk(state: &mut GuardRuntimeState) {
+    let path = mitigation_ledger_path();
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => {
+            eprintln!(
+                "⚠️ could not read the mitigation ledger {}: {e} — continuing without it",
+                path.display()
+            );
+            return;
+        }
+    };
+    if text.trim().is_empty() {
+        return;
+    }
+    let ledger: MitigationLedger = match serde_json::from_str(&text) {
+        Ok(ledger) => ledger,
+        Err(e) => {
+            eprintln!(
+                "⚠️ mitigation ledger {} is unreadable ({e}) — leaving it in place and continuing",
+                path.display()
+            );
+            return;
+        }
+    };
+    if ledger.records.is_empty() {
+        return;
+    }
+    let mut adopted = 0usize;
+    for record in ledger.records {
+        // Never adopt a recycled PID: the starttime is what proves it is the
+        // same process the previous run adjusted.
+        if !matches!(
+            process_identity_status(Path::new("/proc"), record.pid, &record.identity),
+            ProcessIdentityStatus::Match
+        ) {
+            continue;
+        }
+        if let Some(original) = record.original_nice {
+            state.memory_reniced_pids.insert(
+                record.pid,
+                MemoryReniceState {
+                    original_nice: original,
+                    applied_nice: original + 5,
+                    identity: record.identity.clone(),
+                },
+            );
+        }
+        if let Some(original) = record.original_oom_adj {
+            state
+                .oom_biased_pids
+                .insert(record.pid, (original, record.identity.clone()));
+        }
+        if let Some(scope) = record.cap_scope {
+            state.capped_pids.insert(
+                record.pid,
+                (scope, String::new(), record.identity.clone()),
+            );
+        }
+        adopted += 1;
+    }
+    if adopted > 0 {
+        eprintln!(
+            "🛡️ adopted {adopted} mitigation(s) left applied by a previous run — restoring them now"
+        );
+    }
 }
 
 fn reap_policy_from_guard(guard: &GuardPolicy) -> ReapPolicy {
