@@ -6312,6 +6312,11 @@ pub(crate) struct LinkStatusReport {
     pub(crate) drifted: usize,
     pub(crate) missing_target: usize,
     pub(crate) missing_link: usize,
+    /// Per-entry failures `link apply` recovered from. ADDED 2026-10-01
+    /// (audit): one bad entry used to abort the batch and hide every entry
+    /// after it, so the operator never learned what had been changed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) errors: Vec<String>,
 }
 
 fn resolve_system_policy_path() -> Result<Option<PathBuf>> {
