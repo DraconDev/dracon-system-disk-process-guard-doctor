@@ -4886,11 +4886,21 @@ fn manage_sync_freeze(guard: &GuardPolicy, used: u8, dstate: &str, sync_frozen: 
                 ));
             }
         }
-    } else if *sync_frozen
-        && used <= guard.unfreeze_below_percent
-        && guard_owns_sync_freeze_marker(&marker)
-    {
-        if let Err(e) = fs::remove_file(&marker) {
+    } else if *sync_frozen && used <= guard.unfreeze_below_percent {
+        if !guard_owns_sync_freeze_marker(&marker) {
+            // The marker is already gone — the freeze watchdog auto-clears a
+            // stuck marker, and an operator can run `dracon-sync resume`
+            // directly. Without this resync the in-memory flag stayed true
+            // forever and every later pass re-entered this branch to log a
+            // remove failure for a file that no longer exists.
+            *sync_frozen = false;
+            emit_event(&DraconEvent::new(
+                "system",
+                EventSeverity::Info,
+                "disk/unfreeze",
+                format!("sync freeze marker was already cleared; resynced at {}%", used),
+            ));
+        } else if let Err(e) = fs::remove_file(&marker) {
             eprintln!("failed to remove freeze marker: {}", e);
         } else {
             *sync_frozen = false;
@@ -5692,7 +5702,15 @@ fn auto_cleanup_due_at(state: &GuardRuntimeState, interval_secs: u64, now: Insta
 }
 
 fn cleanup_stale_cooldowns(state: &mut GuardRuntimeState, cooldown_secs: u64) {
-    let cutoff = Instant::now() - Duration::from_secs(cooldown_secs.saturating_mul(2));
+    // checked_sub, not `-`: `Instant - Duration` PANICS when the duration
+    // underflows the clock's representation ("overflow when subtracting
+    // duration from instant"). A policy cooldown large enough to reach that
+    // (>= 2^63 seconds, after the *2) would kill the daemon on its first
+    // pass. normalize_guard_policy also caps the knob, but the subtraction
+    // must not be able to panic for any value it is handed.
+    let cutoff = Instant::now()
+        .checked_sub(Duration::from_secs(cooldown_secs.saturating_mul(2)))
+        .unwrap_or_else(Instant::now);
     state
         .notify_cooldowns
         .retain(|_, &mut since| since > cutoff);
