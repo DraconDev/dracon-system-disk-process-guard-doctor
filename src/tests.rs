@@ -3091,17 +3091,19 @@ fn sync_frozen_resyncs_when_the_marker_disappears_externally() {
 #[test]
 fn cleanup_stale_cooldowns_survives_an_extreme_cooldown() {
     let mut state = GuardRuntimeState::default();
-    state
-        .notify_cooldowns
-        .insert("pid-1".to_string(), Instant::now() - Duration::from_secs(60));
+    state.notify_cooldowns.insert(
+        "pid-1".to_string(),
+        Instant::now() - Duration::from_secs(60),
+    );
     // u64::MAX saturates at 2x itself and underflows Instant by construction.
     cleanup_stale_cooldowns(&mut state, u64::MAX);
     // u64::MAX/2 * 2 == u64::MAX - 1, the largest value that still subtracts.
     cleanup_stale_cooldowns(&mut state, u64::MAX / 2);
     // A normal cooldown still prunes an entry older than 2x the window.
-    state
-        .notify_cooldowns
-        .insert("pid-2".to_string(), Instant::now() - Duration::from_secs(600));
+    state.notify_cooldowns.insert(
+        "pid-2".to_string(),
+        Instant::now() - Duration::from_secs(600),
+    );
     cleanup_stale_cooldowns(&mut state, 5);
     assert!(
         !state.notify_cooldowns.contains_key("pid-2"),

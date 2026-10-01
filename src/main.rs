@@ -4898,7 +4898,10 @@ fn manage_sync_freeze(guard: &GuardPolicy, used: u8, dstate: &str, sync_frozen: 
                 "system",
                 EventSeverity::Info,
                 "disk/unfreeze",
-                format!("sync freeze marker was already cleared; resynced at {}%", used),
+                format!(
+                    "sync freeze marker was already cleared; resynced at {}%",
+                    used
+                ),
             ));
         } else if !guard_owns_sync_freeze_marker(&marker) {
             // Present but not ours: an operator (or `dracon-sync pause`)

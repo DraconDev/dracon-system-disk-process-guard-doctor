@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
-    check_safe_to_delete, expand_tilde, LinkCommands, LinkEntry, LinkEntryStatus, LinkStatusReport,
+    check_safe_to_delete_guard, expand_tilde, LinkCommands, LinkEntry, LinkEntryStatus,
+    LinkStatusReport,
     SystemPolicy,
 };
 
@@ -138,6 +139,9 @@ pub(crate) fn build_link_report_with(
         drifted,
         missing_target,
         missing_link,
+        // Populated by apply_link_policy with the per-entry failures it
+        // recovered from; a report-only build has none.
+        errors: Vec::new(),
     }
 }
 
@@ -176,60 +180,118 @@ pub(crate) fn unique_backup_path(dir: &Path, base: &str) -> PathBuf {
 }
 
 /// Apply link policy: create or fix symlinks according to the configuration.
+///
+/// FIXED 2026-10-01 (audit), three defects in one function:
+/// 1. `force_replace` called the STRICT `check_safe_to_delete`, whose
+///    SYSTEM_PROTECTED list contains `/home` and whose check is a DESCENDANT
+///    check — so every link under `$HOME` was refused and the flag was dead
+///    for every real-world link (including the one the example config ships).
+///    The guard-specific variant is the right one here: it still refuses exact
+///    system roots, the user's `protected_paths`, symlinks, and
+///    canonicalisation failures, and only skips the /home-descendant rule that
+///    exists to stop bulk tree deletion.
+/// 2. A force-replaced file was renamed to a backup and THEN symlinked, with
+///    no rollback: a failing `symlink(2)` left the path gone with the data
+///    only in a backup.
+/// 3. A `?` inside the entry loop aborted the whole batch on the first
+///    failure, so later entries were never repaired and no report was built.
+///    Failures are now collected per entry and the report is still returned.
 pub(crate) fn apply_link_policy(
     policy: &SystemPolicy,
     force_replace: bool,
 ) -> Result<LinkStatusReport> {
+    let mut errors: Vec<String> = Vec::new();
     for entry in &policy.links.entries {
-        let link = expand_tilde(&entry.link);
-        let target = expand_tilde(&entry.target);
-
-        if !target.exists() {
-            continue;
+        if let Err(e) = apply_one_link(entry, force_replace, &policy.guard.protected_paths) {
+            eprintln!("✗ link {}: {e:#}", entry.link);
+            errors.push(format!("{}: {e:#}", entry.link));
         }
+    }
 
-        if let Some(parent) = link.parent() {
-            fs::create_dir_all(parent)?;
-        }
+    let mut report = build_link_report(policy);
+    report.errors = errors;
+    Ok(report)
+}
 
-        let meta = fs::symlink_metadata(&link).ok();
-        if let Some(meta) = meta {
-            if meta.file_type().is_symlink() {
-                // FIXED 2026-07-26 (audit H-13): the pre-fix code routed
-                // existing symlinks through check_safe_to_delete, which
-                // ALWAYS refuses symlinks — so `link apply` errored on
-                // every existing symlink, including the drifted ones it
-                // exists to fix (and even in-sync ones, since there was
-                // no short-circuit). Removing a symlink never touches its
-                // target, so remove it directly; skip entries already in
-                // sync.
-                if evaluate_link(entry).in_sync {
-                    continue;
-                }
-                fs::remove_file(&link)?;
-            } else if force_replace {
-                // A force-replaced regular file is deleted (after backup),
-                // so the user's protected list applies here exactly as it
-                // does on every other delete path.
-                let safe_link = check_safe_to_delete(&link, &policy.guard.protected_paths)?;
-                let backup = backup_path_for(&link);
-                fs::rename(&safe_link, backup)?;
-            } else {
-                continue;
+/// Apply a single link entry. Errors are returned to the caller, which collects
+/// them so one bad entry cannot strand the rest of the batch.
+fn apply_one_link(
+    entry: &LinkEntry,
+    force_replace: bool,
+    protected_paths: &[String],
+) -> Result<()> {
+    let link = expand_tilde(&entry.link);
+    let target = expand_tilde(&entry.target);
+
+    if !target.exists() {
+        return Ok(());
+    }
+
+    if let Some(parent) = link.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    // Set when the original file was renamed aside, so a failed symlink(2) can
+    // put the user's data back where it was.
+    let mut backup_to_restore: Option<PathBuf> = None;
+    let meta = fs::symlink_metadata(&link).ok();
+    if let Some(meta) = meta {
+        if meta.file_type().is_symlink() {
+            // FIXED 2026-07-26 (audit H-13): the pre-fix code routed
+            // existing symlinks through check_safe_to_delete, which
+            // ALWAYS refuses symlinks — so `link apply` errored on
+            // every existing symlink, including the drifted ones it
+            // exists to fix (and even in-sync ones, since there was
+            // no short-circuit). Removing a symlink never touches its
+            // target, so remove it directly; skip entries already in
+            // sync.
+            if evaluate_link(entry).in_sync {
+                return Ok(());
             }
+            fs::remove_file(&link)?;
+        } else if force_replace {
+            // A force-replaced regular file is deleted (after backup),
+            // so the user's protected list applies here exactly as it
+            // does on every other delete path. Guard variant, not the
+            // strict one — see apply_link_policy's note (1).
+            let safe_link = check_safe_to_delete_guard(&link, protected_paths)?;
+            let backup = backup_path_for(&link);
+            fs::rename(&safe_link, &backup)?;
+            backup_to_restore = Some(backup);
+        } else {
+            return Ok(());
         }
+    }
 
-        #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink(&target, &link)?;
+    #[cfg(unix)]
+    {
+        if let Err(e) = std::os::unix::fs::symlink(&target, &link) {
+            // The user's file is sitting in the backup; put it back rather than
+            // leaving the path empty (see apply_link_policy's note (2)).
+            if let Some(backup) = backup_to_restore {
+                if let Err(rb) = fs::rename(&backup, &link) {
+                    eprintln!(
+                        "link {}: symlink failed ({e}) AND restoring the backup failed ({rb}); the original file is at {}",
+                        link.display(),
+                        backup.display()
+                    );
+                } else {
+                    eprintln!(
+                        "link {}: symlink failed ({e}); the original file was restored",
+                        link.display()
+                    );
+                }
+            }
+            return Err(e.into());
         }
+    }
         #[cfg(not(unix))]
         {
             return Err(anyhow::anyhow!("link apply is only supported on unix"));
         }
     }
 
-    Ok(build_link_report(policy))
+    Ok(())
 }
 
 /// Display path relative to home if possible.
