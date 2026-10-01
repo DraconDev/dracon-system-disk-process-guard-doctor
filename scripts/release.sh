@@ -16,7 +16,10 @@
 #     no cargo publish for real, no gh release, no tag push). It still
 #     modifies local release surfaces (Cargo.toml, Cargo.lock, CHANGELOG.md,
 #     and the release-notes file) so the operator can inspect the diff;
-#     `--abort` reverts them.
+#     `--abort` reverts exactly those local files. It CANNOT and does not undo
+#     a real run's remote side effects (git tag, tag push, crates.io publish,
+#     GitHub release) — a real run followed by `--abort` leaves those standing
+#     and says so explicitly.
 #
 # Usage:
 #   scripts/release.sh <version> [options]
@@ -277,6 +280,32 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
     die_pre "version '$VERSION' is not semver (expected e.g. 0.112.12)"
 fi
 
+# The manifest version that matters is the one in [package], not the first
+# `^version =` line in the file: a future [workspace.package] block above it
+# would otherwise be the line that gets bumped (audit 2026-10-01).
+crate_manifest_version() {
+    awk -F'"' '
+        /^\[/ { in_package = ($0 == "[package]"); next }
+        in_package && /^version[[:space:]]*=/ { print $2; exit }
+    ' "$CRATE_TOML"
+}
+CURRENT_VERSION="$(crate_manifest_version)"
+[[ -n "$CURRENT_VERSION" ]] || die_pre "no [package] version found in $CRATE_TOML"
+
+# Monotonicity (DECIDED 2026-10-01): a version that is not newer than the
+# current one rewrites the manifest, closes the CHANGELOG under a misleading
+# header, and only fails later at the registry. Refuse it here, before
+# anything has been touched.
+if [[ "$(printf '%s\n%s\n' "$CURRENT_VERSION" "$VERSION" | sort -V | head -1)" != "$CURRENT_VERSION" ]]; then
+    die_pre "version '$VERSION' is not newer than the current $CURRENT_VERSION in ${RELPFX}Cargo.toml — refusing to release a downgrade or a re-publish"
+fi
+
+# Resolve the GitHub path once: both the generated release notes and the final
+# summary need it, and the notes are written long before the old late lookup.
+GH_PATH="$(git config --get "remote.${REMOTE}.url" 2>/dev/null || true)"
+GH_PATH="${GH_PATH%.git}"; GH_PATH="${GH_PATH##*github.com[:/]}"
+[[ -n "$GH_PATH" ]] || GH_PATH="DraconDev/dracon-system-disk-process-guard-doctor"
+
 # ----- step 1: test discipline gates (AGENTS.md) -------------------------
 log "step 1/${TOTAL_STEPS}: test discipline gates (AGENTS.md)"
 # Run the repository's mandatory gates before any release-surface mutation.
@@ -315,14 +344,23 @@ ok "  all gates passed"
 
 # ----- step 2: bump Cargo.toml version ------------------------------------
 log "step 2/${TOTAL_STEPS}: bumping ${RELPFX}Cargo.toml to ${VERSION}"
-current=$(awk -F'"' '/^version[[:space:]]*=/{print $2; exit}' "$CRATE_TOML" 2>/dev/null || true)
-if [[ -z "$current" ]]; then
-    die_pre "no version found in $CRATE_TOML"
-fi
+current="$CURRENT_VERSION"
 if [[ "$current" == "$VERSION" ]]; then
     ok "  $CRATE_TOML already at $VERSION"
 else
-    sed -i "0,/^version[[:space:]]*=/{s/^version[[:space:]]*=.*$/version = \"${VERSION}\"/}" "$CRATE_TOML"
+    # Rewrite only the [package] version line, and fail loudly rather than
+    # silently leaving a stale version behind.
+    toml_tmp="$(mktemp "${CRATE_TOML}.XXXXXX")"
+    if ! awk -v v="$VERSION" '
+            /^\[/ { in_package = ($0 == "[package]"); next }
+            in_package && /^version[[:space:]]*=/ && !done { print "version = \"" v "\""; done = 1; next }
+            { print }
+            END { if (!done) exit 1 }
+        ' "$CRATE_TOML" > "$toml_tmp"; then
+        rm -f "$toml_tmp"
+        die "could not rewrite the [package] version in $CRATE_TOML"
+    fi
+    mv "$toml_tmp" "$CRATE_TOML"
     ok "  $CRATE_TOML: $current → $VERSION"
 fi
 
@@ -335,6 +373,17 @@ DATE=$(date -u +%Y-%m-%d)
 # tested idempotent helper. Re-running after a partial release now leaves an
 # existing version header byte-identical instead of duplicating it. A dry-run
 # deliberately writes the local release surface so --abort has real work.
+# Refuse to close an empty [Unreleased]: the closer would write a bare
+# version header with no body, producing a release whose notes say nothing
+# (audit 2026-10-01). Checked before any mutation.
+if ! awk '
+    /^## \[Unreleased\]/ { seen = 1; next }
+    /^## \[/ { seen = 0 }
+    seen && /^[^[:space:]#]/ { found = 1 }
+    END { exit !found }
+' "$CHANGELOG"; then
+    die_pre "$CHANGELOG has no content under [Unreleased] — write the release notes first, or there is nothing to ship"
+fi
 python3 "$SCRIPT_DIR/close-changelog.py" "$CHANGELOG" "$VERSION" "$DATE"
 ok "  $CHANGELOG: [Unreleased] closed as [${VERSION}] - ${DATE} (or already closed)"
 
@@ -358,20 +407,23 @@ Invisible git sync daemon for deterministic AI-assisted development.
 ## Install
 
 \`\`\`bash
-cargo install dracon-system --version ${VERSION}
+# --root "\$HOME/.local" puts the binary where the shipped unit's ExecStart
+# (%h/.local/bin/dracon-system) expects it. A bare \`cargo install\` lands it in
+# ~/.cargo/bin instead, and the service then dies with 203/EXEC.
+cargo install dracon-system --version ${VERSION} --root "\$HOME/.local"
 \`\`\`
 
 ## Docker / systemd
 
 \`\`\`bash
 # systemd unit (Linux)
-curl -fsSL https://raw.githubusercontent.com/DraconDev/dracon-utilities/main/dracon-system/dracon-system-guard.service \\
+curl -fsSL https://raw.githubusercontent.com/${GH_PATH}/main/dracon-system-guard.service \\
     -o ~/.config/systemd/user/dracon-system-guard.service
 systemctl --user daemon-reload
 systemctl --user enable --now dracon-system-guard.service
 \`\`\`
 
-**Full Changelog**: https://github.com/DraconDev/dracon-utilities/compare/$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")...v${VERSION}
+**Full Changelog**: https://github.com/${GH_PATH}/compare/$(git describe --tags --abbrev=0 2>/dev/null || echo "dracon-system-v0.0.0")...${TAG}
 EOF
     ok "  $NOTES_REL created"
 fi
@@ -431,14 +483,14 @@ run git add -f -- "${RELPFX}Cargo.toml" "Cargo.lock" "${RELPFX}CHANGELOG.md" "$N
 # Idempotent re-run path: skip already-completed commit, tag, and GitHub
 # release operations when a previous run failed later in the pipeline.
 if [[ $DRY_RUN -eq 1 ]]; then
-    run git commit --no-verify -m "release: v${VERSION}"
+    run git commit -m "release: v${VERSION}"
     run git tag "$TAG"
 else
     if git diff --cached --quiet; then
         ok "  nothing to commit (release commit already exists)"
     else
-        printf '   $ git commit --no-verify -m release: v%s\n' "$VERSION"
-        git commit --no-verify -m "release: v${VERSION}"
+        printf '   $ git commit -m release: v%s\n' "$VERSION"
+        git commit -m "release: v${VERSION}"
     fi
     if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
         ok "  tag $TAG already exists"
@@ -486,9 +538,6 @@ ok ""
 ok "════════════════════════════════════════════"
 ok "✓ dracon-system v${VERSION} released"
 ok "  crates.io:  https://crates.io/crates/dracon-system"
-GH_PATH="$(git config --get "remote.${REMOTE}.url" 2>/dev/null || true)"
-GH_PATH="${GH_PATH%.git}"; GH_PATH="${GH_PATH##*github.com[:/]}"
-[[ -n "$GH_PATH" ]] || GH_PATH="DraconDev/dracon-utilities"
 ok "  github:     https://github.com/${GH_PATH}/releases/tag/${TAG}"
 ok "════════════════════════════════════════════"
 
