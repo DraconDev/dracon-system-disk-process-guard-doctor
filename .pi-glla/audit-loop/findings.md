@@ -70,9 +70,9 @@
 ## Policy, setup and docs
 - [x] FIX: MEDIUM: unfreeze_below_percent has no floor and the unfreeze test is `used <= value`, so a legal 0 (or 1) freezes sync until the 30m freeze watchdog clears the marker (src/policy.rs:1178; src/main.rs:4890,6158) — fixed in 9841ddd, 91232b6
 - [x] FIX: LOW: disk_early_warn_percent is the only percent threshold without a 1..100 band — 0 makes the guard warn on every cycle (src/policy.rs:1151 vs 1183) — fixed in 9841ddd, 91232b6
-- [ ] FIX: LOW: unknown-key detection stops at depth 1, so a typo inside a `[[links.entries]]` table is accepted silently while the same typo one level up is reported (src/policy.rs:1379)
-- [ ] FIX: LOW: hint_for never considers section names, so the most common config typo (`guards` for `[guard]`) gets no "did you mean" at all (src/policy.rs:1416)
-- [ ] FIX: LOW: the near-miss hint crosses a semantic tier — `rust_target_min_age_days` is suggested for a mistyped action-tier key, pointing the operator at the proactive gate (src/policy.rs:1416)
+- [x] FIX: LOW: unknown-key detection stops at depth 1, so a typo inside a `[[links.entries]]` table is accepted silently while the same typo one level up is reported (src/policy.rs:1379) — fixed in 800e58e
+- [x] FIX: LOW: hint_for never considers section names, so the most common config typo (`guards` for `[guard]`) gets no "did you mean" at all (src/policy.rs:1416) — fixed in 800e58e
+- [x] FIX: LOW: the near-miss hint crosses a semantic tier — `rust_target_min_age_days` is suggested for a mistyped action-tier key, pointing the operator at the proactive gate (src/policy.rs:1416) — fixed in 800e58e
 - [x] FIX: LOW: BLUEPRINT.md pins normalize_guard_policy "at line 837" (it is at src/policy.rs:1087) and claims it bounds all values while 13 sentinel-zero knobs are deliberately left alone (BLUEPRINT.md:138) — fixed in docs batch
 - [x] FIX: LOW: the template header lists cap_offenders_cpu_percent as NOT CLAMPED but the code clamps it to 100 (dracon-system.example.toml:36; src/policy.rs:1217) — fixed in docs batch
 - [x] FIX: LOW: the setup report swallows a policy parse error and reports built-in defaults as "no policy exists", telling the operator to configure a file that is actually broken (src/setup.rs:111) — fixed in e4fe91e
@@ -81,9 +81,9 @@
 ## Storage, links and quarantine
 - [x] FIX: HIGH: `link apply --force-replace` calls the strict check_safe_to_delete, whose SYSTEM_PROTECTED list contains /home — every link under $HOME is refused, so the flag is dead for every real-world link (src/links.rs:214; src/safety.rs:7,45) — fixed in 10554b3, 5a25763, 0e91aa4
 - [x] FIX: MEDIUM: force_replace renames the user's file to a backup and then creates the symlink with `?` and no rollback, so a symlink failure leaves the path gone and the data only in a backup (src/links.rs:216,224) — fixed in 5a25763, 0e91aa4
-- [ ] FIX: MEDIUM: apply_relocate removes the staging copy with `?` after the symlink is in place, so a removal failure reports the move as failed, never records the relocation, and leaves a full duplicate (src/relocate.rs:353; src/main.rs:6085)
+- [x] FIX: MEDIUM: apply_relocate removes the staging copy with `?` after the symlink is in place, so a removal failure reports the move as failed, never records the relocation, and leaves a full duplicate (src/relocate.rs:353; src/main.rs:6085) — fixed in 800e58e
 - [x] FIX: MEDIUM: apply_link_policy aborts the whole batch on the first failing entry, skipping every later entry and the report (src/links.rs:187) — fixed in 5a25763, 0e91aa4
-- [ ] FIX: MEDIUM: quarantine_move's verification walk propagates with `?` and leaves a fully copied entry dir with no manifest, which restore refuses and expire pins forever (src/quarantine.rs:179)
+- [x] FIX: MEDIUM: quarantine_move's verification walk propagates with `?` and leaves a fully copied entry dir with no manifest, which restore refuses and expire pins forever (src/quarantine.rs:179) — fixed in 800e58e
 
 ## doctor / CLI
 - [x] FIX: MEDIUM: doctor audits only dracon-sync's policy and service — it never checks the guard's own policy or service, and hardcodes a path instead of using effective_system_policy_path() (src/doctor.rs:36; src/main.rs:6416) — fixed in 55a6542
