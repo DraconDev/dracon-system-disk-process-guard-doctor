@@ -3057,6 +3057,29 @@ async fn auto_cleanup_rust_targets(
             continue;
         }
 
+        // FIXED 2026-10-02: the user-protected-path refusal used to live INSIDE
+        // the `if apply` block. In a dry run that block is skipped entirely, so
+        // the preview listed every protected tree as reclaimable and only
+        // refused it at apply time — overstating reclaimable space by however
+        // large the protected workspace is (~66 GiB on this host), which misled
+        // the operator twice in one session.
+        //
+        // Hoisted so preview and apply go through ONE check and cannot
+        // disagree, rather than adding a second filter that would drift. The
+        // reason travels with the verdict, matching the convention the
+        // active-build protections above already use.
+        if let Err(e) = check_safe_to_delete_guard(&target.path, &guard.protected_paths) {
+            if apply {
+                eprintln!("⚠️ skipping {}: {:#}", target.path.display(), e);
+            }
+            result.protected_paths.push(format!(
+                "{} ({})",
+                target.path.display(),
+                one_line(&e.to_string())
+            ));
+            continue;
+        }
+
         // ADDED 2026-09-27 (space tiers Phase 2): quarantine-first routing —
         // move to quarantine (TTL'd, restorable) instead of deleting.
         let mut quarantined = false;
@@ -3080,17 +3103,10 @@ async fn auto_cleanup_rust_targets(
                     }
                 }
             } else {
-                let safe_path =
-                    match check_safe_to_delete_guard(&target.path, &guard.protected_paths) {
-                        Ok(p) => p,
-                        Err(e) => {
-                            eprintln!("⚠️ skipping {}: {}", target.path.display(), e);
-                            result
-                                .protected_paths
-                                .push(target.path.display().to_string());
-                            continue;
-                        }
-                    };
+                // `check_safe_to_delete_guard` already ran above for BOTH paths,
+                // so the canonical path is re-derivable without a second
+                // refusal branch that could drift from it.
+                let safe_path = target.path.canonicalize().unwrap_or(target.path.clone());
                 if let Err(e) = tokio::fs::remove_dir_all(&safe_path).await {
                     eprintln!("⚠️ failed to remove {}: {}", target.path.display(), e);
                     continue;
@@ -6135,6 +6151,16 @@ fn maybe_expire_quarantine(guard: &GuardPolicy, state: &mut GuardRuntimeState, n
         }
         Err(e) => eprintln!("⚠️ quarantine expire failed: {e:#}"),
     }
+}
+
+/// Collapse a multi-line message into one line for a table cell.
+///
+/// anyhow's `{:#}` walks the whole error chain and newlines it. A table cell
+/// that contains one would break the column alignment and, worse, let a
+/// newline in an error string masquerade as a new row in a preview the
+/// operator reads to decide whether to delete things.
+fn one_line(msg: &str) -> String {
+    msg.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn cleanup_stale_cooldowns(state: &mut GuardRuntimeState, cooldown_secs: u64) {
