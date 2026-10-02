@@ -603,7 +603,11 @@ fn quarantine_expire_detailed_dry_run_removes_nothing_but_reports() {
     let entry_dir = age_entry(&qdir, &manifest, 40);
 
     let outcome = crate::quarantine_expire_detailed(&qdir, 30, false).unwrap();
-    assert_eq!(outcome.removed.len(), 1, "dry run must still report the plan");
+    assert_eq!(
+        outcome.removed.len(),
+        1,
+        "dry run must still report the plan"
+    );
     assert!(entry_dir.exists(), "dry run must not delete");
     cleanup(&root);
 }
