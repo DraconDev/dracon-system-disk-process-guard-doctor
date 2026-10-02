@@ -1517,7 +1517,10 @@ fn unresolvable_protected_entry_warns_once_and_does_not_refuse() {
         !std::path::Path::new(&a).exists(),
         "precondition: the entry must not resolve"
     );
-    assert!(crate::safety::note_unresolvable_protected(&a), "first sighting warns");
+    assert!(
+        crate::safety::note_unresolvable_protected(&a),
+        "first sighting warns"
+    );
     assert!(
         !crate::safety::note_unresolvable_protected(&a),
         "a second sighting must be silent"

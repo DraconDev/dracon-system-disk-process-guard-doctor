@@ -3235,3 +3235,94 @@ fn maybe_expire_quarantine_respects_both_opt_outs() {
 
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// The objective requires expiry to "tolerate absurd interval values without
+/// panicking", and until now that held only by inspection. `cooldown_due` is
+/// the only place the interval is used, and the classic failure here is
+/// `Instant - Duration`, which PANICS on underflow rather than saturating —
+/// `cleanup_stale_cooldowns` already guards that with `checked_sub` and a
+/// comment saying a large policy must not kill the daemon. The same reasoning
+/// has to hold for the expiry cadence, so it is pinned rather than reasoned.
+///
+/// These run the real `maybe_expire_quarantine` end to end, so a future change
+/// that reintroduces arithmetic on the knob (a `*2`, a `checked_sub` removed,
+/// a `Duration::from_secs(interval) * 2`) fails here rather than only under an
+/// absurd operator config.
+#[test]
+fn absurd_expiry_intervals_never_panic() {
+    let root = std::env::temp_dir().join(format!(
+        "dracon-expire-absurd-{}-{}",
+        std::process::id(),
+        "intervals"
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let qdir = root.join("q");
+    // One expired entry, so the pass has real work to attempt.
+    let src = root.join("work").join("proj");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("a.txt"), b"hello").unwrap();
+    let manifest = quarantine_move(&src, &qdir, &[]).unwrap();
+    let aged = QuarantineManifest {
+        name: manifest.name.clone(),
+        origin: manifest.origin.clone(),
+        moved_at_unix: now_unix().saturating_sub(400 * 86_400),
+        bytes: manifest.bytes,
+        files: manifest.files,
+    };
+    std::fs::write(
+        qdir.join(&manifest.name).join(".quarantine.json"),
+        serde_json::to_string_pretty(&aged).unwrap(),
+    )
+    .unwrap();
+
+    // u64::MAX is the worst case: any `*2` overflows, any subtraction
+    // underflows, and `Duration::from_secs` on it is the boundary Instant uses.
+    for interval in [
+        0u64,
+        1,
+        60,
+        86_400,
+        u32::MAX as u64,
+        u64::MAX / 2,
+        u64::MAX - 1,
+        u64::MAX,
+    ] {
+        let policy = GuardPolicy {
+            quarantine_dir: qdir.display().to_string(),
+            clean_quarantine_first: true,
+            quarantine_ttl_days: 30,
+            quarantine_expire_interval_secs: interval,
+            ..Default::default()
+        };
+        let mut state = GuardRuntimeState::default();
+        // Must not panic. A huge interval simply means "not due yet" unless the
+        // state says otherwise, so the entry survives; that is the safe
+        // direction and is what we assert for the non-zero huge values.
+        maybe_expire_quarantine(&policy, &mut state, Instant::now());
+        if interval != 0 {
+            assert!(
+                qdir.join(&manifest.name).exists(),
+                "a huge non-zero interval must not become an immediate expiry \
+                 (interval={interval})"
+            );
+        }
+    }
+
+    // And with the interval genuinely due, the entry is still expired exactly
+    // once — proving the huge-value branches did not silently disable the pass.
+    let due = GuardPolicy {
+        quarantine_dir: qdir.display().to_string(),
+        clean_quarantine_first: true,
+        quarantine_ttl_days: 30,
+        quarantine_expire_interval_secs: 60,
+        ..Default::default()
+    };
+    let mut state = GuardRuntimeState::default();
+    maybe_expire_quarantine(&due, &mut state, Instant::now());
+    assert!(
+        !qdir.join(&manifest.name).exists(),
+        "a due pass must still expire the entry"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
