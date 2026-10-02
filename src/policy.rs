@@ -1113,6 +1113,17 @@ pub(crate) fn normalize_storage_policy(storage: &mut StoragePolicy) -> Vec<&'sta
 /// Apply every documented legal range to a guard policy, returning the names
 /// of the fields that were clamped (empty when the policy was already legal).
 pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) -> Vec<&'static str> {
+    normalize_guard_policy_with_home(policy, dirs::home_dir().as_deref())
+}
+
+/// `normalize_guard_policy` with an explicit home, so the `~` expansion can be
+/// tested without mutating the process-wide `$HOME` (which would race every
+/// other test in the binary). Mirrors `expand_tilde_with_home`,
+/// `resolve_policy_path_with_home` and `resolve_guard_log_path_with_home`.
+pub(crate) fn normalize_guard_policy_with_home(
+    policy: &mut GuardPolicy,
+    home: Option<&Path>,
+) -> Vec<&'static str> {
     let mut adjusted: Vec<&'static str> = Vec::new();
 
     // FIXED 2026-10-02 (audit HIGH): `protected_paths` was the ONLY path-valued
@@ -1132,7 +1143,7 @@ pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) -> Vec<&'static s
     let expanded_protected: Vec<String> = policy
         .protected_paths
         .iter()
-        .map(|p| expand_tilde_with_home(p.trim(), dirs::home_dir().as_deref()).display().to_string())
+        .map(|p| expand_tilde_with_home(p.trim(), home).display().to_string())
         .collect();
     if expanded_protected != policy.protected_paths {
         adjusted.push("protected_paths");
