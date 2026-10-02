@@ -3309,9 +3309,13 @@ fn expiry_policy(qdir: &Path, interval: u64) -> GuardPolicy {
 fn absurd_expiry_intervals_are_not_due_once_the_cooldown_exists() {
     for &interval in ABSURD_INTERVALS {
         let (root, qdir, name) = absurd_interval_fixture("not-due");
-        // Pre-stamp the cooldown so the interval is actually consulted.
+        // Stamped 2s ago, not `now`: that is what pins the `.max(60)` floor.
+        // With a zero-aged stamp even a dropped floor still reads "not due", so
+        // the floor would go unpinned; 2 seconds is past a typo'd interval of 1
+        // but far short of 60, so the floor is the only thing keeping this
+        // entry alive. Without it a policy of 1 becomes a per-pass delete.
         let mut state = GuardRuntimeState {
-            last_quarantine_expire: Some(Instant::now()),
+            last_quarantine_expire: Some(Instant::now() - Duration::from_secs(2)),
             ..Default::default()
         };
         maybe_expire_quarantine(&expiry_policy(&qdir, interval), &mut state, Instant::now());
