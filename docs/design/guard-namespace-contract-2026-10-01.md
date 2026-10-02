@@ -241,6 +241,44 @@ The same applies to `protected_paths`: the entire protection rests on ONE call,
 the config keeps parsing, the guard keeps listing candidates, and the protected
 tree gets quarantined anyway with nothing failing. That is now pinned too.
 
+But pinning the call was not sufficient, and the first version of this work got
+that wrong in exactly the way this section warns about. `protected_paths` was
+the **only** path-valued guard knob that never expanded `~`. Every sibling —
+`quarantine_dir`, `relocate_cold_root`, `relocate_candidate_roots`,
+`rust_search_roots`, the guard log path — expands at point of use. This one
+passed the raw string to `canonicalize`, which resolves `~` against the process
+CWD, returned NotFound, and was `continue`d **silently**. So:
+
+- the shipped `protected_paths = ["~/Dev/dracon-utilities"]` parsed,
+- the guard reported the 64.0 GiB `dracon-utilities/target` as a candidate,
+- the `check_safe_to_delete_guard` test passed, because it hardcoded an absolute
+  path.
+
+Config inert, test green, protection absent. The empirical proof that does not
+depend on reading any of this:
+
+```
+$ dracon-system relocate /home/dracon/Dev/dracon-utilities/target --to /mnt/data/cold
+│ Size ┆ 64.0 GiB in 99653 files       │   ← not protected
+```
+
+The fix is two parts, and both were needed:
+
+1. `~` is expanded for `protected_paths` in `normalize_guard_policy_with_home` —
+   the single normalization boundary, idempotent, and reported in the `adjusted`
+   drift list. Expanding at point of use would have fixed only the one caller
+   that happened to call `expand_tilde`.
+2. An unresolvable protected entry now **warns**, once per entry, naming the
+   entry. The original `continue` had no diagnostic at all, which is precisely
+   why the `~` form could fail invisibly for four days while the operator
+   believed the tree was protected. It still fails **open** rather than
+   refusing every candidate: a typo in one entry must not become a disk that
+   fills and never reclaims.
+
+The regression test drives the whole policy path — parse TOML, normalize, ask
+the real classifier — so an absolute-path test cannot be green while the shipped
+config is inert.
+
 What is *not* fixed: `guard clean --rust` still lists protected candidates in
 its dry-run preview and refuses them only at apply time, so the preview
 overstates what is reclaimable. Cosmetic, but it is why the preview still shows

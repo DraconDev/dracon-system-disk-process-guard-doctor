@@ -42,23 +42,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   doing twice, returning origin and size alongside the name so the log line is
   actionable and `pinned` entries are reported on every pass (an unreadable
   manifest means no TTL is computable, so such entries need a human and would
-  otherwise accumulate silently). 9 new tests; every one mutation-checked,
-  including dropping `check_safe_to_delete_guard` from `quarantine_move` —
-  which is the single call the whole `protected_paths` mechanism rests on.
+  otherwise accumulate silently) — including when `quarantine_ttl_days = 0`,
+  where nothing is removed but the report is still produced. 13 new tests
+  overall; every one mutation-checked, including dropping
+  `check_safe_to_delete_guard` from `quarantine_move` — which is the single
+  call the whole `protected_paths` mechanism rests on.
 
 - **The action tier could quarantine the guard's own build cache (2026-10-02)** —
   `auto_cleanup_rust = true` protects ACTIVE builds (a running cargo/rustc, or a
   target written in the last 60s) and nothing else, so at the 85% action
   threshold the guard would have quarantined `dracon-utilities/target` and the
   three nested utilities' targets — 51.5 GiB of cache for the very repo that
-  ships the guard, unattended. `protected_paths` already did this job with
-  ancestor matching, so the live policy now sets
-  `protected_paths = ["~/Dev/dracon-utilities"]`; no code was needed. The
-  trade-off is deliberate and recorded in the policy: build cache there is never
-  reclaimed, even at the 92% critical tier. Note that `guard clean --rust`
-  still LISTS protected candidates in its dry-run preview and only refuses them
-  at apply time (as `Protected:`), which makes the preview overstate what is
-  reclaimable; that is a cosmetic wart, not a correctness gap.
+  ships the guard, unattended. The live policy now sets
+  `protected_paths = ["~/Dev/dracon-utilities"]`, which `check_safe_to_delete_guard`
+  already honours with ancestor matching.
+  It took TWO fixes, not one. `protected_paths` turned out to be the only
+  path-valued guard knob that never expanded `~`: every sibling
+  (`quarantine_dir`, `relocate_cold_root`, `rust_search_roots`, the guard log
+  path) expands at point of use, but this one passed the raw string to
+  `canonicalize`, which resolves `~` against the process CWD, failed NotFound,
+  and was skipped SILENTLY — so the shipped `~` entry parsed, reported as
+  configured, and protected nothing, while the absolute-path test stayed green.
+  Verified with a read-only proof: `relocate …/dracon-utilities/target` printed a
+  64.0 GiB move plan with the `~` form and refused with "refusing to delete
+  protected path" once expanded. `~` is now expanded in
+  `normalize_guard_policy_with_home` (the single normalization boundary, and
+  idempotent, and reported in the `adjusted` drift list), and an unresolvable
+  protected entry now WARNS once per entry naming the entry instead of being
+  skipped in silence. It deliberately still fails open rather than refusing
+  every candidate: a typo must not become a disk that fills and never reclaims.
+  4 new tests, including one that drives the whole policy path — parse TOML,
+  normalize, ask the real classifier — so the config can no longer be inert
+  while an absolute-path test stays green. Also still true: `guard clean --rust`
+  LISTS protected candidates in its dry-run preview and refuses them only at
+  apply time (as `Protected:`), so the preview overstates what is reclaimable;
+  cosmetic, not a correctness gap.
 
 - **The guard's auto-reclaim reclaimed zero bytes for four days, silently (2026-10-01)** —
   a second, larger consequence of the `ReadWritePaths` gap below, recorded here
