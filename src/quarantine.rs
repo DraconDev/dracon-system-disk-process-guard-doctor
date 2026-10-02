@@ -425,6 +425,7 @@ pub(crate) fn quarantine_restore(root: &Path, name: &str) -> Result<PathBuf> {
 /// One entry removed (or, in a dry run, that would be removed) by an expiry
 /// pass. Carries the origin and size so a caller can log a deletion an
 /// operator could act on, rather than a bare name.
+#[derive(Debug)]
 pub(crate) struct ExpiredEntry {
     pub(crate) name: String,
     pub(crate) origin: String,
