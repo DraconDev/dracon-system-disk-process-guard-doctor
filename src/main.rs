@@ -6057,7 +6057,7 @@ fn auto_cleanup_due_at(state: &GuardRuntimeState, interval_secs: u64, now: Insta
 /// deliberately: `Instant - Duration` panics on underflow, and a policy large
 /// enough to reach it must not kill the daemon.
 fn cooldown_due(last: Option<Instant>, interval_secs: u64, now: Instant) -> bool {
-    last.is_none_or(|last| now.duration_since(last).as_secs() >= interval_secs.saturating_mul(2).max(60))
+    last.is_none_or(|last| now.duration_since(last) >= std::time::Duration::from_secs(interval_secs).saturating_mul(2))
 }
 
 /// Enforce the quarantine TTL from inside the guard, on its own cadence.
