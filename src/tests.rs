@@ -3394,6 +3394,19 @@ async fn dry_run_preview_omits_user_protected_targets() {
         let target = proj.join("target");
         std::fs::create_dir_all(target.join("debug")).unwrap();
         std::fs::write(target.join("debug").join("blob.bin"), vec![7u8; 4 * 1024 * 1024]).unwrap();
+        // The scan has a "modified <60s ago means an active build" backstop, so
+        // a fixture written a moment ago is protected on that ground alone and
+        // the candidate list comes back empty. Age the tree instead of trying
+        // to relax the guard: `touch -d` needs no new dependency, and the
+        // alternative (setting mtime from Rust) needs a crate this repo does
+        // not carry.
+        let aged = std::process::Command::new("touch")
+            .arg("-d")
+            .arg("20 days ago")
+            .arg(&target)
+            .output()
+            .expect("touch must be available to age the fixture");
+        assert!(aged.status.success(), "touch failed: {}", String::from_utf8_lossy(&aged.stderr));
     }
 
     let guard = GuardPolicy {
