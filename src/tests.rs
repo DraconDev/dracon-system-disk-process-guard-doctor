@@ -3237,27 +3237,45 @@ fn maybe_expire_quarantine_respects_both_opt_outs() {
 }
 
 /// The objective requires expiry to "tolerate absurd interval values without
-/// panicking", and until now that held only by inspection. `cooldown_due` is
-/// the only place the interval is used, and the classic failure here is
+/// panicking", and until now that held only by inspection. `cooldown_due` is the
+/// only place the interval is used, and the classic failure here is
 /// `Instant - Duration`, which PANICS on underflow rather than saturating —
 /// `cleanup_stale_cooldowns` already guards that with `checked_sub` and a
 /// comment saying a large policy must not kill the daemon. The same reasoning
 /// has to hold for the expiry cadence, so it is pinned rather than reasoned.
 ///
-/// These run the real `maybe_expire_quarantine` end to end, so a future change
-/// that reintroduces arithmetic on the knob (a `*2`, a `checked_sub` removed,
-/// a `Duration::from_secs(interval) * 2`) fails here rather than only under an
-/// absurd operator config.
-#[test]
-fn absurd_expiry_intervals_never_panic() {
+/// Two halves, because the cadence has two distinct behaviours and conflating
+/// them hides both:
+///
+/// - With a cooldown already recorded, an absurd interval must read as NOT
+///   due, so a fat-fingered policy cannot turn into a per-pass delete storm.
+/// - With no prior run, the very first pass is due for ANY interval — that is
+///   the documented "nothing has run yet" case — so an absurd value must still
+///   complete normally instead of panicking.
+///
+/// Values include `u64::MAX`: any `*2` overflows, any subtraction underflows,
+/// and `Duration::from_secs` on it sits on the boundary `Instant` uses.
+const ABSURD_INTERVALS: &[u64] = &[
+    0,
+    1,
+    60,
+    86_400,
+    u32::MAX as u64,
+    u64::MAX / 2,
+    u64::MAX - 1,
+    u64::MAX,
+];
+
+/// Build an expired entry in a fresh quarantine root, returning
+/// `(root, quarantine_dir, entry_name)`.
+fn absurd_interval_fixture(tag: &str) -> (PathBuf, PathBuf, String) {
     let root = std::env::temp_dir().join(format!(
         "dracon-expire-absurd-{}-{}",
         std::process::id(),
-        "intervals"
+        tag
     ));
     let _ = std::fs::remove_dir_all(&root);
     let qdir = root.join("q");
-    // One expired entry, so the pass has real work to attempt.
     let src = root.join("work").join("proj");
     std::fs::create_dir_all(&src).unwrap();
     std::fs::write(src.join("a.txt"), b"hello").unwrap();
@@ -3274,55 +3292,56 @@ fn absurd_expiry_intervals_never_panic() {
         serde_json::to_string_pretty(&aged).unwrap(),
     )
     .unwrap();
+    (root, qdir, manifest.name)
+}
 
-    // u64::MAX is the worst case: any `*2` overflows, any subtraction
-    // underflows, and `Duration::from_secs` on it is the boundary Instant uses.
-    for interval in [
-        0u64,
-        1,
-        60,
-        86_400,
-        u32::MAX as u64,
-        u64::MAX / 2,
-        u64::MAX - 1,
-        u64::MAX,
-    ] {
-        let policy = GuardPolicy {
-            quarantine_dir: qdir.display().to_string(),
-            clean_quarantine_first: true,
-            quarantine_ttl_days: 30,
-            quarantine_expire_interval_secs: interval,
-            ..Default::default()
-        };
-        let mut state = GuardRuntimeState::default();
-        // Must not panic. A huge interval simply means "not due yet" unless the
-        // state says otherwise, so the entry survives; that is the safe
-        // direction and is what we assert for the non-zero huge values.
-        maybe_expire_quarantine(&policy, &mut state, Instant::now());
-        if interval != 0 {
-            assert!(
-                qdir.join(&manifest.name).exists(),
-                "a huge non-zero interval must not become an immediate expiry \
-                 (interval={interval})"
-            );
-        }
-    }
-
-    // And with the interval genuinely due, the entry is still expired exactly
-    // once — proving the huge-value branches did not silently disable the pass.
-    let due = GuardPolicy {
+fn expiry_policy(qdir: &Path, interval: u64) -> GuardPolicy {
+    GuardPolicy {
         quarantine_dir: qdir.display().to_string(),
         clean_quarantine_first: true,
         quarantine_ttl_days: 30,
-        quarantine_expire_interval_secs: 60,
+        quarantine_expire_interval_secs: interval,
         ..Default::default()
-    };
-    let mut state = GuardRuntimeState::default();
-    maybe_expire_quarantine(&due, &mut state, Instant::now());
-    assert!(
-        !qdir.join(&manifest.name).exists(),
-        "a due pass must still expire the entry"
-    );
+    }
+}
 
+#[test]
+fn absurd_expiry_intervals_are_not_due_once_the_cooldown_exists() {
+    for &interval in ABSURD_INTERVALS {
+        let (root, qdir, name) = absurd_interval_fixture("not-due");
+        // Pre-stamp the cooldown so the interval is actually consulted.
+        let mut state = GuardRuntimeState {
+            last_quarantine_expire: Some(Instant::now()),
+            ..Default::default()
+        };
+        maybe_expire_quarantine(&expiry_policy(&qdir, interval), &mut state, Instant::now());
+        if interval != 0 {
+            assert!(
+                qdir.join(&name).exists(),
+                "a non-zero interval must not be due immediately (interval={interval})"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+#[test]
+fn absurd_expiry_intervals_complete_normally_on_the_first_pass() {
+    let (root, qdir, name) = absurd_interval_fixture("first-pass");
+    // No prior run: the first pass is due for every interval, so this exercises
+    // the actual expiry path with the knob at its extremes. It must not panic,
+    // and it must expire the entry rather than silently doing nothing.
+    for &interval in ABSURD_INTERVALS {
+        let mut state = GuardRuntimeState::default();
+        maybe_expire_quarantine(&expiry_policy(&qdir, interval), &mut state, Instant::now());
+        assert!(
+            state.last_quarantine_expire.is_some(),
+            "the cooldown must be stamped (interval={interval})"
+        );
+    }
+    assert!(
+        !qdir.join(&name).exists(),
+        "the first pass must still expire a past-TTL entry"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
