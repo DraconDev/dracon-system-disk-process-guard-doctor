@@ -3509,6 +3509,7 @@ async fn storage_cleanup_activity_refuses_recent_artifacts() {
 #[cfg(target_os = "linux")]
 #[tokio::test]
 async fn storage_cleanup_activity_refuses_live_rust_and_node_processes() {
+    use std::os::unix::process::CommandExt;
     struct ChildGuard(std::process::Child);
     impl Drop for ChildGuard {
         fn drop(&mut self) {
@@ -3538,6 +3539,7 @@ async fn storage_cleanup_activity_refuses_live_rust_and_node_processes() {
         symlink(sleep_bin, &executable).unwrap();
         let mut child = ChildGuard(
             std::process::Command::new(&executable)
+                .arg0("sleep")
                 .arg("300")
                 .current_dir(project.path())
                 .spawn()
