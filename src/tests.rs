@@ -2734,7 +2734,7 @@ fn package_cache_process_detection_fails_closed_on_unreadable_cmdline() {
     fs::set_permissions(&cmdline, fs::Permissions::from_mode(0o000))
         .expect("make cmdline unreadable");
 
-    let result = detect_active_package_manager_operations_from("201 node\n", &proc_root);
+    let result = detect_active_package_manager_operations_from("201 python3\n", &proc_root);
     assert!(
         result.is_err(),
         "an unreadable wrapper command line must abort cache protection"
@@ -2749,7 +2749,7 @@ fn package_cache_process_detection_fails_closed_on_missing_cmdline() {
     fs::create_dir_all(proc_root.join("self")).expect("create proc fixture");
     fs::create_dir_all(proc_root.join("202")).expect("create process fixture");
 
-    let result = detect_active_package_manager_operations_from("202 node\n", &proc_root);
+    let result = detect_active_package_manager_operations_from("202 python3\n", &proc_root);
     assert!(
         result.is_err(),
         "an existing process without cmdline metadata must abort cache protection"
@@ -3492,4 +3492,59 @@ fn one_line_collapses_multiline_messages() {
     );
     assert_eq!(one_line("already one line"), "already one line");
     assert_eq!(one_line(""), "");
+}
+
+
+#[tokio::test]
+async fn storage_cleanup_activity_refuses_recent_artifacts() {
+    let project = tempfile::tempdir().unwrap();
+    let target = project.path().join("target");
+    fs::create_dir(&target).unwrap();
+    let error = validate_storage_cleanup_activity("rust-build", &target).await.unwrap_err();
+    assert!(error.to_string().contains("modified <60s"), "{error}");
+    assert!(target.exists());
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn storage_cleanup_activity_refuses_live_rust_and_node_processes() {
+    struct ChildGuard(std::process::Child);
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    for (comm, kind, artifact) in [
+        ("rustc", "rust-build", "target"),
+        ("cargo", "build-output", "build"),
+        ("node", "node-deps", "node_modules"),
+    ] {
+        let project = tempfile::tempdir().unwrap();
+        let path = project.path().join(artifact);
+        fs::create_dir(&path).unwrap();
+        fs::write(path.join("keep"), b"synthetic artifact").unwrap();
+        let old = SystemTime::now() - Duration::from_secs(120);
+        File::open(&path).unwrap().set_times(std::fs::FileTimes::new().set_modified(old)).unwrap();
+        let executable = project.path().join(comm);
+        symlink("/bin/sleep", &executable).unwrap();
+        let mut child = ChildGuard(std::process::Command::new(&executable)
+            .arg("300").current_dir(project.path()).spawn().unwrap());
+        let error = validate_storage_cleanup_activity(kind, &path).await.unwrap_err();
+        assert!(error.to_string().contains("active"), "{kind}: {error}");
+        assert!(child.0.try_wait().unwrap().is_none());
+        assert_eq!(fs::read(path.join("keep")).unwrap(), b"synthetic artifact");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn rust_build_listing_failure_or_malformed_output_is_an_error() {
+    let _fixture_exec = fixture_exec_guard();
+    let bin = tempfile::tempdir().unwrap();
+    for body in ["exit 7", "printf 'broken\\n'", "exit 0"] {
+        let ps = bin.path().join("ps");
+        write_test_script(&ps, body);
+        assert!(detect_active_rust_builds_with(&ps).await.is_err());
+    }
 }

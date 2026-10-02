@@ -2778,7 +2778,11 @@ async fn detect_active_package_manager_operations_with(
 }
 
 async fn detect_active_rust_builds() -> Result<HashSet<i32>> {
-    let out = Command::new("ps")
+    detect_active_rust_builds_with(Path::new("ps")).await
+}
+
+async fn detect_active_rust_builds_with(ps_bin: &Path) -> Result<HashSet<i32>> {
+    let out = Command::new(ps_bin)
         .args(["-eo", "pid=,comm="])
         .output()
         .await?;
@@ -2787,14 +2791,14 @@ async fn detect_active_rust_builds() -> Result<HashSet<i32>> {
         anyhow::bail!("cannot inspect active Rust builds: ps failed");
     }
 
+    let output = std::str::from_utf8(&out.stdout)?;
+    anyhow::ensure!(!output.trim().is_empty(), "ps returned no process records");
     let mut build_pids = HashSet::new();
-    for line in String::from_utf8_lossy(&out.stdout).lines() {
+    for line in output.lines() {
         let mut parts = line.split_whitespace();
-        let pid = match parts.next().and_then(|p| p.parse::<i32>().ok()) {
-            Some(p) => p,
-            None => continue,
-        };
-        let comm = parts.next().unwrap_or("");
+        let pid: i32 = parts.next().context("missing ps PID")?.parse()?;
+        anyhow::ensure!(pid > 0, "invalid ps PID");
+        let comm = parts.next().context("missing ps command")?;
 
         if is_rust_build_process(comm) {
             build_pids.insert(pid);
