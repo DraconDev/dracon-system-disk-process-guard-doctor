@@ -2641,7 +2641,21 @@ fn package_cache_kind_for_command_name(name: &str) -> Option<PackageCacheKind> {
     {
         return Some(PackageCacheKind::Cargo);
     }
-    if matches!(name, "npm" | "npx" | "npm-cli.js" | "node" | "pnpm" | "yarn" | "bun" | "vite" | "webpack" | "esbuild" | "tsc") || name.starts_with("npm-") {
+    if matches!(
+        name,
+        "npm"
+            | "npx"
+            | "npm-cli.js"
+            | "node"
+            | "pnpm"
+            | "yarn"
+            | "bun"
+            | "vite"
+            | "webpack"
+            | "esbuild"
+            | "tsc"
+    ) || name.starts_with("npm-")
+    {
         return Some(PackageCacheKind::Npm);
     }
     if name == "pip" || name.starts_with("pip3") || name.starts_with("pip-") {
@@ -3422,7 +3436,10 @@ fn storage_hotspot_apply_is_blocked(kind: &str, apply: bool) -> bool {
 /// builds whose current directory differs from their selected manifest.
 async fn validate_storage_cleanup_activity(kind: &str, path: &Path) -> Result<()> {
     if matches!(kind, "rust-build" | "build-output") {
-        let project = path.parent().context("cleanup candidate has no project")?.canonicalize()?;
+        let project = path
+            .parent()
+            .context("cleanup candidate has no project")?
+            .canonicalize()?;
         for pid in detect_active_rust_builds().await? {
             match get_process_cwd(pid).await {
                 Some(cwd) => {
@@ -3439,7 +3456,9 @@ async fn validate_storage_cleanup_activity(kind: &str, path: &Path) -> Result<()
         }
     }
     if matches!(kind, "node-deps" | "build-output")
-        && detect_active_package_manager_operations().await?.contains(&PackageCacheKind::Npm)
+        && detect_active_package_manager_operations()
+            .await?
+            .contains(&PackageCacheKind::Npm)
     {
         anyhow::bail!("active Node or package-manager operation");
     }

@@ -154,7 +154,8 @@ pub(crate) fn quarantine_move(
     match fs::symlink_metadata(canon_origin.join(MANIFEST_NAME)) {
         Ok(_) => anyhow::bail!(
             "refusing to quarantine {}: reserved metadata name {} already exists; source untouched",
-            canon_origin.display(), MANIFEST_NAME
+            canon_origin.display(),
+            MANIFEST_NAME
         ),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.into()),
