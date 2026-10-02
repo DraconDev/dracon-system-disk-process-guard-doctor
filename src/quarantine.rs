@@ -458,13 +458,14 @@ pub(crate) fn quarantine_expire_detailed(
     ttl_days: u64,
     apply: bool,
 ) -> Result<ExpireOutcome> {
-    if ttl_days == 0 {
-        return Ok(ExpireOutcome {
-            removed: Vec::new(),
-            pinned: Vec::new(),
-            pinned_bytes: 0,
-        });
-    }
+    // FIXED 2026-10-02 (audit advisory): this used to return early when
+    // ttl_days == 0, which skipped the directory walk and therefore also
+    // skipped reporting pinned entries. Nothing is deleted either way —
+    // `quarantine_list` already computes `expired = ttl_days > 0 && age > ttl`,
+    // so no entry can be removed when the TTL is 0 — but an operator who
+    // disables expiry still has entries sitting there, and one of them may be
+    // pinned with no way to age out. The report is about existing state, not
+    // about the deletion decision, so it is now produced in both cases.
     let list = quarantine_list(root, ttl_days)?;
     let canon_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     let mut removed = Vec::new();
