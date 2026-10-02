@@ -582,7 +582,15 @@ fn quarantine_expire_outcome_carries_origin_and_bytes() {
     // The daemon logs both of these on every deletion; without them the
     // journal line is just a bare entry name with nothing to act on.
     assert_eq!(gone.origin, manifest.origin);
-    assert_eq!(gone.bytes, 11);
+    // The size must be the one `quarantine list` reports for the same entry —
+    // i.e. the directory as it actually sits on disk, manifest included — so an
+    // operator reconciling the journal against the listing sees the same number.
+    let listed_size = {
+        let before = crate::quarantine_list(&qdir, 30).unwrap();
+        before.entries[0].bytes
+    };
+    assert_eq!(gone.bytes, listed_size);
+    assert!(gone.bytes >= manifest.bytes);
     assert!(!entry_dir.exists());
     cleanup(&root);
 }
