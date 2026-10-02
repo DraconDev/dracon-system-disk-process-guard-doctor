@@ -346,6 +346,7 @@ fn sentinel_zero_knob_list_matches_the_policy_fields() {
         "reap_report_min_idle_hours",
         "reap_report_max_cpu_seconds",
         "nix_keep_generations",
+        "quarantine_expire_interval_secs",
     ];
     let mut listed: Vec<&&str> = SENTINEL_ZERO_KNOBS.iter().collect();
     listed.sort();
