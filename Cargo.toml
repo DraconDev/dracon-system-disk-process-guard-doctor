@@ -1,6 +1,6 @@
 [package]
 name = "dracon-system"
-version = "0.112.42"
+version = "0.112.43"
 edition = "2021"
 # See dracon-sync/Cargo.toml — workspace-wide MSRV, audit F84.
 rust-version = "1.89"
