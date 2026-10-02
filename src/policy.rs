@@ -300,6 +300,23 @@ pub(crate) struct GuardPolicy {
     // ADDED 2026-09-26 (space tiers): quarantine TTL in days; 0 disables expiry.
     #[serde(default = "default_quarantine_ttl_days")]
     pub(crate) quarantine_ttl_days: u64,
+    // ADDED 2026-10-02: how often the daemon runs quarantine expiry ITSELF.
+    //
+    // The TTL above was never enforced by anything. `quarantine_expire` had
+    // exactly one non-test caller — the CLI `Expire` arm — so the only way an
+    // entry ever aged out was a human running it by hand. No systemd timer, no
+    // cron, no daemon pass. That was harmless while the reclaim path could not
+    // write (every move failed with EROFS, so nothing was ever quarantined),
+    // but once the ReadWritePaths fix made quarantine work, the guard began
+    // converting deletes into permanent second-disk usage: a move frees `/` at
+    // copy time and only frees `/mnt/data` when the entry expires, so a TTL
+    // that never fires means the system pays for every reclaimed tree twice,
+    // forever. See docs/design/guard-namespace-contract-2026-10-01.md.
+    //
+    // 0 = never expire automatically. The manual CLI path still works; only the
+    // unattended one is disabled.
+    #[serde(default = "default_quarantine_expire_interval_secs")]
+    pub(crate) quarantine_expire_interval_secs: u64,
     // ADDED 2026-09-27 (space tiers Phase 2): daemon rust-target and
     // node_modules cleanup moves candidates to quarantine instead of
     // deleting them. Explicit `guard clean` always deletes.
@@ -404,6 +421,7 @@ impl Default for GuardPolicy {
             disk_extra_mounts: String::new(),
             quarantine_dir: default_quarantine_dir(),
             quarantine_ttl_days: default_quarantine_ttl_days(),
+            quarantine_expire_interval_secs: default_quarantine_expire_interval_secs(),
             clean_quarantine_first: false,
             auto_relocate: default_true(),
             auto_relocate_apply: false,
@@ -889,6 +907,14 @@ pub(crate) fn default_quarantine_ttl_days() -> u64 {
     30
 }
 
+pub(crate) fn default_quarantine_expire_interval_secs() -> u64 {
+    // A day is the natural unit for a 30-day TTL: the scan is one
+    // metadata walk of the quarantine root (one manifest per entry, not one
+    // per file), and a day is far finer than the resolution any operator
+    // cares about for "when does my 30-day hold end".
+    86_400
+}
+
 pub(crate) fn default_relocate_candidate_roots() -> String {
     "~/Dev".to_string()
 }
@@ -958,6 +984,8 @@ pub(crate) const SENTINEL_ZERO_KNOBS: &[&str] = &[
     "rust_target_action_min_age_days",
     // 0 = never expire quarantine entries.
     "quarantine_ttl_days",
+    // 0 = never run quarantine expiry automatically (CLI still works).
+    "quarantine_expire_interval_secs",
     // 0 = CPU throttling off.
     "cap_offenders_cpu_percent",
     // 0 = report every idle process / report only never-ran processes.
@@ -1260,6 +1288,10 @@ pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) -> Vec<&'static s
 
     // --- quarantine / relocation -----------------------------------------
     // quarantine_ttl_days: 0 is a sentinel (never expire), no clamp.
+    // quarantine_expire_interval_secs: 0 is a sentinel (never expire
+    // automatically), no clamp. Flooring either would silently RE-ENABLE
+    // unattended deletion for an operator who explicitly opted out, which is
+    // the opposite failure from the one a floor guards against.
     floor!(relocate_min_size_mb, 1);
     // relocate_min_age_days: 0 is a sentinel (fresh dirs are candidates).
     floor!(relocate_max_moves_per_pass, 1);
