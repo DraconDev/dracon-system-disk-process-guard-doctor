@@ -85,7 +85,22 @@ pub(crate) fn check_safe_to_delete(path: &Path, user_protected: &[String]) -> Re
     for user_prot in user_protected {
         let prot_canon = match Path::new(user_prot).canonicalize() {
             Ok(p) => p.display().to_string(),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            // FIXED 2026-10-02 (audit HIGH): this arm was a bare `continue` with
+            // no diagnostic — the same fail-open-silently bug as in
+            // `check_safe_to_delete_guard`, found here while proving the fix.
+            // An entry that cannot resolve protects nothing, and the operator
+            // has no way to learn that. Warn once per entry, then skip: still
+            // fail OPEN, because refusing every candidate over one typo would
+            // fill the disk, which is worse than the typo.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                if note_unresolvable_protected(user_prot) {
+                    eprintln!(
+                        "⚠️ protected_paths entry does not resolve, so it is protecting NOTHING: {}",
+                        user_prot
+                    );
+                }
+                continue;
+            }
             Err(e) => anyhow::bail!(
                 "cannot canonicalize user-protected path {}: {} — refusing",
                 user_prot,
