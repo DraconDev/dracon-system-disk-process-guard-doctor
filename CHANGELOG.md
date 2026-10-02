@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed (workspace audit 2026-10-02)
 
+- Refreshed the standalone lockfile from the tested parent dependency versions and verified isolated `cargo metadata --locked --offline`, so a standalone clone retains the same reproducible dependency graph.
 - Interactive storage cleanup rechecks active Rust and Node/package-manager processes and recent artifact modification immediately before deletion, retaining candidates when inspection fails (audit A2, 2026-10-02). Package-cache apply refusal remains enforced.
 - Quarantine refuses source directories already containing `.quarantine.json`, including dangling symlinks, and publishes new metadata atomically without replacement or link following (audit A5). Original contents stay intact on refusal; existing quarantine entries remain restorable.
 
