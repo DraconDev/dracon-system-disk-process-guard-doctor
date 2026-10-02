@@ -302,8 +302,13 @@ fn quarantine_first_remove_cross_fs_frees_bytes() {
     let root = test_root("firstcross");
     let src = fixture_dir(&root);
     let qdir = shm.join(format!("dracon-q-test-{}", std::process::id()));
-    let (_manifest, freed) = crate::quarantine_first_remove(&src, &qdir, &[]).unwrap();
+    let (manifest, freed) = crate::quarantine_first_remove(&src, &qdir, &[]).unwrap();
     assert_eq!(freed, 11);
+    let restored = crate::quarantine_restore(&qdir, &manifest.name).unwrap();
+    assert_eq!(restored, src.canonicalize().unwrap());
+    assert_eq!(fs::read(src.join("a.txt")).unwrap(), b"hello");
+    assert_eq!(fs::read(src.join("nested/b.txt")).unwrap(), b"world!");
+    assert!(!src.join(".quarantine.json").exists());
     let _ = fs::remove_dir_all(&qdir);
     cleanup(&root);
 }
@@ -738,4 +743,46 @@ fn pinned_entries_are_reported_even_when_the_ttl_is_zero() {
     );
     assert!(outcome.pinned_bytes > 0);
     cleanup(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn quarantine_reserved_names_are_preserved_with_cross_device_destination() {
+    use std::os::unix::fs::{symlink, MetadataExt};
+    let Ok(destination) = tempfile::tempdir_in("/dev/shm") else {
+        return;
+    };
+    let source = tempfile::tempdir().unwrap();
+    if fs::metadata(source.path()).unwrap().dev() == fs::metadata(destination.path()).unwrap().dev()
+    {
+        return;
+    }
+    for kind in ["regular", "symlink", "dangling"] {
+        let src = source.path().join(kind);
+        fs::create_dir(&src).unwrap();
+        fs::write(src.join("keep"), b"original content").unwrap();
+        let outside = source.path().join(format!("outside-{kind}"));
+        if kind != "dangling" {
+            fs::write(&outside, b"outside content").unwrap();
+        }
+        let marker = src.join(".quarantine.json");
+        if kind == "regular" {
+            fs::write(&marker, b"user metadata").unwrap();
+        } else {
+            symlink(&outside, &marker).unwrap();
+        }
+        assert!(crate::quarantine_move(&src, destination.path(), &[]).is_err());
+        assert_eq!(fs::read(src.join("keep")).unwrap(), b"original content");
+        if kind == "regular" {
+            assert_eq!(fs::read(&marker).unwrap(), b"user metadata");
+        } else {
+            assert_eq!(fs::read_link(&marker).unwrap(), outside);
+        }
+        if kind != "dangling" {
+            assert_eq!(fs::read(&outside).unwrap(), b"outside content");
+        } else {
+            assert!(!outside.exists());
+        }
+    }
+    assert_eq!(fs::read_dir(destination.path()).unwrap().count(), 0);
 }
