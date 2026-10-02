@@ -168,3 +168,80 @@ scripts/test_check_unit_deployment.sh   # 24 cases
 scripts/check-unit-deployment.sh        # live service + real policy
 cargo test --locked                     # 397 tests
 ```
+
+---
+
+## Follow-on (2026-10-02): the TTL was never enforced
+
+The `ReadWritePaths` fix above made quarantine able to write. It did not make
+the TTL mean anything, and the two changes combine into a leak.
+
+`quarantine_expire` had exactly one non-test caller — the CLI `Expire` arm in
+`src/quarantine.rs`. There was no systemd timer, no cron entry, and no daemon
+pass. So `quarantine_ttl_days` (default 30) only ever gated a command a human
+had to remember to run.
+
+The reason that matters is what a quarantine move actually costs. It copies the
+tree to the second disk and deletes the origin, so:
+
+| | `/` | `/mnt/data` |
+|---|---|---|
+| at move time | freed | consumed |
+| at expiry | unchanged | freed |
+
+`/` is freed immediately, so the guard's job looks done. `/mnt/data` is only
+given back if expiry runs. With expiry never running, every reclaimed tree is
+paid for twice, permanently — the system trades disk on one filesystem for
+disk on another and never completes the trade. An expiry that never fires is
+not a safety copy.
+
+This was invisible while the reclaim path could not write. The moment the grant
+landed, the guard would begin converting deletes into permanent second-disk
+usage, unattended, at the 85% action threshold.
+
+### What the daemon now does
+
+`maybe_expire_quarantine` runs on every guard pass, outside the disk-pressure
+gate, paced by its own cooldown. Three decisions worth stating:
+
+**Outside the pressure gate.** Every other reclaim path runs at
+action/critical because it responds to pressure on `/`. This one drains the
+second disk. Gating it on `/` would mean a healthy `/` never drains and the
+backlog only clears during a crisis — exactly backwards.
+
+**Its own cooldown, not `auto_cleanup_interval_secs`.** Sharing the knob would
+mean an operator tuning how often cleanup runs silently changes when a TTL is
+enforced. `quarantine_expire_interval_secs` (default 86400, 0 = opt out) and a
+separate `last_quarantine_expire` keep the two cadences independent. 0 is a
+documented sentinel and is deliberately *not* floored: a floor here would
+re-enable unattended deletion for an operator who explicitly opted out, which
+is the opposite failure from the one a floor guards against.
+
+**Gated on `clean_quarantine_first`.** If quarantine is not armed, anything in
+the directory came from a human running `quarantine move` by hand, and that must
+not silently become an unattended delete.
+
+Every deletion is logged individually with entry name, origin and bytes. Once
+the entry is gone the journal is the only record it existed, so an operator
+cannot review it from a directory listing. Pinned entries — unreadable
+manifest, so no TTL is computable — are reported on every pass for the same
+reason: they need `quarantine purge`, and would otherwise accumulate quietly in
+a directory whose contract is bounded growth.
+
+### A pinned invariant, and one thing that is not
+
+A pinned entry is `expired = false` by construction in `quarantine_list`, so it
+can never reach the removal loop. That single arm in one match expression is
+the only thing standing between a corrupt manifest and an un-datable deletion,
+so it is now pinned by a test (`quarantine_expire_never_removes_a_pinned_entry`)
+rather than by this prose.
+
+The same applies to `protected_paths`: the entire protection rests on ONE call,
+`check_safe_to_delete_guard` inside `quarantine_move`. Drop it in a refactor and
+the config keeps parsing, the guard keeps listing candidates, and the protected
+tree gets quarantined anyway with nothing failing. That is now pinned too.
+
+What is *not* fixed: `guard clean --rust` still lists protected candidates in
+its dry-run preview and refuses them only at apply time, so the preview
+overstates what is reclaimable. Cosmetic, but it is why the preview still shows
+`dracon-utilities/target` as a candidate after `protected_paths` is set.
