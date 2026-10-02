@@ -3359,3 +3359,92 @@ fn absurd_expiry_intervals_complete_normally_on_the_first_pass() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// The dry-run preview listed every user-protected tree as reclaimable and only
+/// refused it at apply time, because the refusal lived inside the `if apply`
+/// block. On this host that overstated reclaimable space by ~66 GiB and
+/// misled the operator twice in one session.
+///
+/// This drives `auto_cleanup_rust_targets` in dry-run mode over a real tempdir
+/// tree, because the preview is the thing that was wrong — asserting on the
+/// apply path would pass even with the bug in place.
+#[test]
+fn dry_run_preview_omits_user_protected_targets() {
+    let root = std::env::temp_dir().join(format!(
+        "dracon-preview-protected-{}-{}",
+        std::process::id(),
+        "t"
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+
+    // One target under a protected project, one under an unprotected sibling.
+    // Both large enough to clear the min-size gate so the scan really sees them.
+    let protected_proj = root.join("protected-proj");
+    let free_proj = root.join("free-proj");
+    for proj in [&protected_proj, &free_proj] {
+        let target = proj.join("target");
+        std::fs::create_dir_all(target.join("debug")).unwrap();
+        std::fs::write(target.join("debug").join("blob.bin"), vec![7u8; 4 * 1024 * 1024]).unwrap();
+    }
+
+    let guard = GuardPolicy {
+        rust_search_roots: root.display().to_string(),
+        cleanup_min_size_mb: 1,
+        protected_paths: vec![protected_proj.display().to_string()],
+        // Nothing here may touch the real quarantine dir.
+        quarantine_dir: root.join("q").display().to_string(),
+        clean_quarantine_first: true,
+        ..Default::default()
+    };
+
+    let mut runtime = GuardRuntimeState::default();
+    // apply = false: this is the preview path that was broken.
+    let result = block_on(auto_cleanup_rust_targets(&guard, &mut runtime, false, true))
+        .expect("dry-run scan must succeed");
+
+    let cleaned: Vec<&String> = result.cleaned_paths.iter().collect();
+    assert!(
+        !cleaned
+            .iter()
+            .any(|p| p.contains("protected-proj")),
+        "the protected tree must NOT appear as reclaimable, got: {:?}",
+        result.cleaned_paths
+    );
+    assert!(
+        cleaned.iter().any(|p| p.contains("free-proj")),
+        "an unprotected sibling must still be offered, got: {:?}",
+        result.cleaned_paths
+    );
+    assert!(
+        result
+            .protected_paths
+            .iter()
+            .any(|p| p.contains("protected-proj")),
+        "the protected tree must be reported as protected, got: {:?}",
+        result.protected_paths
+    );
+    // The reason must survive, or the operator sees a refusal with no cause.
+    assert!(
+        result.protected_paths.iter().any(|p| p.contains("protected")),
+        "the protected verdict must carry its reason, got: {:?}",
+        result.protected_paths
+    );
+    // Dry run reclaims nothing.
+    assert_eq!(result.reclaimed_bytes, 0);
+    assert!(protected_proj.join("target").exists());
+    assert!(free_proj.join("target").exists());
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A multi-line error must not be able to break the preview's table alignment
+/// by embedding a newline in a cell.
+#[test]
+fn one_line_collapses_multiline_messages() {
+    assert_eq!(
+        one_line("refusing to delete protected path\n  under user-protected path X"),
+        "refusing to delete protected path under user-protected path X"
+    );
+    assert_eq!(one_line("already one line"), "already one line");
+    assert_eq!(one_line(""), "");
+}
