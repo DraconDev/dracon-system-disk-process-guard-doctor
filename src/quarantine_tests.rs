@@ -627,3 +627,50 @@ fn quarantine_expire_detailed_zero_ttl_reports_nothing() {
     assert!(entry_dir.exists());
     cleanup(&root);
 }
+
+/// `protected_paths` is the operator's only way to say "never reclaim here",
+/// and the whole protection rests on ONE call: `check_safe_to_delete_guard`
+/// inside `quarantine_move`. If that call is ever dropped in a refactor, the
+/// config keeps parsing, the guard keeps reporting candidates, and the protected
+/// tree gets quarantined anyway — silently, because nothing else notices.
+///
+/// So this pins the behaviour from the quarantine side: a protected ancestor
+/// refuses the move, and a sibling outside it still moves. Without the second
+/// half the test would pass trivially if protection simply refused everything.
+#[test]
+fn quarantine_move_refuses_a_user_protected_ancestor() {
+    let root = test_root("protected");
+    let prot = root.join("protected");
+    let inside = prot.join("proj").join("target");
+    fs::create_dir_all(&inside).unwrap();
+    fs::write(inside.join("a.txt"), b"keep me").unwrap();
+
+    let outside = root.join("other").join("target");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("b.txt"), b"reclaimable").unwrap();
+
+    let qdir = root.join("q");
+    let user_protected = vec![prot.display().to_string()];
+
+    let err = crate::quarantine_move(&inside, &qdir, &user_protected).unwrap_err();
+    let msg = format!("{err:#}");
+    assert!(
+        msg.contains("protected"),
+        "a user-protected ancestor must refuse the move, got: {msg}"
+    );
+    assert!(
+        inside.join("a.txt").exists(),
+        "the protected tree must be left completely intact"
+    );
+    assert!(
+        !qdir.join("target").exists(),
+        "nothing may be staged for a refused move"
+    );
+
+    // A sibling outside the protected ancestor is unaffected.
+    let manifest = crate::quarantine_move(&outside, &qdir, &user_protected).unwrap();
+    assert!(!outside.exists());
+    assert!(qdir.join(&manifest.name).join("b.txt").exists());
+
+    cleanup(&root);
+}
