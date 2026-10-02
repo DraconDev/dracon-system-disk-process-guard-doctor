@@ -151,6 +151,14 @@ pub(crate) fn quarantine_move(
         anyhow::bail!("quarantine supports directories only: {}", origin.display());
     }
     let canon_origin = check_safe_to_delete_guard(origin, user_protected)?;
+    match fs::symlink_metadata(canon_origin.join(MANIFEST_NAME)) {
+        Ok(_) => anyhow::bail!(
+            "refusing to quarantine {}: reserved metadata name {} already exists; source untouched",
+            canon_origin.display(), MANIFEST_NAME
+        ),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
     fs::create_dir_all(root)?;
     let canon_root = root.canonicalize()?;
     if canon_origin.starts_with(&canon_root) || canon_root.starts_with(&canon_origin) {
@@ -211,7 +219,17 @@ pub(crate) fn quarantine_move(
     // Serialize before anything is unlinked: if the write below fails we
     // still have the bytes to report exactly where the data sits.
     let manifest_text = serde_json::to_string_pretty(&manifest)?;
-    fs::write(entry_dir.join(MANIFEST_NAME), &manifest_text).map_err(|e| {
+    let publish_manifest = || -> Result<()> {
+        use std::io::Write;
+        // Publish without replacement or symlink following, including if a
+        // source writer introduced the reserved name after the preflight.
+        let mut staged = tempfile::NamedTempFile::new_in(&canon_root)?;
+        staged.write_all(manifest_text.as_bytes())?;
+        staged.as_file().sync_all()?;
+        staged.persist_noclobber(entry_dir.join(MANIFEST_NAME))?;
+        Ok(())
+    };
+    publish_manifest().map_err(|e| {
         // The data moved but has no manifest, which would orphan it (a
         // future restore refuses manifest-less entries). Move it back
         // rather than leave it unrecorded.
