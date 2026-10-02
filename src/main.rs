@@ -725,6 +725,11 @@ pub(crate) struct GuardRuntimeState {
     /// Last action-level cleanup scan. Even report-only scans are bounded
     /// because they walk large Rust and Node trees.
     pub(crate) last_auto_cleanup: Option<Instant>,
+    /// ADDED 2026-10-02: last time the guard ran quarantine expiry itself.
+    /// Separate from `last_auto_cleanup` on purpose: expiry drains the SECOND
+    /// disk and must not inherit the reclaim cadence, or an operator tuning how
+    /// often cleanup runs would silently change when a TTL is enforced.
+    pub(crate) last_quarantine_expire: Option<Instant>,
     /// ADDED 2026-08-30 (memory-leak fix): bounded retry counters for the
     /// unrenice loops. The loops used to `continue` forever on
     /// ProcessIdentityStatus::Unavailable or a failed renice, never
@@ -6041,9 +6046,18 @@ async fn check_heavy_processes(
 }
 
 fn auto_cleanup_due_at(state: &GuardRuntimeState, interval_secs: u64, now: Instant) -> bool {
-    state
-        .last_auto_cleanup
-        .is_none_or(|last| now.duration_since(last).as_secs() >= interval_secs.max(60))
+    cooldown_due(state.last_auto_cleanup, interval_secs, now)
+}
+
+/// Whether a `interval_secs`-paced action last ran at `last` is due now.
+///
+/// The `.max(60)` floor keeps a policy of 0 (or a typo'd 1) from turning into
+/// a retry loop every pass, and matches the floor applied to
+/// `auto_cleanup_interval_secs` at load time. `checked_sub` is avoided
+/// deliberately: `Instant - Duration` panics on underflow, and a policy large
+/// enough to reach it must not kill the daemon.
+fn cooldown_due(last: Option<Instant>, interval_secs: u64, now: Instant) -> bool {
+    last.is_none_or(|last| now.duration_since(last).as_secs() >= interval_secs.max(60))
 }
 
 fn cleanup_stale_cooldowns(state: &mut GuardRuntimeState, cooldown_secs: u64) {
