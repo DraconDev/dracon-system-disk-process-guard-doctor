@@ -3382,6 +3382,15 @@ async fn dry_run_preview_omits_user_protected_targets() {
     let protected_proj = root.join("protected-proj");
     let free_proj = root.join("free-proj");
     for proj in [&protected_proj, &free_proj] {
+        // The scanner only treats a `target/` as a Rust build cache when the
+        // project parent has a Cargo.toml, so the fixture needs one or both
+        // dirs are invisible and the test passes vacuously.
+        std::fs::create_dir_all(proj).unwrap();
+        std::fs::write(
+            proj.join("Cargo.toml"),
+            b"[package]\nname = \"probe\"\nversion = \"0.0.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
         let target = proj.join("target");
         std::fs::create_dir_all(target.join("debug")).unwrap();
         std::fs::write(target.join("debug").join("blob.bin"), vec![7u8; 4 * 1024 * 1024]).unwrap();
