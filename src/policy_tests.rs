@@ -1431,15 +1431,19 @@ protected_paths = ["~/Dev/dracon-utilities"]
         "precondition: the raw policy really does carry the tilde form"
     );
 
-    let adjusted = normalize_guard_policy_with_home(&mut parsed.guard, Some(&fake_home));
-    assert!(
-        adjusted.contains(&"protected_paths"),
-        "the expansion must be reported as an adjustment so drift is visible"
-    );
+    normalize_guard_policy_with_home(&mut parsed.guard, Some(&fake_home));
     assert_eq!(
         parsed.guard.protected_paths,
         vec![fake_home.join("Dev/dracon-utilities").display().to_string()],
         "the tilde form must be expanded to an absolute path"
+    );
+    // Expansion must NOT be reported as a clamped out-of-range value: the knob
+    // was perfectly legal, and warning about it on every load would train the
+    // operator to ignore policy warnings.
+    assert!(
+        !normalize_guard_policy_with_home(&mut parsed.guard, Some(&fake_home))
+            .contains(&"protected_paths"),
+        "a legal tilde form must not be reported as clamped"
     );
 
     // The real classifier must now refuse the protected tree…
@@ -1460,8 +1464,8 @@ protected_paths = ["~/Dev/dracon-utilities"]
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// Idempotence: normalizing twice must not keep reporting an adjustment, and an
-/// already-absolute entry must survive byte-identical.
+/// Idempotence: normalizing twice must be a no-op, and an already-absolute entry
+/// must survive byte-identical.
 #[test]
 fn protected_paths_expansion_is_idempotent() {
     let home = Path::new("/tmp/fake-home-for-idempotence");
@@ -1472,8 +1476,7 @@ fn protected_paths_expansion_is_idempotent() {
         ],
         ..Default::default()
     };
-    let first = normalize_guard_policy_with_home(&mut p, Some(home));
-    assert!(first.contains(&"protected_paths"));
+    normalize_guard_policy_with_home(&mut p, Some(home));
     let snapshot = p.protected_paths.clone();
     let second = normalize_guard_policy_with_home(&mut p, Some(home));
     assert!(
