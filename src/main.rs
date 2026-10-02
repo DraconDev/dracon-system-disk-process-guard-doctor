@@ -626,10 +626,7 @@ const OOM_KNOWN_DESCENDANTS_CAP: usize = 256;
 /// is safe — the worst case is that a re-forked PID is treated as new, which is
 /// exactly what happens for a genuinely new child.
 fn prune_oom_known_descendants(state: &mut GuardRuntimeState, all_processes: &[ProcSample]) {
-    let live: HashSet<(i32, u64)> = all_processes
-        .iter()
-        .map(|p| (p.pid, p.starttime))
-        .collect();
+    let live: HashSet<(i32, u64)> = all_processes.iter().map(|p| (p.pid, p.starttime)).collect();
     state.oom_known_descendants.retain(|pid, known| {
         if !state.oom_biased_pids.contains_key(pid) {
             return false;
@@ -1918,12 +1915,7 @@ fn restore_pending_oom_descendants(
                     pending.attempts
                 );
                 state.oom_pending_descendants.remove(&key);
-                remember_oom_descendant_identity(
-                    state,
-                    pending.root_pid,
-                    key.0,
-                    &pending.identity,
-                );
+                remember_oom_descendant_identity(state, pending.root_pid, key.0, &pending.identity);
             }
             continue;
         }
@@ -2136,7 +2128,10 @@ fn restore_cgroup_target(orig_cgroup: &str, current_rel: &str) -> Option<String>
     if !orig.is_empty() {
         return Some(orig.to_string());
     }
-    let parent = current_rel.rsplit_once('/').map(|(parent, _)| parent)?.trim();
+    let parent = current_rel
+        .rsplit_once('/')
+        .map(|(parent, _)| parent)?
+        .trim();
     (!parent.is_empty() && parent != "/").then(|| parent.to_string())
 }
 
@@ -5023,7 +5018,10 @@ fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) {
     }
     if let Some(parent) = path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
-            eprintln!("⚠️ could not create {} for the mitigation ledger: {e}", parent.display());
+            eprintln!(
+                "⚠️ could not create {} for the mitigation ledger: {e}",
+                parent.display()
+            );
             return;
         }
     }

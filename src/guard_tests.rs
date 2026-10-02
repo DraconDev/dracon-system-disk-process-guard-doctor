@@ -1116,7 +1116,9 @@ fn gated_release_markers(src: &str) -> Result<Vec<String>, String> {
     let gate = src[start..]
         .find("if can_restore_nice {")
         .map(|i| start + i)
-        .ok_or_else(|| "the renice half is no longer gated on the restore capability".to_string())?;
+        .ok_or_else(|| {
+            "the renice half is no longer gated on the restore capability".to_string()
+        })?;
     let body = &src[gate..];
 
     // Brace-count to the gate's matching close.
@@ -1350,7 +1352,10 @@ fn the_mitigation_ledger_survives_a_restart() {
     let first = std::fs::metadata(&path).unwrap().modified().unwrap();
     persist_mitigations_to(&mut before, &path);
     let second = std::fs::metadata(&path).unwrap().modified().unwrap();
-    assert_eq!(first, second, "an unchanged pass must not rewrite the ledger");
+    assert_eq!(
+        first, second,
+        "an unchanged pass must not rewrite the ledger"
+    );
 
     // A fresh process (a restart) adopts them.
     let mut after_restart = GuardRuntimeState::default();
@@ -1367,7 +1372,10 @@ fn the_mitigation_ledger_survives_a_restart() {
     // A RECYCLED pid is never adopted: a wrong starttime must not match.
     let mut recycled = GuardRuntimeState::default();
     let mut bad = std::fs::read_to_string(&path).unwrap();
-    bad = bad.replace(&format!("\"starttime\":{}", live_identity.starttime), "\"starttime\":999999999");
+    bad = bad.replace(
+        &format!("\"starttime\":{}", live_identity.starttime),
+        "\"starttime\":999999999",
+    );
     std::fs::write(&path, bad).unwrap();
     hydrate_mitigations_from(&path, &mut recycled);
     assert!(

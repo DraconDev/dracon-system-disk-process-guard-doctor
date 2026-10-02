@@ -125,10 +125,15 @@ pub(crate) fn collect_setup_report() -> SetupReport {
 /// file is there and BROKEN; `Ok((None, _))` means there is no file. Collapsing
 /// both into "built-in defaults" hid a typo like `disk_warn_percent = "80"`
 /// behind advice to go configure something.
-pub(crate) fn build_setup_report(loaded: Result<(Option<PathBuf>, crate::SystemPolicy)>) -> SetupReport {
+pub(crate) fn build_setup_report(
+    loaded: Result<(Option<PathBuf>, crate::SystemPolicy)>,
+) -> SetupReport {
     let (loaded, policy_error) = match loaded {
         Ok(loaded) => (loaded, None),
-        Err(e) => ((None, crate::SystemPolicy::default()), Some(format!("{e:#}"))),
+        Err(e) => (
+            (None, crate::SystemPolicy::default()),
+            Some(format!("{e:#}")),
+        ),
     };
     let (path, policy) = loaded;
     let guard = &policy.guard;
