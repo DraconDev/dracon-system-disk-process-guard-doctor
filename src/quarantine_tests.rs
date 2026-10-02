@@ -511,3 +511,108 @@ fn purge_also_handles_a_healthy_entry() {
     assert!(!qdir.join("ok.1").exists());
     cleanup(&root);
 }
+
+// --- 2026-10-02: invariants the daemon-side expiry pass depends on ----------
+//
+// The guard now calls expiry itself, unattended. These pin the properties that
+// call assumes but that no existing test covered: that a corrupt manifest can
+// never become an un-datable deletion, and that the outcome carries enough
+// detail for the daemon to log a deletion an operator could act on.
+
+/// Age an entry by rewriting its manifest with a timestamp `days` in the past.
+fn age_entry(qdir: &Path, manifest: &crate::QuarantineManifest, days: u64) -> PathBuf {
+    let aged = crate::QuarantineManifest {
+        name: manifest.name.clone(),
+        origin: manifest.origin.clone(),
+        moved_at_unix: crate::now_unix().saturating_sub(days * 86_400),
+        bytes: manifest.bytes,
+        files: manifest.files,
+    };
+    let entry_dir = qdir.join(&manifest.name);
+    fs::write(
+        entry_dir.join(".quarantine.json"),
+        serde_json::to_string_pretty(&aged).unwrap(),
+    )
+    .unwrap();
+    entry_dir
+}
+
+#[test]
+fn quarantine_expire_never_removes_a_pinned_entry() {
+    let root = test_root("pinned-expire");
+    let src = fixture_dir(&root);
+    let qdir = root.join("q");
+    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let entry_dir = age_entry(&qdir, &manifest, 40);
+
+    // Destroy the manifest so the entry can never be dated. This is the
+    // `node-compile-cache` case from the live host: an entry nobody can restore
+    // and nobody can age out.
+    fs::remove_file(entry_dir.join(".quarantine.json")).unwrap();
+
+    let outcome = crate::quarantine_expire_detailed(&qdir, 30, true).unwrap();
+    assert!(
+        outcome.removed.is_empty(),
+        "an entry with no manifest must never be deleted: {:?}",
+        outcome.removed
+    );
+    assert!(
+        entry_dir.exists(),
+        "the pinned entry must survive an apply-mode expiry"
+    );
+    // And it must be REPORTED, not silently skipped — otherwise it accumulates
+    // in a directory whose whole contract is bounded growth.
+    assert_eq!(outcome.pinned, vec![manifest.name.clone()]);
+    assert!(outcome.pinned_bytes > 0);
+    cleanup(&root);
+}
+
+#[test]
+fn quarantine_expire_outcome_carries_origin_and_bytes() {
+    let root = test_root("expire-detailed");
+    let src = fixture_dir(&root);
+    let qdir = root.join("q");
+    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let entry_dir = age_entry(&qdir, &manifest, 40);
+
+    let outcome = crate::quarantine_expire_detailed(&qdir, 30, true).unwrap();
+    assert_eq!(outcome.removed.len(), 1);
+    let gone = &outcome.removed[0];
+    assert_eq!(gone.name, manifest.name);
+    // The daemon logs both of these on every deletion; without them the
+    // journal line is just a bare entry name with nothing to act on.
+    assert_eq!(gone.origin, manifest.origin);
+    assert_eq!(gone.bytes, 11);
+    assert!(!entry_dir.exists());
+    cleanup(&root);
+}
+
+#[test]
+fn quarantine_expire_detailed_dry_run_removes_nothing_but_reports() {
+    let root = test_root("expire-dryrun");
+    let src = fixture_dir(&root);
+    let qdir = root.join("q");
+    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let entry_dir = age_entry(&qdir, &manifest, 40);
+
+    let outcome = crate::quarantine_expire_detailed(&qdir, 30, false).unwrap();
+    assert_eq!(outcome.removed.len(), 1, "dry run must still report the plan");
+    assert!(entry_dir.exists(), "dry run must not delete");
+    cleanup(&root);
+}
+
+#[test]
+fn quarantine_expire_detailed_zero_ttl_reports_nothing() {
+    // TTL 0 means "never expire". It must not be treated as "expire
+    // everything" — the classic off-by-sentinel that a floor!() would cause.
+    let root = test_root("expire-ttl-zero");
+    let src = fixture_dir(&root);
+    let qdir = root.join("q");
+    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let entry_dir = age_entry(&qdir, &manifest, 4000);
+
+    let outcome = crate::quarantine_expire_detailed(&qdir, 0, true).unwrap();
+    assert!(outcome.removed.is_empty());
+    assert!(entry_dir.exists());
+    cleanup(&root);
+}
