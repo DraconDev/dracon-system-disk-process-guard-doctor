@@ -3393,7 +3393,11 @@ async fn dry_run_preview_omits_user_protected_targets() {
         .unwrap();
         let target = proj.join("target");
         std::fs::create_dir_all(target.join("debug")).unwrap();
-        std::fs::write(target.join("debug").join("blob.bin"), vec![7u8; 4 * 1024 * 1024]).unwrap();
+        std::fs::write(
+            target.join("debug").join("blob.bin"),
+            vec![7u8; 4 * 1024 * 1024],
+        )
+        .unwrap();
         // The scan has a "modified <60s ago means an active build" backstop, so
         // a fixture written a moment ago is protected on that ground alone and
         // the candidate list comes back empty. Age the tree instead of trying
@@ -3406,7 +3410,11 @@ async fn dry_run_preview_omits_user_protected_targets() {
             .arg(&target)
             .output()
             .expect("touch must be available to age the fixture");
-        assert!(aged.status.success(), "touch failed: {}", String::from_utf8_lossy(&aged.stderr));
+        assert!(
+            aged.status.success(),
+            "touch failed: {}",
+            String::from_utf8_lossy(&aged.stderr)
+        );
     }
 
     let guard = GuardPolicy {
@@ -3427,9 +3435,7 @@ async fn dry_run_preview_omits_user_protected_targets() {
 
     let cleaned: Vec<&String> = result.cleaned_paths.iter().collect();
     assert!(
-        !cleaned
-            .iter()
-            .any(|p| p.contains("protected-proj")),
+        !cleaned.iter().any(|p| p.contains("protected-proj")),
         "the protected tree must NOT appear as reclaimable, got: {:?}",
         result.cleaned_paths
     );
@@ -3465,7 +3471,11 @@ async fn dry_run_preview_omits_user_protected_targets() {
     assert!(protected_proj.join("target").exists());
     assert!(free_proj.join("target").exists());
     assert!(
-        free_proj.join("target").join("debug").join("blob.bin").exists(),
+        free_proj
+            .join("target")
+            .join("debug")
+            .join("blob.bin")
+            .exists(),
         "the offered candidate must still be intact after a dry run"
     );
 
