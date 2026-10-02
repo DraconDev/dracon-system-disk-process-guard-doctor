@@ -2641,7 +2641,7 @@ fn package_cache_kind_for_command_name(name: &str) -> Option<PackageCacheKind> {
     {
         return Some(PackageCacheKind::Cargo);
     }
-    if name == "npm" || name == "npx" || name == "npm-cli.js" || name.starts_with("npm-") {
+    if matches!(name, "npm" | "npx" | "npm-cli.js" | "node" | "pnpm" | "yarn" | "bun" | "vite" | "webpack" | "esbuild" | "tsc") || name.starts_with("npm-") {
         return Some(PackageCacheKind::Npm);
     }
     if name == "pip" || name.starts_with("pip3") || name.starts_with("pip-") {
@@ -2770,7 +2770,7 @@ async fn detect_active_rust_builds() -> Result<HashSet<i32>> {
         .await?;
 
     if !out.status.success() {
-        return Ok(HashSet::new());
+        anyhow::bail!("cannot inspect active Rust builds: ps failed");
     }
 
     let mut build_pids = HashSet::new();
@@ -3415,6 +3415,41 @@ fn package_cache_apply_is_disabled() -> bool {
 
 fn storage_hotspot_apply_is_blocked(kind: &str, apply: bool) -> bool {
     apply && kind == "cache" && package_cache_apply_is_disabled()
+}
+
+/// Recheck activity at the deletion boundary, not only when sizing hotspots.
+/// Process inspection errors retain the candidate. The mtime backstop covers
+/// builds whose current directory differs from their selected manifest.
+async fn validate_storage_cleanup_activity(kind: &str, path: &Path) -> Result<()> {
+    if matches!(kind, "rust-build" | "build-output") {
+        let project = path.parent().context("cleanup candidate has no project")?.canonicalize()?;
+        for pid in detect_active_rust_builds().await? {
+            match get_process_cwd(pid).await {
+                Some(cwd) => {
+                    let cwd = cwd.canonicalize()?;
+                    if cwd.starts_with(&project) || project.starts_with(&cwd) {
+                        anyhow::bail!("active Rust build in {}", project.display());
+                    }
+                }
+                None if Path::new(&format!("/proc/{pid}")).exists() => {
+                    anyhow::bail!("cannot inspect active build PID {pid}");
+                }
+                None => {}
+            }
+        }
+    }
+    if matches!(kind, "node-deps" | "build-output")
+        && detect_active_package_manager_operations().await?.contains(&PackageCacheKind::Npm)
+    {
+        anyhow::bail!("active Node or package-manager operation");
+    }
+    if matches!(kind, "rust-build" | "node-deps" | "build-output") {
+        let age = fs::metadata(path)?.modified()?.elapsed()?;
+        if age.as_secs() < 60 {
+            anyhow::bail!("modified <60s ago (active build)");
+        }
+    }
+    Ok(())
 }
 
 /// Clean package manager caches using the real home directory.
@@ -7363,7 +7398,7 @@ async fn cmd_storage(
                 Cell::new(item.path.display().to_string()),
                 Cell::new(status),
             ]);
-            actionable.push(item.path.clone());
+            actionable.push((item.kind.clone(), item.path.clone()));
         }
 
         println!();
@@ -7405,7 +7440,11 @@ async fn cmd_storage(
         let user_protected = policy.guard.protected_paths.clone();
         let mut cleanup_failures = Vec::new();
         if cfg.apply {
-            for path in actionable {
+            for (kind, path) in actionable {
+                if let Err(e) = validate_storage_cleanup_activity(&kind, &path).await {
+                    eprintln!("🛡️ keeping {}: {}", path.display(), e);
+                    continue;
+                }
                 match validate_storage_cleanup_path(&path, &user_protected) {
                     Ok(safe_path) if safe_path.exists() => {
                         println!("🗑️  Deleting {}", path.display());
