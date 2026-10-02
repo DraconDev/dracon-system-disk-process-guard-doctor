@@ -3509,7 +3509,16 @@ async fn storage_cleanup_activity_refuses_recent_artifacts() {
 #[cfg(target_os = "linux")]
 #[tokio::test]
 async fn storage_cleanup_activity_refuses_live_rust_and_node_processes() {
-    use std::os::unix::process::CommandExt;
+    // Run this same test in a child harness with an explicit Linux process
+    // name. Multicall `sleep` binaries can reset comm after exec, so a link
+    // named rustc is not a reliable live-process fixture on NixOS.
+    if let Ok(comm) = std::env::var("DRACON_TEST_BUILD_COMM") {
+        fs::write("/proc/self/comm", comm).unwrap();
+        fs::write(".build-fixture-ready", b"ready").unwrap();
+        loop {
+            std::thread::sleep(Duration::from_secs(300));
+        }
+    }
     struct ChildGuard(std::process::Child);
     impl Drop for ChildGuard {
         fn drop(&mut self) {
@@ -3531,20 +3540,28 @@ async fn storage_cleanup_activity_refuses_live_rust_and_node_processes() {
             .unwrap()
             .set_times(std::fs::FileTimes::new().set_modified(old))
             .unwrap();
-        let executable = project.path().join(comm);
-        let sleep_bin = std::env::split_paths(&std::env::var_os("PATH").unwrap())
-            .map(|dir| dir.join("sleep"))
-            .find(|candidate| candidate.is_file())
-            .expect("sleep executable");
-        symlink(sleep_bin, &executable).unwrap();
         let mut child = ChildGuard(
-            std::process::Command::new(&executable)
-                .arg0("sleep")
-                .arg("300")
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "tests::storage_cleanup_activity_refuses_live_rust_and_node_processes",
+                ])
+                .env("DRACON_TEST_BUILD_COMM", comm)
                 .current_dir(project.path())
+                .stdout(std::process::Stdio::null())
                 .spawn()
                 .unwrap(),
         );
+        let ready = project.path().join(".build-fixture-ready");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !ready.exists() && Instant::now() < deadline {
+            assert!(
+                child.0.try_wait().unwrap().is_none(),
+                "fixture exited before ready"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(ready.exists(), "fixture did not become ready");
         let error = validate_storage_cleanup_activity(kind, &path)
             .await
             .unwrap_err();
