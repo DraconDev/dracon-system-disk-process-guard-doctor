@@ -422,11 +422,47 @@ pub(crate) fn quarantine_restore(root: &Path, name: &str) -> Result<PathBuf> {
     }
 }
 
-/// Delete entries older than the TTL. Entries are validated to sit directly
-/// under the quarantine root before removal. TTL 0 disables expiry.
-pub(crate) fn quarantine_expire(root: &Path, ttl_days: u64, apply: bool) -> Result<Vec<String>> {
+/// One entry removed (or, in a dry run, that would be removed) by an expiry
+/// pass. Carries the origin and size so a caller can log a deletion an
+/// operator could act on, rather than a bare name.
+pub(crate) struct ExpiredEntry {
+    pub(crate) name: String,
+    pub(crate) origin: String,
+    pub(crate) bytes: u64,
+}
+
+/// Everything one expiry pass did, so a caller does not have to walk the
+/// quarantine root a second time to learn what was removed and what could not
+/// be.
+pub(crate) struct ExpireOutcome {
+    pub(crate) removed: Vec<ExpiredEntry>,
+    /// Entries with an unreadable manifest. They can never age out, because
+    /// there is no timestamp to age — reported on every pass so they cannot
+    /// accumulate silently in a directory whose whole purpose is bounded
+    /// growth.
+    pub(crate) pinned: Vec<String>,
+    pub(crate) pinned_bytes: u64,
+}
+
+/// Delete entries older than the TTL, returning one record per removal.
+/// Entries are validated to sit directly under the quarantine root before
+/// removal. TTL 0 disables expiry.
+///
+/// A pinned entry (unreadable manifest) is `expired = false` by construction in
+/// `quarantine_list`, so it can never reach the removal loop. That is the only
+/// thing standing between a corrupt manifest and an un-datable deletion, so it
+/// is pinned by a test rather than by this comment.
+pub(crate) fn quarantine_expire_detailed(
+    root: &Path,
+    ttl_days: u64,
+    apply: bool,
+) -> Result<ExpireOutcome> {
     if ttl_days == 0 {
-        return Ok(Vec::new());
+        return Ok(ExpireOutcome {
+            removed: Vec::new(),
+            pinned: Vec::new(),
+            pinned_bytes: 0,
+        });
     }
     let list = quarantine_list(root, ttl_days)?;
     let canon_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
@@ -453,9 +489,28 @@ pub(crate) fn quarantine_expire(root: &Path, ttl_days: u64, apply: bool) -> Resu
         if apply {
             fs::remove_dir_all(&canon)?;
         }
-        removed.push(entry.name.clone());
+        removed.push(ExpiredEntry {
+            name: entry.name.clone(),
+            origin: entry.origin.clone(),
+            bytes: entry.bytes,
+        });
     }
-    Ok(removed)
+    Ok(ExpireOutcome {
+        removed,
+        pinned: list.pinned,
+        pinned_bytes: list.pinned_bytes,
+    })
+}
+
+/// Delete entries older than the TTL, returning the names removed.
+/// Entries are validated to sit directly under the quarantine root before
+/// removal. TTL 0 disables expiry.
+pub(crate) fn quarantine_expire(root: &Path, ttl_days: u64, apply: bool) -> Result<Vec<String>> {
+    Ok(quarantine_expire_detailed(root, ttl_days, apply)?
+        .removed
+        .into_iter()
+        .map(|e| e.name)
+        .collect())
 }
 
 pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
