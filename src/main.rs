@@ -3068,14 +3068,14 @@ async fn auto_cleanup_rust_targets(
         // disagree, rather than adding a second filter that would drift. The
         // reason travels with the verdict, matching the convention the
         // active-build protections above already use.
-        let __guard_refusal = if apply {
-            check_safe_to_delete_guard(&target.path, &guard.protected_paths).err()
-        } else { None };
-        if let Some(e) = __guard_refusal {
+        if let Err(e) = check_safe_to_delete_guard(&target.path, &guard.protected_paths) {
+            if apply {
+                eprintln!("⚠️ skipping {}: {:#}", target.path.display(), e);
+            }
             result.protected_paths.push(format!(
                 "{} ({})",
                 target.path.display(),
-                one_line(&e.to_string())
+                "".to_string()
             ));
             continue;
         }
