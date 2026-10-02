@@ -16,6 +16,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The quarantine TTL was enforced by nothing (2026-10-02)** —
+  `quarantine_expire` had exactly one non-test caller: the CLI `Expire` arm. No
+  systemd timer, no cron entry, and no daemon pass ever called it, so
+  `quarantine_ttl_days` (default 30) was a number nobody read and entries
+  lived until a human ran the command. That was harmless while the reclaim path
+  could not write, but the `ReadWritePaths` fix below made quarantine work, and
+  the two combine badly: a quarantine move FREES `/` at copy time (the origin
+  is deleted) and only frees `/mnt/data` when the entry expires. An expiry that
+  never runs is not a safety copy — it is a leak, and the guard had started
+  converting deletes into permanent second-disk usage.
+  The guard now runs expiry itself on its own cadence, via the new
+  `quarantine_expire_interval_secs` (default 86400, 0 = never expire
+  automatically) and a `last_quarantine_expire` cooldown that deliberately does
+  NOT share `auto_cleanup_interval_secs`, so tuning how often cleanup runs
+  cannot silently change when a TTL is enforced. Three deliberate properties:
+  it runs OUTSIDE the disk-pressure gate, because it drains the second disk
+  rather than responding to pressure on `/` — gating it on `/` would mean the
+  backlog only ever clears during a crisis; it is gated on
+  `clean_quarantine_first`, so entries from a manual `quarantine move` never
+  become an unattended delete while quarantine is unarmed; and every deletion
+  is logged individually with entry name, origin and bytes, because once the
+  entry is gone the journal is the only record it existed.
+  `quarantine_expire_detailed` replaces the single walk the CLI was already
+  doing twice, returning origin and size alongside the name so the log line is
+  actionable and `pinned` entries are reported on every pass (an unreadable
+  manifest means no TTL is computable, so such entries need a human and would
+  otherwise accumulate silently). 9 new tests; every one mutation-checked,
+  including dropping `check_safe_to_delete_guard` from `quarantine_move` —
+  which is the single call the whole `protected_paths` mechanism rests on.
+
+- **The action tier could quarantine the guard's own build cache (2026-10-02)** —
+  `auto_cleanup_rust = true` protects ACTIVE builds (a running cargo/rustc, or a
+  target written in the last 60s) and nothing else, so at the 85% action
+  threshold the guard would have quarantined `dracon-utilities/target` and the
+  three nested utilities' targets — 51.5 GiB of cache for the very repo that
+  ships the guard, unattended. `protected_paths` already did this job with
+  ancestor matching, so the live policy now sets
+  `protected_paths = ["~/Dev/dracon-utilities"]`; no code was needed. The
+  trade-off is deliberate and recorded in the policy: build cache there is never
+  reclaimed, even at the 92% critical tier. Note that `guard clean --rust`
+  still LISTS protected candidates in its dry-run preview and only refuses them
+  at apply time (as `Protected:`), which makes the preview overstate what is
+  reclaimable; that is a cosmetic wart, not a correctness gap.
+
 - **The guard's auto-reclaim reclaimed zero bytes for four days, silently (2026-10-01)** —
   a second, larger consequence of the `ReadWritePaths` gap below, recorded here
   because the log never said so. When a quarantine move fails,
