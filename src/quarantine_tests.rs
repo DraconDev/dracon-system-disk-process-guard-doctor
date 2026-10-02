@@ -575,6 +575,9 @@ fn quarantine_expire_outcome_carries_origin_and_bytes() {
     let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
     let entry_dir = age_entry(&qdir, &manifest, 40);
 
+    // Captured before the expiry, since afterwards the entry is gone.
+    let listed_size = crate::quarantine_list(&qdir, 30).unwrap().entries[0].bytes;
+
     let outcome = crate::quarantine_expire_detailed(&qdir, 30, true).unwrap();
     assert_eq!(outcome.removed.len(), 1);
     let gone = &outcome.removed[0];
@@ -585,10 +588,6 @@ fn quarantine_expire_outcome_carries_origin_and_bytes() {
     // The size must be the one `quarantine list` reports for the same entry —
     // i.e. the directory as it actually sits on disk, manifest included — so an
     // operator reconciling the journal against the listing sees the same number.
-    let listed_size = {
-        let before = crate::quarantine_list(&qdir, 30).unwrap();
-        before.entries[0].bytes
-    };
     assert_eq!(gone.bytes, listed_size);
     assert!(gone.bytes >= manifest.bytes);
     assert!(!entry_dir.exists());
