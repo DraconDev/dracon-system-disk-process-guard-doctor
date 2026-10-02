@@ -1140,15 +1140,19 @@ pub(crate) fn normalize_guard_policy_with_home(
     // normalization boundary and means the value is correct for every consumer,
     // not just the one that happens to call expand_tilde. Idempotent: an entry
     // that is already absolute is left byte-identical.
-    let expanded_protected: Vec<String> = policy
+    //
+    // Deliberately NOT reported through `adjusted`. That list means "clamped to
+    // a legal range", and the warning built on it says so verbatim; printing it
+    // on every policy load for a value that was perfectly legal would teach the
+    // operator to ignore policy warnings, which is exactly how the original
+    // silent skip hid. Sibling knobs expand `~` silently too. The visibility
+    // that matters is the once-per-entry warning in `check_safe_to_delete_guard`
+    // when an entry still does not resolve after expansion.
+    policy.protected_paths = policy
         .protected_paths
         .iter()
         .map(|p| expand_tilde_with_home(p.trim(), home).display().to_string())
         .collect();
-    if expanded_protected != policy.protected_paths {
-        adjusted.push("protected_paths");
-        policy.protected_paths = expanded_protected;
-    }
 
     // Each knob takes exactly one of four shapes:
     //   floor!  — below this the daemon misbehaves; raise it.
