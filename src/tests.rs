@@ -3334,10 +3334,20 @@ fn absurd_expiry_intervals_complete_normally_on_the_first_pass() {
     for &interval in ABSURD_INTERVALS {
         let mut state = GuardRuntimeState::default();
         maybe_expire_quarantine(&expiry_policy(&qdir, interval), &mut state, Instant::now());
-        assert!(
-            state.last_quarantine_expire.is_some(),
-            "the cooldown must be stamped (interval={interval})"
-        );
+        if interval == 0 {
+            // Opting out returns before the cooldown is touched, so the
+            // runtime state is left exactly as an operator who never configured
+            // the knob would leave it.
+            assert!(
+                state.last_quarantine_expire.is_none(),
+                "interval 0 must leave the runtime state untouched"
+            );
+        } else {
+            assert!(
+                state.last_quarantine_expire.is_some(),
+                "the cooldown must be stamped (interval={interval})"
+            );
+        }
     }
     assert!(
         !qdir.join(&name).exists(),
