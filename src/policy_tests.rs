@@ -1528,7 +1528,7 @@ fn unresolvable_protected_entry_warns_once_and_does_not_refuse() {
     let b = missing("guard-arm");
     let cand_b = probe("guard-arm");
     assert!(
-        crate::check_safe_to_delete_guard(&cand_b, &[b.clone()]).is_ok(),
+        crate::check_safe_to_delete_guard(&cand_b, std::slice::from_ref(&b)).is_ok(),
         "a typo in protected_paths must not block all cleanup"
     );
     assert!(
@@ -1544,7 +1544,7 @@ fn unresolvable_protected_entry_warns_once_and_does_not_refuse() {
     //    eprintln this binary cannot capture.
     let c = missing("strict-arm");
     let cand_c = probe("strict-arm");
-    let _ = crate::check_safe_to_delete(&cand_c, &[c.clone()]);
+    let _ = crate::check_safe_to_delete(&cand_c, std::slice::from_ref(&c));
     assert!(
         !crate::safety::note_unresolvable_protected(&c),
         "the strict classifier must register an unresolvable protected entry"
