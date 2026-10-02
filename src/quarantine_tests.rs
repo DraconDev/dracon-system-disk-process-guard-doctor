@@ -674,3 +674,30 @@ fn quarantine_move_refuses_a_user_protected_ancestor() {
 
     cleanup(&root);
 }
+
+/// Audit advisory: with the TTL disabled, pinned entries used to go unreported
+/// because the expiry pass returned before the directory walk. Nothing is
+/// deleted either way, but an operator who turns expiry off still has entries
+/// sitting there and one of them may be un-ageable — so the report must still
+/// be produced.
+#[test]
+fn pinned_entries_are_reported_even_when_the_ttl_is_zero() {
+    let root = test_root("pinned-ttl-zero");
+    let src = fixture_dir(&root);
+    let qdir = root.join("q");
+    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let entry_dir = qdir.join(&manifest.name);
+    // No manifest: nothing is computable, so nothing may age out.
+    fs::remove_file(entry_dir.join(".quarantine.json")).unwrap();
+
+    let outcome = crate::quarantine_expire_detailed(&qdir, 0, true).unwrap();
+    assert!(outcome.removed.is_empty(), "ttl 0 must remove nothing");
+    assert!(entry_dir.exists(), "ttl 0 must delete nothing");
+    assert_eq!(
+        outcome.pinned,
+        vec![manifest.name.clone()],
+        "the pinned report must not depend on expiry being enabled"
+    );
+    assert!(outcome.pinned_bytes > 0);
+    cleanup(&root);
+}
