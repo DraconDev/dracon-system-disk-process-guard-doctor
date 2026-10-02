@@ -3,7 +3,9 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::{canonical_system_root, effective_system_policy_path, is_user_service_active, resolve_bin_strict};
+use crate::{
+    canonical_system_root, effective_system_policy_path, is_user_service_active, resolve_bin_strict,
+};
 
 /// The service this repo ships, and the one a `dracon-system` installation
 /// actually depends on.

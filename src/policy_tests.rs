@@ -1349,7 +1349,10 @@ ReadWritePaths=-%h/Dev -/mnt/data/quarantine
 ";
     let home = std::path::Path::new("/home/tester");
     let granted = crate::safety::unit_readwrite_paths(unit, home);
-    assert!(granted.contains(&"/home/tester/.dracon".into()), "{granted:?}");
+    assert!(
+        granted.contains(&"/home/tester/.dracon".into()),
+        "{granted:?}"
+    );
     assert!(granted.contains(&"/home/tester/Dev".into()), "{granted:?}");
     assert!(
         granted.contains(&"/mnt/data/quarantine".into()),
@@ -1357,15 +1360,31 @@ ReadWritePaths=-%h/Dev -/mnt/data/quarantine
     );
     assert!(granted.contains(&"/tmp".into()), "{granted:?}");
 
-    assert!(crate::safety::unit_grants_write(unit, home, std::path::Path::new("/home/tester/.dracon")));
-    assert!(crate::safety::unit_grants_write(unit, home, std::path::Path::new("/home/tester/Dev/a-repo/target")));
-    assert!(crate::safety::unit_grants_write(unit, home, std::path::Path::new("/tmp/nested/file")));
+    assert!(crate::safety::unit_grants_write(
+        unit,
+        home,
+        std::path::Path::new("/home/tester/.dracon")
+    ));
+    assert!(crate::safety::unit_grants_write(
+        unit,
+        home,
+        std::path::Path::new("/home/tester/Dev/a-repo/target")
+    ));
+    assert!(crate::safety::unit_grants_write(
+        unit,
+        home,
+        std::path::Path::new("/tmp/nested/file")
+    ));
     assert!(
         !crate::safety::unit_grants_write(unit, home, std::path::Path::new("/mnt/data/cold")),
         "an unlisted path is not covered"
     );
     assert!(
-        !crate::safety::unit_grants_write(unit, home, std::path::Path::new("/home/tester/.local/state/dracon")),
+        !crate::safety::unit_grants_write(
+            unit,
+            home,
+            std::path::Path::new("/home/tester/.local/state/dracon")
+        ),
         "a sibling of a granted path is not covered"
     );
 }

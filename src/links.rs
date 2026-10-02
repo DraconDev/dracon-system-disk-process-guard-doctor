@@ -8,8 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     check_safe_to_delete_guard, expand_tilde, LinkCommands, LinkEntry, LinkEntryStatus,
-    LinkStatusReport,
-    SystemPolicy,
+    LinkStatusReport, SystemPolicy,
 };
 
 /// Evaluate a single link entry: check if symlink exists and points to the correct target.

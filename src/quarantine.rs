@@ -183,17 +183,16 @@ pub(crate) fn quarantine_move(
             // manifest-less entry and `expire` pins it as unknown data, so the
             // bytes were held forever. Clean up on this path too — the origin is
             // untouched, so nothing is lost and a retry can start over.
-            let (got_files, got_bytes) =
-                match walk_stats_strict(&entry_dir) {
-                    Ok(stats) => stats,
-                    Err(verify_err) => {
-                        let _ = fs::remove_dir_all(&entry_dir);
-                        anyhow::bail!(
-                            "copy verification could not read the copied entry ({verify_err:#}) — \
+            let (got_files, got_bytes) = match walk_stats_strict(&entry_dir) {
+                Ok(stats) => stats,
+                Err(verify_err) => {
+                    let _ = fs::remove_dir_all(&entry_dir);
+                    anyhow::bail!(
+                        "copy verification could not read the copied entry ({verify_err:#}) — \
                              entry directory removed, origin untouched"
-                        );
-                    }
-                };
+                    );
+                }
+            };
             if got_files != files || got_bytes != bytes {
                 let _ = fs::remove_dir_all(&entry_dir);
                 anyhow::bail!("copy verification failed — origin untouched");

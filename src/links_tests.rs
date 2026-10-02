@@ -325,7 +325,10 @@ fn force_replace_works_for_a_link_under_home() {
     if !home_str.starts_with("/home/") && home_str != "/home" {
         return; // the defect is specific to a /home descendant
     }
-    let base = home.join(format!(".cache/dracon-system-links-home-{}", std::process::id()));
+    let base = home.join(format!(
+        ".cache/dracon-system-links-home-{}",
+        std::process::id()
+    ));
     std::fs::create_dir_all(&base).unwrap();
     let target = base.join("target.txt");
     std::fs::write(&target, "payload").unwrap();
@@ -348,7 +351,10 @@ fn force_replace_works_for_a_link_under_home() {
         report.errors
     );
     assert!(
-        std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink(),
+        std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink(),
         "the link location must now be a symlink"
     );
     // The replaced file must be recoverable from its backup.
@@ -406,14 +412,21 @@ fn a_refused_entry_does_not_abort_the_rest_of_the_batch() {
     };
 
     let report = crate::apply_link_policy(&policy, true).expect("a refused entry must not abort");
-    assert_eq!(report.errors.len(), 1, "exactly one entry failed: {report:?}");
+    assert_eq!(
+        report.errors.len(),
+        1,
+        "exactly one entry failed: {report:?}"
+    );
     assert_eq!(
         std::fs::read_to_string(&refused_link).unwrap(),
         "old one",
         "the refused entry's file must be untouched"
     );
     assert!(
-        std::fs::symlink_metadata(&ok_link).unwrap().file_type().is_symlink(),
+        std::fs::symlink_metadata(&ok_link)
+            .unwrap()
+            .file_type()
+            .is_symlink(),
         "the entry AFTER the failure must still be applied"
     );
     let _ = std::fs::remove_dir_all(&base);
