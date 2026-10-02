@@ -3110,3 +3110,128 @@ fn cleanup_stale_cooldowns_survives_an_extreme_cooldown() {
         "a 600s-old entry must be pruned at a 5s cooldown"
     );
 }
+
+#[test]
+fn guard_runtime_state_default_no_expiry_yet() {
+    let state = GuardRuntimeState::default();
+    assert!(state.last_quarantine_expire.is_none());
+}
+
+#[test]
+fn quarantine_expire_interval_zero_is_never_clamped() {
+    // 0 means "never expire automatically". A floor!() here would silently
+    // re-enable unattended deletion for an operator who explicitly opted out,
+    // which is the opposite failure from the one a floor guards against.
+    let mut policy = GuardPolicy {
+        quarantine_expire_interval_secs: 0,
+        ..Default::default()
+    };
+    normalize_guard_policy(&mut policy);
+    assert_eq!(policy.quarantine_expire_interval_secs, 0);
+}
+
+#[test]
+fn quarantine_expire_interval_defaults_to_a_day() {
+    let policy = GuardPolicy::default();
+    assert_eq!(policy.quarantine_expire_interval_secs, 86_400);
+}
+
+/// The two opt-outs that stop `maybe_expire_quarantine` from deleting anything.
+/// Both are about not deleting what the operator did not ask to be deleted:
+/// interval 0 disables the unattended path, and an unarmed
+/// `clean_quarantine_first` means any entries present came from a human running
+/// `quarantine move` by hand.
+#[test]
+fn maybe_expire_quarantine_respects_both_opt_outs() {
+    let root = std::env::temp_dir().join(format!(
+        "dracon-expire-gate-{}-{}",
+        std::process::id(),
+        "gate"
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let src = root.join("work").join("proj");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("a.txt"), b"hello").unwrap();
+    let qdir = root.join("q");
+    // Move it in, then age the manifest far past any TTL so expiry WOULD act.
+    let manifest = quarantine_move(&src, &qdir, &[]).unwrap();
+    let aged = QuarantineManifest {
+        name: manifest.name.clone(),
+        origin: manifest.origin.clone(),
+        moved_at_unix: now_unix().saturating_sub(400 * 86_400),
+        bytes: manifest.bytes,
+        files: manifest.files,
+    };
+    std::fs::write(
+        qdir.join(&manifest.name).join(".quarantine.json"),
+        serde_json::to_string_pretty(&aged).unwrap(),
+    )
+    .unwrap();
+    let entry_dir = qdir.join(&manifest.name);
+
+    let armed = GuardPolicy {
+        quarantine_dir: qdir.display().to_string(),
+        clean_quarantine_first: true,
+        quarantine_ttl_days: 30,
+        quarantine_expire_interval_secs: 0,
+        ..Default::default()
+    };
+    let mut state = GuardRuntimeState::default();
+
+    // Opt-out 1: interval 0.
+    maybe_expire_quarantine(&armed, &mut state, Instant::now());
+    assert!(
+        entry_dir.exists(),
+        "interval 0 must disable the unattended expiry entirely"
+    );
+
+    // Opt-out 2: quarantine not armed, interval positive.
+    let unarmed = GuardPolicy {
+        quarantine_expire_interval_secs: 86_400,
+        clean_quarantine_first: false,
+        ..armed.clone()
+    };
+    let mut state2 = GuardRuntimeState::default();
+    maybe_expire_quarantine(&unarmed, &mut state2, Instant::now());
+    assert!(
+        entry_dir.exists(),
+        "entries from a manual `quarantine move` must not become an unattended delete"
+    );
+
+    // Neither opt-out: the entry is past TTL and must actually be removed, and
+    // the cooldown must be stamped so the next pass is a no-op.
+    let active = GuardPolicy {
+        quarantine_expire_interval_secs: 86_400,
+        ..armed.clone()
+    };
+    let mut state3 = GuardRuntimeState::default();
+    maybe_expire_quarantine(&active, &mut state3, Instant::now());
+    assert!(!entry_dir.exists(), "a past-TTL entry must be expired");
+    assert!(state3.last_quarantine_expire.is_some());
+
+    // And the cooldown holds: a second immediate pass must not re-scan. Proven
+    // by re-creating an expired entry and confirming it survives the next pass.
+    let src2 = root.join("work2").join("proj");
+    std::fs::create_dir_all(&src2).unwrap();
+    std::fs::write(src2.join("b.txt"), b"world!").unwrap();
+    let m2 = quarantine_move(&src2, &qdir, &[]).unwrap();
+    let aged2 = QuarantineManifest {
+        name: m2.name.clone(),
+        origin: m2.origin.clone(),
+        moved_at_unix: now_unix().saturating_sub(400 * 86_400),
+        bytes: m2.bytes,
+        files: m2.files,
+    };
+    std::fs::write(
+        qdir.join(&m2.name).join(".quarantine.json"),
+        serde_json::to_string_pretty(&aged2).unwrap(),
+    )
+    .unwrap();
+    maybe_expire_quarantine(&active, &mut state3, Instant::now());
+    assert!(
+        qdir.join(&m2.name).exists(),
+        "the cooldown must stop a per-pass rescan"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
