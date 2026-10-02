@@ -14,6 +14,17 @@ use std::sync::{Mutex, OnceLock};
 /// Deduped, it is one line naming the entry that is not protecting anything.
 static WARNED_UNRESOLVABLE_PROTECTED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
+/// Record that `entry` is unresolvable, returning true the first time it is
+/// seen and false afterwards. Split out from the `eprintln` so the
+/// once-per-entry behaviour is testable rather than trapped inside a stream
+/// write.
+pub(crate) fn note_unresolvable_protected(entry: &str) -> bool {
+    let seen = WARNED_UNRESOLVABLE_PROTECTED.get_or_init(|| Mutex::new(HashSet::new()));
+    seen.lock()
+        .map(|mut s| s.insert(entry.to_string()))
+        .unwrap_or(true)
+}
+
 /// System directories always protected from deletion.
 pub(crate) const SYSTEM_PROTECTED: &[&str] = &[
     "/", "/home", "/etc", "/usr", "/var", "/boot", "/nix", "/run", "/sys", "/dev", "/proc",
@@ -207,11 +218,7 @@ pub(crate) fn check_safe_to_delete_guard(
                 // that converts a typo into a disk that fills and never
                 // reclaims, which is worse than the typo. The point is to make
                 // the failure visible so it gets fixed.
-                let seen = WARNED_UNRESOLVABLE_PROTECTED.get_or_init(|| Mutex::new(HashSet::new()));
-                let first = seen
-                    .lock()
-                    .map(|mut s| s.insert(user_prot.clone()))
-                    .unwrap_or(true);
+                let first = note_unresolvable_protected(user_prot);
                 if first {
                     eprintln!(
                         "⚠️ protected_paths entry does not resolve, so it is protecting NOTHING: {}",

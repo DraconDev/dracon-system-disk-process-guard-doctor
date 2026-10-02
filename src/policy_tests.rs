@@ -1486,3 +1486,40 @@ fn protected_paths_expansion_is_idempotent() {
         "an absolute entry must not be rewritten"
     );
 }
+
+/// An unresolvable `protected_paths` entry must warn once per entry, not once
+/// per candidate — otherwise a config typo floods every 30-second pass and the
+/// one line that matters goes unread. And it must fail OPEN: a typo must not
+/// make every cleanup candidate refuse, which would turn a typo into a disk
+/// that fills and never reclaims.
+#[test]
+fn unresolvable_protected_entry_warns_once_and_does_not_refuse() {
+    let entry = format!(
+        "/tmp/dracon-definitely-missing-protected-{}-warn-once",
+        std::process::id()
+    );
+    assert!(
+        !std::path::Path::new(&entry).exists(),
+        "precondition: the entry must not resolve"
+    );
+    assert!(
+        crate::safety::note_unresolvable_protected(&entry),
+        "the first sighting must warn"
+    );
+    assert!(
+        !crate::safety::note_unresolvable_protected(&entry),
+        "a second sighting must be silent"
+    );
+
+    // Fails open: the candidate is still considered safe to delete.
+    let candidate = std::env::temp_dir().join(format!(
+        "dracon-failopen-probe-{}-candidate",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&candidate).unwrap();
+    assert!(
+        crate::check_safe_to_delete_guard(&candidate, &[entry.clone()]).is_ok(),
+        "a typo in protected_paths must not block all cleanup"
+    );
+    let _ = std::fs::remove_dir_all(&candidate);
+}
