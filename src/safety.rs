@@ -1,7 +1,18 @@
 //! Safety checks — protect system paths from accidental deletion.
 
 use anyhow::Result;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+
+/// User-protected entries already reported as unresolvable, so the warning is
+/// emitted once per entry rather than once per candidate.
+///
+/// `check_safe_to_delete_guard` runs per cleanup candidate, so a config typo
+/// would otherwise reprint the same line on every candidate of every 30-second
+/// pass — a warning nobody reads because it is the only thing in the log.
+/// Deduped, it is one line naming the entry that is not protecting anything.
+static WARNED_UNRESOLVABLE_PROTECTED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
 /// System directories always protected from deletion.
 pub(crate) const SYSTEM_PROTECTED: &[&str] = &[
@@ -183,7 +194,32 @@ pub(crate) fn check_safe_to_delete_guard(
     for user_prot in user_protected {
         let prot_canon = match Path::new(user_prot).canonicalize() {
             Ok(p) => p.display().to_string(),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // FIXED 2026-10-02 (audit HIGH): this used to `continue` with
+                // no diagnostic at all. That is what made the `~` form of
+                // `protected_paths` fail invisibly for four days: the config
+                // parsed, the guard listed the protected tree as a reclaim
+                // candidate, and the only symptom was a tree the operator
+                // believed was protected not being protected.
+                //
+                // Warn, then skip — deliberately NOT a hard refusal. A single
+                // typo must not make every cleanup candidate refuse, because
+                // that converts a typo into a disk that fills and never
+                // reclaims, which is worse than the typo. The point is to make
+                // the failure visible so it gets fixed.
+                let seen = WARNED_UNRESOLVABLE_PROTECTED.get_or_init(|| Mutex::new(HashSet::new()));
+                let first = seen
+                    .lock()
+                    .map(|mut s| s.insert(user_prot.clone()))
+                    .unwrap_or(true);
+                if first {
+                    eprintln!(
+                        "⚠️ protected_paths entry does not resolve, so it is protecting NOTHING: {}",
+                        user_prot
+                    );
+                }
+                continue;
+            }
             Err(e) => anyhow::bail!(
                 "cannot canonicalize user-protected path {}: {} — refusing",
                 user_prot,

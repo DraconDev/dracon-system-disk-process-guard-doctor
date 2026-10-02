@@ -1115,6 +1115,30 @@ pub(crate) fn normalize_storage_policy(storage: &mut StoragePolicy) -> Vec<&'sta
 pub(crate) fn normalize_guard_policy(policy: &mut GuardPolicy) -> Vec<&'static str> {
     let mut adjusted: Vec<&'static str> = Vec::new();
 
+    // FIXED 2026-10-02 (audit HIGH): `protected_paths` was the ONLY path-valued
+    // guard knob that never had `~` expanded. Every sibling — quarantine_dir,
+    // relocate_cold_root, relocate_candidate_roots, rust_search_roots, the guard
+    // log path — expands at point of use, so `~/Dev/...` worked for all of them.
+    // Here the raw string went straight to `Path::canonicalize`, which resolves
+    // `~` against the process CWD, failed with NotFound, and was silently
+    // skipped — so a `~` entry parsed, reported as configured, and protected
+    // NOTHING. The config was inert while the absolute-path test stayed green,
+    // which is precisely the failure the design doc warns about.
+    //
+    // Expanding here rather than at point of use keeps this the single
+    // normalization boundary and means the value is correct for every consumer,
+    // not just the one that happens to call expand_tilde. Idempotent: an entry
+    // that is already absolute is left byte-identical.
+    let expanded_protected: Vec<String> = policy
+        .protected_paths
+        .iter()
+        .map(|p| expand_tilde_with_home(p.trim(), dirs::home_dir().as_deref()).display().to_string())
+        .collect();
+    if expanded_protected != policy.protected_paths {
+        adjusted.push("protected_paths");
+        policy.protected_paths = expanded_protected;
+    }
+
     // Each knob takes exactly one of four shapes:
     //   floor!  — below this the daemon misbehaves; raise it.
     //   ceil!   — above this the knob is meaningless or unbounded; cap it.
