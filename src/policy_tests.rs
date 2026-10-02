@@ -1495,34 +1495,59 @@ fn protected_paths_expansion_is_idempotent() {
 /// one line that matters goes unread. And it must fail OPEN: a typo must not
 /// make every cleanup candidate refuse, which would turn a typo into a disk
 /// that fills and never reclaims.
+///
+/// Each classifier gets its OWN entry. Sharing one across all three checks made
+/// the later assertions vacuous: the first call registered the string, so the
+/// classifier arms could have been silent and the test still passed. That is
+/// the same class of vacuous test the tilde bug produced.
 #[test]
 fn unresolvable_protected_entry_warns_once_and_does_not_refuse() {
-    let entry = format!(
-        "/tmp/dracon-definitely-missing-protected-{}-warn-once",
-        std::process::id()
-    );
+    let pid = std::process::id();
+    let missing = |which: &str| format!("/tmp/dracon-missing-protected-{pid}-{which}");
+    let probe = |which: &str| {
+        let p = std::env::temp_dir().join(format!("dracon-failopen-probe-{pid}-{which}"));
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    };
+
+    // 1. The helper itself: once per entry, not once per call.
+    let a = missing("helper");
     assert!(
-        !std::path::Path::new(&entry).exists(),
+        !std::path::Path::new(&a).exists(),
         "precondition: the entry must not resolve"
     );
+    assert!(crate::safety::note_unresolvable_protected(&a), "first sighting warns");
     assert!(
-        crate::safety::note_unresolvable_protected(&entry),
-        "the first sighting must warn"
-    );
-    assert!(
-        !crate::safety::note_unresolvable_protected(&entry),
+        !crate::safety::note_unresolvable_protected(&a),
         "a second sighting must be silent"
     );
 
-    // Fails open: the candidate is still considered safe to delete.
-    let candidate = std::env::temp_dir().join(format!(
-        "dracon-failopen-probe-{}-candidate",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&candidate).unwrap();
+    // 2. The GUARD classifier registers an unresolvable entry — its arm really
+    //    calls the helper. Fresh entry, so nothing pre-registered it.
+    let b = missing("guard-arm");
+    let cand_b = probe("guard-arm");
     assert!(
-        crate::check_safe_to_delete_guard(&candidate, &[entry.clone()]).is_ok(),
+        crate::check_safe_to_delete_guard(&cand_b, &[b.clone()]).is_ok(),
         "a typo in protected_paths must not block all cleanup"
     );
-    let _ = std::fs::remove_dir_all(&candidate);
+    assert!(
+        !crate::safety::note_unresolvable_protected(&b),
+        "the guard classifier must register an unresolvable protected entry"
+    );
+    let _ = std::fs::remove_dir_all(&cand_b);
+
+    // 3. The STRICT classifier (`check_safe_to_delete`, used by `link apply`)
+    //    had the identical silent skip and was found while proving the first
+    //    fix. The helper returning false afterwards is the observable proof
+    //    that it called the helper too, since the warning text lives in an
+    //    eprintln this binary cannot capture.
+    let c = missing("strict-arm");
+    let cand_c = probe("strict-arm");
+    let _ = crate::check_safe_to_delete(&cand_c, &[c.clone()]);
+    assert!(
+        !crate::safety::note_unresolvable_protected(&c),
+        "the strict classifier must register an unresolvable protected entry"
+    );
+    let _ = std::fs::remove_dir_all(&cand_c);
 }
