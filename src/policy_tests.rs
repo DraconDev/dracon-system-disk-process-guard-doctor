@@ -1389,3 +1389,100 @@ ReadWritePaths=-%h/Dev -/mnt/data/quarantine
         "a sibling of a granted path is not covered"
     );
 }
+
+// ---------------------------------------------------------------------------
+// protected_paths `~` expansion (2026-10-02, audit HIGH)
+// ---------------------------------------------------------------------------
+
+/// The auditor's finding, restated as a test: a `~` in `protected_paths` parsed
+/// fine, was reported as configured, and protected NOTHING — `canonicalize`
+/// resolves `~` against the process CWD, fails with NotFound, and the failure
+/// was skipped silently. The absolute-path test stayed green the whole time.
+///
+/// This drives the real path — parse TOML, normalize, then ask the actual
+/// safety classifier — so the config can no longer be inert while a test that
+/// hardcodes an absolute path still passes.
+#[test]
+fn protected_paths_tilde_entry_actually_protects() {
+    let root = std::env::temp_dir().join(format!(
+        "dracon-protected-tilde-{}-{}",
+        std::process::id(),
+        "tilde"
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let fake_home = root.join("home");
+
+    // The tree that must survive, and a sibling that must not be affected.
+    let protected_tree = fake_home.join("Dev/dracon-utilities/target");
+    std::fs::create_dir_all(&protected_tree).unwrap();
+    std::fs::write(protected_tree.join("a.txt"), b"keep").unwrap();
+    let other_tree = fake_home.join("Dev/some-other-repo/target");
+    std::fs::create_dir_all(&other_tree).unwrap();
+    std::fs::write(other_tree.join("b.txt"), b"reclaimable").unwrap();
+
+    let toml_src = r#"
+[guard]
+protected_paths = ["~/Dev/dracon-utilities"]
+"#;
+    let mut parsed: SystemPolicy = toml::from_str(toml_src).expect("fixture must parse");
+    assert_eq!(
+        parsed.guard.protected_paths,
+        vec!["~/Dev/dracon-utilities".to_string()],
+        "precondition: the raw policy really does carry the tilde form"
+    );
+
+    let adjusted = normalize_guard_policy_with_home(&mut parsed.guard, Some(&fake_home));
+    assert!(
+        adjusted.contains(&"protected_paths"),
+        "the expansion must be reported as an adjustment so drift is visible"
+    );
+    assert_eq!(
+        parsed.guard.protected_paths,
+        vec![fake_home.join("Dev/dracon-utilities").display().to_string()],
+        "the tilde form must be expanded to an absolute path"
+    );
+
+    // The real classifier must now refuse the protected tree…
+    let err = crate::check_safe_to_delete_guard(&protected_tree, &parsed.guard.protected_paths)
+        .expect_err("a ~ entry must protect, not silently no-op");
+    let msg = format!("{err:#}");
+    assert!(
+        msg.contains("refusing to delete protected path"),
+        "expected a protection refusal, got: {msg}"
+    );
+
+    // …and must NOT over-protect an unrelated sibling.
+    assert!(
+        crate::check_safe_to_delete_guard(&other_tree, &parsed.guard.protected_paths).is_ok(),
+        "protection must stay scoped to the configured ancestor"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Idempotence: normalizing twice must not keep reporting an adjustment, and an
+/// already-absolute entry must survive byte-identical.
+#[test]
+fn protected_paths_expansion_is_idempotent() {
+    let home = Path::new("/tmp/fake-home-for-idempotence");
+    let mut p = GuardPolicy {
+        protected_paths: vec![
+            "~/Dev/dracon-utilities".to_string(),
+            "/already/absolute".to_string(),
+        ],
+        ..Default::default()
+    };
+    let first = normalize_guard_policy_with_home(&mut p, Some(home));
+    assert!(first.contains(&"protected_paths"));
+    let snapshot = p.protected_paths.clone();
+    let second = normalize_guard_policy_with_home(&mut p, Some(home));
+    assert!(
+        !second.contains(&"protected_paths"),
+        "a second pass must find nothing to adjust"
+    );
+    assert_eq!(p.protected_paths, snapshot);
+    assert_eq!(
+        p.protected_paths[1], "/already/absolute",
+        "an absolute entry must not be rewritten"
+    );
+}
