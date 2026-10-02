@@ -67,9 +67,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   64.0 GiB move plan with the `~` form and refused with "refusing to delete
   protected path" once expanded. `~` is now expanded in
   `normalize_guard_policy_with_home` (the single normalization boundary, and
-  idempotent, and reported in the `adjusted` drift list), and an unresolvable
+  idempotent), and an unresolvable
   protected entry now WARNS once per entry naming the entry instead of being
-  skipped in silence. It deliberately still fails open rather than refusing
+  skipped in silence. The expansion is deliberately NOT reported through
+  `adjusted`: that list means "clamped to a legal range", and the warning built
+  on it says so verbatim, so reporting a perfectly legal `~` form would print a
+  false "clamped" line on every policy load — the same ignore-the-warnings trap
+  this fix was removing. A test pins that it stays unreported; the visibility
+  that matters is the per-entry warning below. It deliberately still fails open rather than refusing
   every candidate: a typo must not become a disk that fills and never reclaims.
   4 new tests, including one that drives the whole policy path — parse TOML,
   normalize, ask the real classifier — so the config can no longer be inert
