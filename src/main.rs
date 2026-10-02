@@ -3075,7 +3075,7 @@ async fn auto_cleanup_rust_targets(
             result.protected_paths.push(format!(
                 "{} ({})",
                 target.path.display(),
-                one_line(&e.to_string())
+                "".to_string()
             ));
             continue;
         }
