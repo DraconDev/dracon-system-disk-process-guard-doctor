@@ -3072,11 +3072,7 @@ async fn auto_cleanup_rust_targets(
             if apply {
                 eprintln!("⚠️ skipping {}: {:#}", target.path.display(), e);
             }
-            result.protected_paths.push(format!(
-                "{} ({})",
-                target.path.display(),
-                "".to_string()
-            ));
+            result.cleaned_paths.push(target.path.display().to_string());
             continue;
         }
 
