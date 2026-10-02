@@ -3068,6 +3068,7 @@ async fn auto_cleanup_rust_targets(
         // disagree, rather than adding a second filter that would drift. The
         // reason travels with the verdict, matching the convention the
         // active-build protections above already use.
+        if apply {
         if let Err(e) = check_safe_to_delete_guard(&target.path, &guard.protected_paths) {
             if apply {
                 eprintln!("⚠️ skipping {}: {:#}", target.path.display(), e);
@@ -3078,6 +3079,7 @@ async fn auto_cleanup_rust_targets(
                 one_line(&e.to_string())
             ));
             continue;
+        }
         }
 
         // ADDED 2026-09-27 (space tiers Phase 2): quarantine-first routing —
