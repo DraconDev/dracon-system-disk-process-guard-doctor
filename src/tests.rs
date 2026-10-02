@@ -3494,13 +3494,14 @@ fn one_line_collapses_multiline_messages() {
     assert_eq!(one_line(""), "");
 }
 
-
 #[tokio::test]
 async fn storage_cleanup_activity_refuses_recent_artifacts() {
     let project = tempfile::tempdir().unwrap();
     let target = project.path().join("target");
     fs::create_dir(&target).unwrap();
-    let error = validate_storage_cleanup_activity("rust-build", &target).await.unwrap_err();
+    let error = validate_storage_cleanup_activity("rust-build", &target)
+        .await
+        .unwrap_err();
     assert!(error.to_string().contains("modified <60s"), "{error}");
     assert!(target.exists());
 }
@@ -3525,12 +3526,22 @@ async fn storage_cleanup_activity_refuses_live_rust_and_node_processes() {
         fs::create_dir(&path).unwrap();
         fs::write(path.join("keep"), b"synthetic artifact").unwrap();
         let old = SystemTime::now() - Duration::from_secs(120);
-        File::open(&path).unwrap().set_times(std::fs::FileTimes::new().set_modified(old)).unwrap();
+        File::open(&path)
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(old))
+            .unwrap();
         let executable = project.path().join(comm);
         symlink("/bin/sleep", &executable).unwrap();
-        let mut child = ChildGuard(std::process::Command::new(&executable)
-            .arg("300").current_dir(project.path()).spawn().unwrap());
-        let error = validate_storage_cleanup_activity(kind, &path).await.unwrap_err();
+        let mut child = ChildGuard(
+            std::process::Command::new(&executable)
+                .arg("300")
+                .current_dir(project.path())
+                .spawn()
+                .unwrap(),
+        );
+        let error = validate_storage_cleanup_activity(kind, &path)
+            .await
+            .unwrap_err();
         assert!(error.to_string().contains("active"), "{kind}: {error}");
         assert!(child.0.try_wait().unwrap().is_none());
         assert_eq!(fs::read(path.join("keep")).unwrap(), b"synthetic artifact");

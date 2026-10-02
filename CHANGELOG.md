@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (workspace audit 2026-10-02)
+
+- Interactive storage cleanup rechecks active Rust and Node/package-manager processes and recent artifact modification immediately before deletion, retaining candidates when inspection fails (audit A2, 2026-10-02). Package-cache apply refusal remains enforced.
+- Quarantine refuses source directories already containing `.quarantine.json`, including dangling symlinks, and publishes new metadata atomically without replacement or link following (audit A5). Original contents stay intact on refusal; existing quarantine entries remain restorable.
+
 ### Fixed
 
 - **The quarantine TTL was enforced by nothing (2026-10-02)** —
