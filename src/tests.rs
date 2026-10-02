@@ -3447,8 +3447,14 @@ async fn dry_run_preview_omits_user_protected_targets() {
         result.protected_paths
     );
     // The reason must survive, or the operator sees a refusal with no cause.
+    // Asserted on a phrase that cannot come from the PATH — an earlier version
+    // matched on "protected", which the fixture directory name itself contains,
+    // so it passed with the reason deleted entirely.
     assert!(
-        result.protected_paths.iter().any(|p| p.contains("protected")),
+        result
+            .protected_paths
+            .iter()
+            .any(|p| p.contains("refusing to delete protected path")),
         "the protected verdict must carry its reason, got: {:?}",
         result.protected_paths
     );
