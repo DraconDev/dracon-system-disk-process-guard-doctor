@@ -6684,6 +6684,12 @@ pub(crate) async fn run_guard_once(
         }
     }
 
+    // Quarantine expiry runs on every pass, outside the disk-pressure gate
+    // above: it drains the SECOND disk rather than responding to pressure on
+    // `/`, so putting it behind action/critical would mean the backlog only
+    // ever clears during a crisis. Self-paced by its own cooldown.
+    maybe_expire_quarantine(guard, state, Instant::now());
+
     check_disk_state_change(guard, state, used, &dstate).await;
     check_link_drift(guard, state).await;
 
