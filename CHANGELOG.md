@@ -84,10 +84,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every candidate: a typo must not become a disk that fills and never reclaims.
   4 new tests, including one that drives the whole policy path — parse TOML,
   normalize, ask the real classifier — so the config can no longer be inert
-  while an absolute-path test stays green. Also still true: `guard clean --rust`
-  LISTS protected candidates in its dry-run preview and refuses them only at
-  apply time (as `Protected:`), so the preview overstates what is reclaimable;
-  cosmetic, not a correctness gap.
+  while an absolute-path test stays green. The dry-run preview disagreed for a
+  second reason and is fixed with it (2026-10-02): the protected-path refusal
+  lived INSIDE the `if apply` block, so `guard clean --rust` preview LISTED
+  every protected tree as reclaimable and refused it only at apply time (as
+  `Protected:`) — overstating reclaimable space by however large the protected
+  workspace is (~66 GiB on this host), which misled the operator twice in one
+  session. The check is hoisted so preview and apply go through ONE verdict and
+  cannot drift, and the reason travels with the verdict.
 
 - **The guard's auto-reclaim reclaimed zero bytes for four days, silently (2026-10-01)** —
   a second, larger consequence of the `ReadWritePaths` gap below, recorded here
