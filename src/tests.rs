@@ -3452,10 +3452,16 @@ async fn dry_run_preview_omits_user_protected_targets() {
         "the protected verdict must carry its reason, got: {:?}",
         result.protected_paths
     );
-    // Dry run reclaims nothing.
-    assert_eq!(result.reclaimed_bytes, 0);
+    // Nothing was deleted. `reclaimed_bytes` is non-zero in a dry run BY
+    // DESIGN — it is the "would reclaim" figure the preview's
+    // "Total reclaimable" line is built from — so the proof that this is a
+    // preview and not a delete is that the trees are still on disk.
     assert!(protected_proj.join("target").exists());
     assert!(free_proj.join("target").exists());
+    assert!(
+        free_proj.join("target").join("debug").join("blob.bin").exists(),
+        "the offered candidate must still be intact after a dry run"
+    );
 
     let _ = std::fs::remove_dir_all(&root);
 }
