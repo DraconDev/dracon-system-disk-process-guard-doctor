@@ -6060,6 +6060,83 @@ fn cooldown_due(last: Option<Instant>, interval_secs: u64, now: Instant) -> bool
     last.is_none_or(|last| now.duration_since(last).as_secs() >= interval_secs.max(60))
 }
 
+/// Enforce the quarantine TTL from inside the guard, on its own cadence.
+///
+/// Why this exists: `quarantine_expire` had exactly one non-test caller — the
+/// CLI `Expire` arm. Nothing on any timer and no daemon pass ever called it,
+/// so a 30-day TTL was a number nobody read. That was invisible while the
+/// reclaim path could not write, but once quarantine actually worked the guard
+/// started converting deletes into permanent second-disk usage: a quarantine
+/// move FREES `/` at copy time (the origin is deleted) and only frees
+/// `/mnt/data` when the entry expires. An expiry that never runs does not keep a
+/// safety copy — it leaks.
+///
+/// Deliberately NOT inside the disk-pressure gate. The other reclaim paths run
+/// at action/critical because they respond to pressure on `/`; this drains the
+/// SECOND disk, so gating it on `/` pressure means a healthy `/` never drains
+/// and the backlog only ever clears during a crisis.
+///
+/// Two gates beyond the cooldown, both about not deleting what the operator
+/// did not ask to be deleted:
+///
+/// - `quarantine_expire_interval_secs = 0` opts out of the unattended path
+///   entirely. The manual CLI still works.
+/// - `clean_quarantine_first` must be armed. If it is not, any entries present
+///   came from a human running `quarantine move` by hand, and those must not
+///   become an unattended delete just because the directory is non-empty.
+fn maybe_expire_quarantine(guard: &GuardPolicy, state: &mut GuardRuntimeState, now: Instant) {
+    if guard.quarantine_expire_interval_secs == 0 {
+        return;
+    }
+    if !guard.clean_quarantine_first {
+        return;
+    }
+    if !cooldown_due(
+        state.last_quarantine_expire,
+        guard.quarantine_expire_interval_secs,
+        now,
+    ) {
+        return;
+    }
+    // Stamp before the work: a filesystem that errors on every pass must not
+    // turn the interval into a per-pass retry.
+    state.last_quarantine_expire = Some(now);
+
+    let root = quarantine_root(guard);
+    // Nothing to do, and no reason to spend a directory walk.
+    if !root.is_dir() {
+        return;
+    }
+    match quarantine_expire_detailed(&root, guard.quarantine_ttl_days, true) {
+        Ok(outcome) => {
+            // A pinned entry can never age out — no manifest, no timestamp — so
+            // it needs a human (`quarantine purge`). Report it every pass, or it
+            // quietly accumulates in a directory whose contract is bounded
+            // growth.
+            if !outcome.pinned.is_empty() {
+                eprintln!(
+                    "🕒 quarantine: {} pinned ({}), cannot age out — clear with `dracon-system quarantine purge <name> --apply`: {}",
+                    outcome.pinned.len(),
+                    human_bytes(outcome.pinned_bytes),
+                    outcome.pinned.join(", ")
+                );
+            }
+            for entry in outcome.removed {
+                // Logged per deletion, not summarised: once an entry is gone the
+                // journal is the only record that it ever existed, and the
+                // operator-review signal cannot come from a directory listing.
+                eprintln!(
+                    "🕒 quarantine expired: {} (origin {}, freed {})",
+                    entry.name,
+                    entry.origin,
+                    human_bytes(entry.bytes)
+                );
+            }
+        }
+        Err(e) => eprintln!("⚠️ quarantine expire failed: {e:#}"),
+    }
+}
+
 fn cleanup_stale_cooldowns(state: &mut GuardRuntimeState, cooldown_secs: u64) {
     // checked_sub, not `-`: `Instant - Duration` PANICS when the duration
     // underflows the clock's representation ("overflow when subtracting
