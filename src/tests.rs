@@ -3531,7 +3531,11 @@ async fn storage_cleanup_activity_refuses_live_rust_and_node_processes() {
             .set_times(std::fs::FileTimes::new().set_modified(old))
             .unwrap();
         let executable = project.path().join(comm);
-        symlink("/bin/sleep", &executable).unwrap();
+        let sleep_bin = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|dir| dir.join("sleep"))
+            .find(|candidate| candidate.is_file())
+            .expect("sleep executable");
+        symlink(sleep_bin, &executable).unwrap();
         let mut child = ChildGuard(
             std::process::Command::new(&executable)
                 .arg("300")
