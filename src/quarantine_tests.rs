@@ -54,7 +54,10 @@ fn quarantine_preserves_a_reserved_user_file() {
     let src = fixture_dir(temp.path());
     fs::write(src.join(".quarantine.json"), b"original user data").unwrap();
     assert!(crate::quarantine_move(&src, &temp.path().join("q"), &[]).is_err());
-    assert_eq!(fs::read(src.join(".quarantine.json")).unwrap(), b"original user data");
+    assert_eq!(
+        fs::read(src.join(".quarantine.json")).unwrap(),
+        b"original user data"
+    );
     assert_eq!(fs::read(src.join("a.txt")).unwrap(), b"hello");
 }
 
@@ -66,12 +69,20 @@ fn quarantine_preserves_reserved_symlinks_and_their_targets() {
         let temp = tempfile::tempdir().unwrap();
         let src = fixture_dir(temp.path());
         let outside = temp.path().join("outside");
-        if !dangling { fs::write(&outside, b"outside user data").unwrap(); }
+        if !dangling {
+            fs::write(&outside, b"outside user data").unwrap();
+        }
         symlink(&outside, src.join(".quarantine.json")).unwrap();
         assert!(crate::quarantine_move(&src, &temp.path().join("q"), &[]).is_err());
-        assert_eq!(fs::read_link(src.join(".quarantine.json")).unwrap(), outside);
-        if dangling { assert!(!outside.exists()); }
-        else { assert_eq!(fs::read(&outside).unwrap(), b"outside user data"); }
+        assert_eq!(
+            fs::read_link(src.join(".quarantine.json")).unwrap(),
+            outside
+        );
+        if dangling {
+            assert!(!outside.exists());
+        } else {
+            assert_eq!(fs::read(&outside).unwrap(), b"outside user data");
+        }
     }
 }
 
