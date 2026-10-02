@@ -3368,8 +3368,8 @@ fn absurd_expiry_intervals_complete_normally_on_the_first_pass() {
 /// This drives `auto_cleanup_rust_targets` in dry-run mode over a real tempdir
 /// tree, because the preview is the thing that was wrong — asserting on the
 /// apply path would pass even with the bug in place.
-#[test]
-fn dry_run_preview_omits_user_protected_targets() {
+#[tokio::test]
+async fn dry_run_preview_omits_user_protected_targets() {
     let root = std::env::temp_dir().join(format!(
         "dracon-preview-protected-{}-{}",
         std::process::id(),
@@ -3399,7 +3399,8 @@ fn dry_run_preview_omits_user_protected_targets() {
 
     let mut runtime = GuardRuntimeState::default();
     // apply = false: this is the preview path that was broken.
-    let result = block_on(auto_cleanup_rust_targets(&guard, &mut runtime, false, true))
+    let result = auto_cleanup_rust_targets(&guard, &mut runtime, false, true)
+        .await
         .expect("dry-run scan must succeed");
 
     let cleaned: Vec<&String> = result.cleaned_paths.iter().collect();
