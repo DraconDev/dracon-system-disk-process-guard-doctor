@@ -1338,6 +1338,46 @@ fn a_repointed_storage_root_outside_readwritepaths_is_reported() {
     assert_eq!(reported[0].1, std::path::Path::new("/mnt/data/cold"));
 }
 
+/// Audit R4-SYS-06: the guard's OTHER write roots — event log, truncated
+/// log dirs, freeze marker — must be covered by the same startup check.
+/// A repointed one outside ReadWritePaths failed EROFS every pass with
+/// no warning; disabled ones (blank log file / blank log_dirs) stay silent.
+#[test]
+fn repointed_log_and_freeze_roots_outside_readwritepaths_are_reported() {
+    let guard = GuardPolicy {
+        guard_log_file: "/mnt/data/logs/guard.log".to_string(),
+        log_dirs: Some("/mnt/data/logs, ~/.local/state/dracon".to_string()),
+        sync_freeze_marker: "/mnt/data/freeze/marker".to_string(),
+        ..Default::default()
+    };
+    let reported = crate::safety::uncovered_storage_roots(&shipped_unit(), &guard);
+    let keys: Vec<&str> = reported.iter().map(|(k, _)| *k).collect();
+    assert_eq!(
+        keys,
+        vec!["guard_log_file", "log_dirs", "sync_freeze_marker"],
+        "all three repointed write roots must surface, got {reported:?}"
+    );
+    // The second log dir is under a granted root — only the repointed
+    // entry is reported, not the whole key.
+    assert_eq!(
+        reported[1].1,
+        std::path::Path::new("/mnt/data/logs"),
+        "only the uncovered log dir entry must surface, got {reported:?}"
+    );
+
+    // Disabled stays silent: blank log file, blank log_dirs, and the
+    // default (covered) marker.
+    let quiet = GuardPolicy {
+        guard_log_file: String::new(),
+        log_dirs: Some("   ".to_string()),
+        ..Default::default()
+    };
+    assert!(
+        crate::safety::uncovered_storage_roots(&shipped_unit(), &quiet).is_empty(),
+        "disabled log roots must not warn"
+    );
+}
+
 /// Parsing semantics, pinned directly: `%h` expands, the `-` "ignore if missing"
 /// prefix does not narrow what is granted (on a host where the path EXISTS it
 /// is writable), repeated directives accumulate, and a path nobody listed is
