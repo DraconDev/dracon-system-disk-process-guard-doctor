@@ -260,19 +260,11 @@ fn is_git_tracked_fails_closed_when_git_unrunnable() {
     // callers fail closed (plan_relocate `?`, cold-scan `unwrap_or(true)`).
     let root = test_root("sys04");
     let sub = git_repo_with_tracked_subdir(&root);
-    // Swap PATH to an empty dir so `git` cannot resolve; cargo tests
-    // run on threads (not processes) so restore in place.
-    let saved = std::env::var_os("PATH");
-    let empty = root.join("empty-path");
-    fs::create_dir_all(&empty).unwrap();
-    std::env::set_var("PATH", &empty);
-    let verdict = crate::is_git_tracked(&sub);
-    if let Some(v) = saved {
-        std::env::set_var("PATH", v);
-    } else {
-        std::env::remove_var("PATH");
-    }
-    let err = verdict.unwrap_err();
+    // A nonexistent binary exercises the exact spawn-failure arm that
+    // git-missing-from-PATH hits (both are spawn ENOENT) with no
+    // process-global PATH swap, so this is race-free in parallel runs.
+    let err = crate::is_git_tracked_with(&sub, "/nonexistent-git-binary-xyz")
+        .unwrap_err();
     assert!(
         format!("{err:#}").contains("cannot run git rev-parse"),
         "git-missing must fail closed with spawn context, got: {err:#}"
