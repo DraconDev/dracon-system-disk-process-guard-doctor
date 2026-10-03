@@ -198,7 +198,14 @@ fi
 #    exactly like the absent user manager in step 4.
 storage_root_for_key() {
     # First assignment wins; a commented-out example line never matches.
+    # FIXED 2026-10-03 (audit R4-SYS-02): also match single-quoted TOML
+    # strings — the old expression only matched double quotes, so a
+    # single-quoted root read as unset and the step passed vacuously
+    # while the daemon (real TOML parser) honored it. The two
+    # expressions are mutually exclusive per line (the char after `=`
+    # decides), so head -1 still takes the first assignment.
     sed -n -e "s|^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"\\([^\"]*\\)\".*|\\1|p" \
+           -e "s|^[[:space:]]*$1[[:space:]]*=[[:space:]]*'\\([^']*\\)'.*|\\1|p" \
         "$2" 2>/dev/null | head -1
 }
 # The mount a path resolves through: the longest mount point that prefixes it.
@@ -235,6 +242,17 @@ check_storage_root_writable() {
     local key="$1" root="$2" mountinfo="$3"
     [ -n "$root" ] || return 0 # knob unset or commented out: nothing to check
     case "$root" in
+        # FIXED 2026-10-03 (audit R4-SYS-02): bare `~` means $HOME
+        # exactly (expand_tilde_with_home) — the old patterns only
+        # handled `~/...`, so bare `~` fell into the relative branch
+        # and skipped a root the daemon resolves and writes. With no
+        # HOME there is nothing to resolve against: skip like a
+        # relative root (the daemon falls back to CWD-relative ".",
+        # equally uncheckable from here).
+        "~")
+            [ -n "${HOME:-}" ] || return 0
+            root="$HOME"
+            ;;
         "~"/*) root="${HOME:-}/${root#\~/}" ;;
         /*) ;;
         *) return 0 # relative root: resolved against the service CWD, not checkable

@@ -563,4 +563,42 @@ esac
 # Tidy up: later cases must not see this case's HOME policies.
 rm -rf "$HOME/.dracon"
 
+# 30. Quote-style and tilde parity with the daemon (R4-SYS-02): a
+#     single-quoted root is honored (not read as unset), and bare `~`
+#     resolves to $HOME (not skipped as "relative"). Both halves fail
+#     against the pre-fix checker, which passed vacuously on each.
+cat > "$work/mountinfo-quote" <<'EOF'
+622 240 259:2 / / ro,nosuid,relatime shared:252 master:1 - ext4 /dev/nvme0n1p2 rw
+EOF
+cat > "$work/policy-single.toml" <<'EOF'
+[storage]
+quarantine_dir = '/var/readonly'
+relocate_cold_root = ''
+EOF
+out="$(GUARD_MOUNTINFO="$work/mountinfo-quote" POLICY_FILE="$work/policy-single.toml" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
+    && fail "a single-quoted read-only root was skipped as unset: $out"
+case "$out" in
+    *"/var/readonly"*) : ;;
+    *) fail "the verdict did not name the single-quoted root: $out" ;;
+esac
+# Bare `~` with HOME under the read-only root mount must be checked
+# (and fail), not skipped as relative. HOME is the suite's isolated
+# fixture home, which lives under /tmp — but the fixture mountinfo
+# has no /tmp line, so it resolves through the read-only /.
+cat > "$work/policy-tilde.toml" <<'EOF'
+[storage]
+quarantine_dir = "~"
+relocate_cold_root = ''
+EOF
+out="$(GUARD_MOUNTINFO="$work/mountinfo-quote" POLICY_FILE="$work/policy-tilde.toml" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
+    && fail "a bare-~ root was skipped as relative: $out"
+case "$out" in
+    *"$HOME"*) : ;;
+    *) fail "the verdict did not name the resolved home: $out" ;;
+esac
+
 echo "check-unit-deployment regression tests: ok"
