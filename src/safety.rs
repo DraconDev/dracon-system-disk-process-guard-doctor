@@ -351,9 +351,28 @@ fn expand_unit_path(token: &str, home: &Path) -> PathBuf {
 /// every write with EROFS — which is exactly how quarantine silently stopped
 /// working on 2026-10-01.
 pub(crate) fn unit_grants_write(unit: &str, home: &Path, path: &Path) -> bool {
+    // FIXED 2026-10-03 (audit R4-SYS-14): compare canonical paths so
+    // a symlinked storage root matches the grant on its target — the
+    // checker (R3-L23) already matches canonical, and the split warned
+    // here while passing there.
+    let canon_path = canonical_or_literal(path);
     unit_readwrite_paths(unit, home)
         .iter()
-        .any(|granted| path.starts_with(granted))
+        .any(|granted| canon_path.starts_with(canonical_or_literal(granted)))
+}
+
+/// Canonicalize for comparison, with literal fallback (mirrors the
+/// checker's `readlink -f ... || literal`, R3-L23). Missing paths
+/// (granted `-` entries for not-yet-created dirs, unconfigured
+/// roots) keep comparing literally. Relative paths are NEVER
+/// resolved: canonicalize would anchor them to THIS process's CWD,
+/// not the service's WorkingDirectory, so resolving them would flip
+/// verdicts depending on where the CLI was invoked.
+fn canonical_or_literal(path: &Path) -> PathBuf {
+    if !path.is_absolute() {
+        return path.to_path_buf();
+    }
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 /// The storage roots this policy writes to that the shipped unit would leave
