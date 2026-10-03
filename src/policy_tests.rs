@@ -1430,6 +1430,53 @@ ReadWritePaths=-%h/Dev -/mnt/data/quarantine
     );
 }
 
+/// 2026-10-03 (audit R4-SYS-14): daemon/checker parity — a symlinked
+/// storage root must match the grant on its canonical target (the
+/// checker has matched canonical since R3-L23; the daemon warned
+/// while the checker passed). Missing paths keep the literal
+/// fallback, and relative paths are never CWD-resolved.
+#[cfg(unix)]
+#[test]
+fn unit_grants_write_matches_symlinked_root_to_target_grant() {
+    let base = std::env::temp_dir().join(format!("dracon-sys14-{}", std::process::id()));
+    let real = base.join("real-cold");
+    let link = base.join("cold-link");
+    std::fs::create_dir_all(&real).unwrap();
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    let unit = format!("ReadWritePaths={}\n", real.display());
+    let home = std::path::Path::new("/home/tester");
+    assert!(
+        crate::safety::unit_grants_write(&unit, home, &link),
+        "a symlinked root must match the grant on its target"
+    );
+    // Literal fallback: a missing path compares literally, so an
+    // exact (nonexistent) grant still covers.
+    let missing = base.join("not-created-yet");
+    let unit_missing = format!("ReadWritePaths={}\n", missing.display());
+    assert!(
+        crate::safety::unit_grants_write(&unit_missing, home, &missing),
+        "missing paths must keep the literal fallback"
+    );
+    // Relative paths stay literal: Cargo.toml exists under the test
+    // CWD, but resolving it there would anchor the verdict to the
+    // invoker's CWD instead of the service's WorkingDirectory.
+    let cwd_manifest = std::env::current_dir().unwrap().join("Cargo.toml");
+    assert!(
+        cwd_manifest.exists(),
+        "test premise: cargo test runs in the package root"
+    );
+    let unit_abs = format!("ReadWritePaths={}\n", cwd_manifest.display());
+    assert!(
+        !crate::safety::unit_grants_write(
+            &unit_abs,
+            home,
+            std::path::Path::new("Cargo.toml")
+        ),
+        "relative roots must not be resolved against the invoker CWD"
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 // ---------------------------------------------------------------------------
 // protected_paths `~` expansion (2026-10-02, audit HIGH)
 // ---------------------------------------------------------------------------
