@@ -974,7 +974,10 @@ pub(crate) const SENTINEL_ZERO_KNOBS: &[&str] = &[
     "log_size_mb",
     // 0 = treat every node_modules as a candidate.
     "node_modules_max_age_days",
-    // 0 = sweep /tmp regardless of age.
+    // 0 = disable tmp hygiene (CORRECTED 2026-10-03, audit
+    // R4-SYS-08: the old "sweep /tmp regardless of age" taught the
+    // opposite of `clean_tmp_paths_with_proc`'s `min_age_hours == 0`
+    // early return; the example file agrees 0 disables).
     "tmp_min_age_hours",
     // 0 = treat fresh directories as relocation candidates.
     "relocate_min_age_days",
