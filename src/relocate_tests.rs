@@ -224,6 +224,66 @@ fn apply_relocate_refuses_stale_staging_dir() {
     cleanup(&root);
 }
 
+#[test]
+fn apply_relocate_rechecks_space_at_apply_start() {
+    // Audit R4-SYS-05: a plan that fit at dry-run time must not copy
+    // blind — apply re-runs the avail check so a stale plan refuses
+    // instead of ENOSPC-ing mid-copy. u64::MAX bytes can never fit,
+    // so this is deterministic on any disk.
+    let root = test_root("sys05-space");
+    let src = fixture_dir(&root);
+    let dest_root = root.join("cold");
+    fs::create_dir_all(&dest_root).unwrap();
+    let mut plan = crate::plan_relocate(&src, &dest_root, &[], false).unwrap();
+    assert!(plan.ready);
+    plan.bytes = u64::MAX;
+    let dest = PathBuf::from(&plan.dest);
+    let err = crate::apply_relocate(&plan).unwrap_err();
+    assert!(
+        format!("{err:#}").contains("free but plan needs"),
+        "stale plan must refuse at apply time: {err:#}"
+    );
+    assert!(
+        fs::symlink_metadata(&dest).is_err(),
+        "refused apply must not create the dest"
+    );
+    cleanup(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn apply_relocate_removes_partial_dest_on_copy_failure() {
+    // Audit R4-SYS-05: a failed copy must not strand retries behind
+    // "appeared since planning" — the partial dest is removed and
+    // the source left intact. The plan is built while readable (strict
+    // planning refuses unreadable trees), then a subdir is locked so
+    // the copy itself fails.
+    use std::os::unix::fs::PermissionsExt;
+    let root = test_root("sys05-cleanup");
+    let src = fixture_dir(&root);
+    let dest_root = root.join("cold");
+    fs::create_dir_all(&dest_root).unwrap();
+    let plan = crate::plan_relocate(&src, &dest_root, &[], false).unwrap();
+    let dest = PathBuf::from(&plan.dest);
+    let locked = src.join("nested");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let err = crate::apply_relocate(&plan).unwrap_err();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(
+        format!("{err:#}").contains("cannot copy"),
+        "copy must fail on the locked dir: {err:#}"
+    );
+    assert!(
+        fs::symlink_metadata(&dest).is_err(),
+        "partial dest must be removed so a retry is not stranded"
+    );
+    assert!(
+        fs::read(src.join("a.txt")).is_ok(),
+        "failed apply must leave the source untouched"
+    );
+    cleanup(&root);
+}
+
 fn git_repo_with_tracked_subdir(root: &Path) -> PathBuf {
     use std::process::Command;
     let repo = root.join("repo");
