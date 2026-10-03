@@ -279,6 +279,38 @@ out="$(env -u XDG_CONFIG_HOME HOME="$good_home" \
     "$SCRIPT_UNDER_TEST" "$repo" 2>&1)" \
     || fail "an identical unit was reported as drifted: $out"
 
+# Step 3b: the watchdog units travel with the main unit and drift the same
+# silent way. A deployed companion that differs from the shipped file is STALE;
+# a companion that was never deployed is a note, not a verdict.
+# ADDED 2026-10-03 (audit R3-L24): mirrors sync cases 17-19 byte for byte
+# in behaviour (companion names differ).
+shipped_guard_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+companion_guard_repo="$shipped_guard_dir/dracon-system-guard-watchdog.service"
+[ -f "$companion_guard_repo" ] || fail "shipped companion $companion_guard_repo is missing (audit M8 ships it)"
+
+# 17. A deployed companion identical to the shipped file passes.
+cp "$repo" "$deployed"
+cp "$companion_guard_repo" "$work/dracon-system-guard-watchdog.service"
+out="$(SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$deployed" 2>&1)" ||
+    fail "an identical companion unit was reported as drifted: $out"
+
+# 18. A deployed companion that differs from the shipped file is STALE.
+printf '# drifted\n' >> "$work/dracon-system-guard-watchdog.service"
+out="$(SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$deployed" 2>&1)" &&
+    fail "a drifted companion unit was reported as in sync: $out"
+grep -q 'STALE' <<<"$out" || fail "companion drift was not reported: $out"
+rm -f "$work/dracon-system-guard-watchdog.service"
+
+# 19. A companion that was never deployed is a note, never a failure — fresh
+#     installs gain the backstops through install.sh and the flake module.
+out="$(SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$deployed" 2>&1)" ||
+    fail "a never-deployed companion was treated as drift: $out"
+grep -q 'shipped but not deployed' <<<"$out" ||
+    fail "the never-deployed companion note is missing: $out"
+
 # --- runtime storage-root check ----------------------------------------------
 # Steps 1-5 compare files; none of them can see that a ReadWritePaths entry
 # which is correct on disk still granted nothing at runtime. That is the
