@@ -141,6 +141,13 @@ fn make_symlink(_dest: &Path, _source: &Path) -> Result<()> {
     anyhow::bail!("relocate is only supported on unix");
 }
 
+/// Whether `bytes` fits in `avail`. Unknown space (df failure) does
+/// NOT fit (R3-L28) — "cannot ask" must not authorize a copy that can
+/// strand a partial destination.
+fn fits_in_avail(avail: Option<u64>, bytes: u64) -> bool {
+    avail.is_some_and(|a| a >= bytes)
+}
+
 fn avail_bytes_for(path: &Path) -> Option<u64> {
     let out = std::process::Command::new("df")
         .args(["-P"])
@@ -260,13 +267,23 @@ pub(crate) fn plan_relocate(
 
     let (files, bytes) = walk_stats_strict(&canon_src)?;
     let avail = avail_bytes_for(&canon_root);
-    let fits = avail.map(|a| a >= bytes).unwrap_or(true);
+    let fits = fits_in_avail(avail, bytes);
     if !fits {
-        issues.push(format!(
-            "destination has {} free but source needs {}",
-            human_bytes(avail.unwrap_or(0)),
-            human_bytes(bytes)
-        ));
+        issues.push(match avail {
+            Some(a) => format!(
+                "destination has {} free but source needs {}",
+                human_bytes(a),
+                human_bytes(bytes)
+            ),
+            // FIXED 2026-10-03 (audit R3-L28): unknown space (df
+            // failure) is NOT fits — the old `unwrap_or(true)`
+            // treated "cannot ask" as fits, so ENOSPC mid-copy
+            // bailed with the source untouched but left a partial
+            // dest blocking retries ("already exists") until manual
+            // cleanup. Not-ready plans refuse in `apply_relocate`.
+            None => "destination free space unknown (df failed) — refusing to relocate blind"
+                .to_string(),
+        });
     }
 
     Ok(RelocatePlan {
