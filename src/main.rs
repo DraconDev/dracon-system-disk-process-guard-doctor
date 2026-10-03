@@ -3605,11 +3605,7 @@ fn trash_keep_top_level(
     path: &Path,
 ) -> bool {
     if let Ok(rel) = path.strip_prefix(trash_files) {
-        if let Some(top) = rel
-            .components()
-            .next()
-            .and_then(|c| c.as_os_str().to_str())
-        {
+        if let Some(top) = rel.components().next().and_then(|c| c.as_os_str().to_str()) {
             skip_names.insert(top.to_string());
             return true;
         }
