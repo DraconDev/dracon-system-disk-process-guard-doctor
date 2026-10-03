@@ -1,29 +1,27 @@
 # dracon-system v0.112.44 (2026-10-03)
 
-Invisible git sync daemon for deterministic AI-assisted development.
+ROUND3 audit remediation (5 LOW findings, all fail-closed hardening).
 
-## What's Changed
+- Tmp cleanup fails closed twice over: the freshness probe treats any
+  walk error as fresh (keep), and an unreadable `/proc` aborts the
+  pass loud in both apply and dry-run instead of silently disabling
+  open-file protection.
+- Relocation treats unknown destination space as not-fitting, so a
+  `df` failure can no longer strand a partial destination blocking
+  retries.
+- `doctor` checks the three M8 watchdog timers as required checks —
+  missing backstops fail `--strict`.
+- The guard deployment checker canonicalizes symlinked roots before
+  mount matching and mirrors the sync checker's 3b companion loop.
 
-- Bump version to 0.112.44
-- (See CHANGELOG.md for the full list of changes in this release)
+Validation: workspace gates green (test/clippy/deny/fmt), both
+deployment-checker suites pass including the new symlinked-root and
+companion cases.
 
-## Install
+Install:
 
 ```bash
-# --root "$HOME/.local" puts the binary where the shipped unit's ExecStart
-# (%h/.local/bin/dracon-system) expects it. A bare `cargo install` lands it in
-# ~/.cargo/bin instead, and the service then dies with 203/EXEC.
-cargo install dracon-system --version 0.112.44 --root "$HOME/.local"
+cargo install dracon-system --version 0.112.44 --locked
 ```
 
-## Docker / systemd
-
-```bash
-# systemd unit (Linux)
-curl -fsSL https://raw.githubusercontent.com/DraconDev/dracon-system-disk-process-guard-doctor.git/main/dracon-system-guard.service \
-    -o ~/.config/systemd/user/dracon-system-guard.service
-systemctl --user daemon-reload
-systemctl --user enable --now dracon-system-guard.service
-```
-
-**Full Changelog**: https://github.com/DraconDev/dracon-system-disk-process-guard-doctor.git/compare/dracon-system-v0.112.43...dracon-system-v0.112.44
+[Full changelog](https://github.com/DraconDev/dracon-system-disk-process-guard-doctor/compare/dracon-system-v0.112.43...dracon-system-v0.112.44)
