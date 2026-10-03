@@ -3596,6 +3596,27 @@ async fn empty_trash(
     .await
 }
 
+/// Map a trash path to its top-level entry name and add it to the
+/// credential-guard keep set. Returns false when the path escapes the
+/// trash root or has no nameable top component (nothing kept).
+fn trash_keep_top_level(
+    skip_names: &mut std::collections::HashSet<String>,
+    trash_files: &Path,
+    path: &Path,
+) -> bool {
+    if let Ok(rel) = path.strip_prefix(trash_files) {
+        if let Some(top) = rel
+            .components()
+            .next()
+            .and_then(|c| c.as_os_str().to_str())
+        {
+            skip_names.insert(top.to_string());
+            return true;
+        }
+    }
+    false
+}
+
 async fn empty_trash_at(
     home: &Path,
     apply: bool,
@@ -3628,46 +3649,88 @@ async fn empty_trash_at(
                 if credential_guard {
                     let mut samples = Vec::new();
                     let mut match_count = 0u64;
+                    // FIXED 2026-10-02 (audit L6): the scan failed OPEN
+                    // twice — credential files deeper than max_depth(8)
+                    // were never seen, and walk errors (EPERM, I/O) were
+                    // swallowed by `_ => {}`. Both now fail closed
+                    // PER-ENTRY (keeping the 2026-09-20 design: skip the
+                    // unobservable top-level entries, purge the rest —
+                    // not the old all-or-nothing abort).
+                    let mut depth_capped = 0u64;
+                    let mut walk_errors = 0u64;
                     for entry in walkdir::WalkDir::new(&trash_files).max_depth(8) {
                         match entry {
                             Ok(e) if e.file_type().is_file() => {
                                 if let Some(name) = e.file_name().to_str() {
                                     if looks_credential_like(name) {
                                         match_count += 1;
-                                        if let Ok(rel) = e.path().strip_prefix(&trash_files) {
-                                            if let Some(top) = rel
-                                                .components()
-                                                .next()
-                                                .and_then(|c| c.as_os_str().to_str())
-                                            {
-                                                skip_names.insert(top.to_string());
-                                            }
-                                        }
+                                        trash_keep_top_level(
+                                            &mut skip_names,
+                                            &trash_files,
+                                            e.path(),
+                                        );
                                         if samples.len() < 3 {
                                             samples.push(e.path().display().to_string());
                                         }
                                     }
                                 }
                             }
+                            Ok(e) if e.file_type().is_dir() && e.depth() == 8 => {
+                                // AT the cap: children unobservable (files
+                                // AT depth 8 are still yielded and scanned
+                                // above — only descent stops). Keep the
+                                // whole top-level entry.
+                                depth_capped += 1;
+                                trash_keep_top_level(&mut skip_names, &trash_files, e.path());
+                            }
+                            Err(e) => {
+                                // Unreadable subtree: purging it would
+                                // destroy credential files the guard never
+                                // saw. Keep the top-level entry; a pathless
+                                // error (unreachable in practice — an
+                                // unreadable trash root sizes to 0 and skips
+                                // the block) is counted loud with no keep.
+                                walk_errors += 1;
+                                if let Some(path) = e.path() {
+                                    trash_keep_top_level(&mut skip_names, &trash_files, path);
+                                }
+                            }
                             _ => {}
                         }
                     }
                     if !skip_names.is_empty() {
+                        let mut why = format!(
+                            "{} credential-like file(s), e.g. {}",
+                            match_count,
+                            if samples.is_empty() {
+                                "(none sampled)".to_string()
+                            } else {
+                                samples.join(", ")
+                            }
+                        );
+                        if depth_capped > 0 {
+                            why.push_str(&format!(
+                                "; {} unobservable capped subtrees",
+                                depth_capped
+                            ));
+                        }
+                        if walk_errors > 0 {
+                            why.push_str(&format!("; {} unreadable subtrees", walk_errors));
+                        }
                         eprintln!(
-                            "🛡️ trash: keeping {} flagged entr{} ({} credential-like file(s), e.g. {}), purging the rest",
+                            "🛡️ trash: keeping {} flagged entr{} ({}), purging the rest",
                             skip_names.len(),
                             if skip_names.len() == 1 { "y" } else { "ies" },
-                            match_count,
-                            samples.join(", ")
+                            why
                         );
                         emit_event(&DraconEvent::new(
                             "system",
                             EventSeverity::Warn,
                             "trash/credential-guard",
                             format!(
-                                "trash purge skipping {} flagged entries ({} credential-like files)",
+                                "trash purge skipping {} flagged entries ({})",
                                 skip_names.len(),
-                                match_count
+                                why
                             ),
                         ));
                     }
