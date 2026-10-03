@@ -3915,8 +3915,5 @@ fn probe_path_search_finds_first_executable_only() {
         "empty PATH entries must be skipped"
     );
     // Total miss → None (caller degrades to Skipped).
-    assert_eq!(
-        search_path_for_executable("probe-missing", &dirs),
-        None
-    );
+    assert_eq!(search_path_for_executable("probe-missing", &dirs), None);
 }

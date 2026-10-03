@@ -3962,9 +3962,8 @@ pub(crate) fn resolve_bin_for_readonly_probe(name: &str) -> Result<String> {
     }
     let path_os = std::env::var_os("PATH").unwrap_or_default();
     let dirs: Vec<PathBuf> = std::env::split_paths(&path_os).collect();
-    search_path_for_executable(name, &dirs).ok_or_else(|| {
-        anyhow::anyhow!("cannot resolve `{name}` (not in NixOS store dirs or PATH)")
-    })
+    search_path_for_executable(name, &dirs)
+        .ok_or_else(|| anyhow::anyhow!("cannot resolve `{name}` (not in NixOS store dirs or PATH)"))
 }
 
 /// Search explicit directories for a regular executable `name` (pure
