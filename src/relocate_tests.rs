@@ -654,3 +654,39 @@ async fn node_modules_protected_path_survives_a_real_apply() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[tokio::test]
+async fn auto_relocate_pauses_when_df_fails() {
+    // 2026-10-02 (audit L7): a df failure previously mapped to u8::MAX
+    // (max pressure), so the guard kept moving trees with no signal.
+    // Now it pauses: zero moves despite ready candidates. The
+    // plan-readiness assertion pins the control — pre-fix, the same
+    // fixture WOULD have moved (pressure MAX + ready plan + apply).
+    let root = test_root("df-fail-pause");
+    let scan = scan_fixture(&root);
+    let cold = root.join("cold");
+    fs::create_dir_all(&cold).unwrap();
+
+    let big_old = scan.join("big-old");
+    let plan = crate::plan_relocate(&big_old, &cold, &[], false).expect("plan computes");
+    assert!(plan.ready, "fixture must be relocation-ready: {:?}", plan.issues);
+
+    let mut guard = GuardPolicy::default();
+    guard.relocate_cold_root = cold.to_string_lossy().to_string();
+    guard.relocate_candidate_roots = scan.to_string_lossy().to_string();
+    guard.relocate_min_size_mb = 1;
+    guard.relocate_min_age_days = 14;
+    guard.auto_relocate_apply = true;
+    guard.disk_mount_path = "/nonexistent-mount-xyz".to_string();
+    guard.disk_action_percent = 85;
+
+    let (moves, _bytes, _cands) = crate::run_auto_relocate(&guard)
+        .await
+        .expect("relocate pass runs");
+    assert_eq!(moves, 0, "df failure must pause moves, not move blind");
+    assert!(
+        big_old.is_dir() && !big_old.is_symlink(),
+        "nothing must move while pressure is unreadable"
+    );
+    cleanup(&root);
+}
