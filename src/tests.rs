@@ -2197,7 +2197,10 @@ async fn clean_tmp_paths_refuses_blind_cleanup_when_proc_unreadable() {
             err.to_string().contains("refusing tmp cleanup blind"),
             "failure must name the blind-cleanup refusal, got: {err:#}"
         );
-        assert!(stale.exists(), "nothing may be deleted blind (apply={apply})");
+        assert!(
+            stale.exists(),
+            "nothing may be deleted blind (apply={apply})"
+        );
     }
 
     let _ = fs::remove_dir_all(&root);
@@ -2544,10 +2547,7 @@ async fn tree_has_fresh_content_fails_closed_on_walk_errors() {
     std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o000)).unwrap();
     let verdict = tree_has_fresh_content(&locked, cutoff).await;
     std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o755)).unwrap();
-    assert!(
-        verdict,
-        "unreadable subtree must fail closed (fresh/keep)"
-    );
+    assert!(verdict, "unreadable subtree must fail closed (fresh/keep)");
 
     let _ = std::fs::remove_dir_all(&stale);
     let _ = std::fs::remove_dir_all(&fresh);
