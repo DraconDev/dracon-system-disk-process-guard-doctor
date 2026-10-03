@@ -3569,9 +3569,14 @@ async fn clean_package_caches_at(
 /// Empty trash. When `credential_guard` is set, the trash is first
 /// scanned for credential-signal filenames (see
 /// looks_credential_like and docs/design/disk-full-credentials-
-/// 2026-08-10.md); a single match aborts deletion and the dry-run estimate.
-/// The 2026-08-10 scan found 665 credential-pattern matches in the 56 GiB
+/// 2026-08-10.md); flagged top-level entries are kept while the rest
+/// purges (per-entry since 2026-09-20, not all-or-nothing). The
+/// 2026-08-10 scan found 665 credential-pattern matches in the 56 GiB
 /// trash, so blind emptying is unsafe by default.
+///
+/// Unobservable subtrees fail closed per-entry (audit L6): a directory
+/// AT the walk depth cap (children unseen) or an unreadable subtree
+/// (walk error) keeps its whole top-level entry instead of purging it.
 async fn empty_trash(
     apply: bool,
     protected_paths: &[String],
