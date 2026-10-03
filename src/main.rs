@@ -3978,7 +3978,10 @@ fn search_path_for_executable(name: &str, dirs: &[PathBuf]) -> Option<String> {
             continue;
         }
         let candidate = dir.join(name);
-        let Ok(meta) = std::fs::symlink_metadata(&candidate) else {
+        // metadata (not symlink_metadata): follow links — PATH
+        // entries are routinely symlinks (alternatives, store
+        // links). Dead links Err out and are skipped.
+        let Ok(meta) = std::fs::metadata(&candidate) else {
             continue;
         };
         if !meta.is_file() {
@@ -7180,7 +7183,10 @@ fn effective_system_policy_path() -> Result<PathBuf> {
 }
 
 async fn is_user_service_active(service: &str) -> bool {
-    let bin = match resolve_bin_strict("systemctl") {
+    // R4-SYS-03: read-only probe → PATH-aware resolution (strict
+    // misses /usr/bin/systemctl on non-NixOS hosts). Mutating
+    // systemctl execs elsewhere keep resolve_bin_strict.
+    let bin = match resolve_bin_for_readonly_probe("systemctl") {
         Ok(b) => b,
         Err(_) => return false,
     };

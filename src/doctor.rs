@@ -4,7 +4,8 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 use crate::{
-    canonical_system_root, effective_system_policy_path, is_user_service_active, resolve_bin_strict,
+    canonical_system_root, effective_system_policy_path, is_user_service_active,
+    resolve_bin_for_readonly_probe,
 };
 
 /// The service this repo ships, and the one a `dracon-system` installation
@@ -43,7 +44,10 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
     // "Cannot ask" is not "the answer is no": without this the two service
     // checks reported `false` on a host with no systemctl at all, and the
     // remediation told the operator to run systemctl.
-    let service_probe_available = resolve_bin_strict("systemctl").is_ok();
+    // R4-SYS-03: the PATH-aware probe variant — strict resolution only
+    // consults NixOS store dirs, which Skipped every service check on
+    // non-NixOS systemd hosts.
+    let service_probe_available = resolve_bin_for_readonly_probe("systemctl").is_ok();
 
     crate::DoctorReport {
         system_root_exists: root.exists(),
