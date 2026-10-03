@@ -799,9 +799,9 @@ pub(crate) fn parse_df_details(output: &str) -> Option<DiskDetails> {
     // `df` output is local so absurd input is unlikely, but a plain
     // `* 1024` panics in debug (killing the daemon pass) and wraps in
     // release — the file's own convention is `saturating_mul`.
-    let total_bytes = parts[1].parse::<u64>().ok()? * 1024;
-    let used_bytes = parts[2].parse::<u64>().ok()? * 1024;
-    let avail_bytes = parts[3].parse::<u64>().ok()? * 1024;
+    let total_bytes = parts[1].parse::<u64>().ok()?.saturating_mul(1024);
+    let used_bytes = parts[2].parse::<u64>().ok()?.saturating_mul(1024);
+    let avail_bytes = parts[3].parse::<u64>().ok()?.saturating_mul(1024);
     let use_percent = parts[4].trim_end_matches('%').parse::<u8>().ok()?;
     let mount = parts[5].to_string();
     Some(DiskDetails {
@@ -3009,8 +3009,8 @@ async fn auto_cleanup_rust_targets(
 
     let min_size_bytes = guard
         .cleanup_min_size_mb
-         * 1024
-         * 1024;
+        .saturating_mul(1024)
+        .saturating_mul(1024);
 
     for target in targets {
         // Skip if too small
@@ -3221,8 +3221,8 @@ async fn proactive_cleanup_rust_targets(
 
     let min_size_bytes = guard
         .cleanup_min_size_mb
-         * 1024
-         * 1024;
+        .saturating_mul(1024)
+        .saturating_mul(1024);
     let max_age_secs = guard
         .rust_target_max_age_days
         .saturating_mul(24)
@@ -6612,7 +6612,7 @@ async fn check_large_logs(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
         return;
     }
 
-    let min_size = guard.log_size_mb * 1024 * 1024;
+    let min_size = guard.log_size_mb.saturating_mul(1024).saturating_mul(1024);
     match find_large_log_files(&log_dirs, min_size).await {
         Ok(logs) if !logs.is_empty() => {
             let key = "log-size-warning".to_string();
@@ -6634,8 +6634,8 @@ async fn check_large_logs(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
             if guard.auto_truncate_logs && guard.auto_cleanup_apply {
                 let max_size = guard
                     .log_max_truncate_mb
-                     * 1024
-                     * 1024;
+                    .saturating_mul(1024)
+                    .saturating_mul(1024);
                 let preserve = guard.log_preserve_header_lines;
                 let mut total_reclaimed = 0u64;
                 for (path, original_size) in &logs {
@@ -6792,8 +6792,8 @@ async fn run_auto_relocate(guard: &GuardPolicy) -> Result<(usize, u64, Vec<ColdC
     }
     let min_bytes = guard
         .relocate_min_size_mb
-         * 1024
-         * 1024;
+        .saturating_mul(1024)
+        .saturating_mul(1024);
     let candidates = find_cold_candidates(&roots, min_bytes, guard.relocate_min_age_days);
     if candidates.is_empty() {
         return Ok((0, 0, Vec::new()));
