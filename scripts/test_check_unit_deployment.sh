@@ -35,8 +35,10 @@ fail() {
 }
 
 # --- systemd stubs -----------------------------------------------------------
-# $1: what the loaded unit reports for -p ExecReload ("present", "empty", or
-# "unreachable" for a host with no user manager at all).
+# $1: what the loaded unit reports for -p ExecReload ("present", "empty",
+# "need-reload", or "unreachable" for a host with no user manager at all).
+# "need-reload" answers NeedDaemonReload=yes while ExecReload stays present,
+# so only the R4-SYS-10 manager-verdict probe fires.
 make_systemctl() {
     local mode="$1" stub="$work/bin/systemctl-$1"
     mkdir -p "$work/bin"
