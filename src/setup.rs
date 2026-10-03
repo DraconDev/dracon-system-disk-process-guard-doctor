@@ -195,6 +195,37 @@ pub(crate) fn build_setup_report(
         });
     }
 
+    // ADDED 2026-10-03 (audit R4-SYS-09): surface interrupted
+    // relocates. Informational only — never gates `ready` (see the
+    // filter below): a stale staging dir needs operator recovery,
+    // not a red setup.
+    {
+        let cand_roots: Vec<PathBuf> = guard
+            .relocate_candidate_roots
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(expand_tilde)
+            .collect();
+        let stale = crate::relocate::find_stale_staging_dirs(&cand_roots);
+        checks.push(SetupCheck {
+            name: "stale relocate staging".to_string(),
+            ok: stale.is_empty(),
+            detail: if stale.is_empty() {
+                "none under candidate roots".to_string()
+            } else {
+                format!(
+                    "interrupted relocate(s): {} — restore per case, do not delete blindly",
+                    stale
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            },
+        });
+    }
+
     checks.push(check_dir_configured(&guard.relocate_cold_root, "cold root"));
     let qdir = if guard.quarantine_dir.trim().is_empty() {
         crate::default_quarantine_dir()
