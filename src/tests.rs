@@ -2465,6 +2465,56 @@ fn safe_tmp_root_policy_allows_tmp_descendants_and_rejects_home() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
+#[tokio::test]
+async fn tree_has_fresh_content_fails_closed_on_walk_errors() {
+    // R3-L22: unreadable subtrees (or any walk error) must read as
+    // FRESH (keep), never skip toward a delete verdict. Controls:
+    // old content reads stale, fresh content reads fresh.
+    use std::os::unix::fs::PermissionsExt;
+    let now = std::time::SystemTime::now();
+    let cutoff = now - std::time::Duration::from_secs(60);
+
+    let stale = guard_test_tmp("fresh_closed_stale");
+    std::fs::create_dir_all(&stale).unwrap();
+    let old_file = stale.join("old");
+    std::fs::write(&old_file, b"old").unwrap();
+    let old_time = now - std::time::Duration::from_secs(3600);
+    filetime_set_mtime(&old_file, old_time);
+    filetime_set_mtime(&stale, old_time);
+    assert!(
+        !tree_has_fresh_content(&stale, cutoff).await,
+        "all-old tree must read stale"
+    );
+
+    let fresh = guard_test_tmp("fresh_closed_fresh");
+    std::fs::create_dir_all(&fresh).unwrap();
+    std::fs::write(fresh.join("new"), b"new").unwrap();
+    assert!(
+        tree_has_fresh_content(&fresh, cutoff).await,
+        "tree with a fresh file must read fresh"
+    );
+
+    // chmod-000 subdir: readdir fails EACCES → fail closed (fresh).
+    let locked = guard_test_tmp("fresh_closed_locked");
+    let sub = locked.join("sub");
+    std::fs::create_dir_all(&sub).unwrap();
+    std::fs::write(sub.join("x"), b"x").unwrap();
+    filetime_set_mtime(&sub.join("x"), old_time);
+    filetime_set_mtime(&sub, old_time);
+    filetime_set_mtime(&locked, old_time);
+    std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let verdict = tree_has_fresh_content(&locked, cutoff).await;
+    std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(
+        verdict,
+        "unreadable subtree must fail closed (fresh/keep)"
+    );
+
+    let _ = std::fs::remove_dir_all(&stale);
+    let _ = std::fs::remove_dir_all(&fresh);
+    let _ = std::fs::remove_dir_all(&locked);
+}
+
 #[test]
 fn tmp_entry_must_remain_under_validated_root() {
     let root = guard_test_tmp("tmp_root_containment");

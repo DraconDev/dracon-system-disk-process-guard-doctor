@@ -5481,27 +5481,36 @@ async fn collect_open_paths_under_from(
 /// the first fresh entry; a fully stale tree costs one walk — the same
 /// order as the size accounting that follows for deletion candidates.
 async fn tree_has_fresh_content(dir: &Path, cutoff: SystemTime) -> bool {
+    // FIXED 2026-10-03 (audit R3-L22): fail CLOSED — any walk error
+    // (metadata, readdir, entry iteration, mtime) answers "fresh"
+    // (keep) instead of skipping toward a `false` (delete) verdict.
+    // A transient I/O error or unreadable subtree must defer cleanup
+    // to the next cycle, never authorize deletion of unknown content.
     let mut stack = vec![dir.to_path_buf()];
     while let Some(current) = stack.pop() {
         let meta = match tokio::fs::symlink_metadata(&current).await {
             Ok(m) => m,
-            Err(_) => continue,
+            Err(_) => return true,
         };
         if meta.file_type().is_symlink() {
             continue;
         }
-        if let Ok(mtime) = meta.modified() {
-            if mtime > cutoff {
-                return true;
-            }
+        match meta.modified() {
+            Ok(mtime) if mtime > cutoff => return true,
+            Ok(_) => {}
+            Err(_) => return true,
         }
         if meta.is_dir() {
             let mut rd = match tokio::fs::read_dir(&current).await {
                 Ok(rd) => rd,
-                Err(_) => continue,
+                Err(_) => return true,
             };
-            while let Ok(Some(entry)) = rd.next_entry().await {
-                stack.push(entry.path());
+            loop {
+                match rd.next_entry().await {
+                    Ok(Some(entry)) => stack.push(entry.path()),
+                    Ok(None) => break,
+                    Err(_) => return true,
+                }
             }
         }
     }
