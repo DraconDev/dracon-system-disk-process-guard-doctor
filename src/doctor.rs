@@ -164,7 +164,10 @@ fn doctor_checks(report: &crate::DoctorReport) -> Vec<DoctorCheck> {
                 yes
             },
             required: true,
-            hint: "Move or remove the legacy ~/dracon configuration",
+            // FIXED 2026-10-03 (audit R4-SYS-07): the check tests
+            // `~/.config/dracon` but the hint named `~/dracon` (a path
+            // that was never checked, since introduction in 06a2021).
+            hint: "Move or remove the legacy ~/.config/dracon directory",
         },
         DoctorCheck {
             label: "sync service",
@@ -353,6 +356,28 @@ mod tests {
         assert!(
             !strict_ok(&doctor_checks(&r)),
             "a missing system policy must fail --strict"
+        );
+    }
+
+    /// 2026-10-03 (audit R4-SYS-07): the legacy-config hint must name
+    /// the path the check actually tests (`~/.config/dracon`), not
+    /// the never-checked `~/dracon`.
+    #[test]
+    fn legacy_hint_names_checked_path() {
+        let checks = doctor_checks(&report());
+        let legacy = checks
+            .iter()
+            .find(|c| c.label == "legacy config absent")
+            .expect("legacy config check should be displayed");
+        assert!(
+            legacy.hint.contains("~/.config/dracon"),
+            "hint must name the checked path, got: {}",
+            legacy.hint
+        );
+        assert!(
+            !legacy.hint.contains("~/dracon "),
+            "hint must not name the never-checked ~/dracon, got: {}",
+            legacy.hint
         );
     }
 
