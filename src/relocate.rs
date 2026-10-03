@@ -497,19 +497,9 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
 
     // Stage the source aside instead of deleting it: if the symlink step
     // fails, the original path is restored rather than left broken.
-    let staging = source.with_file_name(format!(
-        "{}.dracon-relocate-staging",
-        source
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "relocated".to_string())
-    ));
-    if fs::symlink_metadata(&staging).is_ok() {
-        anyhow::bail!(
-            "stale staging dir {} from a previous run — refusing (clear it manually)",
-            staging.display()
-        );
-    }
+    // (`staging` was bound + guarded pre-copy at the top of this fn,
+    // R4-SYS-09 — the old guard here ran AFTER the copy and was
+    // unreachable for the crash-window case.)
     fs::rename(source, &staging).map_err(|e| {
         anyhow::anyhow!(
             "cannot stage {} aside: {} — source untouched",
