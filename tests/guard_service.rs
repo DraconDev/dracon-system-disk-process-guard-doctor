@@ -310,9 +310,9 @@ fn watchdog_execstart_matches_install_destination() {
     let install_text = fs::read_to_string(&install)
         .unwrap_or_else(|e| panic!("cannot read {}: {e}", install.display()));
     // %h in the unit ≡ ~/ in install.sh; compare the suffix after it.
-    let suffix = value.strip_prefix("%h").unwrap_or_else(|| {
-        panic!("watchdog ExecStart must be %h-anchored, got {value:?}")
-    });
+    let suffix = value
+        .strip_prefix("%h")
+        .unwrap_or_else(|| panic!("watchdog ExecStart must be %h-anchored, got {value:?}"));
     let dest_tilde = format!("~{suffix}");
     let copy_line = install_text.lines().find(|l| {
         l.contains("dracon-system-guard-watchdog.sh")
@@ -324,23 +324,21 @@ fn watchdog_execstart_matches_install_destination() {
         "install.sh must copy the watchdog script TO the unit's ExecStart path ({value} ≡ {dest_tilde})"
     );
     assert!(
-        install_text.lines().any(|l| l.contains("chmod +x")
-            && l.contains("dracon-system-guard-watchdog.sh")),
+        install_text
+            .lines()
+            .any(|l| l.contains("chmod +x") && l.contains("dracon-system-guard-watchdog.sh")),
         "install.sh must chmod +x the installed watchdog script"
     );
 
     // The copy SOURCE must exist in this repo and be executable.
     let source_line = copy_line.unwrap();
-    let source_repo_path = source_line
-        .split_whitespace()
-        .nth(1)
-        .unwrap_or_default();
+    let source_repo_path = source_line.split_whitespace().nth(1).unwrap_or_default();
     assert_eq!(
-        source_repo_path,
-        "dracon-system/scripts/dracon-system-guard-watchdog.sh",
+        source_repo_path, "dracon-system/scripts/dracon-system-guard-watchdog.sh",
         "unexpected watchdog copy source in install.sh: {source_repo_path:?}"
     );
-    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/dracon-system-guard-watchdog.sh");
+    let source =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/dracon-system-guard-watchdog.sh");
     let meta = fs::metadata(&source)
         .unwrap_or_else(|e| panic!("watchdog script {} missing: {e}", source.display()));
     #[cfg(unix)]

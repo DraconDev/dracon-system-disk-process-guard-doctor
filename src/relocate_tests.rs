@@ -295,7 +295,7 @@ fn find_stale_staging_dirs_scans_one_level() {
     fs::create_dir_all(cand.join("media.dracon-relocate-staging")).unwrap();
     fs::create_dir_all(cand.join("deep").join("x.dracon-relocate-staging")).unwrap();
     fs::create_dir_all(cand.join("plain-dir")).unwrap();
-    let found = crate::relocate::find_stale_staging_dirs(&[cand.clone()]);
+    let found = crate::relocate::find_stale_staging_dirs(std::slice::from_ref(&cand));
     assert_eq!(found, vec![cand.join("media.dracon-relocate-staging")]);
     // Missing/unreadable roots yield nothing, never an error.
     let missing = crate::relocate::find_stale_staging_dirs(&[root.join("nope")]);
