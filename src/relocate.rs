@@ -199,7 +199,20 @@ pub(crate) fn is_git_tracked(path: &Path) -> Result<bool> {
         .args(["rev-parse", "--show-toplevel"])
         .output()
     {
+        // FIXED 2026-10-03 (audit R4-SYS-04): git itself unrunnable
+        // (missing binary, EACCES, ...) is UNKNOWN, not "untracked" —
+        // the old arm returned Ok(false) here too, so with no git on
+        // PATH every tracked dir read untracked and relocate/cold-scan
+        // proceeded onto repo content. Callers already fail closed on
+        // Err (plan_relocate `?`, cold-scan `unwrap_or(true)`).
+        Err(e) => {
+            return Err(anyhow::anyhow!(
+                "cannot run git rev-parse for {}: {e}",
+                parent.display()
+            ));
+        }
         Ok(o) if o.status.success() => {}
+        // rev-parse RAN and failed → not a work tree → untracked.
         _ => return Ok(false),
     }
     let out = std::process::Command::new("git")
@@ -207,7 +220,9 @@ pub(crate) fn is_git_tracked(path: &Path) -> Result<bool> {
         .arg(parent)
         .args(["ls-files", "--", &name])
         .output()
-        .map_err(|e| anyhow::anyhow!("git ls-files failed: {e}"))?;
+        .map_err(|e| {
+            anyhow::anyhow!("cannot run git ls-files for {}: {e}", path.display())
+        })?;
     if !out.status.success() {
         anyhow::bail!("git ls-files failed for {}", path.display());
     }
