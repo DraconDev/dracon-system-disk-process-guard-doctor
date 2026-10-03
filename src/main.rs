@@ -5441,13 +5441,25 @@ fn manage_sync_freeze(guard: &GuardPolicy, used: u8, dstate: &str, sync_frozen: 
 async fn collect_open_paths_under_from(
     proc_root: &Path,
     roots: &[PathBuf],
-) -> std::collections::HashSet<PathBuf> {
+) -> Option<std::collections::HashSet<PathBuf>> {
+    // FIXED 2026-10-03 (audit R3-L31): `None` when the scan itself
+    // fails (unreadable `proc_root`, pid-iteration error) — the caller
+    // must skip the pass, because an empty set would silently disable
+    // open-file protection. Per-process/per-fd read failures stay
+    // skips (other users' fd tables are routinely unreadable to this
+    // unprivileged service; failing the pass on those would disable
+    // tmp cleanup forever).
     let mut open = std::collections::HashSet::new();
     let mut proc_rd = match tokio::fs::read_dir(proc_root).await {
         Ok(rd) => rd,
-        Err(_) => return open,
+        Err(_) => return None,
     };
-    while let Ok(Some(pid_entry)) = proc_rd.next_entry().await {
+    loop {
+        let pid_entry = match proc_rd.next_entry().await {
+            Ok(Some(e)) => e,
+            Ok(None) => break,
+            Err(_) => return None,
+        };
         let name = pid_entry.file_name();
         let name = name.to_string_lossy();
         if !name.bytes().all(|b| b.is_ascii_digit()) {
@@ -5479,7 +5491,7 @@ async fn collect_open_paths_under_from(
             }
         }
     }
-    open
+    Some(open)
 }
 
 /// True when any entry at or under `dir` (including `dir` itself) is
@@ -5581,7 +5593,17 @@ async fn clean_tmp_paths_with_proc(
     if root_paths.is_empty() {
         return Ok((0, cleaned));
     }
-    let open_paths = collect_open_paths_under_from(proc_root, &root_paths).await;
+    let open_paths = match collect_open_paths_under_from(proc_root, &root_paths).await {
+        Some(set) => set,
+        // R3-L31: without the open-file scan, cleanup would delete
+        // files held open by live processes with no warning. Skip the
+        // pass LOUD in both modes (dry-run would otherwise over-report
+        // reclaimable); the caller prints the error.
+        None => anyhow::bail!(
+            "open-file scan failed for {} — refusing tmp cleanup blind (cannot verify nothing is held open)",
+            proc_root.display()
+        ),
+    };
     // CHANGED 2026-09-09 (audit F41): same underflow hardening as the
     // trash cutoff above — absurd min_age_hours saturates to "delete
     // nothing" instead of panicking.
