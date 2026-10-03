@@ -3238,6 +3238,58 @@ fn maybe_expire_quarantine_respects_both_opt_outs() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// Audit M5 (2026-10-02): `maybe_expire_quarantine` must honor
+/// `auto_cleanup_apply` — previously it hardcoded apply=true, arming
+/// unattended deletes for operators who believed `false` meant dry-run.
+/// A dry-run pass scans and reports but removes nothing.
+#[test]
+fn maybe_expire_quarantine_dry_run_deletes_nothing() {
+    let root = std::env::temp_dir().join(format!(
+        "dracon-expire-dryrun-{}-{}",
+        std::process::id(),
+        "dryrun"
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let src = root.join("work").join("proj");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("a.txt"), b"hello").unwrap();
+    let qdir = root.join("q");
+    let manifest = quarantine_move(&src, &qdir, &[]).unwrap();
+    let aged = QuarantineManifest {
+        name: manifest.name.clone(),
+        origin: manifest.origin.clone(),
+        moved_at_unix: now_unix().saturating_sub(400 * 86_400),
+        bytes: manifest.bytes,
+        files: manifest.files,
+    };
+    std::fs::write(
+        qdir.join(&manifest.name).join(".quarantine.json"),
+        serde_json::to_string_pretty(&aged).unwrap(),
+    )
+    .unwrap();
+    let entry_dir = qdir.join(&manifest.name);
+
+    // Fully armed EXCEPT auto_cleanup_apply: the past-TTL entry must
+    // survive, and the cooldown must still stamp (no rescan spam).
+    let dry = GuardPolicy {
+        quarantine_dir: qdir.display().to_string(),
+        clean_quarantine_first: true,
+        quarantine_ttl_days: 30,
+        quarantine_expire_interval_secs: 86_400,
+        auto_cleanup_apply: false,
+        ..Default::default()
+    };
+    let mut state = GuardRuntimeState::default();
+    maybe_expire_quarantine(&dry, &mut state, Instant::now());
+    assert!(
+        entry_dir.exists(),
+        "dry-run expiry must not delete a past-TTL entry"
+    );
+    assert!(state.last_quarantine_expire.is_some());
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// The objective requires expiry to "tolerate absurd interval values without
 /// panicking", and until now that held only by inspection. `cooldown_due` is the
 /// only place the interval is used, and the classic failure here is
