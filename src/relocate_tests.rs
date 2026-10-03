@@ -104,6 +104,17 @@ fn copy_tree_recreates_symlinks_without_following() {
 }
 
 #[test]
+#[test]
+fn fits_in_avail_treats_unknown_space_as_not_fitting() {
+    // R3-L28: "cannot ask" (df failure) must not authorize a copy.
+    assert!(!crate::fits_in_avail(None, 1));
+    assert!(!crate::fits_in_avail(None, 0));
+    assert!(crate::fits_in_avail(Some(100), 100));
+    assert!(crate::fits_in_avail(Some(101), 100));
+    assert!(!crate::fits_in_avail(Some(99), 100));
+}
+
+#[test]
 fn plan_relocate_reports_size_and_readiness() {
     let root = test_root("plan");
     let src = fixture_dir(&root);
