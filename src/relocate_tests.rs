@@ -248,7 +248,10 @@ fn stale_staging_refusal_names_crash_window_recovery() {
         msg.contains("MISSING") && msg.contains("mv "),
         "crash-window refusal must name the case + mv recovery: {msg}"
     );
-    assert!(msg.contains("stale staging"), "keeps the stable phrase: {msg}");
+    assert!(
+        msg.contains("stale staging"),
+        "keeps the stable phrase: {msg}"
+    );
     assert!(
         staging.join("a.txt").exists(),
         "refused run must leave staging data intact"
