@@ -104,7 +104,6 @@ fn copy_tree_recreates_symlinks_without_following() {
 }
 
 #[test]
-#[test]
 fn fits_in_avail_treats_unknown_space_as_not_fitting() {
     // R3-L28: "cannot ask" (df failure) must not authorize a copy.
     assert!(!crate::fits_in_avail(None, 1));
