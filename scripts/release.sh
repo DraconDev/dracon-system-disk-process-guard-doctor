@@ -307,7 +307,11 @@ fi
 # mangled path can never end up in a published compare link.
 REMOTE_URL="$(git config --get "remote.${REMOTE}.url" 2>/dev/null || true)"
 if [[ "$REMOTE_URL" =~ github\.com[:/]+([^/]+/[^/]+?)(\.git)?$ ]]; then
-    GH_PATH="${BASH_REMATCH[1]}"
+    # FIXED 2026-10-03 (audit R4-M-03 follow-up): bash ERE has no lazy
+    # quantifiers, so `+?` matches greedily — group 1 kept a `.git`
+    # suffix (group 2 matched empty) and both github.com and
+    # raw.githubusercontent.com 404 on the suffixed form. Strip it.
+    GH_PATH="${BASH_REMATCH[1]%.git}"
 else
     GH_PATH="DraconDev/dracon-system-disk-process-guard-doctor"
     [[ "$REMOTE_URL" == *"github.com"* ]] || log "  origin '$REMOTE_URL' is not a github.com remote; using the documented repo path for links"
