@@ -10,6 +10,13 @@ Type=oneshot
 ExecStart=%h/.dracon/system-notify/dracon-system-guard-watchdog.sh
 # Hard timeout: the check is a couple of systemctl calls, never slow.
 TimeoutStartSec=15
+# Security hardening (ADDED 2026-10-03, audit R4-SYS-16): this runs
+# every 2 min as a second entry point and needs no writes — the
+# script only reads the maintenance-hold marker and shells systemctl,
+# so the baseline sandbox applies with no ReadWritePaths exceptions.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
 # Capture output for debugging
 StandardOutput=journal
 StandardError=journal
