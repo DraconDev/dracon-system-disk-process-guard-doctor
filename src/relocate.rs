@@ -144,7 +144,7 @@ fn make_symlink(_dest: &Path, _source: &Path) -> Result<()> {
 /// Whether `bytes` fits in `avail`. Unknown space (df failure) does
 /// NOT fit (R3-L28) — "cannot ask" must not authorize a copy that can
 /// strand a partial destination.
-fn fits_in_avail(avail: Option<u64>, bytes: u64) -> bool {
+pub(crate) fn fits_in_avail(avail: Option<u64>, bytes: u64) -> bool {
     avail.is_some_and(|a| a >= bytes)
 }
 
