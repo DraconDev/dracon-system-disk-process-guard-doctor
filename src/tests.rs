@@ -1494,6 +1494,33 @@ fn parse_df_use_percent_works() {
     assert_eq!(parse_df_use_percent(sample), Some(91));
 }
 
+/// 2026-10-03 (audit R4-SYS-15): absurd block counts saturate instead
+/// of panicking (debug) or wrapping (release) — a panic kills the
+/// daemon pass. `u64::MAX` blocks × 1024 must yield `u64::MAX` bytes.
+#[test]
+fn parse_df_details_saturates_absurd_blocks() {
+    let huge = format!(
+        "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/x {} {} {} 50% /x\n",
+        u64::MAX,
+        u64::MAX,
+        u64::MAX
+    );
+    let details = parse_df_details(&huge).expect("absurd input must saturate, not fail");
+    assert_eq!(details.total_bytes, u64::MAX);
+    assert_eq!(details.used_bytes, u64::MAX);
+    assert_eq!(details.avail_bytes, u64::MAX);
+    assert_eq!(details.use_percent, 50);
+
+    // Normal values still scale exactly.
+    let sample =
+        "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/root 100 91 9 91% /\n";
+    let details = parse_df_details(sample).expect("normal input parses");
+    assert_eq!(
+        (details.total_bytes, details.used_bytes, details.avail_bytes),
+        (100 * 1024, 91 * 1024, 9 * 1024)
+    );
+}
+
 #[test]
 fn parse_ps_output_works() {
     let sample = "123 1 250.5 4194304 5 git\n456 2 12.0 2048 0 zsh\n";

@@ -795,9 +795,13 @@ pub(crate) fn parse_df_details(output: &str) -> Option<DiskDetails> {
     if parts.len() < 6 {
         return None;
     }
-    let total_bytes = parts[1].parse::<u64>().ok()? * 1024;
-    let used_bytes = parts[2].parse::<u64>().ok()? * 1024;
-    let avail_bytes = parts[3].parse::<u64>().ok()? * 1024;
+    // FIXED 2026-10-03 (audit R4-SYS-15): saturate, don't panic/wrap.
+    // `df` output is local so absurd input is unlikely, but a plain
+    // `* 1024` panics in debug (killing the daemon pass) and wraps in
+    // release — the file's own convention is `saturating_mul`.
+    let total_bytes = parts[1].parse::<u64>().ok()?.saturating_mul(1024);
+    let used_bytes = parts[2].parse::<u64>().ok()?.saturating_mul(1024);
+    let avail_bytes = parts[3].parse::<u64>().ok()?.saturating_mul(1024);
     let use_percent = parts[4].trim_end_matches('%').parse::<u8>().ok()?;
     let mount = parts[5].to_string();
     Some(DiskDetails {
