@@ -2153,7 +2153,9 @@ async fn clean_tmp_paths_keeps_old_process_cwd_directory() {
 
     let roots = vec![root.display().to_string()];
     let unheld_bytes = unheld_file.metadata().expect("unheld metadata").len();
-    let open_paths = collect_open_paths_under_from(&proc_root, std::slice::from_ref(&root)).await;
+    let open_paths = collect_open_paths_under_from(&proc_root, std::slice::from_ref(&root))
+        .await
+        .expect("readable proc fixture must scan");
     assert!(
         open_paths.contains(&cwd_dir),
         "process cwd must be included in open-path protection"
@@ -2172,6 +2174,33 @@ async fn clean_tmp_paths_keeps_old_process_cwd_directory() {
 
     let _ = fs::remove_dir_all(&root);
     let _ = fs::remove_dir_all(&proc_root);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn clean_tmp_paths_refuses_blind_cleanup_when_proc_unreadable() {
+    // R3-L31: an unreadable /proc must abort the pass LOUD (no
+    // silent empty protection set) and delete nothing — in BOTH
+    // apply and dry-run (dry-run would otherwise over-report).
+    let root = unique_test_home("tmp_blind");
+    let stale = root.join("stale-file");
+    fs::create_dir_all(&root).expect("create fixture");
+    write_file_with_mtime(&stale, b"stale", 2 * 86_400);
+    let roots = vec![root.display().to_string()];
+    let missing_proc = root.join("no-such-proc");
+
+    for apply in [false, true] {
+        let err = clean_tmp_paths_with_proc(apply, &roots, 24, &[], &missing_proc)
+            .await
+            .expect_err("unreadable proc must fail the pass");
+        assert!(
+            err.to_string().contains("refusing tmp cleanup blind"),
+            "failure must name the blind-cleanup refusal, got: {err:#}"
+        );
+        assert!(stale.exists(), "nothing may be deleted blind (apply={apply})");
+    }
+
+    let _ = fs::remove_dir_all(&root);
 }
 
 #[test]
