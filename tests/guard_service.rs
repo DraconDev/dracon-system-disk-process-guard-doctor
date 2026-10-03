@@ -252,6 +252,112 @@ fn shipped_unit_wires_execreload_to_sighup() {
     );
 }
 
+fn watchdog_unit_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("dracon-system-guard-watchdog.service")
+}
+
+fn watchdog_unit_text() -> String {
+    fs::read_to_string(watchdog_unit_path())
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", watchdog_unit_path().display()))
+}
+
+/// 2026-10-03 (audit R4-SYS-16): the watchdog runs every 2 min as a
+/// second entry point and needs no writes, so it carries the baseline
+/// sandbox. Pin the exact directives (directive lines, not comments).
+#[test]
+fn watchdog_unit_carries_baseline_sandbox() {
+    let unit = watchdog_unit_text();
+    let directives: Vec<&str> = unit
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect();
+    for expected in [
+        "NoNewPrivileges=true",
+        "ProtectSystem=strict",
+        "ProtectHome=read-only",
+    ] {
+        assert!(
+            directives.contains(&expected),
+            "watchdog unit must carry {expected} (it needs no writes):\n{unit}"
+        );
+    }
+}
+
+/// 2026-10-03 (audit R4-SYS-17): the watchdog ExecStart path must
+/// equal install.sh's destination — drift means 203/EXEC every 2 min
+/// with the guard un-backstopped. Also pins the repo source the
+/// install line copies from (existence + executable bit, like the
+/// ExecReload contract above).
+#[test]
+fn watchdog_execstart_matches_install_destination() {
+    let unit = watchdog_unit_text();
+    let exec_start = unit
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("ExecStart="))
+        .unwrap_or_else(|| panic!("watchdog unit has no ExecStart:\n{unit}"));
+    let value = exec_start.trim_start_matches("ExecStart=").trim();
+    assert!(
+        !value.is_empty(),
+        "watchdog ExecStart must not be empty:\n{unit}"
+    );
+
+    // install.sh lives at the utilities root (parent of this crate).
+    let install = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("install.sh");
+    let install_text = fs::read_to_string(&install)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", install.display()));
+    // %h in the unit ≡ ~/ in install.sh; compare the suffix after it.
+    let suffix = value.strip_prefix("%h").unwrap_or_else(|| {
+        panic!("watchdog ExecStart must be %h-anchored, got {value:?}")
+    });
+    let dest_tilde = format!("~{suffix}");
+    let copy_line = install_text.lines().find(|l| {
+        l.contains("dracon-system-guard-watchdog.sh")
+            && l.contains(&dest_tilde)
+            && l.trim_start().starts_with("copy_unit")
+    });
+    assert!(
+        copy_line.is_some(),
+        "install.sh must copy the watchdog script TO the unit's ExecStart path ({value} ≡ {dest_tilde})"
+    );
+    assert!(
+        install_text.lines().any(|l| l.contains("chmod +x")
+            && l.contains("dracon-system-guard-watchdog.sh")),
+        "install.sh must chmod +x the installed watchdog script"
+    );
+
+    // The copy SOURCE must exist in this repo and be executable.
+    let source_line = copy_line.unwrap();
+    let source_repo_path = source_line
+        .split_whitespace()
+        .nth(1)
+        .unwrap_or_default();
+    assert_eq!(
+        source_repo_path,
+        "dracon-system/scripts/dracon-system-guard-watchdog.sh",
+        "unexpected watchdog copy source in install.sh: {source_repo_path:?}"
+    );
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/dracon-system-guard-watchdog.sh");
+    let meta = fs::metadata(&source)
+        .unwrap_or_else(|e| panic!("watchdog script {} missing: {e}", source.display()));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert!(
+            meta.is_file() && meta.permissions().mode() & 0o111 != 0,
+            "watchdog script {} is not executable",
+            source.display()
+        );
+    }
+    #[cfg(not(unix))]
+    {
+        assert!(meta.is_file());
+    }
+}
+
 /// The reload is documented in README as covering every [guard] setting. If
 /// the unit stops being reloadable, that documentation becomes a lie.
 #[test]
