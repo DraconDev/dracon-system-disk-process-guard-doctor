@@ -224,6 +224,82 @@ fn apply_relocate_refuses_stale_staging_dir() {
     cleanup(&root);
 }
 
+#[cfg(unix)]
+#[test]
+fn stale_staging_refusal_names_crash_window_recovery() {
+    // Audit R4-SYS-09: staging present + source MISSING is the crash
+    // window (rename done, symlink never made). The refusal must say
+    // so and give the `mv` recovery — not "clear it manually".
+    let root = test_root("staging-crash");
+    let src = fixture_dir(&root);
+    let dest_root = root.join("cold");
+    fs::create_dir_all(&dest_root).unwrap();
+    let plan = crate::plan_relocate(&src, &dest_root, &[], false).unwrap();
+    // Simulate the crash: source renamed aside, symlink never created.
+    let staging = src.with_file_name(format!(
+        "{}.dracon-relocate-staging",
+        src.file_name().unwrap().to_string_lossy()
+    ));
+    fs::rename(&src, &staging).unwrap();
+    assert!(!src.exists(), "crash simulation must remove the source");
+    let err = crate::apply_relocate(&plan).unwrap_err();
+    let msg = format!("{err:#}");
+    assert!(
+        msg.contains("MISSING") && msg.contains("mv "),
+        "crash-window refusal must name the case + mv recovery: {msg}"
+    );
+    assert!(msg.contains("stale staging"), "keeps the stable phrase: {msg}");
+    assert!(
+        staging.join("a.txt").exists(),
+        "refused run must leave staging data intact"
+    );
+    cleanup(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn stale_staging_refusal_names_completed_move_case() {
+    // Audit R4-SYS-09: staging present + source already a symlink
+    // means the move completed and only staging cleanup failed.
+    // Staging is a redundant duplicate: say so + give `rm -rf`.
+    let root = test_root("staging-dup");
+    let src = fixture_dir(&root);
+    let dest_root = root.join("cold");
+    fs::create_dir_all(&dest_root).unwrap();
+    let plan = crate::plan_relocate(&src, &dest_root, &[], false).unwrap();
+    let staging = src.with_file_name(format!(
+        "{}.dracon-relocate-staging",
+        src.file_name().unwrap().to_string_lossy()
+    ));
+    fs::rename(&src, &staging).unwrap();
+    std::os::unix::fs::symlink(&dest_root, &src).unwrap();
+    let err = crate::apply_relocate(&plan).unwrap_err();
+    let msg = format!("{err:#}");
+    assert!(
+        msg.contains("already a symlink") && msg.contains("rm -rf"),
+        "completed-move refusal must name the case + rm recovery: {msg}"
+    );
+    cleanup(&root);
+}
+
+#[test]
+fn find_stale_staging_dirs_scans_one_level() {
+    // Audit R4-SYS-09: the setup scan finds level-1 staging dirs,
+    // misses deeper nesting by design, and skips unreadable roots.
+    let root = test_root("staging-scan");
+    let cand = root.join("cand");
+    fs::create_dir_all(cand.join("deep")).unwrap();
+    fs::create_dir_all(cand.join("media.dracon-relocate-staging")).unwrap();
+    fs::create_dir_all(cand.join("deep").join("x.dracon-relocate-staging")).unwrap();
+    fs::create_dir_all(cand.join("plain-dir")).unwrap();
+    let found = crate::relocate::find_stale_staging_dirs(&[cand.clone()]);
+    assert_eq!(found, vec![cand.join("media.dracon-relocate-staging")]);
+    // Missing/unreadable roots yield nothing, never an error.
+    let missing = crate::relocate::find_stale_staging_dirs(&[root.join("nope")]);
+    assert!(missing.is_empty());
+    cleanup(&root);
+}
+
 #[test]
 fn apply_relocate_rechecks_space_at_apply_start() {
     // Audit R4-SYS-05: a plan that fit at dry-run time must not copy
