@@ -321,6 +321,12 @@ trend_warn_hours = 24
 # Quarantine TTL in days; `expire` deletes older entries, 0 disables expiry.
 # quarantine_ttl_days = 30
 #
+# Unattended expiry cadence in seconds (code default 86400 = daily; 0 opts
+# out entirely). The daemon pass ALSO requires clean_quarantine_first AND
+# auto_cleanup_apply=true to actually delete — with apply=false it only
+# reports what would expire (audit M5, 2026-10-02).
+# quarantine_expire_interval_secs = 86400
+#
 # Every entry carries a `.quarantine.json` manifest recording where it came
 # from. An entry whose manifest cannot be read is NEVER expired, at any TTL
 # and never with --apply: without the manifest there is no record of where it
