@@ -1859,6 +1859,86 @@ async fn empty_trash_zero_age_with_flagged_keeps_flagged() {
     let _ = fs::remove_dir_all(&home);
 }
 
+#[tokio::test]
+async fn empty_trash_credential_guard_keeps_depth_capped_subtree() {
+    // 2026-10-02 (audit L6): the scan is capped at max_depth(8) — a
+    // directory AT the cap has unobservable children, so its whole
+    // top-level entry must be kept (fail closed per-entry). The nested
+    // content here is BENIGN: the keep must happen with no credential
+    // signal at all, purely because the depth-9 file cannot be seen.
+    let home = unique_test_home("trash_capped");
+    let trash_files = home.join(".local/share/Trash/files");
+    let trash_info = home.join(".local/share/Trash/info");
+    fs::create_dir_all(&trash_files).expect("create trash fixture");
+    fs::create_dir_all(&trash_info).expect("create info fixture");
+
+    // deep(1)/d1(2)/d2(3)/d3(4)/d4(5)/d5(6)/d6(7)/d7(8)/notes.txt(9):
+    // d7 sits AT the cap, notes.txt is never yielded.
+    let mut deep = trash_files.join("deep");
+    for d in ["d1", "d2", "d3", "d4", "d5", "d6", "d7"] {
+        deep = deep.join(d);
+    }
+    fs::create_dir_all(&deep).expect("deep nest");
+    write_file_with_mtime(&deep.join("notes.txt"), b"benign", 0);
+    write_file_with_mtime(&trash_files.join("a.txt"), b"a", 0);
+    fs::write(trash_info.join("deep.trashinfo"), b"[Trash Info]").expect("info deep");
+    fs::write(trash_info.join("a.txt.trashinfo"), b"[Trash Info]").expect("info benign");
+
+    let (reclaimed, _cleaned) = empty_trash_at(&home, true, &[], true, 0)
+        .await
+        .expect("zero-age purge with capped subtree");
+    assert!(reclaimed > 0, "benign entry must be purged");
+    assert!(
+        !trash_files.join("a.txt").exists(),
+        "benign entry must be removed"
+    );
+    assert!(
+        trash_files.join("deep").exists(),
+        "depth-capped entry must be kept (children unobservable)"
+    );
+
+    let _ = fs::remove_dir_all(&home);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn empty_trash_credential_guard_keeps_unreadable_subtree() {
+    // 2026-10-02 (audit L6): a walk error (EPERM here) must fail closed
+    // per-entry — the old `_ => {}` swallowed it and purged a subtree
+    // the guard never saw.
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = unique_test_home("trash_unreadable");
+    let trash_files = home.join(".local/share/Trash/files");
+    let trash_info = home.join(".local/share/Trash/info");
+    fs::create_dir_all(&trash_files).expect("create trash fixture");
+    fs::create_dir_all(&trash_info).expect("create info fixture");
+
+    let locked = trash_files.join("top").join("locked");
+    fs::create_dir_all(&locked).expect("locked nest");
+    fs::write(locked.join("inner.txt"), b"x").expect("inner file");
+    write_file_with_mtime(&trash_files.join("a.txt"), b"a", 0);
+    fs::write(trash_info.join("top.trashinfo"), b"[Trash Info]").expect("info top");
+    fs::write(trash_info.join("a.txt.trashinfo"), b"[Trash Info]").expect("info benign");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).expect("lock dir");
+
+    let (reclaimed, _cleaned) = empty_trash_at(&home, true, &[], true, 0)
+        .await
+        .expect("zero-age purge with unreadable subtree");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).expect("unlock dir");
+    assert!(reclaimed > 0, "benign entry must be purged");
+    assert!(
+        !trash_files.join("a.txt").exists(),
+        "benign entry must be removed"
+    );
+    assert!(
+        trash_files.join("top").exists(),
+        "entry with an unreadable subtree must be kept"
+    );
+
+    let _ = fs::remove_dir_all(&home);
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn nix_cleanup_gen_prune_failure_still_runs_gc() {
