@@ -311,7 +311,7 @@ EOF
 }
 mountinfo_fixed > "$work/mountinfo-fixed"
 
-# 17. The pre-fix shape: the second disk is read-only and neither subtree has
+# 20. The pre-fix shape: the second disk is read-only and neither subtree has
 #     its own mount, so every quarantine move fails. This is the exact state the
 #     guard ran in for four days, and it MUST be a failure, not a pass.
 pre="$work/mountinfo-prefix-disk-only"
@@ -336,7 +336,7 @@ case "$out" in
     *) fail "unexpected verdict for a read-only storage root: $out" ;;
 esac
 
-# 18. Granting the disk but not the subtree is still broken: the entry has to
+# 21. Granting the disk but not the subtree is still broken: the entry has to
 #     name the path itself, because ProtectSystem=strict makes the parent
 #     read-only no matter what the disk itself reports.
 one="$work/mountinfo-only-cold"
@@ -354,7 +354,7 @@ case "$out" in
     *) fail "the granted root should have passed: $out" ;;
 esac
 
-# 19. The fixed shape passes and names the mounts it relied on.
+# 22. The fixed shape passes and names the mounts it relied on.
 out="$(GUARD_MOUNTINFO="$work/mountinfo-fixed" POLICY_FILE="$p_ok" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
     "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
@@ -364,7 +364,7 @@ case "$out" in
     *) fail "no pass line for quarantine_dir: $out" ;;
 esac
 
-# 20. A later mount at the same point shadows an earlier read-write one, which
+# 23. A later mount at the same point shadows an earlier read-write one, which
 #     is how ProtectHome/ProtectSystem end up making XDG_RUNTIME_DIR read-only
 #     here. Reading the first match instead of the effective one would call
 #     /run/user/1000 writable when it is not.
@@ -384,7 +384,7 @@ case "$out" in
     *) fail "the shadowed mount was not detected: $out" ;;
 esac
 
-# 21. A root under an ordinary read-write mount is fine, and a root that no
+# 24. A root under an ordinary read-write mount is fine, and a root that no
 #     mount covers at all is reported rather than passed.
 p_tmp="$work/policy-tmp.toml"
 write_policy "$p_tmp" /tmp/quarantine ""
@@ -403,7 +403,7 @@ case "$out" in
     *) fail "unexpected verdict for a root-only namespace: $out" ;;
 esac
 
-# 22. A commented-out knob is not a configured root, and neither is a relative
+# 25. A commented-out knob is not a configured root, and neither is a relative
 #     one — both are skipped rather than failed, because there is nothing
 #     concrete to check.
 p_commented="$work/policy-commented.toml"
@@ -417,7 +417,7 @@ out="$(GUARD_MOUNTINFO="$pre" POLICY_FILE="$p_commented" \
     "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     || fail "commented-out storage roots were treated as configured: $out"
 
-# 23. "Cannot ask" is never a failure: a stopped service and an unreadable
+# 26. "Cannot ask" is never a failure: a stopped service and an unreadable
 #     mountinfo source are notes, not alarms.
 out="$(GUARD_MAINPID=0 POLICY_FILE="$p_ok" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
@@ -432,7 +432,7 @@ out="$(GUARD_MOUNTINFO="$work/no-such-mountinfo" POLICY_FILE="$p_ok" \
     "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     && fail "an unreadable mountinfo source was reported as in sync: $out"
 
-# 24. A root that lives under / with no mount of its own resolves through the
+# 27. A root that lives under / with no mount of its own resolves through the
 #     root mount. "/foo" does not match the shell pattern "//*", so an
 #     implementation that only compares prefixes in `case` reports this ordinary
 #     arrangement as "not covered by any mount" — a false failure that would
@@ -464,7 +464,7 @@ case "$out" in
     *) fail "the writable root mount was not accepted: $out" ;;
 esac
 
-# 25. A symlinked root matches on its CANONICAL path (R3-L23, guard
+# 28. A symlinked root matches on its CANONICAL path (R3-L23, guard
 #     twin): the literal match hit the read-only parent and
 #     false-positived, exactly like the sync checker's ~/.ssh case.
 mkdir -p "$work/guard-realroot"
