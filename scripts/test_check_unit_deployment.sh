@@ -464,4 +464,25 @@ case "$out" in
     *) fail "the writable root mount was not accepted: $out" ;;
 esac
 
+# 25. A symlinked root matches on its CANONICAL path (R3-L23, guard
+#     twin): the literal match hit the read-only parent and
+#     false-positived, exactly like the sync checker's ~/.ssh case.
+mkdir -p "$work/guard-realroot"
+ln -sfn "$work/guard-realroot" "$work/guard-linkroot"
+guard_real="$(readlink -f "$work/guard-realroot")"
+write_policy "$work/policy-link.toml" "$work/guard-linkroot" ""
+cat <<EOF > "$work/mountinfo-link"
+622 240 259:2 / / ro,nosuid,relatime shared:252 master:1 - ext4 /dev/nvme0n1p2 rw
+700 622 259:2 /tmp /tmp ro,nosuid,relatime shared:900 master:1 - ext4 /dev/nvme0n1p2 rw
+701 700 259:2 $guard_real $guard_real rw,nosuid,relatime shared:901 master:1 - ext4 /dev/nvme0n1p2 rw
+EOF
+out="$(GUARD_MOUNTINFO="$work/mountinfo-link" POLICY_FILE="$work/policy-link.toml" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
+    || fail "a symlinked guard root under an rw bind was reported read-only: $out"
+case "$out" in
+    *"is read-write"*) : ;;
+    *) fail "no pass line for the symlinked guard root: $out" ;;
+esac
+
 echo "check-unit-deployment regression tests: ok"
