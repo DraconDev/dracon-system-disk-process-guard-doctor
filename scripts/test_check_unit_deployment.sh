@@ -70,6 +70,13 @@ if [ "\${property:-}" = ExecReload ]; then
         *) printf '%s\n' "{ path=/bin/sh ; argv[]=/bin/sh -c kill -HUP \$MAINPID ; status=0/0 }"; exit 0 ;;
     esac
 fi
+if [ "\${property:-}" = NeedDaemonReload ]; then
+    case "$mode" in
+        unreachable) exit 1 ;;
+        need-reload) printf '%s\n' yes; exit 0 ;;
+        *) printf '%s\n' no; exit 0 ;;
+    esac
+fi
 # Any other query: answer as a reachable manager would.
 case "$mode" in
     unreachable) exit 1 ;;
@@ -129,6 +136,16 @@ out="$(SYSTEMCTL="$(make_systemctl empty)" SYSTEMD_ANALYZE="$analyze_clean" \
     fail "a copied-but-not-reloaded unit was reported as in sync"
 grep -q 'daemon-reload' <<<"$out" || fail "no redeploy hint: $out"
 grep -q 'ExecReload' <<<"$out" || fail "the divergent directive is not named: $out"
+
+# 2b. R4-SYS-10: the files agree AND the loaded unit carries ExecReload,
+#     but the manager reports NeedDaemonReload=yes (some OTHER directive
+#     drifted, e.g. ReadWritePaths). The old ExecReload-only proxy passed
+#     this; the manager verdict must fail it.
+out="$(SYSTEMCTL="$(make_systemctl need-reload)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$deployed" 2>&1)" &&
+    fail "NeedDaemonReload=yes was reported as in sync"
+grep -q 'NeedDaemonReload' <<<"$out" || fail "the manager verdict is not named: $out"
+grep -q 'daemon-reload' <<<"$out" || fail "no redeploy hint: $out"
 
 # 3. A host with no reachable user manager (CI, container, bare ssh) has no
 #    opinion about the loaded unit. "Cannot ask systemd" must never be reported
