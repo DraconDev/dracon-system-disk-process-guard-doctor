@@ -2002,6 +2002,32 @@ async fn critical_tier_bypass_cleans_fresh_target() {
     let _ = fs::remove_dir_all(&root);
 }
 
+/// 2026-10-03 (audit R4-SYS-08): `tmp_min_age_hours = 0` DISABLES
+/// tmp hygiene (early return) — the policy table used to claim it
+/// swept regardless of age. A stale file must survive both modes.
+#[tokio::test]
+async fn clean_tmp_paths_zero_min_age_disables() {
+    let root = unique_test_home("tmp_zero_age");
+    fs::create_dir_all(&root).expect("create tmp root");
+    let stale = root.join("stale.log");
+    write_file_with_mtime(&stale, b"old log data", 2 * 86_400);
+    let roots = vec![root.display().to_string()];
+
+    let (dry_bytes, dry_lines) = clean_tmp_paths(false, &roots, 0, &[])
+        .await
+        .expect("dry run");
+    assert_eq!(dry_bytes, 0, "0 must report nothing reclaimable");
+    assert!(dry_lines.is_empty(), "0 must list no candidates");
+    assert!(stale.exists(), "dry run must not delete");
+
+    let (bytes, lines) = clean_tmp_paths(true, &roots, 0, &[]).await.expect("apply");
+    assert_eq!(bytes, 0, "0 must reclaim nothing");
+    assert!(lines.is_empty(), "0 must clean nothing");
+    assert!(stale.exists(), "0 must leave even stale entries alone");
+
+    let _ = fs::remove_dir_all(&root);
+}
+
 #[tokio::test]
 async fn clean_tmp_paths_respects_age_dry_run_and_open_fds() {
     let root = unique_test_home("tmp_clean");
