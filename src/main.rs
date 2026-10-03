@@ -6150,7 +6150,7 @@ fn cooldown_due(last: Option<Instant>, interval_secs: u64, now: Instant) -> bool
 /// SECOND disk, so gating it on `/` pressure means a healthy `/` never drains
 /// and the backlog only ever clears during a crisis.
 ///
-/// Two gates beyond the cooldown, both about not deleting what the operator
+/// Three gates beyond the cooldown, all about not deleting what the operator
 /// did not ask to be deleted:
 ///
 /// - `quarantine_expire_interval_secs = 0` opts out of the unattended path
@@ -6158,6 +6158,11 @@ fn cooldown_due(last: Option<Instant>, interval_secs: u64, now: Instant) -> bool
 /// - `clean_quarantine_first` must be armed. If it is not, any entries present
 ///   came from a human running `quarantine move` by hand, and those must not
 ///   become an unattended delete just because the directory is non-empty.
+/// - `auto_cleanup_apply` must be true for actual deletion (audit M5,
+///   2026-10-02 — previously hardcoded apply, arming unattended deletes
+///   for operators who believed `auto_cleanup_apply = false` meant
+///   dry-run). When false the pass still scans and reports, but removes
+///   nothing.
 fn maybe_expire_quarantine(guard: &GuardPolicy, state: &mut GuardRuntimeState, now: Instant) {
     if guard.quarantine_expire_interval_secs == 0 {
         return;
@@ -6181,7 +6186,7 @@ fn maybe_expire_quarantine(guard: &GuardPolicy, state: &mut GuardRuntimeState, n
     if !root.is_dir() {
         return;
     }
-    match quarantine_expire_detailed(&root, guard.quarantine_ttl_days, true) {
+    match quarantine_expire_detailed(&root, guard.quarantine_ttl_days, guard.auto_cleanup_apply) {
         Ok(outcome) => {
             // A pinned entry can never age out — no manifest, no timestamp — so
             // it needs a human (`quarantine purge`). Report it every pass, or it
@@ -6199,12 +6204,22 @@ fn maybe_expire_quarantine(guard: &GuardPolicy, state: &mut GuardRuntimeState, n
                 // Logged per deletion, not summarised: once an entry is gone the
                 // journal is the only record that it ever existed, and the
                 // operator-review signal cannot come from a directory listing.
-                eprintln!(
-                    "🕒 quarantine expired: {} (origin {}, freed {})",
-                    entry.name,
-                    entry.origin,
-                    human_bytes(entry.bytes)
-                );
+                // In dry-run the entry is still on disk — say so explicitly.
+                if guard.auto_cleanup_apply {
+                    eprintln!(
+                        "🕒 quarantine expired: {} (origin {}, freed {})",
+                        entry.name,
+                        entry.origin,
+                        human_bytes(entry.bytes)
+                    );
+                } else {
+                    eprintln!(
+                        "🕒 quarantine would expire (dry-run, auto_cleanup_apply=false): {} (origin {}, {})",
+                        entry.name,
+                        entry.origin,
+                        human_bytes(entry.bytes)
+                    );
+                }
             }
         }
         Err(e) => eprintln!("⚠️ quarantine expire failed: {e:#}"),
