@@ -318,8 +318,6 @@ pub(crate) fn plan_relocate(
     })
 }
 
-/// Execute a validated plan: copy, verify, remove source, leave symlink.
-///
 /// Suffix of the aside-staging dir. Single source of truth for the
 /// name: the pre-flight guard, the rename site, and the setup scan
 /// must all agree (R4-SYS-09).
@@ -395,6 +393,22 @@ pub(crate) fn find_stale_staging_dirs(roots: &[PathBuf]) -> Vec<PathBuf> {
     stale
 }
 
+/// Execute a validated plan: copy, verify, remove source, leave symlink.
+///
+/// Crash window (DOCUMENTED 2026-10-03, audit R4-SYS-09): between
+/// `rename(source, staging)` and `symlink(dest, source)` a crash
+/// (power loss, SIGKILL — a symlink Err is handled, a crash is not)
+/// leaves SOURCE MISSING with the data only in
+/// `<name>.dracon-relocate-staging` (plus the verified copy at
+/// `dest`, which completed before the rename). Recovery by case —
+/// the stale-staging refusal below names the case and the command:
+/// - source missing → `mv <staging> <source>`, then re-run relocate.
+/// - source is a symlink → move completed, staging is a redundant
+///   duplicate: verify the link, then `rm -rf <staging>`.
+/// - source is a real dir → ambiguous (recreated after the crash?):
+///   inspect both trees before clearing staging by hand.
+/// `setup` best-effort reports `*.dracon-relocate-staging` dirs one
+/// level under the candidate roots so the state is visible.
 pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
     #[cfg(not(unix))]
     {
