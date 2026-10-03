@@ -2465,6 +2465,17 @@ fn safe_tmp_root_policy_allows_tmp_descendants_and_rejects_home() {
     let _ = std::fs::remove_dir_all(&tmp);
 }
 
+/// Set a file or dir mtime `hours` in the past (`File::set_modified`
+/// is stable; opening a dir read-only suffices for futimens on Linux).
+fn set_mtime_hours_ago(path: &std::path::Path, hours: u64) {
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .open(path)
+        .unwrap_or_else(|e| panic!("open {} to set mtime: {e}", path.display()));
+    f.set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(hours * 3600))
+        .unwrap_or_else(|e| panic!("set mtime on {}: {e}", path.display()));
+}
+
 #[tokio::test]
 async fn tree_has_fresh_content_fails_closed_on_walk_errors() {
     // R3-L22: unreadable subtrees (or any walk error) must read as
@@ -2478,9 +2489,8 @@ async fn tree_has_fresh_content_fails_closed_on_walk_errors() {
     std::fs::create_dir_all(&stale).unwrap();
     let old_file = stale.join("old");
     std::fs::write(&old_file, b"old").unwrap();
-    let old_time = now - std::time::Duration::from_secs(3600);
-    filetime_set_mtime(&old_file, old_time);
-    filetime_set_mtime(&stale, old_time);
+    set_mtime_hours_ago(&old_file, 1);
+    set_mtime_hours_ago(&stale, 1);
     assert!(
         !tree_has_fresh_content(&stale, cutoff).await,
         "all-old tree must read stale"
@@ -2499,9 +2509,9 @@ async fn tree_has_fresh_content_fails_closed_on_walk_errors() {
     let sub = locked.join("sub");
     std::fs::create_dir_all(&sub).unwrap();
     std::fs::write(sub.join("x"), b"x").unwrap();
-    filetime_set_mtime(&sub.join("x"), old_time);
-    filetime_set_mtime(&sub, old_time);
-    filetime_set_mtime(&locked, old_time);
+    set_mtime_hours_ago(&sub.join("x"), 1);
+    set_mtime_hours_ago(&sub, 1);
+    set_mtime_hours_ago(&locked, 1);
     std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o000)).unwrap();
     let verdict = tree_has_fresh_content(&locked, cutoff).await;
     std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o755)).unwrap();
