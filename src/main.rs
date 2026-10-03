@@ -451,6 +451,12 @@ pub(crate) struct DoctorReport {
     // so a DRACON_SYSTEM_POLICY override is honoured.
     pub(crate) system_policy_exists: bool,
     pub(crate) guard_service_active: bool,
+    // ADDED 2026-10-03 (audit R3-L26): the M8 watchdog timers. Doctor
+    // checked the two main services but not the backstops, so missing
+    // timers still reported all-green.
+    pub(crate) sync_watchdog_timer_active: bool,
+    pub(crate) freeze_watchdog_timer_active: bool,
+    pub(crate) guard_watchdog_timer_active: bool,
     /// Whether systemctl could be found at all. `sync_service_active` /
     /// `guard_service_active` are `false` when it could not, and before this
     /// field existed that was indistinguishable from "the service is down":

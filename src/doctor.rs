@@ -11,6 +11,10 @@ use crate::{
 /// actually depends on.
 const GUARD_SERVICE: &str = "dracon-system-guard.service";
 const SYNC_SERVICE: &str = "dracon-sync.service";
+// ADDED 2026-10-03 (audit R3-L26): the M8 watchdog backstops.
+const SYNC_WATCHDOG_TIMER: &str = "dracon-sync-watchdog.timer";
+const FREEZE_WATCHDOG_TIMER: &str = "dracon-freeze-watchdog.timer";
+const GUARD_WATCHDOG_TIMER: &str = "dracon-system-guard-watchdog.timer";
 
 /// Run the diagnostic check and return a report.
 pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
@@ -51,6 +55,9 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
         sync_service_active: is_user_service_active(SYNC_SERVICE).await,
         system_policy_exists: system_policy.exists(),
         guard_service_active: is_user_service_active(GUARD_SERVICE).await,
+        sync_watchdog_timer_active: is_user_service_active(SYNC_WATCHDOG_TIMER).await,
+        freeze_watchdog_timer_active: is_user_service_active(FREEZE_WATCHDOG_TIMER).await,
+        guard_watchdog_timer_active: is_user_service_active(GUARD_WATCHDOG_TIMER).await,
         service_probe_available,
     }
 }
@@ -160,6 +167,27 @@ fn doctor_checks(report: &crate::DoctorReport) -> Vec<DoctorCheck> {
             state: service_state(report.sync_service_active),
             required: true,
             hint: "systemctl --user enable --now dracon-sync.service",
+        },
+        // ADDED 2026-10-03 (audit R3-L26): the M8 backstops. A missing
+        // timer fails --strict (install.sh and the flake module both
+        // enable them); without systemctl they are n/a like services.
+        DoctorCheck {
+            label: "sync watchdog timer",
+            state: service_state(report.sync_watchdog_timer_active),
+            required: true,
+            hint: "systemctl --user enable --now dracon-sync-watchdog.timer",
+        },
+        DoctorCheck {
+            label: "freeze watchdog timer",
+            state: service_state(report.freeze_watchdog_timer_active),
+            required: true,
+            hint: "systemctl --user enable --now dracon-freeze-watchdog.timer",
+        },
+        DoctorCheck {
+            label: "guard watchdog timer",
+            state: service_state(report.guard_watchdog_timer_active),
+            required: true,
+            hint: "systemctl --user enable --now dracon-system-guard-watchdog.timer",
         },
     ]
 }
