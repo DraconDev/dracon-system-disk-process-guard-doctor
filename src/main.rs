@@ -3946,6 +3946,56 @@ pub(crate) fn resolve_bin_strict(name: &str) -> Result<String> {
     })
 }
 
+/// PATH-searching variant for READ-ONLY probes (doctor service checks,
+/// status report). ADDED 2026-10-03 (audit R4-SYS-03): the strict
+/// resolver only consults NixOS store dirs, so on non-NixOS systemd
+/// hosts (systemctl at /usr/bin) every service check degraded to
+/// Skipped. Store dirs first, then PATH for a regular executable
+/// file; the returned path is always ABSOLUTE (never a bare name),
+/// so the exec site stays immune to cwd-relative tricks. Residual
+/// risk is a poisoned PATH entry lying to a diagnostic — which
+/// mutates nothing. Mutating execs (renice, systemctl reload/restart)
+/// keep using `resolve_bin_strict`; this fallback must never serve them.
+pub(crate) fn resolve_bin_for_readonly_probe(name: &str) -> Result<String> {
+    if let Some(store) = resolve_bin_opt(name) {
+        return Ok(store);
+    }
+    let path_os = std::env::var_os("PATH").unwrap_or_default();
+    let dirs: Vec<PathBuf> = std::env::split_paths(&path_os).collect();
+    search_path_for_executable(name, &dirs).ok_or_else(|| {
+        anyhow::anyhow!("cannot resolve `{name}` (not in NixOS store dirs or PATH)")
+    })
+}
+
+/// Search explicit directories for a regular executable `name` (pure
+/// helper for test — the PATH read lives in the caller so tests need
+/// no env mutation). Skips empty entries, directories, dead links,
+/// and files without any execute bit (a resolved-but-unrunnable path
+/// would report Fail instead of Skipped downstream).
+fn search_path_for_executable(name: &str, dirs: &[PathBuf]) -> Option<String> {
+    for dir in dirs {
+        if dir.as_os_str().is_empty() {
+            continue;
+        }
+        let candidate = dir.join(name);
+        let Ok(meta) = std::fs::symlink_metadata(&candidate) else {
+            continue;
+        };
+        if !meta.is_file() {
+            continue;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if meta.permissions().mode() & 0o111 == 0 {
+                continue;
+            }
+        }
+        return Some(candidate.to_string_lossy().to_string());
+    }
+    None
+}
+
 fn resolve_bin_opt(name: &str) -> Option<String> {
     let cache =
         RESOLVE_BIN_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
