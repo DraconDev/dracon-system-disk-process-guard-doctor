@@ -3497,6 +3497,13 @@ fn expiry_policy(qdir: &Path, interval: u64) -> GuardPolicy {
         clean_quarantine_first: true,
         quarantine_ttl_days: 30,
         quarantine_expire_interval_secs: interval,
+        // FIXED 2026-10-03 (audit M5 follow-up): expiry honors
+        // `auto_cleanup_apply` — the default false is dry-run (pinned
+        // by `maybe_expire_quarantine_dry_run_deletes_nothing`), so
+        // these interval tests must arm apply to exercise deletion.
+        // This also strengthens the not-due test: the cooldown gates
+        // even a fully armed policy.
+        auto_cleanup_apply: true,
         ..Default::default()
     }
 }
