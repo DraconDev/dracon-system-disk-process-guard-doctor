@@ -3200,8 +3200,10 @@ fn maybe_expire_quarantine_respects_both_opt_outs() {
 
     // Neither opt-out: the entry is past TTL and must actually be removed, and
     // the cooldown must be stamped so the next pass is a no-op.
+    // (auto_cleanup_apply must be armed: audit M5 made expiry honor it.)
     let active = GuardPolicy {
         quarantine_expire_interval_secs: 86_400,
+        auto_cleanup_apply: true,
         ..armed.clone()
     };
     let mut state3 = GuardRuntimeState::default();
