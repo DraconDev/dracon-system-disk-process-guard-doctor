@@ -4305,34 +4305,58 @@ fn truncate_log_file(
     }
 
     // Preserve header lines in memory, then write them back to the same inode.
+    // FIXED 2026-10-02 (audit L8): two data-loss windows closed —
+    //  1. Crash window: the old `set_len(0)` + `write_all` left an EMPTY
+    //     log if the process died between the calls. The replacement
+    //     (always shorter: capped at max_size < original) is now written
+    //     at offset 0 FIRST, flushed, and only then is the stale tail cut
+    //     with set_len. A crash mid-rewrite leaves stale-but-present
+    //     content, never an empty file. Temp-and-rename stays rejected:
+    //     open writers would keep appending to an unlinked inode (test
+    //     truncate_log_preserves_open_writer_inode pins the inode).
+    //  2. Non-UTF8 lines: `BufRead::lines()` yields Err on invalid UTF-8
+    //     and both loops STOPPED there, silently dropping the bad line
+    //     AND everything after it. Lines are now split as BYTES and
+    //     preserved verbatim (including any `\r` — no line-ending
+    //     rewriting); only a real I/O error aborts with Ok(0) for a
+    //     later pass, never a partial rewrite of a half-seen file.
     let file = std::fs::File::open(path)?;
     let reader = BufReader::new(file);
-    let mut replacement = Vec::new();
-    let mut lines = reader.lines();
-    let mut total_written = 0u64;
-
-    for _ in 0..preserve_header_lines {
-        let Some(line_result) = lines.next() else {
-            break;
+    let mut segments: Vec<Vec<u8>> = Vec::new();
+    let mut kept_bytes = 0u64;
+    let mut headers_kept = 0usize;
+    let mut byte_lines = reader.split(b'\n').peekable();
+    while let Some(seg_result) = byte_lines.next() {
+        let seg = match seg_result {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!(
+                    "⚠️ truncate {}: I/O error mid-read ({}) — leaving file for next pass",
+                    path.display(),
+                    e
+                );
+                return Ok(0);
+            }
         };
-        let Ok(line) = line_result else {
-            break;
-        };
-        let line_bytes = line.into_bytes();
-        replacement.extend_from_slice(&line_bytes);
-        replacement.push(b'\n');
-        total_written += line_bytes.len() as u64 + 1;
-    }
-
-    for line in lines.map_while(Result::ok) {
-        let line_bytes = line.into_bytes();
-        let line_len = line_bytes.len() as u64;
-        if total_written + line_len + 1 > max_size_bytes {
+        // `split` yields a trailing empty segment when the file ends with
+        // `\n` — the terminator, not a line. (The file is non-empty here:
+        // original_size > max_size_bytes >= 0... and an empty file returns
+        // Ok(0) above — so a final empty segment is always the artifact.)
+        if byte_lines.peek().is_none() && seg.is_empty() {
             break;
         }
-        replacement.extend_from_slice(&line_bytes);
+        if headers_kept < preserve_header_lines {
+            headers_kept += 1;
+        } else if kept_bytes + seg.len() as u64 + 1 > max_size_bytes {
+            break;
+        }
+        kept_bytes += seg.len() as u64 + 1;
+        segments.push(seg);
+    }
+    let mut replacement = Vec::with_capacity(kept_bytes as usize);
+    for seg in &segments {
+        replacement.extend_from_slice(seg);
         replacement.push(b'\n');
-        total_written += line_len + 1;
     }
 
     if std::fs::metadata(path)?.len() != original_size {
@@ -4344,9 +4368,10 @@ fn truncate_log_file(
     if output.metadata()?.len() != original_size {
         return Ok(0);
     }
-    output.set_len(0)?;
     output.write_all(&replacement)?;
     output.flush()?;
+    output.set_len(replacement.len() as u64)?;
+    output.sync_all()?;
     let new_size = output.metadata()?.len();
     Ok(original_size.saturating_sub(new_size))
 }

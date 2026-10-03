@@ -2710,6 +2710,64 @@ fn truncate_log_preserves_open_writer_inode() {
     let _ = std::fs::remove_dir_all(&td);
 }
 
+#[test]
+fn truncate_log_preserves_non_utf8_lines_verbatim() {
+    // 2026-10-02 (audit L8): `BufRead::lines()` yields Err on invalid
+    // UTF-8 and both loops STOPPED there, silently dropping the bad
+    // line AND everything after it. Byte-split lines preserve them.
+    let td =
+        std::env::temp_dir().join(format!("dracon-system-truncate-utf8-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&td);
+    std::fs::create_dir_all(&td).expect("temp dir");
+    let path = td.join("app.log");
+    let mut raw = b"header\nok-line\n".to_vec();
+    raw.extend_from_slice(b"bad-\xff\xfe-bytes\n");
+    raw.extend_from_slice(b"after-bad-line\n");
+    raw.extend_from_slice(&vec![b'x'; 200]);
+    std::fs::write(&path, &raw).expect("log");
+
+    let reclaimed = truncate_log_file(&path, 64, 1).expect("truncate");
+    assert!(reclaimed > 0);
+    let out = std::fs::read(&path).expect("read log");
+    assert!(
+        out.starts_with(b"header\n"),
+        "header must survive: {out:?}"
+    );
+    assert!(
+        out.windows(6).any(|w| w == b"bad-\xff\xfe-b"),
+        "non-UTF8 line must be preserved verbatim: {out:?}"
+    );
+    assert!(
+        out.windows(14).any(|w| w == b"after-bad-line"),
+        "lines AFTER the bad line must survive (old code stopped): {out:?}"
+    );
+    assert!(
+        out.len() as u64 <= 64,
+        "budget must hold: {} bytes",
+        out.len()
+    );
+    let _ = std::fs::remove_dir_all(&td);
+}
+
+#[test]
+fn truncate_log_handles_missing_trailing_newline_and_blank_lines() {
+    // Byte-split must not invent or drop lines at the edges: a missing
+    // trailing newline gains one terminator (as before), blank lines
+    // survive, and the terminator artifact is never kept as a line.
+    let td =
+        std::env::temp_dir().join(format!("dracon-system-truncate-edge-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&td);
+    std::fs::create_dir_all(&td).expect("temp dir");
+    let path = td.join("app.log");
+    std::fs::write(&path, b"h1\n\nbody-no-newline").expect("log");
+
+    let reclaimed = truncate_log_file(&path, 10, 1).expect("truncate");
+    assert!(reclaimed > 0);
+    let out = std::fs::read(&path).expect("read log");
+    assert_eq!(out, b"h1\n\n", "header + blank line, terminator artifact dropped");
+    let _ = std::fs::remove_dir_all(&td);
+}
+
 #[tokio::test]
 async fn clean_old_node_modules_counts_nested_tree_once() {
     let td = std::env::temp_dir().join(format!(
