@@ -1467,11 +1467,7 @@ fn unit_grants_write_matches_symlinked_root_to_target_grant() {
     );
     let unit_abs = format!("ReadWritePaths={}\n", cwd_manifest.display());
     assert!(
-        !crate::safety::unit_grants_write(
-            &unit_abs,
-            home,
-            std::path::Path::new("Cargo.toml")
-        ),
+        !crate::safety::unit_grants_write(&unit_abs, home, std::path::Path::new("Cargo.toml")),
         "relative roots must not be resolved against the invoker CWD"
     );
     let _ = std::fs::remove_dir_all(&base);
