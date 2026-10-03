@@ -320,20 +320,81 @@ pub(crate) fn plan_relocate(
 
 /// Execute a validated plan: copy, verify, remove source, leave symlink.
 ///
-/// Crash window (DOCUMENTED 2026-10-03, audit R4-SYS-09): between
-/// `rename(source, staging)` and `symlink(dest, source)` a crash
-/// (power loss, SIGKILL — a symlink Err is handled, a crash is not)
-/// leaves SOURCE MISSING with the data only in
-/// `<name>.dracon-relocate-staging` (plus the verified copy at
-/// `dest`, which completed before the rename). Recovery by case —
-/// the stale-staging refusal below names the case and the command:
-/// - source missing → `mv <staging> <source>`, then re-run relocate.
-/// - source is a symlink → move completed, staging is a redundant
-///   duplicate: verify the link, then `rm -rf <staging>`.
-/// - source is a real dir → ambiguous (recreated after the crash?):
-///   inspect both trees before clearing staging by hand.
-/// `setup` best-effort reports `*.dracon-relocate-staging` dirs one
-/// level under the candidate roots so the state is visible.
+/// Suffix of the aside-staging dir. Single source of truth for the
+/// name: the pre-flight guard, the rename site, and the setup scan
+/// must all agree (R4-SYS-09).
+pub(crate) const RELOCATE_STAGING_SUFFIX: &str = ".dracon-relocate-staging";
+
+/// Staging path for a source: `<parent>/<name>.dracon-relocate-staging`.
+fn staging_path_for(source: &Path) -> PathBuf {
+    source.with_file_name(format!(
+        "{}{RELOCATE_STAGING_SUFFIX}",
+        source
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "relocated".to_string())
+    ))
+}
+
+/// Build the stale-staging refusal (R4-SYS-09). The recovery depends
+/// on what the SOURCE looks like, so the message names the case and
+/// the exact command instead of "clear it manually".
+fn stale_staging_refusal(source: &Path, dest: &Path, staging: &Path) -> String {
+    match fs::symlink_metadata(source) {
+        Err(_) => format!(
+            "stale staging dir {} from an interrupted run — and {} is MISSING (crash between the staging rename and the symlink). Data is intact in staging (plus the verified copy at {}). Recover with: mv {} {} — then re-run relocate. Refusing.",
+            staging.display(),
+            source.display(),
+            dest.display(),
+            staging.display(),
+            source.display()
+        ),
+        Ok(meta) if meta.file_type().is_symlink() => {
+            let target = fs::read_link(source)
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| "(unreadable)".to_string());
+            format!(
+                "stale staging dir {} from a previous run — but {} is already a symlink to {} (the move completed; only staging cleanup failed). Staging is a redundant duplicate: verify the symlink, then delete staging by hand: rm -rf {}. Refusing.",
+                staging.display(),
+                source.display(),
+                target,
+                staging.display()
+            )
+        }
+        Ok(_) => format!(
+            "stale staging dir {} from a previous run — while {} is still a real directory. Staging holds the pre-move tree; inspect both before clearing staging by hand (the source may have been recreated after an interrupted run). Refusing.",
+            staging.display(),
+            source.display()
+        ),
+    }
+}
+
+/// Best-effort stale-staging scan (R4-SYS-09): one level under each
+/// root, entries ending in [`RELOCATE_STAGING_SUFFIX`]. Deeper
+/// nesting is missed by design (staging sits next to the source, and
+/// the scan must stay cheap). Unreadable roots are skipped, never
+/// fatal — this feeds an informational setup check.
+pub(crate) fn find_stale_staging_dirs(roots: &[PathBuf]) -> Vec<PathBuf> {
+    let mut stale = Vec::new();
+    for root in roots {
+        let entries = match fs::read_dir(root) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            if entry
+                .file_name()
+                .to_str()
+                .is_some_and(|n| n.ends_with(RELOCATE_STAGING_SUFFIX))
+            {
+                stale.push(entry.path());
+            }
+        }
+    }
+    stale.sort();
+    stale
+}
+
 pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
     #[cfg(not(unix))]
     {
