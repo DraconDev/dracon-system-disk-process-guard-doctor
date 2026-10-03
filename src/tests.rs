@@ -2249,6 +2249,33 @@ async fn open_scan_skips_unreadable_fd_table_without_abandoning_pass() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn open_scan_collects_running_executable() {
+    // R4-SYS-12: a running executable is not an fd entry — the scan
+    // must record /proc/<pid>/exe or tmp cleanup unlinks a stale
+    // binary from under its own process.
+    let root = unique_test_home("tmp_exe");
+    let proc_root = unique_test_home("proc_exe");
+    let binary = root.join("stale-runner");
+    fs::create_dir_all(&root).expect("create fixture");
+    fs::write(&binary, b"fake-elf").expect("write binary");
+    let process_dir = proc_root.join("4242");
+    fs::create_dir_all(process_dir.join("fd")).expect("create proc fixture");
+    symlink(&binary, process_dir.join("exe")).expect("create exe link");
+
+    let open = collect_open_paths_under_from(&proc_root, std::slice::from_ref(&root))
+        .await
+        .expect("readable proc fixture must scan");
+    assert!(
+        open.contains(&binary),
+        "the running executable must be protected"
+    );
+
+    let _ = fs::remove_dir_all(&root);
+    let _ = fs::remove_dir_all(&proc_root);
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn clean_tmp_paths_refuses_blind_cleanup_when_proc_unreadable() {
     // R3-L31: an unreadable /proc must abort the pass LOUD (no
     // silent empty protection set) and delete nothing — in BOTH
