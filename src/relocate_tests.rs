@@ -323,8 +323,7 @@ fn is_git_tracked_fails_closed_when_git_unrunnable() {
     // A nonexistent binary exercises the exact spawn-failure arm that
     // git-missing-from-PATH hits (both are spawn ENOENT) with no
     // process-global PATH swap, so this is race-free in parallel runs.
-    let err = crate::is_git_tracked_with(&sub, "/nonexistent-git-binary-xyz")
-        .unwrap_err();
+    let err = crate::is_git_tracked_with(&sub, "/nonexistent-git-binary-xyz").unwrap_err();
     assert!(
         format!("{err:#}").contains("cannot run git rev-parse"),
         "git-missing must fail closed with spawn context, got: {err:#}"

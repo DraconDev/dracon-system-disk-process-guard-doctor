@@ -227,9 +227,7 @@ pub(crate) fn is_git_tracked_with(path: &Path, git_bin: &str) -> Result<bool> {
         .arg(parent)
         .args(["ls-files", "--", &name])
         .output()
-        .map_err(|e| {
-            anyhow::anyhow!("cannot run git ls-files for {}: {e}", path.display())
-        })?;
+        .map_err(|e| anyhow::anyhow!("cannot run git ls-files for {}: {e}", path.display()))?;
     if !out.status.success() {
         anyhow::bail!("git ls-files failed for {}", path.display());
     }
