@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > is the canonical record.
 
 ## [Unreleased]
+
+### Fixed (workspace audit 2026-10-03, ROUND3)
+
+- The tmp-cleanup freshness probe fails closed on any walk error (R3-L22): a metadata, readdir, iteration, or mtime failure now reads as fresh (keep) instead of skipping toward a delete verdict — transient I/O or an unreadable subtree defers cleanup to the next cycle, never authorizes deleting unknown content.
+- Tmp cleanup refuses to run blind when `/proc` is unreadable (R3-L31): the open-file protection scan returns `None` on failure and the pass aborts loud in both apply and dry-run (dry-run would otherwise over-report reclaimable). Per-process fd misses stay skips — other users' fd tables are routinely unreadable to the unprivileged guard.
+- Relocation treats unknown destination space as not-fitting (R3-L28): the old `unwrap_or(true)` treated a `df` failure as "fits", so ENOSPC mid-copy stranded a partial destination blocking retries. Not-ready plans now carry an explicit issue and refuse in `apply_relocate`.
+- `doctor` checks the three M8 watchdog timers as required checks (R3-L26): missing backstops fail `--strict` instead of reporting all-green; without systemctl they are n/a like the services.
+- The guard deployment checker matches symlinked roots on their canonical path and mirrors the 3b companion loop (R3-L23/R3-L24): stale or missing `dracon-system-guard-watchdog` units are detected byte-for-byte like the sync checker's, with the same case numbering where behavior is shared.
+
 ## [0.112.43] - 2026-10-02
 
 ### Fixed (workspace audit 2026-10-02)
