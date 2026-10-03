@@ -675,14 +675,16 @@ async fn auto_relocate_pauses_when_df_fails() {
         plan.issues
     );
 
-    let mut guard = GuardPolicy::default();
-    guard.relocate_cold_root = cold.to_string_lossy().to_string();
-    guard.relocate_candidate_roots = scan.to_string_lossy().to_string();
-    guard.relocate_min_size_mb = 1;
-    guard.relocate_min_age_days = 14;
-    guard.auto_relocate_apply = true;
-    guard.disk_mount_path = "/nonexistent-mount-xyz".to_string();
-    guard.disk_action_percent = 85;
+    let guard = GuardPolicy {
+        relocate_cold_root: cold.to_string_lossy().to_string(),
+        relocate_candidate_roots: scan.to_string_lossy().to_string(),
+        relocate_min_size_mb: 1,
+        relocate_min_age_days: 14,
+        auto_relocate_apply: true,
+        disk_mount_path: "/nonexistent-mount-xyz".to_string(),
+        disk_action_percent: 85,
+        ..Default::default()
+    };
 
     let (moves, _bytes, _cands) = crate::run_auto_relocate(&guard)
         .await

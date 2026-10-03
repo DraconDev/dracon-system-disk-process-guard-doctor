@@ -2725,7 +2725,7 @@ fn truncate_log_preserves_non_utf8_lines_verbatim() {
     let mut raw = b"header\nok-line\n".to_vec();
     raw.extend_from_slice(b"bad-\xff\xfe-bytes\n");
     raw.extend_from_slice(b"after-bad-line\n");
-    raw.extend_from_slice(&vec![b'x'; 200]);
+    raw.extend_from_slice(&[b'x'; 200]);
     std::fs::write(&path, &raw).expect("log");
 
     let reclaimed = truncate_log_file(&path, 64, 1).expect("truncate");
