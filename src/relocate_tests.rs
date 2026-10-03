@@ -254,6 +254,33 @@ fn git_repo_with_tracked_subdir(root: &Path) -> PathBuf {
 }
 
 #[test]
+fn is_git_tracked_fails_closed_when_git_unrunnable() {
+    // Audit R4-SYS-04: Command spawn failure (git missing from PATH,
+    // EACCES, ...) is UNKNOWN, not "untracked" — must Err so the
+    // callers fail closed (plan_relocate `?`, cold-scan `unwrap_or(true)`).
+    let root = test_root("sys04");
+    let sub = git_repo_with_tracked_subdir(&root);
+    // Swap PATH to an empty dir so `git` cannot resolve; cargo tests
+    // run on threads (not processes) so restore in place.
+    let saved = std::env::var_os("PATH");
+    let empty = root.join("empty-path");
+    fs::create_dir_all(&empty).unwrap();
+    std::env::set_var("PATH", &empty);
+    let verdict = crate::is_git_tracked(&sub);
+    if let Some(v) = saved {
+        std::env::set_var("PATH", v);
+    } else {
+        std::env::remove_var("PATH");
+    }
+    let err = verdict.unwrap_err();
+    assert!(
+        format!("{err:#}").contains("cannot run git rev-parse"),
+        "git-missing must fail closed with spawn context, got: {err:#}"
+    );
+    cleanup(&root);
+}
+
+#[test]
 fn plan_relocate_refuses_tracked_unless_allowed() {
     let root = test_root("tracked");
     let sub = git_repo_with_tracked_subdir(&root);
