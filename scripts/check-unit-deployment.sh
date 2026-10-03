@@ -149,6 +149,21 @@ done
 #    an in-sync unit into a false alarm with a wrong remediation.
 if command -v "$SYSTEMCTL" >/dev/null 2>&1 &&
     "$SYSTEMCTL" --user show -p Version --value >/dev/null 2>&1; then
+    # FIXED 2026-10-03 (audit R4-SYS-10): the ExecReload probe below
+    # catches exactly one staleness shape (a copied-but-not-reloaded
+    # unit missing that directive). Any OTHER directive drift with the
+    # files agreeing (ReadWritePaths, PrivateTmp, ...) sailed through.
+    # NeedDaemonReload is the manager's own verdict and covers all of
+    # them, so it runs first; the ExecReload probe stays as the
+    # directive-specific diagnosis underneath.
+    need_reload="$("$SYSTEMCTL" --user show -p NeedDaemonReload --value 2>/dev/null || true)"
+    if [ "$need_reload" = "yes" ]; then
+        echo "✗ systemd reports NeedDaemonReload=yes: a unit file changed on" >&2
+        echo "  disk but the manager never reloaded it — the live service may" >&2
+        echo "  be running stale directives even though the files agree. Run:" >&2
+        echo "    systemctl --user daemon-reload" >&2
+        exit 1
+    fi
     if grep -qE '^ExecReload=' "$REPO_UNIT"; then
         loaded="$("$SYSTEMCTL" --user show "$UNIT_NAME" -p ExecReload --value 2>/dev/null || true)"
         if [ -z "$loaded" ]; then
