@@ -22,6 +22,10 @@
 #   POLICY_FILE     policy TOML to read the storage roots from
 #   GUARD_MOUNTINFO a mountinfo file to read instead of /proc/<pid>/mountinfo
 #   GUARD_MAINPID   the pid whose namespace to inspect
+#
+# Policy precedence (mirrors resolve_system_policy_path_with in main.rs):
+#   POLICY_FILE > DRACON_SYSTEM_POLICY > first existing of the four
+#   ~/.dracon/{utilities/system,system}/{dracon-system.toml,config.toml}.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -302,7 +306,29 @@ else
 fi
 
 if [ -n "${mountinfo:-}" ]; then
-    policy_file="${POLICY_FILE:-${HOME:-}/.dracon/utilities/system/dracon-system.toml}"
+    # FIXED 2026-10-03 (audit R4-SYS-01): resolve the policy the way
+    # the daemon does (DRACON_SYSTEM_POLICY first, then the four
+    # candidates from resolve_system_policy_path_with) — the old line
+    # read only the first candidate, so with an env override (or a
+    # config.toml layout) the checker audited a missing/stale file
+    # and the runtime step passed vacuously (empty roots = skip).
+    policy_file="${POLICY_FILE:-}"
+    if [ -z "$policy_file" ] && [ -n "${DRACON_SYSTEM_POLICY:-}" ]; then
+        policy_file="$DRACON_SYSTEM_POLICY"
+    fi
+    if [ -z "$policy_file" ]; then
+        for candidate in \
+            "${HOME:-}/.dracon/utilities/system/dracon-system.toml" \
+            "${HOME:-}/.dracon/utilities/system/config.toml" \
+            "${HOME:-}/.dracon/system/dracon-system.toml" \
+            "${HOME:-}/.dracon/system/config.toml"; do
+            if [ -e "$candidate" ]; then
+                policy_file="$candidate"
+                break
+            fi
+        done
+    fi
+    policy_file="${policy_file:-${HOME:-}/.dracon/utilities/system/dracon-system.toml}"
     storage_rc=0
     for pair in \
         "quarantine_dir:$(storage_root_for_key quarantine_dir "$policy_file")" \
