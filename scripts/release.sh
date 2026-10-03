@@ -39,7 +39,8 @@
 #                         modifications outside those release surfaces
 #                         (CORRECTED 2026-08-11, audit MEDIUM: the guard is
 #                         now real — the abort path used to run unchecked).
-#   --remote <name>       Push to this git remote (default: origin).
+#   --remote <name>       Push to this git remote (default: auto-detect the
+#                         github remote from remote.*.url).
 #   --yes                 Skip the interactive "are you sure" prompt before
 #                         push/publish/tag steps. Required for non-interactive
 #                         runs.
@@ -81,11 +82,12 @@ LOCKFILE="$REPO_ROOT/Cargo.lock"
 # ----- defaults ------------------------------------------------------------
 DRY_RUN=0
 ABORT=0
-# CHANGED 2026-08-10 (v0.112.35): default was `github`, but this repo
-# names its GitHub remote `origin` — release.sh 0.112.35 step 6 failed
-# with "fatal: 'github' does not appear to be a git repository". The
-# push was completed manually to origin/codeberg/gitlab.
-REMOTE=origin
+# CHANGED 2026-10-03 (audit R4-M-10): empty = auto-detect the github
+# remote from remote.*.url via scripts/resolve-github-remote.sh
+# (ported from dracon-sync v0.113.11). The old REMOTE=origin default
+# repeated the hardcoded-remote failure class on any non-origin
+# naming; --remote remains as an explicit override.
+REMOTE=""
 ASSUME_YES=0
 VERSION=""
 CRATE_NAME="dracon-system"
@@ -275,6 +277,21 @@ fi
 
 require_credentials
 require_clean_tree
+
+# Resolve the github push remote (2026-10-03, audit R4-M-10, ported
+# from dracon-sync v0.113.11): derived by URL, not hardcoded — the old
+# REMOTE=origin default failed on any non-origin remote naming. Loud
+# failure when no github remote exists; an explicit --remote override
+# is validated instead.
+if [[ -n "$REMOTE" ]]; then
+    git config --get "remote.${REMOTE}.url" >/dev/null 2>&1 \
+        || die_pre "remote '$REMOTE' does not exist (git config remote.$REMOTE.url)"
+    ok "push remote: $REMOTE (explicit --remote override)"
+else
+    REMOTE="$("$SCRIPT_DIR/resolve-github-remote.sh" "$REPO_ROOT")" \
+        || die_pre "could not resolve a github remote (see above)"
+    ok "push remote: $REMOTE (auto-detected from remote.*.url)"
+fi
 
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
     die_pre "version '$VERSION' is not semver (expected e.g. 0.112.12)"
