@@ -5520,14 +5520,27 @@ async fn collect_open_paths_under_from(
         let process_dir = pid_entry.path();
         let fd_dir = process_dir.join("fd");
         if let Ok(mut fd_rd) = tokio::fs::read_dir(&fd_dir).await {
-            while let Ok(Some(fd_entry)) = fd_rd.next_entry().await {
-                if let Ok(target) = tokio::fs::read_link(fd_entry.path()).await {
-                    let target: PathBuf = target;
-                    if roots.iter().any(|r| target.starts_with(r)) {
-                        // Remember the deepest ancestor we saw so cleanup can
-                        // check "is any prefix of this entry open" cheaply.
-                        open.insert(target);
+            loop {
+                match fd_rd.next_entry().await {
+                    Ok(Some(fd_entry)) => {
+                        if let Ok(target) = tokio::fs::read_link(fd_entry.path()).await {
+                            let target: PathBuf = target;
+                            if roots.iter().any(|r| target.starts_with(r)) {
+                                // Remember the deepest ancestor we saw so cleanup can
+                                // check "is any prefix of this entry open" cheaply.
+                                open.insert(target);
+                            }
+                        }
                     }
+                    Ok(None) => break,
+                    // FIXED 2026-10-03 (audit R4-SYS-11): one unreadable
+                    // fd entry (an fd closed mid-iteration — TOCTOU on a
+                    // live process) must skip THAT fd, not abandon the
+                    // rest of the table. The old `while let Ok(Some(..))`
+                    // exited the loop on Err, under-counting that
+                    // process's open files — broader than the documented
+                    // "per-fd read failures stay skips".
+                    Err(_) => continue,
                 }
             }
         }
