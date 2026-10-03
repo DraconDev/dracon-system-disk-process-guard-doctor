@@ -517,4 +517,50 @@ case "$out" in
     *) fail "no pass line for the symlinked guard root: $out" ;;
 esac
 
+# 29. The checker reads the policy the daemon reads (R4-SYS-01):
+#     DRACON_SYSTEM_POLICY wins over the default path, and the
+#     config.toml fallback is honored. Before the fix the checker
+#     read only ~/.dracon/utilities/system/dracon-system.toml, so
+#     with an env override it audited the wrong file (here: a decoy
+#     naming a writable root) and passed vacuously.
+cat > "$work/mountinfo-env" <<'EOF'
+622 240 259:2 / / ro,nosuid,relatime shared:252 master:1 - ext4 /dev/nvme0n1p2 rw
+700 622 259:2 /tmp /tmp rw,nosuid,relatime shared:900 master:1 - ext4 /dev/nvme0n1p2 rw
+EOF
+mkdir -p "$HOME/.dracon/utilities/system"
+write_policy "$HOME/.dracon/utilities/system/dracon-system.toml" /tmp/decoy ""
+write_policy "$work/policy-env.toml" /var/readonly ""
+out="$(env -u POLICY_FILE GUARD_MOUNTINFO="$work/mountinfo-env" \
+    DRACON_SYSTEM_POLICY="$work/policy-env.toml" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
+    && fail "the env-override policy was not read (decoy passed): $out"
+case "$out" in
+    *"/var/readonly"*) : ;;
+    *) fail "the verdict did not name the env policy's root: $out" ;;
+esac
+# Control: with the roles swapped the writable env root must pass,
+# so the assertion above cannot be satisfied by always failing.
+write_policy "$work/policy-env.toml" /tmp/env-ok ""
+write_policy "$HOME/.dracon/utilities/system/dracon-system.toml" /var/decoy-ro ""
+out="$(env -u POLICY_FILE GUARD_MOUNTINFO="$work/mountinfo-env" \
+    DRACON_SYSTEM_POLICY="$work/policy-env.toml" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
+    || fail "the writable env-override root was rejected: $out"
+# Fallback chain: with no env override and no dracon-system.toml, the
+# second candidate (config.toml) is read — the daemon's order.
+rm -f "$HOME/.dracon/utilities/system/dracon-system.toml"
+write_policy "$HOME/.dracon/utilities/system/config.toml" /var/readonly ""
+out="$(env -u POLICY_FILE -u DRACON_SYSTEM_POLICY GUARD_MOUNTINFO="$work/mountinfo-env" \
+    SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
+    "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
+    && fail "the config.toml fallback was not read: $out"
+case "$out" in
+    *"/var/readonly"*) : ;;
+    *) fail "the verdict did not name the fallback policy's root: $out" ;;
+esac
+# Tidy up: later cases must not see this case's HOME policies.
+rm -rf "$HOME/.dracon"
+
 echo "check-unit-deployment regression tests: ok"
