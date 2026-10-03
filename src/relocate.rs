@@ -168,8 +168,15 @@ fn avail_bytes_for(path: &Path) -> Option<u64> {
 /// canonically (symlinks and trailing slashes cannot dodge it). Anything
 /// else falls through to the parent probe below.
 pub(crate) fn is_git_tracked(path: &Path) -> Result<bool> {
+    is_git_tracked_with(path, "git")
+}
+
+/// `git_bin` is injectable so tests can force the spawn-failure arm with
+/// a nonexistent binary — no process-global `PATH` swap, so the test is
+/// race-free under the parallel harness.
+fn is_git_tracked_with(path: &Path, git_bin: &str) -> Result<bool> {
     if let Ok(canon) = fs::canonicalize(path) {
-        if let Ok(top_out) = std::process::Command::new("git")
+        if let Ok(top_out) = std::process::Command::new(git_bin)
             .arg("-C")
             .arg(path)
             .args(["rev-parse", "--show-toplevel"])
@@ -193,7 +200,7 @@ pub(crate) fn is_git_tracked(path: &Path) -> Result<bool> {
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
-    match std::process::Command::new("git")
+    match std::process::Command::new(git_bin)
         .arg("-C")
         .arg(parent)
         .args(["rev-parse", "--show-toplevel"])
@@ -215,7 +222,7 @@ pub(crate) fn is_git_tracked(path: &Path) -> Result<bool> {
         // rev-parse RAN and failed → not a work tree → untracked.
         _ => return Ok(false),
     }
-    let out = std::process::Command::new("git")
+    let out = std::process::Command::new(git_bin)
         .arg("-C")
         .arg(parent)
         .args(["ls-files", "--", &name])
