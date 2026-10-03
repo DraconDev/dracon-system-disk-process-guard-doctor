@@ -368,10 +368,40 @@ pub(crate) fn uncovered_storage_roots(
 ) -> Vec<(&'static str, PathBuf)> {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
     let cold_root = guard.relocate_cold_root.trim();
-    let roots: [(&'static str, PathBuf); 2] = [
+    let mut roots: Vec<(&'static str, PathBuf)> = vec![
         ("quarantine_dir", crate::quarantine_root(guard)),
         ("relocate_cold_root", crate::expand_tilde(cold_root)),
     ];
+    // FIXED 2026-10-03 (audit R4-SYS-06): the guard also WRITES the
+    // event log, the (truncated) log dirs, and the sync freeze marker.
+    // A repointed one outside ReadWritePaths failed EROFS on every
+    // pass with no startup warning — the silent-reclaim-death class
+    // this check exists to catch. Each arm mirrors the write site's
+    // own resolution so the check tests the path actually written.
+    if let Some(log_file) = crate::resolve_guard_log_path(&guard.guard_log_file) {
+        roots.push(("guard_log_file", log_file));
+    }
+    if let Some(configured) = crate::effective_log_dirs(&guard.log_dirs) {
+        for entry in configured.split(',') {
+            let entry = entry.trim();
+            if !entry.is_empty() {
+                roots.push(("log_dirs", crate::expand_tilde(entry)));
+            }
+        }
+    }
+    let marker = guard.sync_freeze_marker.trim();
+    if marker.is_empty() {
+        // Blank normalizes to the default (policy.rs), exactly as
+        // quarantine_root does for its blank — check the default.
+        roots.push((
+            "sync_freeze_marker",
+            PathBuf::from(crate::default_sync_freeze_marker()),
+        ));
+    } else {
+        // Mirrors sync_freeze_marker_path: no tilde expansion there,
+        // so none here — a `~` value would be written literally.
+        roots.push(("sync_freeze_marker", PathBuf::from(marker)));
+    }
     roots
         .into_iter()
         .filter(|(_, path)| !path.as_os_str().is_empty() && path != &PathBuf::from("."))
