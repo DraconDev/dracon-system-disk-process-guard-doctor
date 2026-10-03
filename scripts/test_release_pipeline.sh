@@ -22,6 +22,7 @@ git -C "$repo" remote add gitlab "$work/gitlab.git"
 cp "$SCRIPT_DIR/release.sh" "$repo/dracon-system/scripts/release.sh"
 cp "$SCRIPT_DIR/close-changelog.py" "$repo/dracon-system/scripts/close-changelog.py"
 cp "$SCRIPT_DIR/verify-install.sh" "$repo/dracon-system/scripts/verify-install.sh"
+cp "$SCRIPT_DIR/resolve-github-remote.sh" "$repo/dracon-system/scripts/resolve-github-remote.sh"
 chmod +x "$repo/dracon-system/scripts"/*
 cat > "$repo/.gitignore" <<'EOF'
 target/
@@ -157,8 +158,10 @@ chmod +x "$work/bin/cargo" "$work/bin/cargo-deny" "$work/bin/gh"
 touch "$work/home/.cargo/credentials.toml"
 
 run_release() {
+    # R4-M-10: the legacy fixture names no github remote (local bare
+    # paths), so it pins the explicit --remote override path.
     DRACON_FIXTURE_ROOT="$repo" HOME="$work/home" PATH="$work/bin:$PATH" \
-        timeout 180 "$repo/dracon-system/scripts/release.sh" 0.1.0 --yes
+        timeout 180 "$repo/dracon-system/scripts/release.sh" 0.1.0 --remote origin --yes
 }
 
 first_output="$work/first.out"
@@ -215,7 +218,7 @@ test "$(awk -F'"' '/^\[/{p=($0=="[package]");next} p && /^version[[:space:]]*=/{
 mono_output="$work/mono.out"
 current_capture="$mono_output"
 if DRACON_FIXTURE_ROOT="$repo" HOME="$work/home" PATH="$work/bin:$PATH" \
-    timeout 180 "$repo/dracon-system/scripts/release.sh" 0.0.0 --yes \
+    timeout 180 "$repo/dracon-system/scripts/release.sh" 0.0.0 --remote origin --yes \
     >"$mono_output" 2>&1; then
     fail "release.sh accepted a downgrade (0.0.0 after 0.1.0)"
 fi
@@ -236,7 +239,7 @@ git -C "$repo" commit -qm 'fixture: add a second release note'
 dry_output="$work/dry.out"
 current_capture="$dry_output"
 DRACON_FIXTURE_ROOT="$repo" HOME="$work/home" PATH="$work/bin:$PATH" \
-    timeout 180 "$repo/dracon-system/scripts/release.sh" 0.1.1 --dry-run --yes \
+    timeout 180 "$repo/dracon-system/scripts/release.sh" 0.1.1 --remote origin --dry-run --yes \
     >"$dry_output" 2>&1
 assert_contains 'Cargo.lock synchronized'
 assert_contains 'Local release surfaces were modified'
