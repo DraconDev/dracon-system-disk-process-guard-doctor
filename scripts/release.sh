@@ -331,7 +331,7 @@ if [[ "$REMOTE_URL" =~ github\.com[:/]+([^/]+/[^/]+?)(\.git)?$ ]]; then
     GH_PATH="${BASH_REMATCH[1]%.git}"
 else
     GH_PATH="DraconDev/dracon-system-disk-process-guard-doctor"
-    [[ "$REMOTE_URL" == *"github.com"* ]] || log "  origin '$REMOTE_URL' is not a github.com remote; using the documented repo path for links"
+    [[ "$REMOTE_URL" == *"github.com"* ]] || log "  remote '$REMOTE' ('$REMOTE_URL') is not a github.com remote; using the documented repo path for links"
 fi
 
 # ----- step 1: test discipline gates (AGENTS.md) -------------------------
