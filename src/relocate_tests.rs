@@ -669,7 +669,11 @@ async fn auto_relocate_pauses_when_df_fails() {
 
     let big_old = scan.join("big-old");
     let plan = crate::plan_relocate(&big_old, &cold, &[], false).expect("plan computes");
-    assert!(plan.ready, "fixture must be relocation-ready: {:?}", plan.issues);
+    assert!(
+        plan.ready,
+        "fixture must be relocation-ready: {:?}",
+        plan.issues
+    );
 
     let mut guard = GuardPolicy::default();
     guard.relocate_cold_root = cold.to_string_lossy().to_string();

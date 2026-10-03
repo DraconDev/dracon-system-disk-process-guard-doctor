@@ -2715,8 +2715,10 @@ fn truncate_log_preserves_non_utf8_lines_verbatim() {
     // 2026-10-02 (audit L8): `BufRead::lines()` yields Err on invalid
     // UTF-8 and both loops STOPPED there, silently dropping the bad
     // line AND everything after it. Byte-split lines preserve them.
-    let td =
-        std::env::temp_dir().join(format!("dracon-system-truncate-utf8-{}", std::process::id()));
+    let td = std::env::temp_dir().join(format!(
+        "dracon-system-truncate-utf8-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&td);
     std::fs::create_dir_all(&td).expect("temp dir");
     let path = td.join("app.log");
@@ -2729,10 +2731,7 @@ fn truncate_log_preserves_non_utf8_lines_verbatim() {
     let reclaimed = truncate_log_file(&path, 64, 1).expect("truncate");
     assert!(reclaimed > 0);
     let out = std::fs::read(&path).expect("read log");
-    assert!(
-        out.starts_with(b"header\n"),
-        "header must survive: {out:?}"
-    );
+    assert!(out.starts_with(b"header\n"), "header must survive: {out:?}");
     assert!(
         out.windows(8).any(|w| w == b"bad-\xff\xfe-b"),
         "non-UTF8 line must be preserved verbatim: {out:?}"
@@ -2754,8 +2753,10 @@ fn truncate_log_handles_missing_trailing_newline_and_blank_lines() {
     // Byte-split must not invent or drop lines at the edges: a missing
     // trailing newline gains one terminator (as before), blank lines
     // survive, and the terminator artifact is never kept as a line.
-    let td =
-        std::env::temp_dir().join(format!("dracon-system-truncate-edge-{}", std::process::id()));
+    let td = std::env::temp_dir().join(format!(
+        "dracon-system-truncate-edge-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&td);
     std::fs::create_dir_all(&td).expect("temp dir");
     let path = td.join("app.log");
@@ -2764,7 +2765,10 @@ fn truncate_log_handles_missing_trailing_newline_and_blank_lines() {
     let reclaimed = truncate_log_file(&path, 10, 1).expect("truncate");
     assert!(reclaimed > 0);
     let out = std::fs::read(&path).expect("read log");
-    assert_eq!(out, b"h1\n\n", "header + blank line, terminator artifact dropped");
+    assert_eq!(
+        out, b"h1\n\n",
+        "header + blank line, terminator artifact dropped"
+    );
     let _ = std::fs::remove_dir_all(&td);
 }
 
