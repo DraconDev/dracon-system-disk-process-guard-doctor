@@ -2204,6 +2204,52 @@ async fn clean_tmp_paths_keeps_old_process_cwd_directory() {
 
 #[cfg(unix)]
 #[tokio::test]
+async fn open_scan_skips_unreadable_fd_table_without_abandoning_pass() {
+    // R4-SYS-11 contract: an unreadable fd table (another user's
+    // process, or fds vanishing mid-iteration) skips THAT process's
+    // fds — the pass still returns Some, other processes' fds are
+    // still collected, and the broken process's cwd is still
+    // collected via its independent path. Guards against a future
+    // editor extending the pid-level `return None` down to fd level.
+    let root = unique_test_home("tmp_fdfail");
+    let proc_root = unique_test_home("proc_fdfail");
+    let held = root.join("held-by-b.log");
+    fs::create_dir_all(&root).expect("create fixture");
+    fs::write(&held, b"held").expect("write held");
+
+    // Pid 4242: fd table unreadable (chmod 000 proxy for another
+    // user's process), cwd readable.
+    let proc_a = proc_root.join("4242");
+    let fd_a = proc_a.join("fd");
+    fs::create_dir_all(&fd_a).expect("create fd fixture");
+    symlink(&root, proc_a.join("cwd")).expect("create cwd link");
+    fs::set_permissions(&fd_a, fs::Permissions::from_mode(0o000)).expect("lock fd dir");
+
+    // Pid 4243: healthy, one fd under the roots.
+    let proc_b = proc_root.join("4243");
+    fs::create_dir_all(proc_b.join("fd")).expect("create fd fixture");
+    symlink(&held, proc_b.join("fd").join("3")).expect("create fd link");
+
+    let open =
+        collect_open_paths_under_from(&proc_root, std::slice::from_ref(&root))
+            .await
+            .expect("one unreadable fd table must not fail the pass");
+    assert!(
+        open.contains(&held),
+        "the healthy process's fd must still be collected"
+    );
+    assert!(
+        open.contains(&root),
+        "the broken process's cwd must still be collected via its own path"
+    );
+
+    fs::set_permissions(&fd_a, fs::Permissions::from_mode(0o755)).expect("restore for cleanup");
+    let _ = fs::remove_dir_all(&root);
+    let _ = fs::remove_dir_all(&proc_root);
+}
+
+#[cfg(unix)]
+#[tokio::test]
 async fn clean_tmp_paths_refuses_blind_cleanup_when_proc_unreadable() {
     // R3-L31: an unreadable /proc must abort the pass LOUD (no
     // silent empty protection set) and delete nothing — in BOTH
