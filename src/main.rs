@@ -5692,7 +5692,13 @@ async fn clean_tmp_paths_with_proc(
     for root in &root_paths {
         let mut rd = match tokio::fs::read_dir(root).await {
             Ok(rd) => rd,
-            Err(_) => continue,
+            // FIXED 2026-10-03 (audit R4-SYS-13): skipping stays
+            // deletion-safe, but silence under-reports dry-run —
+            // name the skipped root like the proc-scan refusal does.
+            Err(e) => {
+                eprintln!("⚠️ Tmp: cannot list {} — skipping ({e})", root.display());
+                continue;
+            }
         };
         while let Ok(Some(entry)) = rd.next_entry().await {
             let path = entry.path();
