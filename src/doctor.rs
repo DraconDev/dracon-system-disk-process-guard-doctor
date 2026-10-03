@@ -390,6 +390,45 @@ mod tests {
         );
     }
 
+    /// 2026-10-03 (audit R4-SYS-18): the `--json` envelope carries
+    /// the strict verdict, so machine consumers don't hardcode the
+    /// required set. Raw report fields stay flattened alongside.
+    #[test]
+    fn json_envelope_carries_strict_verdict() {
+        // All-ok fixture: strict passes, no failed labels.
+        let r = report();
+        let checks = doctor_checks(&r);
+        let out = DoctorJsonReport {
+            report: &r,
+            strict_ok: strict_ok(&checks),
+            failed_required: failed_required_labels(&checks),
+        };
+        let value = serde_json::to_value(&out).expect("envelope serializes");
+        assert_eq!(value["strict_ok"], true);
+        assert_eq!(value["failed_required"].as_array().unwrap().len(), 0);
+        assert_eq!(
+            value["system_policy_exists"], true,
+            "raw report fields must stay flattened in the envelope"
+        );
+
+        // A required failure flips the verdict and names the label.
+        let mut r = report();
+        r.system_policy_exists = false;
+        let checks = doctor_checks(&r);
+        let out = DoctorJsonReport {
+            report: &r,
+            strict_ok: strict_ok(&checks),
+            failed_required: failed_required_labels(&checks),
+        };
+        let value = serde_json::to_value(&out).expect("envelope serializes");
+        assert_eq!(value["strict_ok"], false);
+        let failed = value["failed_required"].as_array().unwrap();
+        assert!(
+            failed.iter().any(|v| v == "system policy (guard)"),
+            "failed_required must name the failing required check: {failed:?}"
+        );
+    }
+
     /// 2026-10-03 (audit R4-SYS-07): the legacy-config hint must name
     /// the path the check actually tests (`~/.config/dracon`), not
     /// the never-checked `~/dracon`.
