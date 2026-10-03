@@ -345,18 +345,58 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
             source.display()
         );
     }
-
-    let skipped_special = copy_tree(source, dest)?;
-    let (dest_files, dest_bytes) = walk_stats_strict(dest)?;
-    if dest_files != plan.files || dest_bytes != plan.bytes {
-        anyhow::bail!(
-            "copy verification failed: expected {} files / {} bytes, got {} / {} — source untouched",
-            plan.files,
-            plan.bytes,
-            dest_files,
-            dest_bytes
-        );
+    // FIXED 2026-10-03 (audit R4-SYS-05): the plan's space verdict is
+    // stale by apply time — a plan that fit at dry-run can ENOSPC
+    // mid-copy and strand every retry behind a partial dest ("already
+    // exists"). Re-check availability now (`dest` itself was just
+    // verified absent, so `df` runs against its parent root), with
+    // the same fail-closed unknown-space rule as plan time (R3-L28).
+    let dest_parent = dest.parent().unwrap_or(dest);
+    let avail = avail_bytes_for(dest_parent);
+    if !fits_in_avail(avail, plan.bytes) {
+        match avail {
+            Some(a) => anyhow::bail!(
+                "destination has {} free but plan needs {} — refusing (re-plan to retry)",
+                human_bytes(a),
+                human_bytes(plan.bytes)
+            ),
+            None => anyhow::bail!(
+                "destination free space unknown (df failed) — refusing to relocate blind"
+            ),
+        }
     }
+
+    // `dest` was verified absent above, so anything there on failure
+    // is our own partial copy — remove it best-effort so a retry is
+    // not stranded behind "appeared since planning".
+    let copy_outcome: Result<u64> = (|| {
+        let skipped_special = copy_tree(source, dest)?;
+        let (dest_files, dest_bytes) = walk_stats_strict(dest)?;
+        if dest_files != plan.files || dest_bytes != plan.bytes {
+            anyhow::bail!(
+                "copy verification failed: expected {} files / {} bytes, got {} / {} — source untouched",
+                plan.files,
+                plan.bytes,
+                dest_files,
+                dest_bytes
+            );
+        }
+        Ok(skipped_special)
+    })();
+    let skipped_special = match copy_outcome {
+        Ok(s) => s,
+        Err(e) => {
+            if let Err(rm_err) = fs::remove_dir_all(dest) {
+                if fs::symlink_metadata(dest).is_ok() {
+                    eprintln!(
+                        "relocate: copy failed ({e:#}); cleanup of partial {} also failed: {rm_err:#}",
+                        dest.display()
+                    );
+                }
+            }
+            return Err(e);
+        }
+    };
 
     // Stage the source aside instead of deleting it: if the symlink step
     // fails, the original path is restored rather than left broken.
