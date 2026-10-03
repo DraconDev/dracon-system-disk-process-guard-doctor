@@ -2734,7 +2734,7 @@ fn truncate_log_preserves_non_utf8_lines_verbatim() {
         "header must survive: {out:?}"
     );
     assert!(
-        out.windows(6).any(|w| w == b"bad-\xff\xfe-b"),
+        out.windows(8).any(|w| w == b"bad-\xff\xfe-b"),
         "non-UTF8 line must be preserved verbatim: {out:?}"
     );
     assert!(
