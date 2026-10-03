@@ -407,6 +407,7 @@ pub(crate) fn find_stale_staging_dirs(roots: &[PathBuf]) -> Vec<PathBuf> {
 ///   duplicate: verify the link, then `rm -rf <staging>`.
 /// - source is a real dir → ambiguous (recreated after the crash?):
 ///   inspect both trees before clearing staging by hand.
+///
 /// `setup` best-effort reports `*.dracon-relocate-staging` dirs one
 /// level under the candidate roots so the state is visible.
 pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
