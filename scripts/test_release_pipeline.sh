@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression test for the monorepo release pipeline's gates, fixture, rerun
+# Regression test for the standalone-repo release pipeline's gates, fixture, rerun
 # branches, and mirror-tag reminder. All external release commands are stubs.
 set -euo pipefail
 
