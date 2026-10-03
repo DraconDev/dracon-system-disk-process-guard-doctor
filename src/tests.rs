@@ -2230,10 +2230,9 @@ async fn open_scan_skips_unreadable_fd_table_without_abandoning_pass() {
     fs::create_dir_all(proc_b.join("fd")).expect("create fd fixture");
     symlink(&held, proc_b.join("fd").join("3")).expect("create fd link");
 
-    let open =
-        collect_open_paths_under_from(&proc_root, std::slice::from_ref(&root))
-            .await
-            .expect("one unreadable fd table must not fail the pass");
+    let open = collect_open_paths_under_from(&proc_root, std::slice::from_ref(&root))
+        .await
+        .expect("one unreadable fd table must not fail the pass");
     assert!(
         open.contains(&held),
         "the healthy process's fd must still be collected"
