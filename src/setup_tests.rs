@@ -117,6 +117,44 @@ fn a_broken_policy_is_reported_as_broken_not_absent() {
 /// absolute path in `setup` and in the daemon. The unit's WorkingDirectory is
 /// %h, so "cold" means ~/cold — `setup --apply` used to create ./cold under
 /// the invoking shell instead and report ready.
+/// 2026-10-03 (audit R4-SYS-09): `setup` surfaces a stale
+/// relocate-staging dir under a candidate root as a failing
+/// informational check (never gating `ready`).
+#[test]
+fn setup_reports_stale_staging_without_gating_ready() {
+    let root = test_root("stale-staging");
+    let cand = root.join("cand");
+    fs::create_dir_all(cand.join("media.dracon-relocate-staging")).unwrap();
+    let mut policy = crate::SystemPolicy::default();
+    policy.guard.relocate_candidate_roots = cand.display().to_string();
+    let report = crate::setup::build_setup_report(Ok((None, policy)));
+    let check = report
+        .checks
+        .iter()
+        .find(|c| c.name == "stale relocate staging")
+        .expect("setup must include the stale-staging check");
+    assert!(!check.ok, "a staging dir must fail the check");
+    assert!(
+        check.detail.contains("media.dracon-relocate-staging"),
+        "detail must name the dir: {}",
+        check.detail
+    );
+
+    // Clean roots pass the check.
+    let clean = root.join("clean");
+    fs::create_dir_all(&clean).unwrap();
+    let mut policy = crate::SystemPolicy::default();
+    policy.guard.relocate_candidate_roots = clean.display().to_string();
+    let report = crate::setup::build_setup_report(Ok((None, policy)));
+    let check = report
+        .checks
+        .iter()
+        .find(|c| c.name == "stale relocate staging")
+        .expect("setup must include the stale-staging check");
+    assert!(check.ok, "clean roots must pass: {}", check.detail);
+    let _ = fs::remove_dir_all(&root);
+}
+
 #[test]
 fn relative_policy_paths_resolve_against_home() {
     let home = std::path::Path::new("/home/dracon");
