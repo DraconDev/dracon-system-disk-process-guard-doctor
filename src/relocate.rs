@@ -174,7 +174,7 @@ pub(crate) fn is_git_tracked(path: &Path) -> Result<bool> {
 /// `git_bin` is injectable so tests can force the spawn-failure arm with
 /// a nonexistent binary — no process-global `PATH` swap, so the test is
 /// race-free under the parallel harness.
-fn is_git_tracked_with(path: &Path, git_bin: &str) -> Result<bool> {
+pub(crate) fn is_git_tracked_with(path: &Path, git_bin: &str) -> Result<bool> {
     if let Ok(canon) = fs::canonicalize(path) {
         if let Ok(top_out) = std::process::Command::new(git_bin)
             .arg("-C")
