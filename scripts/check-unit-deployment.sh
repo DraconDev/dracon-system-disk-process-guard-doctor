@@ -208,8 +208,17 @@ check_storage_root_writable() {
         /*) ;;
         *) return 0 # relative root: resolved against the service CWD, not checkable
     esac
+    # FIXED 2026-10-03 (audit R3-L23): match on the CANONICAL path —
+    # same latent class as the sync checker (symlinked roots
+    # false-positive as read-only). Unresolvable roots keep the
+    # literal (old behavior, no new failure mode).
+    local match_root="$root" canon=""
+    if command -v readlink >/dev/null 2>&1; then
+        canon="$(readlink -f "$root" 2>/dev/null || true)"
+        [ -n "$canon" ] && match_root="$canon"
+    fi
     local hit
-    if ! hit="$(effective_mount_for "$mountinfo" "$root")"; then
+    if ! hit="$(effective_mount_for "$mountinfo" "$match_root")"; then
         echo "✗ $key=$root is not covered by any mount in the running namespace" >&2
         echo "  the guard cannot resolve or write it, so every reclaim against this" >&2
         echo "  root fails. Add the path to ReadWritePaths= in $UNIT_NAME." >&2
@@ -220,13 +229,20 @@ check_storage_root_writable() {
         *,ro,*)
             echo "✗ $key=$root resolves read-only inside the running namespace" >&2
             echo "  effective mount: $point ($flags)" >&2
+            if [ "$match_root" != "$root" ]; then
+                echo "  (matched on canonical path $match_root)" >&2
+            fi
             echo "  ProtectSystem=strict remounts the parent read-only, so only a" >&2
             echo "  sub-mount restores write access — the entry has to name the path" >&2
             echo "  itself, not the disk it sits on. Add it to ReadWritePaths=." >&2
             return 1
             ;;
     esac
+    if [ "$match_root" != "$root" ]; then
+    echo "  ✓ $key=$root is read-write in the running namespace (mount: $point; via $match_root)"
+    else
     echo "  ✓ $key=$root is read-write in the running namespace (mount: $point)"
+    fi
     return 0
 }
 
