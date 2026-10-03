@@ -3874,3 +3874,49 @@ async fn rust_build_listing_failure_or_malformed_output_is_an_error() {
         assert!(detect_active_rust_builds_with(&ps).await.is_err());
     }
 }
+
+/// ADDED 2026-10-03 (audit R4-SYS-03): the read-only probe resolver
+/// searches explicit dirs for a regular executable — first match
+/// wins, empty entries / directories / non-executables are skipped,
+/// and a miss is None (the caller degrades to Skipped, not Fail).
+#[cfg(unix)]
+#[test]
+fn probe_path_search_finds_first_executable_only() {
+    let _fixture_exec = fixture_exec_guard();
+    let tmp = tempfile::tempdir().unwrap();
+    let d1 = tmp.path().join("d1");
+    let d2 = tmp.path().join("d2");
+    std::fs::create_dir_all(&d1).unwrap();
+    std::fs::create_dir_all(&d2).unwrap();
+    // d1 holds a NON-executable decoy and a directory of the same
+    // name is impossible — instead a same-named dir elsewhere.
+    std::fs::write(d1.join("probe-me"), "not executable\n").unwrap();
+    std::fs::create_dir_all(d1.join("probe-dir")).unwrap();
+    write_test_script(&d2.join("probe-me"), "exit 0");
+    let dirs = vec![d1.clone(), d2.clone()];
+    // First match wins — and the non-executable decoy in d1 is
+    // skipped in favour of the executable in d2.
+    assert_eq!(
+        search_path_for_executable("probe-me", &dirs),
+        Some(d2.join("probe-me").to_string_lossy().to_string()),
+        "must skip the non-executable decoy"
+    );
+    // Same-named directory is not a binary.
+    assert_eq!(
+        search_path_for_executable("probe-dir", &dirs),
+        None,
+        "directories must not resolve as binaries"
+    );
+    // Empty entries are skipped, not treated as cwd.
+    let with_empty = vec![PathBuf::from(""), d2.clone()];
+    assert_eq!(
+        search_path_for_executable("probe-me", &with_empty),
+        Some(d2.join("probe-me").to_string_lossy().to_string()),
+        "empty PATH entries must be skipped"
+    );
+    // Total miss → None (caller degrades to Skipped).
+    assert_eq!(
+        search_path_for_executable("probe-missing", &dirs),
+        None
+    );
+}
