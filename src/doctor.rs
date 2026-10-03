@@ -207,6 +207,29 @@ fn strict_ok(checks: &[DoctorCheck]) -> bool {
         .any(|c| c.required && c.state == CheckState::Fail)
 }
 
+/// Labels of the required checks that failed (R4-SYS-18) — the
+/// machine-readable counterpart of the `--strict` exit code, so JSON
+/// consumers don't hardcode the required set from `doctor_checks`.
+fn failed_required_labels(checks: &[DoctorCheck]) -> Vec<String> {
+    checks
+        .iter()
+        .filter(|c| c.required && c.state == CheckState::Fail)
+        .map(|c| c.label.to_string())
+        .collect()
+}
+
+/// JSON envelope for `doctor --json` (R4-SYS-18): the raw report
+/// fields plus the strict verdict. `strict_ok` mirrors the
+/// `--strict` exit code; `failed_required` names the failing
+/// required checks (empty when strict passes).
+#[derive(Debug, serde::Serialize)]
+struct DoctorJsonReport<'a> {
+    #[serde(flatten)]
+    report: &'a crate::DoctorReport,
+    strict_ok: bool,
+    failed_required: Vec<String>,
+}
+
 fn doctor_status(state: CheckState) -> &'static str {
     match state {
         CheckState::Ok => "ok",
@@ -225,7 +248,15 @@ pub(crate) async fn cmd_doctor(json: bool, strict: bool) -> Result<()> {
     let checks = doctor_checks(&report);
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&report)?);
+        // R4-SYS-18: the raw report carried no strict verdict, so
+        // machine consumers hardcoded the required set. Emit the
+        // envelope (raw fields + strict_ok + failed_required).
+        let out = DoctorJsonReport {
+            report: &report,
+            strict_ok: strict_ok(&checks),
+            failed_required: failed_required_labels(&checks),
+        };
+        println!("{}", serde_json::to_string_pretty(&out)?);
         if strict && !strict_ok(&checks) {
             std::process::exit(1);
         }
