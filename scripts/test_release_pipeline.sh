@@ -185,6 +185,7 @@ assert_contains 'mirror remotes get main from the daemon'
 # Tag convention is nested-repo: dracon-system-vX.Y.Z (AGENTS.md), NOT bare vX.Y.Z.
 assert_contains 'git push gitlab dracon-system-v0.1.0'
 assert_contains '✓ dracon-system v0.1.0 released'
+assert_contains "push remote: origin (explicit --remote override)"
 
 test "$(git -C "$repo" tag --list dracon-system-v0.1.0)" = dracon-system-v0.1.0
 git --git-dir="$work/origin.git" rev-parse refs/heads/main >/dev/null
@@ -273,5 +274,73 @@ if ! awk '
 else
     fail "empty-[Unreleased] fixture no longer exercises the gate"
 fi
+
+# --- auto-detect the github remote (audit R4-M-10) ---------------------------
+# The github remote is deliberately NOT named `origin` (and no `origin`
+# exists at all): the pre-fix REMOTE=origin default died here with
+# "fatal: 'origin' does not appear to be a git repository". A
+# url.insteadOf rewrite lands the real push in a local bare repo, so
+# this is end-to-end with no network.
+repo2="$work/repo2"
+mkdir -p "$repo2/dracon-system/scripts"
+git init -q -b main "$repo2"
+git -C "$repo2" config core.hooksPath /dev/null
+git -C "$repo2" config user.name fixture
+git -C "$repo2" config user.email fixture@example.test
+git init -q --bare "$work/gh.git"
+git -C "$repo2" remote add upstream https://github.com/DraconDev/dracon-system-disk-process-guard-doctor.git
+git -C "$repo2" config url."$work/gh.git".insteadOf https://github.com/DraconDev/dracon-system-disk-process-guard-doctor.git
+cp "$SCRIPT_DIR/release.sh" "$repo2/dracon-system/scripts/release.sh"
+cp "$SCRIPT_DIR/close-changelog.py" "$repo2/dracon-system/scripts/close-changelog.py"
+cp "$SCRIPT_DIR/verify-install.sh" "$repo2/dracon-system/scripts/verify-install.sh"
+cp "$SCRIPT_DIR/resolve-github-remote.sh" "$repo2/dracon-system/scripts/resolve-github-remote.sh"
+chmod +x "$repo2/dracon-system/scripts"/*
+cat > "$repo2/.gitignore" <<'EOF'
+target/
+dracon-system/
+.publish-count
+.gh-release
+EOF
+cat > "$repo2/Cargo.toml" <<'EOF'
+[workspace]
+members = ["dracon-system"]
+resolver = "2"
+EOF
+cat > "$repo2/dracon-system/Cargo.toml" <<'EOF'
+[package]
+name = "dracon-system"
+version = "0.0.0"
+edition = "2021"
+EOF
+cat > "$repo2/Cargo.lock" <<'EOF'
+version = 4
+
+[[package]]
+name = "dracon-system"
+version = "0.0.0"
+EOF
+cat > "$repo2/dracon-system/CHANGELOG.md" <<'EOF'
+# Changelog
+
+## [Unreleased]
+
+### Added
+
+- fixture
+EOF
+git -C "$repo2" add .
+git -C "$repo2" add -f -- dracon-system
+git -C "$repo2" commit -qm init
+auto_output="$work/auto.out"
+current_capture="$auto_output"
+DRACON_FIXTURE_ROOT="$repo2" HOME="$work/home" PATH="$work/bin:$PATH" \
+    timeout 180 "$repo2/dracon-system/scripts/release.sh" 0.1.0 --yes \
+    >"$auto_output" 2>&1 || fail "auto-detect release failed"
+assert_contains 'push remote: upstream (auto-detected from remote.*.url)'
+assert_contains '✓ dracon-system v0.1.0 released'
+git --git-dir="$work/gh.git" rev-parse refs/heads/main >/dev/null \
+    || fail "auto-detected push did not land main in gh.git"
+git --git-dir="$work/gh.git" rev-parse refs/tags/dracon-system-v0.1.0 >/dev/null \
+    || fail "auto-detected push did not land the tag in gh.git"
 
 echo "release pipeline regression tests: ok"
