@@ -2028,6 +2028,35 @@ async fn clean_tmp_paths_zero_min_age_disables() {
     let _ = fs::remove_dir_all(&root);
 }
 
+/// 2026-10-03 (audit R4-SYS-13): an unreadable tmp root is SKIPPED
+/// (deletion-safe) with a diagnostic — never a pass failure. Pins the
+/// skip direction so a future editor "fixing" the silence cannot turn
+/// it into a bail that disables the whole tmp pass.
+#[cfg(unix)]
+#[tokio::test]
+async fn clean_tmp_paths_skips_unreadable_root() {
+    let root = unique_test_home("tmp_noread");
+    fs::create_dir_all(&root).expect("create fixture");
+    write_file_with_mtime(&root.join("stale.log"), b"stale", 2 * 86_400);
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o000)).expect("lock root");
+    let roots = vec![root.display().to_string()];
+
+    for apply in [false, true] {
+        let (bytes, lines) = clean_tmp_paths(apply, &roots, 24, &[])
+            .await
+            .expect("unreadable root must skip, not fail the pass");
+        assert_eq!(bytes, 0, "skipped root reclaims nothing");
+        assert!(lines.is_empty(), "skipped root cleans nothing");
+    }
+
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o755)).expect("restore for cleanup");
+    assert!(
+        root.join("stale.log").exists(),
+        "skipped root must leave entries alone"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
 #[tokio::test]
 async fn clean_tmp_paths_respects_age_dry_run_and_open_fds() {
     let root = unique_test_home("tmp_clean");
