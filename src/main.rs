@@ -6656,10 +6656,21 @@ async fn run_auto_relocate(guard: &GuardPolicy) -> Result<(usize, u64, Vec<ColdC
     let max_moves = guard.relocate_max_moves_per_pass.max(1) as usize;
     for cand in candidates.iter().take(max_moves) {
         // Re-check pressure before each move; stop once below action.
-        let used_now = disk_details_for(&guard.disk_mount_path)
-            .await
-            .map(|d| d.use_percent)
-            .unwrap_or(u8::MAX);
+        // FIXED 2026-10-02 (audit L7): a df failure previously mapped
+        // to u8::MAX, which reads as max pressure and KEPT MOVING trees
+        // with no signal. Pause instead — relocating blind risks
+        // churning disks for pressure that may not exist, and the next
+        // pass retries once df is readable again.
+        let used_now = match disk_details_for(&guard.disk_mount_path).await {
+            Ok(d) => d.use_percent,
+            Err(e) => {
+                eprintln!(
+                    "⚠️ auto-relocate: cannot read disk pressure for {} ({:#}) — pausing moves until pressure is readable",
+                    guard.disk_mount_path, e
+                );
+                break;
+            }
+        };
         if used_now < guard.disk_action_percent {
             break;
         }
