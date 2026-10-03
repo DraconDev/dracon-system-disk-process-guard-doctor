@@ -319,6 +319,21 @@ pub(crate) fn plan_relocate(
 }
 
 /// Execute a validated plan: copy, verify, remove source, leave symlink.
+///
+/// Crash window (DOCUMENTED 2026-10-03, audit R4-SYS-09): between
+/// `rename(source, staging)` and `symlink(dest, source)` a crash
+/// (power loss, SIGKILL — a symlink Err is handled, a crash is not)
+/// leaves SOURCE MISSING with the data only in
+/// `<name>.dracon-relocate-staging` (plus the verified copy at
+/// `dest`, which completed before the rename). Recovery by case —
+/// the stale-staging refusal below names the case and the command:
+/// - source missing → `mv <staging> <source>`, then re-run relocate.
+/// - source is a symlink → move completed, staging is a redundant
+///   duplicate: verify the link, then `rm -rf <staging>`.
+/// - source is a real dir → ambiguous (recreated after the crash?):
+///   inspect both trees before clearing staging by hand.
+/// `setup` best-effort reports `*.dracon-relocate-staging` dirs one
+/// level under the candidate roots so the state is visible.
 pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
     #[cfg(not(unix))]
     {
@@ -329,6 +344,15 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
     }
     let source = Path::new(&plan.source);
     let dest = Path::new(&plan.dest);
+    // MOVED FIRST 2026-10-03 (audit R4-SYS-09): the stale-staging
+    // guard used to sit AFTER the copy block, so a refused run still
+    // copied gigabytes first — and the crash-window arm (source
+    // missing) was unreachable behind the source-vanished check
+    // below. Refuse before any IO, with recovery-aware messages.
+    let staging = staging_path_for(source);
+    if fs::symlink_metadata(&staging).is_ok() {
+        anyhow::bail!("{}", stale_staging_refusal(source, dest, &staging));
+    }
     if fs::symlink_metadata(dest).is_ok() {
         anyhow::bail!(
             "destination {} appeared since planning — refusing",
