@@ -241,6 +241,17 @@ DRACON_FIXTURE_ROOT="$repo" HOME="$work/home" PATH="$work/bin:$PATH" \
 assert_contains 'Cargo.lock synchronized'
 assert_contains 'Local release surfaces were modified'
 test -f "$repo/dracon-system/release-notes-v0.1.1.md"
+# R4-M-03 follow-up: the fixture remotes are local paths, so GH_PATH must
+# fall back to the documented repo — never a mangled local path — with
+# the full ${TAG} compare endpoint and the utility-root unit URL.
+notes="$repo/dracon-system/release-notes-v0.1.1.md"
+grep -F 'https://github.com/DraconDev/dracon-system-disk-process-guard-doctor/compare/dracon-system-v0.0.0...dracon-system-v0.1.1' "$notes" >/dev/null \
+    || fail "compare link must use the fallback repo path and full TAG form"
+grep -F 'https://raw.githubusercontent.com/DraconDev/dracon-system-disk-process-guard-doctor/main/dracon-system-guard.service' "$notes" >/dev/null \
+    || fail "unit curl must hit the utility repo root"
+if grep -F "$work" "$notes" >/dev/null; then
+    fail "GH_PATH leaked a fixture-local remote path into release links"
+fi
 
 # --- new gate: an empty [Unreleased] must be refused, not closed -------------
 # Asserted against the gate's own predicate with a fixture CHANGELOG, because
