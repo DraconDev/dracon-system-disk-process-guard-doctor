@@ -2,16 +2,17 @@
 # scripts/resolve-github-remote.sh — print the name of the git remote whose
 # URL points at github.com.
 #
-# v0.113.11: extracted from release.sh (which hardcoded the remote name
-# `github` and failed identically on v0.113.9 + v0.113.10 because this
-# repo names its github remote `origin`). Standalone so the derivation is
-# directly testable against fixture repos.
+# Ported from dracon-sync v0.113.11 (2026-10-03, audit R4-M-10):
+# dracon-system's release.sh hardcoded REMOTE=origin and failed on any
+# non-origin remote naming — the identical class sync fixed by deriving
+# the remote from remote.*.url. Standalone so the derivation is directly
+# testable against fixture repos.
 #
 # Usage:
 #   scripts/resolve-github-remote.sh [repo-path]
 #
 # Resolution order:
-#   1. Remote whose URL names the canonical dracon-sync repo.
+#   1. Remote whose URL names the canonical dracon-system repo.
 #   2. Otherwise the first github.com remote (sorted); a warning goes to
 #      stderr when there are several.
 #
@@ -21,7 +22,7 @@
 set -euo pipefail
 
 REPO="${1:-$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" rev-parse --show-toplevel)}"
-CANON="dracon-sync-background-auto-commit-multi-remote"
+CANON="dracon-system-disk-process-guard-doctor"
 
 names=()
 while IFS= read -r line; do
