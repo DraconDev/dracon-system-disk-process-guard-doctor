@@ -296,6 +296,9 @@ mod tests {
             sync_service_active: true,
             system_policy_exists: true,
             guard_service_active: true,
+            sync_watchdog_timer_active: true,
+            freeze_watchdog_timer_active: true,
+            guard_watchdog_timer_active: true,
             service_probe_available: true,
         }
     }
@@ -346,6 +349,55 @@ mod tests {
         assert!(
             !strict_ok(&doctor_checks(&r)),
             "a missing system policy must fail --strict"
+        );
+    }
+
+    /// 2026-10-03 (audit R3-L26): the M8 watchdog timers are required
+    /// checks — a missing backstop fails --strict, and all three are
+    /// n/a (not failed) when systemctl is absent.
+    #[test]
+    fn doctor_covers_m8_watchdog_timers() {
+        let checks = doctor_checks(&report());
+        for expected in [
+            "sync watchdog timer",
+            "freeze watchdog timer",
+            "guard watchdog timer",
+        ] {
+            let c = checks
+                .iter()
+                .find(|c| c.label == expected)
+                .unwrap_or_else(|| panic!("doctor must check '{expected}'"));
+            assert!(c.required, "'{expected}' must be required");
+            assert_eq!(c.state, CheckState::Ok);
+        }
+        let mut r = report();
+        r.freeze_watchdog_timer_active = false;
+        assert!(
+            !strict_ok(&doctor_checks(&r)),
+            "a missing watchdog timer must fail --strict"
+        );
+
+        let mut r = report();
+        r.service_probe_available = false;
+        r.sync_watchdog_timer_active = false;
+        r.freeze_watchdog_timer_active = false;
+        r.guard_watchdog_timer_active = false;
+        let checks = doctor_checks(&r);
+        for label in [
+            "sync watchdog timer",
+            "freeze watchdog timer",
+            "guard watchdog timer",
+        ] {
+            let c = checks.iter().find(|c| c.label == label).expect(label);
+            assert_eq!(
+                c.state,
+                CheckState::Skipped,
+                "'{label}' must be n/a when systemctl is absent, not fail"
+            );
+        }
+        assert!(
+            strict_ok(&checks),
+            "unanswerable timer checks must not fail --strict"
         );
     }
 
