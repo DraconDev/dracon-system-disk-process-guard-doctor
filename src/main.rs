@@ -5486,10 +5486,11 @@ fn manage_sync_freeze(guard: &GuardPolicy, used: u8, dstate: &str, sync_frozen: 
 }
 
 /// Collect the set of paths under any of `roots` that are currently held
-/// open by a running process (`/proc/*/fd` readlink targets and
-/// `/proc/*/cwd`). Bounded by the process and descriptor tables visible in
-/// procfs; entries in this set are skipped by tmp cleanup even when old,
-/// because an open file or process working directory may still be in use.
+/// open by a running process (`/proc/*/fd` readlink targets,
+/// `/proc/*/cwd`, and `/proc/*/exe`). Bounded by the process and
+/// descriptor tables visible in procfs; entries in this set are skipped
+/// by tmp cleanup even when old, because an open file, a process working
+/// directory, or a running executable may still be in use.
 async fn collect_open_paths_under_from(
     proc_root: &Path,
     roots: &[PathBuf],
@@ -5550,6 +5551,19 @@ async fn collect_open_paths_under_from(
         // cleanup can recursively remove an old directory that a live process
         // is still using as its working directory.
         if let Ok(target) = tokio::fs::read_link(process_dir.join("cwd")).await {
+            let target: PathBuf = target;
+            if roots.iter().any(|r| target.starts_with(r)) {
+                open.insert(target);
+            }
+        }
+
+        // FIXED 2026-10-03 (audit R4-SYS-12): same for the running
+        // executable — it is not an fd entry either, so without this
+        // a stale binary executing from /tmp is unlinked while
+        // running (the process survives on the unlinked inode but
+        // the path is gone). One readlink per pid, same cost class
+        // as cwd; failures stay per-process skips like cwd.
+        if let Ok(target) = tokio::fs::read_link(process_dir.join("exe")).await {
             let target: PathBuf = target;
             if roots.iter().any(|r| target.starts_with(r)) {
                 open.insert(target);
