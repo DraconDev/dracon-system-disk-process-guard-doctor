@@ -105,6 +105,33 @@ if ! cmp -s "$REPO_UNIT" "$DEPLOYED_UNIT"; then
     stale
 fi
 
+# 3b. Companion watchdog units travel with the main unit (shipped in-repo since
+# audit M8, 2026-10-02) and drift the same silent way. Each one whose repo copy
+# exists AND whose deployed copy exists must agree byte for byte; a watchdog
+# that was never deployed is the "fresh install without backstops" gap, which
+# install.sh and the flake module close — not a drift verdict here.
+# ADDED 2026-10-03 (audit R3-L24): mirrors the sync checker's 3b loop —
+# a stale/missing dracon-system-guard-watchdog backstop was undetected.
+deployed_dir="$(dirname "$DEPLOYED_UNIT")"
+for companion in dracon-system-guard-watchdog.service dracon-system-guard-watchdog.timer; do
+    repo_companion="$SCRIPT_DIR/../$companion"
+    deployed_companion="$deployed_dir/$companion"
+    [ -f "$repo_companion" ] || continue
+    if [ ! -e "$deployed_companion" ] && [ ! -L "$deployed_companion" ]; then
+        echo "• companion $companion is shipped but not deployed — install it with:"
+        echo "    install -m 644 \"$repo_companion\" \"$deployed_companion\" && systemctl --user daemon-reload"
+        continue
+    fi
+    if ! cmp -s "$repo_companion" "$deployed_companion"; then
+        echo "✗ deployed companion unit is STALE: $deployed_companion" >&2
+        echo "  the shipped unit in this repo differs from the deployed copy" >&2
+        diff -u "$deployed_companion" "$repo_companion" 2>/dev/null | sed -e 's/^/  /' | head -40 >&2 || true
+        echo "  redeploy with:" >&2
+        echo "    install -m 644 \"$repo_companion\" \"$deployed_companion\" && systemctl --user daemon-reload" >&2
+        exit 1
+    fi
+done
+
 # 4. The deployed file is the one systemd is running. If it is not, the file was
 #    copied without `daemon-reload` and the drift is still live even though the
 #    two files agree.
