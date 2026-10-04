@@ -1042,11 +1042,20 @@ fn pressure_orphan_end_to_end_against_a_real_orphan() {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
-    // Double-fork away: sh execs setsid, setsid's parent exits, the
-    // script reparents past this test to the session subreaper.
+    // Double-fork away: sh backgrounds setsid and exits at once, so the
+    // script reparents past this live test to the session subreaper
+    // (systemd). A bare `exec setsid` does NOT fork (the child is no
+    // group leader), so the script would stay ours and the scan would
+    // find nothing — that shape silently SKIPs, which is exactly what a
+    // 60s "pass" means. This shape must finish in ~2s; slower means the
+    // orphan never detached.
     let mut launcher = std::process::Command::new("sh")
         .arg("-c")
-        .arg(format!("exec setsid {}", script.display()))
+        .arg(format!(
+            "setsid {} </dev/null >/dev/null 2>&1 &",
+            script.display()
+        ))
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
