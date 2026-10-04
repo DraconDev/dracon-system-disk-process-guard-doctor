@@ -200,6 +200,7 @@ fn quarantine_expire_deletes_only_past_ttl() {
         moved_at_unix: crate::now_unix().saturating_sub(40 * 86_400),
         bytes: manifest.bytes,
         files: manifest.files,
+        auto: manifest.auto,
     };
     let entry_dir = qdir.join(&manifest.name);
     fs::write(
@@ -251,6 +252,7 @@ fn quarantine_expire_skips_escaped_entries_without_aborting_batch() {
         moved_at_unix: crate::now_unix().saturating_sub(40 * 86_400),
         bytes: manifest.bytes,
         files: manifest.files,
+        auto: manifest.auto,
     };
     let entry_dir = qdir.join(&manifest.name);
     fs::write(
@@ -570,6 +572,7 @@ fn age_entry(qdir: &Path, manifest: &crate::QuarantineManifest, days: u64) -> Pa
         moved_at_unix: crate::now_unix().saturating_sub(days * 86_400),
         bytes: manifest.bytes,
         files: manifest.files,
+        auto: manifest.auto,
     };
     let entry_dir = qdir.join(&manifest.name);
     fs::write(

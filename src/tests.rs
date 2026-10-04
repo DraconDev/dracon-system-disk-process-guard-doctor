@@ -3546,6 +3546,7 @@ fn maybe_expire_quarantine_respects_both_opt_outs() {
         moved_at_unix: now_unix().saturating_sub(400 * 86_400),
         bytes: manifest.bytes,
         files: manifest.files,
+        auto: manifest.auto,
     };
     std::fs::write(
         qdir.join(&manifest.name).join(".quarantine.json"),
@@ -3608,6 +3609,7 @@ fn maybe_expire_quarantine_respects_both_opt_outs() {
         moved_at_unix: now_unix().saturating_sub(400 * 86_400),
         bytes: m2.bytes,
         files: m2.files,
+        auto: m2.auto,
     };
     std::fs::write(
         qdir.join(&m2.name).join(".quarantine.json"),
@@ -3646,6 +3648,7 @@ fn maybe_expire_quarantine_dry_run_deletes_nothing() {
         moved_at_unix: now_unix().saturating_sub(400 * 86_400),
         bytes: manifest.bytes,
         files: manifest.files,
+        auto: manifest.auto,
     };
     std::fs::write(
         qdir.join(&manifest.name).join(".quarantine.json"),
@@ -3725,6 +3728,7 @@ fn absurd_interval_fixture(tag: &str) -> (PathBuf, PathBuf, String) {
         moved_at_unix: now_unix().saturating_sub(400 * 86_400),
         bytes: manifest.bytes,
         files: manifest.files,
+        auto: manifest.auto,
     };
     std::fs::write(
         qdir.join(&manifest.name).join(".quarantine.json"),
