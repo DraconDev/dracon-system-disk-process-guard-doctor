@@ -162,6 +162,12 @@ pub(crate) struct GuardPolicy {
     pub(crate) swap_used_warn_percent: u8,
     #[serde(default = "default_mem_psi_full_warn")]
     pub(crate) mem_psi_full_warn: f64,
+    /// Swap-in velocity, in pages/s, at or above which the guard reads
+    /// thrashing — independent of PSI. A healthy box faults in ~0 pages/s;
+    /// a thrashing one runs six digits. Default 1000 keeps the legacy
+    /// PSI-fallback constant, so PSI-absent hosts see no change.
+    #[serde(default = "default_mem_swapin_warn_pages_per_sec")]
+    pub(crate) mem_swapin_warn_pages_per_sec: u64,
     // Require memory pressure to persist before notifying or applying
     // reversible pressure mitigation. This prevents transient samples
     // and swap occupancy alone from disturbing active processes.
@@ -396,6 +402,7 @@ impl Default for GuardPolicy {
             mem_available_warn_percent: default_mem_available_warn_percent(),
             swap_used_warn_percent: default_swap_used_warn_percent(),
             mem_psi_full_warn: default_mem_psi_full_warn(),
+            mem_swapin_warn_pages_per_sec: default_mem_swapin_warn_pages_per_sec(),
             memory_pressure_sustain_secs: default_memory_pressure_sustain_secs(),
             auto_renice_on_memory: default_true(),
             bias_oom_on_pressure: default_true(),
@@ -828,6 +835,10 @@ fn default_swap_used_warn_percent() -> u8 {
 
 fn default_mem_psi_full_warn() -> f64 {
     10.0
+}
+
+fn default_mem_swapin_warn_pages_per_sec() -> u64 {
+    1000
 }
 
 fn default_memory_pressure_sustain_secs() -> u64 {
@@ -1308,6 +1319,9 @@ pub(crate) fn normalize_guard_policy_with_home(
     // A NaN mem_psi_full_warn fails every comparison, so the pressure state
     // machine would never leave "clear" and no mitigation would ever run.
     fband!(mem_psi_full_warn, 0.0, 100.0);
+    // 0 would read every sample with any swap-in as thrashing (rates are
+    // never negative), pinning the state machine at warn on a healthy box.
+    floor!(mem_swapin_warn_pages_per_sec, 1);
     floor!(memory_pressure_sustain_secs, 30);
     // systemd CPUQuota accepts values above 100%, but this knob is a cap
     // expressed as a percentage of one CPU. Keep invalid values from
