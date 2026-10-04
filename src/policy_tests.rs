@@ -917,6 +917,19 @@ fn the_default_log_dirs_is_the_guards_own_state_directory() {
 }
 
 #[test]
+fn reap_auto_kill_defaults_off_and_parses_opt_in() {
+    // The destructive half of the reap feature must never arm by default:
+    // a missing key parses to false, and only an explicit true opts in.
+    assert!(!GuardPolicy::default().reap_stale_dev_servers);
+    let absent: SystemPolicy =
+        toml::from_str("[guard]\n").expect("policy without the knob must parse");
+    assert!(!absent.guard.reap_stale_dev_servers);
+    let opted_in: SystemPolicy = toml::from_str("[guard]\nreap_stale_dev_servers = true\n")
+        .expect("explicit opt-in must parse");
+    assert!(opted_in.guard.reap_stale_dev_servers);
+}
+
+#[test]
 fn absent_and_blank_behave_differently_end_to_end_through_toml() {
     let absent: SystemPolicy =
         toml::from_str("[guard]\nmonitor_logs = true\n").expect("absent must parse");
