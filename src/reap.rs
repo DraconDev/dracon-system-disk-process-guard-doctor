@@ -489,7 +489,14 @@ pub(crate) fn auto_reap_stale_servers(
     candidates: &[ReapCandidate],
     ticks_per_sec: u64,
 ) -> Vec<ReapedProcess> {
-    reap_verified_candidates(proc_root, policy, candidates, ticks_per_sec, verify_candidate_for_reap, "reap")
+    reap_verified_candidates(
+        proc_root,
+        policy,
+        candidates,
+        ticks_per_sec,
+        verify_candidate_for_reap,
+        "reap",
+    )
 }
 
 /// Re-verify pressure orphans at kill time: same liveness discipline as

@@ -56,7 +56,9 @@ impl Fixture {
         age_secs: u64,
         rss_kb: u64,
     ) {
-        self.proc_owned(pid, 1224, comm, args, state, tty_nr, cpu_secs, age_secs, rss_kb);
+        self.proc_owned(
+            pid, 1224, comm, args, state, tty_nr, cpu_secs, age_secs, rss_kb,
+        );
     }
 
     /// `proc` with an explicit parent PID, for the pressure-orphan scan
@@ -845,7 +847,17 @@ fn pressure_scan_finds_a_hot_young_orphan() {
 fn pressure_scan_keeps_processes_with_live_parents() {
     let fx = Fixture::new("orphan-live-parent");
     fx.fake_parent(9000, "pi");
-    fx.proc_owned(4242, 9000, "bun", &["bun", "test", "src/lib"], 'R', 0, 3600, 600, 1024);
+    fx.proc_owned(
+        4242,
+        9000,
+        "bun",
+        &["bun", "test", "src/lib"],
+        'R',
+        0,
+        3600,
+        600,
+        1024,
+    );
     assert!(fx.orphan_scan(&policy()).is_empty());
 }
 
@@ -854,7 +866,17 @@ fn pressure_scan_keeps_processes_with_vanished_parents() {
     let fx = Fixture::new("orphan-no-parent");
     // No parent dir at all: the ppid is stale (exit-and-reuse race) or
     // unreadable. Fail closed — an unprovable parent is not an orphan.
-    fx.proc_owned(4242, 9000, "bun", &["bun", "test", "src/lib"], 'R', 0, 3600, 600, 1024);
+    fx.proc_owned(
+        4242,
+        9000,
+        "bun",
+        &["bun", "test", "src/lib"],
+        'R',
+        0,
+        3600,
+        600,
+        1024,
+    );
     assert!(fx.orphan_scan(&policy()).is_empty());
 }
 
@@ -864,7 +886,17 @@ fn pressure_scan_keeps_terminal_attached_processes() {
     fx.fake_parent(9000, "systemd");
     // Reparented to systemd but still holding a tty: a disowned shell
     // job, not an abandoned run — the tty is the operator's handle.
-    fx.proc_owned(4242, 9000, "bun", &["bun", "test", "src/lib"], 'S', 34816, 5, 600, 1024);
+    fx.proc_owned(
+        4242,
+        9000,
+        "bun",
+        &["bun", "test", "src/lib"],
+        'S',
+        34816,
+        5,
+        600,
+        1024,
+    );
     assert!(fx.orphan_scan(&policy()).is_empty());
 }
 
@@ -878,7 +910,17 @@ fn pressure_scan_keeps_non_allowlisted_and_exempt_processes() {
     exempt.exempt_names = vec!["bun test".to_string()];
     let fx = Fixture::new("orphan-exempt");
     fx.fake_parent(9000, "systemd");
-    fx.proc_owned(4242, 9000, "bun", &["bun", "test", "src/lib"], 'S', 0, 5, 600, 1024);
+    fx.proc_owned(
+        4242,
+        9000,
+        "bun",
+        &["bun", "test", "src/lib"],
+        'S',
+        0,
+        5,
+        600,
+        1024,
+    );
     assert!(fx.orphan_scan(&exempt).is_empty());
 }
 
@@ -886,9 +928,29 @@ fn pressure_scan_keeps_non_allowlisted_and_exempt_processes() {
 fn pressure_scan_never_returns_reserved_or_own_pids() {
     let fx = Fixture::new("orphan-reserved");
     fx.fake_parent(9000, "systemd");
-    fx.proc_owned(1, 9000, "bun", &["bun", "test", "src/lib"], 'S', 0, 5, 600, 1024);
+    fx.proc_owned(
+        1,
+        9000,
+        "bun",
+        &["bun", "test", "src/lib"],
+        'S',
+        0,
+        5,
+        600,
+        1024,
+    );
     let me = std::process::id() as i32;
-    fx.proc_owned(me, 9000, "bun", &["bun", "test", "src/lib"], 'S', 0, 5, 600, 1024);
+    fx.proc_owned(
+        me,
+        9000,
+        "bun",
+        &["bun", "test", "src/lib"],
+        'S',
+        0,
+        5,
+        600,
+        1024,
+    );
     assert!(fx.orphan_scan(&policy()).is_empty());
 }
 
@@ -923,7 +985,17 @@ fn orphan_reverification_rejects_a_recycled_pid() {
     let fx = Fixture::new("orphan-reverify-reuse");
     let cand = scanned_orphan(&fx);
     // Same PID, new process under the same init: starttime differs.
-    fx.proc_owned(4242, 9000, "bun", &["bun", "test", "src/lib"], 'S', 0, 1, 60, 1024);
+    fx.proc_owned(
+        4242,
+        9000,
+        "bun",
+        &["bun", "test", "src/lib"],
+        'S',
+        0,
+        1,
+        60,
+        1024,
+    );
     assert!(!verify_orphan_for_reap(&fx.root, &cand, &policy(), TICKS));
 }
 
@@ -942,7 +1014,15 @@ fn orphan_reverification_rejects_a_gained_terminal() {
     let fx = Fixture::new("orphan-reverify-tty");
     let cand = scanned_orphan(&fx);
     fx.proc_owned(
-        4242, 9000, "bun", &["bun", "test", "src/lib"], 'S', 34816, 3600, 600, 1024,
+        4242,
+        9000,
+        "bun",
+        &["bun", "test", "src/lib"],
+        'S',
+        34816,
+        3600,
+        600,
+        1024,
     );
     assert!(!verify_orphan_for_reap(&fx.root, &cand, &policy(), TICKS));
 }

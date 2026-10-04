@@ -4836,7 +4836,10 @@ async fn check_memory_pressure(
                 "pressure-reap {}={} ({})",
                 r.comm,
                 r.pid,
-                r.outcome.as_ref().map(|o| format!("{o:?}")).unwrap_or_else(|| "skipped".to_string())
+                r.outcome
+                    .as_ref()
+                    .map(|o| format!("{o:?}"))
+                    .unwrap_or_else(|| "skipped".to_string())
             ));
         }
     }
