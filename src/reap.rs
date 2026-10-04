@@ -587,7 +587,7 @@ fn reap_verified_candidates(
         }
         let outcome = terminate_process(candidate.pid);
         eprintln!(
-            "🛡️ reap: pid {} ({}, {}) -> {outcome:?}",
+            "🛡️ {log_tag}: pid {} ({}, {}) -> {outcome:?}",
             candidate.pid, candidate.comm, candidate.signature,
         );
         out.push(ReapedProcess {
