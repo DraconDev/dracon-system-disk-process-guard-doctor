@@ -166,7 +166,7 @@ pub(crate) fn quarantine_move(
     root: &Path,
     user_protected: &[String],
 ) -> Result<QuarantineManifest> {
-    quarantine_move_inner(origin, root, user_protected, false)
+    quarantine_move_inner(origin, root, user_protected, true)
 }
 
 /// The shared move implementation. `auto` records provenance in the
