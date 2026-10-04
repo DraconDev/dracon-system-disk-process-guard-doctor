@@ -4801,6 +4801,46 @@ async fn check_memory_pressure(
         }
     }
 
+    // Pressure-gated orphan reap (2026-10-04): runaways whose owners died
+    // ignore the 24h auto-reap floor by design, so under warn/critical
+    // pressure they are reaped by orphanhood instead of age. Opt-in,
+    // default OFF. Blocking (SIGTERM grace sleeps), so it runs off the
+    // tokio workers like the auto-reap pass.
+    let mut pressure_reaped: Vec<ReapedProcess> = Vec::new();
+    if (pressure == "warn" || pressure == "critical") && guard.reap_orphans_on_pressure {
+        let policy = reap_policy_from_guard(guard);
+        pressure_reaped = tokio::task::spawn_blocking(move || {
+            let proc_root = Path::new("/proc");
+            // No boot clock, no age evidence: fail closed like the
+            // report-only scan rather than running half-blind.
+            let boot_time = read_boot_time(proc_root)?;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(boot_time);
+            let found =
+                scan_pressure_orphans(proc_root, &policy, boot_time, now, PROC_TICKS_PER_SEC);
+            Some(reap_pressure_orphans(
+                proc_root,
+                &policy,
+                &found,
+                PROC_TICKS_PER_SEC,
+            ))
+        })
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+        for r in &pressure_reaped {
+            limited.push(format!(
+                "pressure-reap {}={} ({})",
+                r.comm,
+                r.pid,
+                r.outcome.as_ref().map(|o| format!("{o:?}")).unwrap_or_else(|| "skipped".to_string())
+            ));
+        }
+    }
+
     // A child forked after its parent was biased inherits oom_score_adj=250,
     // but is not present in `oom_biased_pids`. Sweep those descendants on
     // every pass, including before a tracked parent is released or removed.
