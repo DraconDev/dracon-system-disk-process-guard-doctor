@@ -294,10 +294,7 @@ fn quarantine_move_inner(
 /// manifests (unknown provenance), other origins, unreadable manifests,
 /// and anything outside the canonical root are all kept. A deletion
 /// failure is loud but non-fatal — the TTL expiry is the backstop.
-pub(crate) fn replace_older_auto_generations(
-    root: &Path,
-    new: &QuarantineManifest,
-) -> Vec<String> {
+pub(crate) fn replace_older_auto_generations(root: &Path, new: &QuarantineManifest) -> Vec<String> {
     let mut replaced = Vec::new();
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
