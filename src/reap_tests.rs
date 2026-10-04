@@ -1032,10 +1032,8 @@ fn pressure_orphan_end_to_end_against_a_real_orphan() {
         eprintln!("SKIP: no setsid to build a real orphan");
         return;
     }
-    let marker_dir = std::env::temp_dir().join(format!(
-        "pressure-smoke-marker-{}",
-        std::process::id()
-    ));
+    let marker_dir =
+        std::env::temp_dir().join(format!("pressure-smoke-marker-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&marker_dir);
     std::fs::create_dir_all(&marker_dir).expect("marker dir");
     let script = marker_dir.join("run.sh");
