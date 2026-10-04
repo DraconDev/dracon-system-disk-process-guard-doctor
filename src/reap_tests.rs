@@ -155,7 +155,12 @@ fn reverification_rejects_a_recycled_pid() {
         60,
         65_536,
     );
-    assert!(!verify_candidate_for_reap(&fx.root, &cand, &policy(), TICKS));
+    assert!(!verify_candidate_for_reap(
+        &fx.root,
+        &cand,
+        &policy(),
+        TICKS
+    ));
 }
 
 #[test]
@@ -172,7 +177,12 @@ fn reverification_rejects_a_process_that_woke_up() {
         3 * DAY_SECS,
         65_536,
     );
-    assert!(!verify_candidate_for_reap(&fx.root, &cand, &policy(), TICKS));
+    assert!(!verify_candidate_for_reap(
+        &fx.root,
+        &cand,
+        &policy(),
+        TICKS
+    ));
 }
 
 #[test]
@@ -189,7 +199,12 @@ fn reverification_rejects_a_process_that_gained_a_terminal() {
         3 * DAY_SECS,
         65_536,
     );
-    assert!(!verify_candidate_for_reap(&fx.root, &cand, &policy(), TICKS));
+    assert!(!verify_candidate_for_reap(
+        &fx.root,
+        &cand,
+        &policy(),
+        TICKS
+    ));
 }
 
 #[test]
@@ -208,7 +223,12 @@ fn reverification_rejects_a_cmdline_that_left_the_allowlist() {
         3 * DAY_SECS,
         65_536,
     );
-    assert!(!verify_candidate_for_reap(&fx.root, &cand, &policy(), TICKS));
+    assert!(!verify_candidate_for_reap(
+        &fx.root,
+        &cand,
+        &policy(),
+        TICKS
+    ));
 }
 
 #[test]
@@ -225,7 +245,12 @@ fn reverification_rejects_a_process_that_burned_cpu() {
         3 * DAY_SECS,
         65_536,
     );
-    assert!(!verify_candidate_for_reap(&fx.root, &cand, &policy(), TICKS));
+    assert!(!verify_candidate_for_reap(
+        &fx.root,
+        &cand,
+        &policy(),
+        TICKS
+    ));
 }
 
 #[test]
@@ -233,7 +258,12 @@ fn reverification_rejects_a_vanished_process() {
     let fx = Fixture::new("reverify-gone");
     let cand = scanned_candidate(&fx);
     fs::remove_dir_all(fx.root.join("4242")).expect("remove pid dir");
-    assert!(!verify_candidate_for_reap(&fx.root, &cand, &policy(), TICKS));
+    assert!(!verify_candidate_for_reap(
+        &fx.root,
+        &cand,
+        &policy(),
+        TICKS
+    ));
 }
 
 #[test]
@@ -260,10 +290,7 @@ fn reverification_rejects_pids_the_guard_must_never_signal() {
 fn terminate_refuses_reserved_and_own_pids() {
     for pid in [0, -1, 1, std::process::id() as i32] {
         assert!(
-            matches!(
-                terminate_process(pid),
-                TerminateOutcome::Refused { .. }
-            ),
+            matches!(terminate_process(pid), TerminateOutcome::Refused { .. }),
             "pid {pid} must be refused"
         );
     }
@@ -320,14 +347,27 @@ fn terminate_escalates_to_sigkill_when_term_is_ignored() {
         eprintln!("SKIP: no python3 to build a TERM-ignoring child");
         return;
     }
+    // Readiness handshake: the child prints `ready` AFTER installing the
+    // SIGTERM ignore, so the signal can never land during interpreter
+    // startup (when the default disposition would still kill it).
     let mut child = std::process::Command::new("python3")
         .args([
             "-c",
-            "import signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);time.sleep(60)",
+            "import signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);print('ready',flush=True);time.sleep(60)",
         ])
+        .stdout(std::process::Stdio::piped())
         .spawn()
         .expect("spawn ignorer");
     let pid = child.id() as i32;
+    {
+        use std::io::BufRead;
+        let stdout = child.stdout.as_mut().expect("piped stdout");
+        let mut line = String::new();
+        std::io::BufReader::new(stdout)
+            .read_line(&mut line)
+            .expect("read ready");
+        assert_eq!(line.trim(), "ready");
+    }
     let outcome = terminate_process(pid);
     assert!(
         matches!(
@@ -352,17 +392,23 @@ fn auto_reap_kills_a_verified_candidate_and_records_the_kill() {
         .spawn()
         .expect("spawn sleep");
     let pid = child.id() as i32;
-    fx.proc(pid, "sleep", &["sleep", "vite-fixture"], 'S', 0, 5, 3 * DAY_SECS, 1024);
+    fx.proc(
+        pid,
+        "sleep",
+        &["sleep", "vite-fixture"],
+        'S',
+        0,
+        5,
+        3 * DAY_SECS,
+        1024,
+    );
     let found = fx.default_scan();
     assert_eq!(found.len(), 1);
     let reaped = auto_reap_stale_servers(&fx.root, &policy(), &found, TICKS);
     assert_eq!(reaped.len(), 1);
     assert_eq!(reaped[0].pid, pid);
     assert!(
-        matches!(
-            reaped[0].outcome,
-            Some(TerminateOutcome::Signalled { .. })
-        ),
+        matches!(reaped[0].outcome, Some(TerminateOutcome::Signalled { .. })),
         "unexpected {:?}",
         reaped[0].outcome
     );
