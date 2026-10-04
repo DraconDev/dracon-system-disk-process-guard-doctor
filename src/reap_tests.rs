@@ -1064,12 +1064,14 @@ fn pressure_orphan_end_to_end_against_a_real_orphan() {
         .spawn()
         .expect("spawn launcher");
     let _ = launcher.wait();
-    let mut policy = ReapPolicy::default();
-    policy.signatures = vec![marker_dir
-        .file_name()
-        .unwrap()
-        .to_string_lossy()
-        .to_string()];
+    let policy = ReapPolicy {
+        signatures: vec![marker_dir
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string()],
+        ..ReapPolicy::default()
+    };
     // Poll for the orphan to appear reparented (setsid + reparent lag).
     let mut found = Vec::new();
     for _ in 0..50 {
