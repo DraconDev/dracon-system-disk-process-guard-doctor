@@ -1650,6 +1650,17 @@ pub(crate) fn report_state_transition(
 
 /// Classify memory pressure from active signals. Swap occupancy alone is not
 /// pressure: it becomes relevant when paired with low available memory.
+/// True when swap-in velocity reads as thrashing: pages faulting back in
+/// faster than the operator's threshold. `None` (first pass after start,
+/// or unreadable counters) is never thrash — an unmeasured signal fails
+/// closed, like every other pressure input.
+pub(crate) fn swapin_velocity_thrash(
+    pswpin_rate: Option<f64>,
+    warn_pages_per_sec: u64,
+) -> bool {
+    pswpin_rate.is_some_and(|r| r >= warn_pages_per_sec as f64)
+}
+
 pub(crate) fn classify_memory_pressure(
     mem_low: bool,
     swap_high: bool,
@@ -4603,20 +4614,21 @@ async fn check_memory_pressure(
     let swap_used_percent = sample.swap_used_percent();
     let psi_full_avg10 = psi_full_avg10().await;
 
-    // Swap-in rate fallback (pages/s) when PSI is unavailable.
+    // Swap-in velocity (pages/s), measured on EVERY pass. This used to be
+    // a fallback computed only when PSI was unavailable — but violent
+    // swap-in with moderate PSI is exactly what thrashing looks like
+    // (2026-10-04: si 100k+/s at PSI 3.9 read "ok" and no mitigation
+    // fired). Swap-OUT is deliberately not a signal: paging out is
+    // reclaim working, not pressure; faulting back IN is the stall.
     let mut pswpin_rate = None;
-    if psi_full_avg10.is_none() {
-        if let Some((pin, pout)) = vmstat_swap_counters().await {
-            if let Some((prev_at, prev_pin, _prev_pout)) = state.prev_swap_counters {
-                let dt = prev_at.elapsed().as_secs_f64();
-                if dt > 0.0 {
-                    pswpin_rate = Some(pin.saturating_sub(prev_pin) as f64 / dt);
-                }
+    if let Some((pin, pout)) = vmstat_swap_counters().await {
+        if let Some((prev_at, prev_pin, _prev_pout)) = state.prev_swap_counters {
+            let dt = prev_at.elapsed().as_secs_f64();
+            if dt > 0.0 {
+                pswpin_rate = Some(pin.saturating_sub(prev_pin) as f64 / dt);
             }
-            record_swap_counters(state, pin, pout);
         }
-    } else {
-        state.prev_swap_counters = None;
+        record_swap_counters(state, pin, pout);
     }
 
     let mem_low = mem_available_percent <= guard.mem_available_warn_percent;
@@ -4624,7 +4636,7 @@ async fn check_memory_pressure(
     // own: Linux may keep cold pages in swap while RAM and PSI are healthy.
     let swap_high = swap_used_percent >= guard.swap_used_warn_percent;
     let psi_thrash = psi_full_avg10.is_some_and(|v| v >= guard.mem_psi_full_warn)
-        || pswpin_rate.is_some_and(|r| r >= 1000.0);
+        || swapin_velocity_thrash(pswpin_rate, guard.mem_swapin_warn_pages_per_sec);
     let observed_pressure = classify_memory_pressure(mem_low, swap_high, psi_thrash);
     let (pressure, _previous_pressure, pressure_changed) = stabilize_memory_pressure_at(
         state,
