@@ -513,9 +513,13 @@ pub(crate) struct GuardReport {
     memory: Option<MemoryReport>,
     /// ADDED 2026-08-10 (v0.112.35): zombie detail (pid/ppid/age/parent).
     zombies: Vec<ZombieInfo>,
-    /// Abandoned dev/test processes -- report only, never signalled. See
-    /// `reap.rs`: this is a worklist for a human, not an action.
+    /// Abandoned dev/test processes. A worklist for a human by default;
+    /// under the `reap_stale_dev_servers` opt-in the guard also acted on
+    /// it -- see `reaped` for what each candidate got. Details in reap.rs.
     reap_candidates: Vec<ReapCandidate>,
+    /// What the opt-in auto-reap pass did this cycle (empty unless
+    /// `reap_stale_dev_servers` is set): kills AND skipped re-verifies.
+    reaped: Vec<ReapedProcess>,
     /// ADDED 2026-08-10 (v0.112.35): sustained disk fill rate (GiB/hour).
     disk_fill_gbph: Option<f64>,
 }
@@ -5376,13 +5380,12 @@ fn reap_candidates(guard: &GuardPolicy) -> Vec<ReapCandidate> {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(boot_time);
-    let ticks_per_sec = 100; // Linux USER_HZ is fixed at 100 on every arch.
     scan_reap_candidates(
         proc_root,
         &reap_policy_from_guard(guard),
         boot_time,
         now,
-        ticks_per_sec,
+        PROC_TICKS_PER_SEC,
     )
 }
 
@@ -7028,6 +7031,21 @@ pub(crate) async fn run_guard_once(
     check_inode_usage(guard, state).await;
     let zombies = check_zombie_processes(guard, state).await;
     let reap_candidates = reap_candidates(guard);
+    // Opt-in auto-reap: terminate what still verifies, on a blocking
+    // thread -- each kill can sleep up to ~7s in grace polls, and that
+    // must never stall a tokio worker. Default OFF: no candidates are
+    // ever signalled unless the operator sets `reap_stale_dev_servers`.
+    let reaped = if guard.reap_stale_dev_servers && !reap_candidates.is_empty() {
+        let policy = reap_policy_from_guard(guard);
+        let for_reap = reap_candidates.clone();
+        tokio::task::spawn_blocking(move || {
+            auto_reap_stale_servers(Path::new("/proc"), &policy, &for_reap, PROC_TICKS_PER_SEC)
+        })
+        .await
+        .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     check_large_logs(guard, state).await;
     let memory = check_memory_pressure(guard, state, &samples).await;
 
@@ -7044,6 +7062,7 @@ pub(crate) async fn run_guard_once(
         memory,
         zombies,
         reap_candidates,
+        reaped,
         disk_fill_gbph: fill_gbph,
     };
     // AUDIT 2026-10-01: record what this pass left applied, so a panic or an
