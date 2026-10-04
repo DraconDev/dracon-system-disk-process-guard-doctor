@@ -56,6 +56,24 @@ impl Fixture {
         age_secs: u64,
         rss_kb: u64,
     ) {
+        self.proc_owned(pid, 1224, comm, args, state, tty_nr, cpu_secs, age_secs, rss_kb);
+    }
+
+    /// `proc` with an explicit parent PID, for the pressure-orphan scan
+    /// (whose whole point is the parent). Pair with `fake_parent`.
+    #[allow(clippy::too_many_arguments)]
+    fn proc_owned(
+        &self,
+        pid: i32,
+        ppid: i32,
+        comm: &str,
+        args: &[&str],
+        state: char,
+        tty_nr: i32,
+        cpu_secs: u64,
+        age_secs: u64,
+        rss_kb: u64,
+    ) {
         let dir = self.root.join(pid.to_string());
         fs::create_dir_all(&dir).expect("pid dir");
         let uptime_secs = self.now - self.boot_time;
