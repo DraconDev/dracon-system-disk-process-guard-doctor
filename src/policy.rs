@@ -103,6 +103,15 @@ pub(crate) struct GuardPolicy {
     /// when this is false.
     #[serde(default)]
     pub(crate) reap_stale_dev_servers: bool,
+    /// Destructive opt-in (default false): under warn/critical memory
+    /// pressure, terminate parent-dead (reparented to init/systemd),
+    /// terminal-less, allowlisted dev-server processes with NO age/CPU/
+    /// state gates. The 24h auto-reap floor cannot catch a runaway whose
+    /// owner just died; orphanhood under pressure is the replacement
+    /// proof. Manual snapshots, tty-attached processes, and anything
+    /// outside the signatures/exempts are never touched.
+    #[serde(default)]
+    pub(crate) reap_orphans_on_pressure: bool,
     #[serde(default = "default_true")]
     pub(crate) notify: bool,
     #[serde(default = "default_notify_command")]
@@ -377,6 +386,7 @@ impl Default for GuardPolicy {
             reap_report_max_cpu_seconds: default_reap_report_max_cpu_seconds(),
             reap_report_signatures: default_reap_report_signatures(),
             reap_stale_dev_servers: false,
+            reap_orphans_on_pressure: false,
             notify: default_true(),
             notify_command: default_notify_command(),
             notify_cooldown_secs: default_notify_cooldown_secs(),

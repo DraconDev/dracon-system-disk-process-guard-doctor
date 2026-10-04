@@ -901,3 +901,48 @@ fn parent_comm_check_fails_closed() {
     fx.fake_parent(9001, "bash");
     assert!(!parent_comm_is_systemd(&fx.root, 9001));
 }
+
+fn scanned_orphan(fx: &Fixture) -> ReapCandidate {
+    hot_orphan(fx, 4242);
+    let found = fx.orphan_scan(&policy());
+    assert_eq!(found.len(), 1, "fixture must scan as exactly one orphan");
+    found.into_iter().next().unwrap()
+}
+
+#[test]
+fn orphan_reverification_accepts_a_hot_unchanged_orphan() {
+    // R state, 1h CPU, 10 min old: the idle verifier would refuse all
+    // three; the orphan verifier must accept (orphanhood is the proof).
+    let fx = Fixture::new("orphan-reverify-ok");
+    let cand = scanned_orphan(&fx);
+    assert!(verify_orphan_for_reap(&fx.root, &cand, &policy(), TICKS));
+}
+
+#[test]
+fn orphan_reverification_rejects_a_recycled_pid() {
+    let fx = Fixture::new("orphan-reverify-reuse");
+    let cand = scanned_orphan(&fx);
+    // Same PID, new process under the same init: starttime differs.
+    fx.proc_owned(4242, 9000, "bun", &["bun", "test", "src/lib"], 'S', 0, 1, 60, 1024);
+    assert!(!verify_orphan_for_reap(&fx.root, &cand, &policy(), TICKS));
+}
+
+#[test]
+fn orphan_reverification_rejects_a_reparented_pid() {
+    let fx = Fixture::new("orphan-reverify-parent");
+    let cand = scanned_orphan(&fx);
+    // Same PID/starttime, but the parent is live again (adoption edge):
+    // not an orphan anymore, not our kill.
+    fx.fake_parent(9000, "pi");
+    assert!(!verify_orphan_for_reap(&fx.root, &cand, &policy(), TICKS));
+}
+
+#[test]
+fn orphan_reverification_rejects_a_gained_terminal() {
+    let fx = Fixture::new("orphan-reverify-tty");
+    let cand = scanned_orphan(&fx);
+    fx.proc_owned(
+        4242, 9000, "bun", &["bun", "test", "src/lib"], 'S', 34816, 3600, 600, 1024,
+    );
+    assert!(!verify_orphan_for_reap(&fx.root, &cand, &policy(), TICKS));
+}

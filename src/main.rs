@@ -545,6 +545,10 @@ pub(crate) struct MemoryReport {
     /// ADDED 2026-08-10 (v0.112.36): actions taken this pass, e.g.
     /// "renice svelte-check=10", "oom-bias node=250".
     pub(crate) limited: Vec<String>,
+    /// What the pressure-gated orphan pass did this cycle (empty unless
+    /// `reap_orphans_on_pressure` is set and pressure is warn/critical):
+    /// kills AND skipped re-verifies, same record shape as `reaped`.
+    pub(crate) pressure_reaped: Vec<ReapedProcess>,
 }
 
 /// A zombie (defunct) process with context useful for diagnosis.
@@ -5153,6 +5157,7 @@ async fn check_memory_pressure(
         pressure,
         top_rss,
         limited,
+        pressure_reaped,
     })
 }
 
