@@ -119,6 +119,8 @@ pub(crate) fn read_boot_time(proc_root: &Path) -> Option<u64> {
 pub(crate) struct StatFields {
     /// 3: R/S/D/Z/T/...
     pub(crate) state: char,
+    /// 4: parent PID; compared against init/systemd for orphanhood.
+    pub(crate) ppid: i32,
     /// 7: controlling terminal; 0 means none.
     pub(crate) tty_nr: i32,
     /// 14 + 15: user + system CPU, in clock ticks, for the whole life of
@@ -139,6 +141,7 @@ pub(crate) fn parse_stat(stat: &str) -> Option<StatFields> {
     let get = |idx: usize| -> Option<&str> { fields.get(idx).copied() };
     Some(StatFields {
         state: get(0)?.chars().next()?,
+        ppid: get(1)?.parse().ok()?,
         tty_nr: get(4)?.parse().ok()?,
         cpu_ticks: get(11)?
             .parse::<u64>()
