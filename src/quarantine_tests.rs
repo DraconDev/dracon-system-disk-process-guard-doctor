@@ -901,9 +901,13 @@ fn pre_flag_manifests_parse_as_manual_and_are_kept() {
     let manifest_path = qdir.join(&first.name).join(".quarantine.json");
     let text = fs::read_to_string(&manifest_path).unwrap();
     assert!(text.contains("\"auto\""));
-    let downgraded = text.replace("\"auto\": true,", "").replace("\"auto\":true,", "");
-    assert!(!downgraded.contains("\"auto\""), "downgrade must strip flag");
-    fs::write(&manifest_path, downgraded).unwrap();
+    let mut value: serde_json::Value = serde_json::from_str(&text).unwrap();
+    value.as_object_mut().unwrap().remove("auto");
+    fs::write(
+        &manifest_path,
+        serde_json::to_string_pretty(&value).unwrap(),
+    )
+    .unwrap();
     let src = fixture_dir(&root);
     let second = auto_move(&src, &qdir);
     assert!(
