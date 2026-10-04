@@ -302,6 +302,13 @@ clean_tmp = false
 # reuse) and SIGTERM/SIGKILL what still verifies. Kills AND skips are
 # recorded in the report's `reaped` array and echoed to stderr.
 # reap_stale_dev_servers = false
+# DESTRUCTIVE opt-in (default false): under warn/critical memory
+# pressure, terminate parent-dead (reparented to init/systemd),
+# terminal-less, allowlisted dev-server processes with NO age/CPU/state
+# gates. Catches runaways whose owners just died (which the 24h floor
+# above cannot); tty-attached, exempt, and non-allowlisted processes are
+# never touched. Recorded in the memory report's `pressure_reaped` array.
+# reap_orphans_on_pressure = false
 # Rapid-fill trip rate in GiB/hour (default 20.0).
 # disk_rapid_fill_gbph = 20.0
 # Rust target age gates (2026-09-14: action tier used to delete ANY target

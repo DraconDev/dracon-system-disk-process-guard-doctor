@@ -927,6 +927,11 @@ fn reap_auto_kill_defaults_off_and_parses_opt_in() {
     let opted_in: SystemPolicy = toml::from_str("[guard]\nreap_stale_dev_servers = true\n")
         .expect("explicit opt-in must parse");
     assert!(opted_in.guard.reap_stale_dev_servers);
+    // The pressure-gated sibling defaults off with the same parsing.
+    assert!(!GuardPolicy::default().reap_orphans_on_pressure);
+    let opted_in: SystemPolicy = toml::from_str("[guard]\nreap_orphans_on_pressure = true\n")
+        .expect("orphan opt-in must parse");
+    assert!(opted_in.guard.reap_orphans_on_pressure);
 }
 
 #[test]
