@@ -80,11 +80,13 @@ pub(crate) struct GuardPolicy {
     pub(crate) process_sustain_secs: u64,
     #[serde(default = "default_process_exempt_names")]
     pub(crate) process_exempt_names: String,
-    // --- Abandoned dev/test process reporting (report-only) -------------
+    // --- Abandoned dev/test process reporting (+ opt-in auto-reap) ----
     // Test runs leave orphaned dev servers behind when they are killed
-    // mid-flight. These three fields only change what the guard *prints*;
-    // nothing here signals, kills, or stops a process. Lowering
-    // min_idle_hours makes the report noisier, never more destructive.
+    // mid-flight. The three `reap_report_*` fields only change what the
+    // guard *prints*; lowering min_idle_hours makes the report noisier,
+    // never more destructive. `reap_stale_dev_servers` is the SEPARATE
+    // destructive opt-in (default OFF): with it set, the same candidates
+    // are re-verified live at kill time and then SIGTERMed/SIGKILLed.
     /// Minimum age before an idle, terminal-less process is reported.
     #[serde(default = "default_reap_report_min_idle_hours")]
     pub(crate) reap_report_min_idle_hours: u64,
@@ -95,6 +97,12 @@ pub(crate) struct GuardPolicy {
     /// process as disposable test/dev infrastructure.
     #[serde(default = "default_reap_report_signatures")]
     pub(crate) reap_report_signatures: String,
+    /// Destructive opt-in (default false): re-verify every reap candidate
+    /// live at kill time and terminate what still verifies. Same
+    /// certainty bar as the report; the report stays a human worklist
+    /// when this is false.
+    #[serde(default)]
+    pub(crate) reap_stale_dev_servers: bool,
     #[serde(default = "default_true")]
     pub(crate) notify: bool,
     #[serde(default = "default_notify_command")]
@@ -362,6 +370,7 @@ impl Default for GuardPolicy {
             reap_report_min_idle_hours: default_reap_report_min_idle_hours(),
             reap_report_max_cpu_seconds: default_reap_report_max_cpu_seconds(),
             reap_report_signatures: default_reap_report_signatures(),
+            reap_stale_dev_servers: false,
             notify: default_true(),
             notify_command: default_notify_command(),
             notify_cooldown_secs: default_notify_cooldown_secs(),
