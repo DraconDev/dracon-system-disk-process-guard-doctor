@@ -786,3 +786,161 @@ fn quarantine_reserved_names_are_preserved_with_cross_device_destination() {
     }
     assert_eq!(fs::read_dir(destination.path()).unwrap().count(), 0);
 }
+
+// --- Replace-on-re-quarantine ----------------------------------------------
+// The guard's auto path quarantines the same rebuilt target/ again and
+// again (terhub/target: 9 generations in 3 days). An auto move now
+// records its provenance and deletes older AUTO generations of the same
+// origin, so quarantine holds at most one auto generation per origin.
+// Manual moves never trigger replacement, and anything that is not
+// provably an older auto generation of the same origin is kept.
+
+fn auto_move(origin: &Path, qdir: &Path) -> crate::QuarantineManifest {
+    let (manifest, _) = crate::quarantine_first_remove(origin, qdir, &[]).unwrap();
+    assert!(manifest.auto, "auto path must record auto provenance");
+    manifest
+}
+
+fn entry_names(qdir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(qdir)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    names.sort();
+    names
+}
+
+#[test]
+fn manual_move_records_manual_provenance() {
+    let root = test_root("provenance-manual");
+    let src = fixture_dir(&root);
+    let qdir = root.join("q");
+    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    assert!(!manifest.auto);
+    cleanup(&root);
+}
+
+#[test]
+fn auto_move_records_auto_provenance() {
+    let root = test_root("provenance-auto");
+    let src = fixture_dir(&root);
+    let qdir = root.join("q");
+    let manifest = auto_move(&src, &qdir);
+    assert!(manifest.auto);
+    // Provenance survives a serialize round-trip through the manifest file.
+    let text = fs::read_to_string(qdir.join(&manifest.name).join(".quarantine.json")).unwrap();
+    assert!(text.contains("\"auto\": true"), "manifest must carry auto flag");
+    cleanup(&root);
+}
+
+#[test]
+fn auto_move_replaces_an_older_auto_generation_of_the_same_origin() {
+    let root = test_root("replace-auto");
+    let src = fixture_dir(&root);
+    let qdir = root.join("q");
+    let first = auto_move(&src, &qdir);
+    assert!(qdir.join(&first.name).exists());
+    // The loop rebuilds at the origin; the guard quarantines again.
+    let src = fixture_dir(&root);
+    let second = auto_move(&src, &qdir);
+    assert_ne!(first.name, second.name);
+    assert!(
+        !qdir.join(&first.name).exists(),
+        "older auto generation must be replaced"
+    );
+    assert!(qdir.join(&second.name).exists());
+    assert_eq!(entry_names(&qdir), vec![second.name]);
+    cleanup(&root);
+}
+
+#[test]
+fn auto_move_keeps_an_older_manual_generation() {
+    let root = test_root("replace-keeps-manual");
+    let src = fixture_dir(&root);
+    let qdir = root.join("q");
+    // Operator snapshot first, then the auto path fires on a rebuild.
+    let manual = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let src = fixture_dir(&root);
+    let second = auto_move(&src, &qdir);
+    assert!(qdir.join(&manual.name).exists(), "manual entry must survive");
+    assert!(qdir.join(&second.name).exists());
+    assert_eq!(entry_names(&qdir).len(), 2);
+    cleanup(&root);
+}
+
+#[test]
+fn auto_move_keeps_entries_from_other_origins() {
+    let root = test_root("replace-keeps-others");
+    let src_a = fixture_dir(&root);
+    let qdir = root.join("q");
+    let other_root = root.join("other-work");
+    let src_b = fixture_dir(&other_root);
+    let first_a = auto_move(&src_a, &qdir);
+    let first_b = auto_move(&src_b, &qdir);
+    // Rebuild + re-quarantine origin A only.
+    let src_a = fixture_dir(&root);
+    let second_a = auto_move(&src_a, &qdir);
+    assert!(!qdir.join(&first_a.name).exists());
+    assert!(qdir.join(&second_a.name).exists());
+    assert!(
+        qdir.join(&first_b.name).exists(),
+        "other origin must survive"
+    );
+    cleanup(&root);
+}
+
+#[test]
+fn pre_flag_manifests_parse_as_manual_and_are_kept() {
+    let root = test_root("replace-old-format");
+    let src = fixture_dir(&root);
+    let qdir = root.join("q");
+    let first = auto_move(&src, &qdir);
+    // Rewrite the manifest in the pre-flag format (no `auto` key): old
+    // entries are of unknown provenance, which fails closed to manual.
+    let manifest_path = qdir.join(&first.name).join(".quarantine.json");
+    let text = fs::read_to_string(&manifest_path).unwrap();
+    assert!(text.contains("\"auto\""));
+    let downgraded = text.replace("\"auto\": true,", "").replace("\"auto\":true,", "");
+    assert!(!downgraded.contains("\"auto\""), "downgrade must strip flag");
+    fs::write(&manifest_path, downgraded).unwrap();
+    let src = fixture_dir(&root);
+    let second = auto_move(&src, &qdir);
+    assert!(
+        qdir.join(&first.name).exists(),
+        "unknown-provenance entry must be kept"
+    );
+    assert!(qdir.join(&second.name).exists());
+    cleanup(&root);
+}
+
+#[test]
+fn manual_moves_accumulate_without_replacement() {
+    let root = test_root("manual-accumulates");
+    let src = fixture_dir(&root);
+    let qdir = root.join("q");
+    let first = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let src = fixture_dir(&root);
+    let second = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    // The CLI never deletes: two deliberate snapshots stay two entries.
+    assert!(qdir.join(&first.name).exists());
+    assert!(qdir.join(&second.name).exists());
+    cleanup(&root);
+}
+
+#[test]
+fn replace_skips_manifest_less_hand_placed_dirs() {
+    let root = test_root("replace-skips-pin");
+    let src = fixture_dir(&root);
+    let qdir = root.join("q");
+    fs::create_dir_all(&qdir).unwrap();
+    // A hand-placed dir with no manifest has no provable origin: it is
+    // pinned by the same fail-safe philosophy as expiry, never replaced.
+    fs::create_dir(qdir.join("hand-placed.1")).unwrap();
+    let first = auto_move(&src, &qdir);
+    let src = fixture_dir(&root);
+    auto_move(&src, &qdir);
+    assert!(qdir.join("hand-placed.1").exists());
+    assert!(!qdir.join(&first.name).exists());
+    cleanup(&root);
+}
