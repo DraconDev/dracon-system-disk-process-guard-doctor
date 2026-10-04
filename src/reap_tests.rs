@@ -91,7 +91,6 @@ impl Fixture {
         let stat = format!(
             "{pid} ({comm}) {state} {ppid} {pgrp} {session} {tty_nr} 0 -1 4194304 0 0 0 \
              {utime} {stime} 0 0 20 0 1 0 {starttime} 0 0 0 0 0 0 0 0 0 0 0 0 17 2 0 0 0 0 0",
-            ppid = 1224,
             pgrp = pid,
             session = pid,
         );
@@ -122,6 +121,18 @@ impl Fixture {
 
     fn default_scan(&self) -> Vec<ReapCandidate> {
         self.scan(&ReapPolicy::default())
+    }
+
+    /// A bare parent entry: only `comm` matters, because orphanhood is
+    /// decided by the parent's command name, not its state.
+    fn fake_parent(&self, pid: i32, comm: &str) {
+        let dir = self.root.join(pid.to_string());
+        fs::create_dir_all(&dir).expect("parent dir");
+        fs::write(dir.join("comm"), format!("{comm}\n")).expect("parent comm");
+    }
+
+    fn orphan_scan(&self, policy: &ReapPolicy) -> Vec<ReapCandidate> {
+        scan_pressure_orphans(&self.root, policy)
     }
 }
 
