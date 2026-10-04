@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > is the canonical record.
 
 ## [Unreleased]
+
+### Added
+
+- Opt-in guard auto-reap of abandoned dev servers (`reap_stale_dev_servers`, default OFF): with it set, reap candidates are re-verified live at kill time (sleeping, no tty, allowlist signature, exemptions, CPU ceiling, plus a starttime check against PID reuse) and then SIGTERMed, escalating to SIGKILL. Reserved PIDs and the guard itself are refused outright; zombies count as dead. Kills AND skipped re-verifies are recorded in the report's `reaped` array and echoed to stderr. The pass runs on a blocking thread so grace-period sleeps never stall a tokio worker. See `docs/design/guard-auto-reap-2026-10-04.md`.
+
 ## [0.112.44] - 2026-10-03
 
 ### Fixed (workspace audit 2026-10-03, ROUND3)
