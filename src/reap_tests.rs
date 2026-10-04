@@ -1020,7 +1020,10 @@ fn pressure_orphan_end_to_end_against_a_real_orphan() {
     //
     // Environment-dependent: needs setsid(1) and an init-shaped parent
     // (comm `systemd`). Minimal build sandboxes have neither — skip
-    // there instead of failing.
+    // there instead of failing. Genuine skips return in seconds; the
+    // duration tripwire below turns a 60s silent skip (orphan never
+    // detached, marker slept its whole life) into a failure.
+    let t0 = std::time::Instant::now();
     if std::process::Command::new("setsid")
         .arg("--version")
         .output()
@@ -1104,6 +1107,11 @@ fn pressure_orphan_end_to_end_against_a_real_orphan() {
     }
     assert!(gone, "marker script must be dead");
     let _ = std::fs::remove_dir_all(&marker_dir);
+    assert!(
+        t0.elapsed() < std::time::Duration::from_secs(30),
+        "t0+{:?}: orphan never detached (see double-fork comment)",
+        t0.elapsed()
+    );
 }
 
 #[test]
