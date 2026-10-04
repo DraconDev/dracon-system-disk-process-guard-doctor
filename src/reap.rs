@@ -270,3 +270,239 @@ pub(crate) fn scan_reap_candidates(
     out.sort_by(|a, b| b.rss_mb.cmp(&a.rss_mb).then(a.pid.cmp(&b.pid)));
     out
 }
+
+// --- Opt-in auto-reap ------------------------------------------------------
+// Everything below only runs when the operator sets
+// `reap_stale_dev_servers = true`. The scan result is stale the moment it
+// is collected, so `verify_candidate_for_reap` re-checks every criterion
+// against the LIVE tree immediately before `terminate_process` signals
+// anything. Any doubt -- an unreadable file, a changed field, a recycled
+// PID -- fails closed: the candidate is recorded as unverified and no
+// signal is sent.
+
+/// Linux USER_HZ is fixed at 100 on every arch. Shared by the scan and
+/// the kill-time re-verification so the two can never disagree on ticks.
+pub(crate) const PROC_TICKS_PER_SEC: u64 = 100;
+
+/// How long SIGTERM gets to work before the SIGKILL escalation: 50 polls
+/// 100ms apart. A dev server that traps TERM for cleanup finishes in
+/// milliseconds; five seconds is already generous.
+const TERM_GRACE_POLLS: u32 = 50;
+/// How long SIGKILL gets before the kill is declared failed: 20 polls
+/// 100ms apart. Only uninterruptible sleep survives SIGKILL, and no
+/// amount of waiting fixes that -- the bound just keeps the pass moving.
+const KILL_GRACE_POLLS: u32 = 20;
+const GRACE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// Re-check a scanned candidate against the live `proc_root` immediately
+/// before signalling. Every check that admitted the candidate is repeated
+/// -- sleeping state, no tty, allowlist signature, exemptions, CPU
+/// ceiling -- plus two the scan cannot do: the live `starttime` must
+/// equal the scanned one (PID-reuse guard), and reserved PIDs are refused
+/// outright. Age is NOT re-checked: a process only gets older, so a pass
+/// that cleared the idle floor at scan time still clears it now.
+pub(crate) fn verify_candidate_for_reap(
+    proc_root: &Path,
+    candidate: &ReapCandidate,
+    policy: &ReapPolicy,
+    ticks_per_sec: u64,
+) -> bool {
+    // Defence in depth: reserved PIDs and the guard itself are refused
+    // even if a crafted allowlist somehow matched them.
+    if candidate.pid <= 1 || candidate.pid == std::process::id() as i32 {
+        return false;
+    }
+    let pid_dir = proc_root.join(candidate.pid.to_string());
+    let Ok(raw) = std::fs::read_to_string(pid_dir.join("stat")) else {
+        return false;
+    };
+    let Some(fields) = parse_stat(&raw) else {
+        return false;
+    };
+    // PID reuse: same number, different process. Never signal it.
+    if fields.starttime != candidate.starttime {
+        return false;
+    }
+    if fields.state != 'S' || fields.tty_nr != 0 {
+        return false;
+    }
+    if fields.cpu_ticks / ticks_per_sec.max(1) > policy.max_cpu_seconds {
+        return false;
+    }
+    let Ok(cmdline_raw) = std::fs::read_to_string(pid_dir.join("cmdline")) else {
+        return false;
+    };
+    let args = cmdline_raw.replace('\0', " ").trim().to_string();
+    if args.is_empty() {
+        return false;
+    }
+    if policy
+        .exempt_names
+        .iter()
+        .any(|exempt| args.contains(exempt.as_str()))
+    {
+        return false;
+    }
+    matches_signature(&args, &policy.signatures).is_some()
+}
+
+/// What happened when the guard tried to end one process.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) enum TerminateOutcome {
+    /// The process is gone. `escalated_to_sigkill` tells whether SIGTERM
+    /// alone did it or the SIGKILL fallback was needed.
+    Signalled { escalated_to_sigkill: bool },
+    /// `kill(pid, 0)` reported ESRCH before any signal was sent: the
+    /// process exited on its own between verification and termination.
+    AlreadyGone,
+    /// Deliberately not signalled: a reserved PID, the guard itself, or a
+    /// process the guard has no permission to signal.
+    Refused { reason: &'static str },
+    /// Signalled but still alive afterwards (SIGKILL does not reach
+    /// uninterruptible sleep), or the `kill` syscall itself failed.
+    Failed { reason: &'static str },
+}
+
+/// One candidate the auto-reap pass considered, with what it did about
+/// it. `outcome` is `None` when re-verification failed: recorded, not
+/// silently dropped, but nothing was signalled.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct ReapedProcess {
+    pub(crate) pid: i32,
+    pub(crate) comm: String,
+    pub(crate) signature: String,
+    pub(crate) verified: bool,
+    pub(crate) outcome: Option<TerminateOutcome>,
+}
+
+/// True when `pid` names a live process. EPERM means the process exists
+/// but belongs to another user; only ESRCH (and its absence from the
+/// tree) means gone.
+fn pid_is_alive(pid: i32) -> bool {
+    // SAFETY: kill with sig 0 performs no action; it only reports
+    // whether the process exists and is signallable.
+    let rc = unsafe { libc::kill(pid, 0) };
+    if rc == 0 {
+        return true;
+    }
+    // SAFETY: reading errno immediately after the failed call, same thread.
+    unsafe { *libc::__errno_location() != libc::ESRCH }
+}
+
+/// SIGTERM `pid`, escalating to SIGKILL after the grace period. Blocking:
+/// the caller runs the whole auto-reap pass on a blocking thread, never
+/// on a tokio worker.
+pub(crate) fn terminate_process(pid: i32) -> TerminateOutcome {
+    if pid <= 1 {
+        return TerminateOutcome::Refused {
+            reason: "reserved pid",
+        };
+    }
+    if pid == std::process::id() as i32 {
+        return TerminateOutcome::Refused {
+            reason: "guard will not signal itself",
+        };
+    }
+    if !pid_is_alive(pid) {
+        return TerminateOutcome::AlreadyGone;
+    }
+    // SAFETY: pid is a positive, non-self PID that existed a moment ago.
+    // The residual exit-and-reuse race (microseconds between the ESRCH
+    // probe and this call) is inherent to kill-by-PID and is why the
+    // caller re-verified starttime immediately before; the window cannot
+    // be closed further from userspace.
+    let rc = unsafe { libc::kill(pid, libc::SIGTERM) };
+    if rc != 0 {
+        // SAFETY: errno read immediately after the failed call.
+        let errno = unsafe { *libc::__errno_location() };
+        if errno == libc::ESRCH {
+            return TerminateOutcome::AlreadyGone;
+        }
+        if errno == libc::EPERM {
+            return TerminateOutcome::Refused {
+                reason: "permission denied",
+            };
+        }
+        return TerminateOutcome::Failed {
+            reason: "SIGTERM syscall failed",
+        };
+    }
+    for _ in 0..TERM_GRACE_POLLS {
+        if !pid_is_alive(pid) {
+            return TerminateOutcome::Signalled {
+                escalated_to_sigkill: false,
+            };
+        }
+        std::thread::sleep(GRACE_POLL_INTERVAL);
+    }
+    // SAFETY: same PID as above; SIGKILL cannot be caught or ignored.
+    let rc = unsafe { libc::kill(pid, libc::SIGKILL) };
+    if rc != 0 {
+        // SAFETY: errno read immediately after the failed call.
+        let errno = unsafe { *libc::__errno_location() };
+        if errno == libc::ESRCH {
+            return TerminateOutcome::Signalled {
+                escalated_to_sigkill: false,
+            };
+        }
+        return TerminateOutcome::Failed {
+            reason: "SIGKILL syscall failed",
+        };
+    }
+    for _ in 0..KILL_GRACE_POLLS {
+        if !pid_is_alive(pid) {
+            return TerminateOutcome::Signalled {
+                escalated_to_sigkill: true,
+            };
+        }
+        std::thread::sleep(GRACE_POLL_INTERVAL);
+    }
+    TerminateOutcome::Failed {
+        reason: "process survived SIGKILL (uninterruptible sleep?)",
+    }
+}
+
+/// Run the opt-in auto-reap pass over already-scanned `candidates`:
+/// re-verify each one against the live `proc_root`, terminate what still
+/// verifies, and record everything -- kills AND skips. Every action is
+/// also echoed to stderr so the journal shows it without opening JSON.
+/// Blocking (see `terminate_process`): the caller must run this on a
+/// blocking thread.
+pub(crate) fn auto_reap_stale_servers(
+    proc_root: &Path,
+    policy: &ReapPolicy,
+    candidates: &[ReapCandidate],
+    ticks_per_sec: u64,
+) -> Vec<ReapedProcess> {
+    let mut out = Vec::with_capacity(candidates.len());
+    for candidate in candidates {
+        let verified = verify_candidate_for_reap(proc_root, candidate, policy, ticks_per_sec);
+        if !verified {
+            eprintln!(
+                "🛡️ reap: pid {} ({}) no longer verifies -- skipped, nothing signalled",
+                candidate.pid, candidate.comm,
+            );
+            out.push(ReapedProcess {
+                pid: candidate.pid,
+                comm: candidate.comm.clone(),
+                signature: candidate.signature.clone(),
+                verified: false,
+                outcome: None,
+            });
+            continue;
+        }
+        let outcome = terminate_process(candidate.pid);
+        eprintln!(
+            "🛡️ reap: pid {} ({}, {}) -> {outcome:?}",
+            candidate.pid, candidate.comm, candidate.signature,
+        );
+        out.push(ReapedProcess {
+            pid: candidate.pid,
+            comm: candidate.comm.clone(),
+            signature: candidate.signature.clone(),
+            verified: true,
+            outcome: Some(outcome),
+        });
+    }
+    out
+}
