@@ -489,12 +489,91 @@ pub(crate) fn auto_reap_stale_servers(
     candidates: &[ReapCandidate],
     ticks_per_sec: u64,
 ) -> Vec<ReapedProcess> {
+    reap_verified_candidates(proc_root, policy, candidates, ticks_per_sec, verify_candidate_for_reap, "reap")
+}
+
+/// Re-verify pressure orphans at kill time: same liveness discipline as
+/// the age-gated path (same PID incarnation, still allowlisted, still
+/// detached) but WITHOUT its state/CPU/age gates — a hot young orphan
+/// is the exact shape this exists for. The orphanhood proof (parent
+/// still init/systemd) replaces the idle proof.
+pub(crate) fn verify_orphan_for_reap(
+    proc_root: &Path,
+    candidate: &ReapCandidate,
+    policy: &ReapPolicy,
+    ticks_per_sec: u64,
+) -> bool {
+    let _ = ticks_per_sec;
+    if candidate.pid <= 1 || candidate.pid == std::process::id() as i32 {
+        return false;
+    }
+    let pid_dir = proc_root.join(candidate.pid.to_string());
+    let Ok(raw) = std::fs::read_to_string(pid_dir.join("stat")) else {
+        return false;
+    };
+    let Some(fields) = parse_stat(&raw) else {
+        return false;
+    };
+    if fields.starttime != candidate.starttime {
+        return false;
+    }
+    // Owner must STILL be dead: a PID reused under a live parent, or a
+    // process reparented by anything but init, is not our kill.
+    if !parent_comm_is_systemd(proc_root, fields.ppid) {
+        return false;
+    }
+    if fields.tty_nr != 0 {
+        return false;
+    }
+    let Ok(cmdline_raw) = std::fs::read_to_string(pid_dir.join("cmdline")) else {
+        return false;
+    };
+    let args = cmdline_raw.replace('\0', " ").trim().to_string();
+    if args.is_empty() {
+        return false;
+    }
+    if policy
+        .exempt_names
+        .iter()
+        .any(|exempt| args.contains(exempt.as_str()))
+    {
+        return false;
+    }
+    matches_signature(&args, &policy.signatures).is_some()
+}
+
+/// The pressure-gated orphan pass: same kill-and-record discipline as
+/// auto-reap, with orphan verification instead of idle verification.
+pub(crate) fn reap_pressure_orphans(
+    proc_root: &Path,
+    policy: &ReapPolicy,
+    candidates: &[ReapCandidate],
+    ticks_per_sec: u64,
+) -> Vec<ReapedProcess> {
+    reap_verified_candidates(
+        proc_root,
+        policy,
+        candidates,
+        ticks_per_sec,
+        verify_orphan_for_reap,
+        "pressure-reap",
+    )
+}
+
+fn reap_verified_candidates(
+    proc_root: &Path,
+    policy: &ReapPolicy,
+    candidates: &[ReapCandidate],
+    ticks_per_sec: u64,
+    verify: fn(&Path, &ReapCandidate, &ReapPolicy, u64) -> bool,
+    log_tag: &str,
+) -> Vec<ReapedProcess> {
     let mut out = Vec::with_capacity(candidates.len());
     for candidate in candidates {
-        let verified = verify_candidate_for_reap(proc_root, candidate, policy, ticks_per_sec);
+        let verified = verify(proc_root, candidate, policy, ticks_per_sec);
         if !verified {
             eprintln!(
-                "🛡️ reap: pid {} ({}) no longer verifies -- skipped, nothing signalled",
+                "🛡️ {log_tag}: pid {} ({}) no longer verifies -- skipped, nothing signalled",
                 candidate.pid, candidate.comm,
             );
             out.push(ReapedProcess {
