@@ -1656,7 +1656,7 @@ pub(crate) fn report_state_transition(
 /// or unreadable counters) is never thrash — an unmeasured signal fails
 /// closed, like every other pressure input.
 pub(crate) fn swapin_velocity_thrash(pswpin_rate: Option<f64>, warn_pages_per_sec: u64) -> bool {
-    pswpin_rate.is_some_and(|r| r < warn_pages_per_sec as f64)
+    pswpin_rate.is_some_and(|r| r >= warn_pages_per_sec as f64)
 }
 
 pub(crate) fn classify_memory_pressure(
