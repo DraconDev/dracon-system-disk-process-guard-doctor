@@ -117,6 +117,271 @@ fn policy() -> ReapPolicy {
     ReapPolicy::default()
 }
 
+/// One abandoned server in a fresh tree, scanned exactly once. Every
+/// re-verification test below mutates the tree (or the candidate) between
+/// this scan and `verify_candidate_for_reap`: the scan result is stale by
+/// construction, and the kill decision must not trust it.
+fn scanned_candidate(fx: &Fixture) -> ReapCandidate {
+    fx.abandoned_server(
+        4242,
+        "node",
+        &["node", "scripts/e2e-harness.mjs", "serve", "1491"],
+    );
+    let found = fx.default_scan();
+    assert_eq!(found.len(), 1, "fixture must scan as exactly one candidate");
+    found.into_iter().next().unwrap()
+}
+
+#[test]
+fn reverification_accepts_an_unchanged_candidate() {
+    let fx = Fixture::new("reverify-ok");
+    let cand = scanned_candidate(&fx);
+    assert!(verify_candidate_for_reap(&fx.root, &cand, &policy(), TICKS));
+}
+
+#[test]
+fn reverification_rejects_a_recycled_pid() {
+    let fx = Fixture::new("reverify-reuse");
+    let cand = scanned_candidate(&fx);
+    // Same PID, new process: the kernel reused 4242 after the old server
+    // exited. A starttime mismatch must fail closed, never signal.
+    fx.proc(
+        4242,
+        "node",
+        &["node", "scripts/e2e-harness.mjs", "serve", "1491"],
+        'S',
+        0,
+        1,
+        60,
+        65_536,
+    );
+    assert!(!verify_candidate_for_reap(&fx.root, &cand, &policy(), TICKS));
+}
+
+#[test]
+fn reverification_rejects_a_process_that_woke_up() {
+    let fx = Fixture::new("reverify-woke");
+    let cand = scanned_candidate(&fx);
+    fx.proc(
+        4242,
+        "node",
+        &["node", "scripts/e2e-harness.mjs", "serve", "1491"],
+        'R',
+        0,
+        5,
+        3 * DAY_SECS,
+        65_536,
+    );
+    assert!(!verify_candidate_for_reap(&fx.root, &cand, &policy(), TICKS));
+}
+
+#[test]
+fn reverification_rejects_a_process_that_gained_a_terminal() {
+    let fx = Fixture::new("reverify-tty");
+    let cand = scanned_candidate(&fx);
+    fx.proc(
+        4242,
+        "node",
+        &["node", "scripts/e2e-harness.mjs", "serve", "1491"],
+        'S',
+        34816,
+        5,
+        3 * DAY_SECS,
+        65_536,
+    );
+    assert!(!verify_candidate_for_reap(&fx.root, &cand, &policy(), TICKS));
+}
+
+#[test]
+fn reverification_rejects_a_cmdline_that_left_the_allowlist() {
+    let fx = Fixture::new("reverify-exec");
+    let cand = scanned_candidate(&fx);
+    // Same PID/starttime, but the process exec'd into something the
+    // operator never allowlisted. `node` alone matches no signature.
+    fx.proc(
+        4242,
+        "node",
+        &["node", "scripts/real-work.js"],
+        'S',
+        0,
+        5,
+        3 * DAY_SECS,
+        65_536,
+    );
+    assert!(!verify_candidate_for_reap(&fx.root, &cand, &policy(), TICKS));
+}
+
+#[test]
+fn reverification_rejects_a_process_that_burned_cpu() {
+    let fx = Fixture::new("reverify-cpu");
+    let cand = scanned_candidate(&fx);
+    fx.proc(
+        4242,
+        "node",
+        &["node", "scripts/e2e-harness.mjs", "serve", "1491"],
+        'S',
+        0,
+        3600,
+        3 * DAY_SECS,
+        65_536,
+    );
+    assert!(!verify_candidate_for_reap(&fx.root, &cand, &policy(), TICKS));
+}
+
+#[test]
+fn reverification_rejects_a_vanished_process() {
+    let fx = Fixture::new("reverify-gone");
+    let cand = scanned_candidate(&fx);
+    fs::remove_dir_all(fx.root.join("4242")).expect("remove pid dir");
+    assert!(!verify_candidate_for_reap(&fx.root, &cand, &policy(), TICKS));
+}
+
+#[test]
+fn reverification_rejects_pids_the_guard_must_never_signal() {
+    let fx = Fixture::new("reverify-reserved");
+    let mut cand = scanned_candidate(&fx);
+    // PID 1 and the guard's own PID are refused even if every other
+    // criterion matches: defence in depth against a crafted allowlist.
+    for pid in [0, -7, 1, std::process::id() as i32] {
+        cand.pid = pid;
+        assert!(
+            !verify_candidate_for_reap(&fx.root, &cand, &policy(), TICKS),
+            "pid {pid} must never verify"
+        );
+    }
+}
+
+// --- Signal execution ----------------------------------------------------
+// These spawn real short-lived children of the test process and terminate
+// only those children (or PIDs that cannot exist). Nothing else on the
+// host is signalled.
+
+#[test]
+fn terminate_refuses_reserved_and_own_pids() {
+    for pid in [0, -1, 1, std::process::id() as i32] {
+        assert!(
+            matches!(
+                terminate_process(pid),
+                TerminateOutcome::Refused { .. }
+            ),
+            "pid {pid} must be refused"
+        );
+    }
+}
+
+#[test]
+fn terminate_reports_a_pid_that_cannot_exist() {
+    // No kernel hands out PID i32::MAX, so this exercises the ESRCH path
+    // with zero chance of signalling a stranger (no exit-and-reuse race).
+    assert!(matches!(
+        terminate_process(i32::MAX),
+        TerminateOutcome::AlreadyGone
+    ));
+}
+
+#[test]
+fn terminate_ends_a_live_child_with_sigterm() {
+    let mut child = std::process::Command::new("sleep")
+        .arg("30")
+        .spawn()
+        .expect("spawn sleep");
+    let pid = child.id() as i32;
+    let outcome = terminate_process(pid);
+    assert!(
+        matches!(
+            outcome,
+            TerminateOutcome::Signalled {
+                escalated_to_sigkill: false
+            }
+        ),
+        "unexpected {outcome:?}"
+    );
+    let status = child.wait().expect("reap child");
+    assert!(!status.success());
+    // `sleep` installs no handler: it dies FROM the signal, it does not
+    // exit after it.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        assert_eq!(status.signal(), Some(15));
+    }
+}
+
+#[test]
+fn terminate_escalates_to_sigkill_when_term_is_ignored() {
+    // A single process that ignores SIGTERM must still die, via SIGKILL.
+    // python3 is the only portable-enough TERM-ignorer; hosts without it
+    // (minimal build sandboxes) skip instead of failing.
+    if std::process::Command::new("python3")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        eprintln!("SKIP: no python3 to build a TERM-ignoring child");
+        return;
+    }
+    let mut child = std::process::Command::new("python3")
+        .args([
+            "-c",
+            "import signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);time.sleep(60)",
+        ])
+        .spawn()
+        .expect("spawn ignorer");
+    let pid = child.id() as i32;
+    let outcome = terminate_process(pid);
+    assert!(
+        matches!(
+            outcome,
+            TerminateOutcome::Signalled {
+                escalated_to_sigkill: true
+            }
+        ),
+        "unexpected {outcome:?}"
+    );
+    let _ = child.wait();
+}
+
+#[test]
+fn auto_reap_kills_a_verified_candidate_and_records_the_kill() {
+    // End to end across the seam: the fixture tree carries the *evidence*
+    // (old, idle, allowlisted) while the PID is a real live child of this
+    // test. Verify reads the fixture; terminate signals the child.
+    let fx = Fixture::new("auto-reap-e2e");
+    let mut child = std::process::Command::new("sleep")
+        .arg("30")
+        .spawn()
+        .expect("spawn sleep");
+    let pid = child.id() as i32;
+    fx.proc(pid, "sleep", &["sleep", "vite-fixture"], 'S', 0, 5, 3 * DAY_SECS, 1024);
+    let found = fx.default_scan();
+    assert_eq!(found.len(), 1);
+    let reaped = auto_reap_stale_servers(&fx.root, &policy(), &found, TICKS);
+    assert_eq!(reaped.len(), 1);
+    assert_eq!(reaped[0].pid, pid);
+    assert!(
+        matches!(
+            reaped[0].outcome,
+            Some(TerminateOutcome::Signalled { .. })
+        ),
+        "unexpected {:?}",
+        reaped[0].outcome
+    );
+    let status = child.wait().expect("reap child");
+    assert!(!status.success());
+}
+
+#[test]
+fn auto_reap_skips_a_candidate_that_vanished_after_the_scan() {
+    let fx = Fixture::new("auto-reap-stale");
+    let cand = scanned_candidate(&fx);
+    fs::remove_dir_all(fx.root.join("4242")).expect("remove pid dir");
+    let reaped = auto_reap_stale_servers(&fx.root, &policy(), &[cand], TICKS);
+    assert_eq!(reaped.len(), 1);
+    // Recorded, not silently dropped -- but nothing was signalled.
+    assert_eq!(reaped[0].outcome, None);
+    assert!(!reaped[0].verified);
+}
+
 #[test]
 fn an_abandoned_dev_server_is_reported() {
     let fx = Fixture::new("reports-abandoned");
