@@ -132,7 +132,7 @@ impl Fixture {
     }
 
     fn orphan_scan(&self, policy: &ReapPolicy) -> Vec<ReapCandidate> {
-        scan_pressure_orphans(&self.root, policy)
+        scan_pressure_orphans(&self.root, policy, self.boot_time, self.now, TICKS)
     }
 }
 
