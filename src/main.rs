@@ -532,7 +532,8 @@ pub(crate) struct MemoryReport {
     /// PSI `full avg10` — the share of the last 10s that the system
     /// was completely stalled on memory (swap thrash detector).
     pub(crate) psi_full_avg10: Option<f64>,
-    /// Swap-in rate (pages/s) — fallback thrash signal when PSI is off.
+    /// Swap-in rate (pages/s) — first-class thrash signal alongside PSI
+    /// (was a PSI-absent fallback only, until 2026-10-04).
     pub(crate) pswpin_rate: Option<f64>,
     /// The instantaneous classification before persistence/hysteresis.
     pub(crate) observed_pressure: String,
