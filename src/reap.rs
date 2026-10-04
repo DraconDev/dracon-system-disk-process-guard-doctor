@@ -377,16 +377,28 @@ pub(crate) struct ReapedProcess {
 
 /// True when `pid` names a live process. EPERM means the process exists
 /// but belongs to another user; only ESRCH (and its absence from the
-/// tree) means gone.
+/// tree) means gone. A zombie still answers `kill(pid, 0)` but is already
+/// dead -- its parent just has not reaped it, and the port, memory, and
+/// CPU are all freed -- so zombies count as gone. An unreadable stat
+/// falls back to the kill probe: a live process keeps polling rather
+/// than being wrongly declared dead.
 fn pid_is_alive(pid: i32) -> bool {
     // SAFETY: kill with sig 0 performs no action; it only reports
     // whether the process exists and is signallable.
     let rc = unsafe { libc::kill(pid, 0) };
-    if rc == 0 {
-        return true;
+    let exists = if rc == 0 {
+        true
+    } else {
+        // SAFETY: reading errno immediately after the failed call, same thread.
+        unsafe { *libc::__errno_location() != libc::ESRCH }
+    };
+    if !exists {
+        return false;
     }
-    // SAFETY: reading errno immediately after the failed call, same thread.
-    unsafe { *libc::__errno_location() != libc::ESRCH }
+    match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+        Ok(raw) => !matches!(parse_stat(&raw).map(|f| f.state), Some('Z') | Some('X')),
+        Err(_) => exists,
+    }
 }
 
 /// SIGTERM `pid`, escalating to SIGKILL after the grace period. Blocking:
