@@ -559,6 +559,9 @@ pub(crate) fn parent_comm_is_systemd(proc_root: &Path, ppid: i32) -> bool {
 pub(crate) fn scan_pressure_orphans(
     proc_root: &Path,
     policy: &ReapPolicy,
+    boot_time: u64,
+    now: u64,
+    ticks_per_sec: u64,
 ) -> Vec<ReapCandidate> {
     let self_pid = std::process::id() as i32;
     let Ok(entries) = std::fs::read_dir(proc_root) else {
@@ -610,7 +613,8 @@ pub(crate) fn scan_pressure_orphans(
         };
 
         // Measured, not gated: evidence for the audit trail.
-        let cpu_seconds = fields.cpu_ticks / PROC_TICKS_PER_SEC;
+        let cpu_seconds = fields.cpu_ticks / ticks_per_sec.max(1);
+        let age_secs = elapsed_secs(fields.starttime, ticks_per_sec, boot_time, now);
         let comm = std::fs::read_to_string(pid_dir.join("comm"))
             .map(|c| c.trim().to_string())
             .unwrap_or_default();
@@ -618,7 +622,7 @@ pub(crate) fn scan_pressure_orphans(
             pid,
             comm,
             args,
-            idle_hours: 0,
+            idle_hours: age_secs / 3600,
             cpu_seconds,
             rss_mb: rss_mb_from_status(&pid_dir),
             signature,
