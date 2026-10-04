@@ -6,11 +6,15 @@
 //! children are reparented to `systemd --user` and keep listening forever.
 //! Nothing reaps them, so every interrupted run adds another layer.
 //!
-//! This module finds them and *reports* them. It deliberately contains no
-//! signal-sending, no killing, and no child-management: a diagnostic that
-//! can end a process is a different tool with a different blast radius,
-//! and the guard's contract is that it never ends anything itself. The
-//! output is a worklist a human decides on.
+//! This module finds them and *reports* them. By default the report is
+//! the whole story: a diagnostic that can end a process is a different
+//! tool with a different blast radius, and the guard never ends anything
+//! unless the operator explicitly opts in with `reap_stale_dev_servers`.
+//! With the opt-in set, the same candidates are re-verified live at kill
+//! time (every scan criterion plus a starttime check against PID reuse)
+//! and then SIGTERMed, escalating to SIGKILL. The output is a worklist a
+//! human decides on -- or, under the opt-in, the audit trail of what the
+//! guard decided.
 //!
 //! Every criterion below is a precondition for reporting, and each one
 //! exists to rule out a live interactive session:
@@ -91,6 +95,12 @@ pub(crate) struct ReapCandidate {
     pub(crate) rss_mb: u64,
     /// The allowlist entry that matched.
     pub(crate) signature: String,
+    /// `/proc/<pid>/stat` field 22 at scan time. The kill-time
+    /// re-verification compares this against the live value so a recycled
+    /// PID is never signalled. Skipped in JSON: it is a kill-time nonce,
+    /// not report evidence (the report already carries `idle_hours`).
+    #[serde(skip_serializing)]
+    pub(crate) starttime: u64,
 }
 
 /// `/proc/stat`'s `btime`: seconds since the epoch at which the clock
@@ -253,6 +263,7 @@ pub(crate) fn scan_reap_candidates(
             cpu_seconds,
             rss_mb: rss_mb_from_status(&pid_dir),
             signature,
+            starttime: fields.starttime,
         });
     }
 
