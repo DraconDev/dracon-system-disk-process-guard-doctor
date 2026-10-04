@@ -521,3 +521,111 @@ pub(crate) fn auto_reap_stale_servers(
     }
     out
 }
+
+// --- Pressure-gated orphan scan --------------------------------------------
+// The 24h auto-reap floor cannot catch a runaway whose owner just died:
+// on 2026-10-04 an 8G orphaned `bun test`, 10 min old and reparented to
+// systemd --user, thrashed the box while every age-gated scan refused it.
+// Under memory pressure (warn/critical) the guard may kill orphans with
+// NO age, CPU, or state gates — but only when ALL of these hold:
+//
+// - allowlisted dev-server signature (never a generic "old process"),
+// - parent is init/systemd, i.e. the owner is provably dead,
+// - no controlling terminal (a disowned tmux/shell job keeps its tty,
+//   which is the operator's remaining handle — those are kept),
+// - not in the shared exempt list,
+// - not a reserved PID and not the guard itself.
+//
+// The caller gates on stabilized pressure AND the `reap_orphans_on_
+// pressure` opt-in (default OFF); this scan only finds candidates.
+
+/// True when `ppid`'s command name is the init system — i.e. the process
+/// was reparented because its real parent died. Covers PID 1 and the
+/// systemd user manager alike (both are comm `systemd`). Anything
+/// unreadable fails closed: an unprovable parent is not an orphan.
+pub(crate) fn parent_comm_is_systemd(proc_root: &Path, ppid: i32) -> bool {
+    if ppid <= 0 {
+        return false;
+    }
+    std::fs::read_to_string(proc_root.join(ppid.to_string()).join("comm"))
+        .map(|comm| comm.trim() == "systemd")
+        .unwrap_or(false)
+}
+
+/// Find parent-dead dev-server processes. Deliberately IGNORANT of age,
+/// CPU, and run state — a hot young orphan is the exact shape this
+/// exists for. Results carry the same evidence fields as reap candidates
+/// (age/cpu are measured, not gated) and sort the same way.
+pub(crate) fn scan_pressure_orphans(
+    proc_root: &Path,
+    policy: &ReapPolicy,
+) -> Vec<ReapCandidate> {
+    let self_pid = std::process::id() as i32;
+    let Ok(entries) = std::fs::read_dir(proc_root) else {
+        return Vec::new();
+    };
+    let mut out: Vec<ReapCandidate> = Vec::new();
+
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        let Ok(pid) = name.parse::<i32>() else {
+            continue;
+        };
+        if pid <= 1 || pid == self_pid {
+            continue;
+        }
+        let pid_dir = entry.path();
+        let Ok(raw) = std::fs::read_to_string(pid_dir.join("stat")) else {
+            continue;
+        };
+        let Some(fields) = parse_stat(&raw) else {
+            continue;
+        };
+        // Owner must be provably dead: reparented to init/systemd.
+        if !parent_comm_is_systemd(proc_root, fields.ppid) {
+            continue;
+        }
+        // ... and detached from any terminal: a disowned shell job is
+        // the operator's, not the guard's.
+        if fields.tty_nr != 0 {
+            continue;
+        }
+        let Ok(cmdline_raw) = std::fs::read_to_string(pid_dir.join("cmdline")) else {
+            continue;
+        };
+        let args = cmdline_raw.replace('\0', " ").trim().to_string();
+        if args.is_empty() {
+            continue;
+        }
+        if policy
+            .exempt_names
+            .iter()
+            .any(|exempt| args.contains(exempt.as_str()))
+        {
+            continue;
+        }
+        let Some(signature) = matches_signature(&args, &policy.signatures) else {
+            continue;
+        };
+
+        // Measured, not gated: evidence for the audit trail.
+        let cpu_seconds = fields.cpu_ticks / PROC_TICKS_PER_SEC;
+        let comm = std::fs::read_to_string(pid_dir.join("comm"))
+            .map(|c| c.trim().to_string())
+            .unwrap_or_default();
+        out.push(ReapCandidate {
+            pid,
+            comm,
+            args,
+            idle_hours: 0,
+            cpu_seconds,
+            rss_mb: rss_mb_from_status(&pid_dir),
+            signature,
+            starttime: fields.starttime,
+        });
+    }
+
+    out.sort_by(|a, b| b.rss_mb.cmp(&a.rss_mb).then(a.pid.cmp(&b.pid)));
+    out
+}
