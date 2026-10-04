@@ -293,6 +293,11 @@ clean_tmp = false
 # reap_report_min_idle_hours = 24   # hours old before listing (0 lists everything idle)
 # reap_report_max_cpu_seconds = 60  # lifetime CPU ceiling for "idle" (0 lists only never-ran)
 # reap_report_signatures = "eve web,vite,playwright,chromium,bun run,bun test,npm run test,.mjs,litestream,stub-auth-api"
+# DESTRUCTIVE opt-in (default false): re-verify every listed candidate live
+# at kill time (same bar as above, plus a starttime check against PID
+# reuse) and SIGTERM/SIGKILL what still verifies. Kills AND skips are
+# recorded in the report's `reaped` array and echoed to stderr.
+# reap_stale_dev_servers = false
 # Rapid-fill trip rate in GiB/hour (default 20.0).
 # disk_rapid_fill_gbph = 20.0
 # Rust target age gates (2026-09-14: action tier used to delete ANY target
