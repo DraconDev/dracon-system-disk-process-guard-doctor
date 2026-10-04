@@ -1082,12 +1082,18 @@ fn pressure_orphan_end_to_end_against_a_real_orphan() {
         "unexpected {:?}",
         reaped[0].outcome
     );
-    // The marker is gone (SIGTERM); the orphaned sleep grandchild (which
-    // never matched the marker) is cleaned up best-effort below.
-    assert!(
-        !std::path::Path::new(&format!("/proc/{pid}")).exists(),
-        "marker script must be dead"
-    );
+    // The marker is gone (SIGTERM): poll for disappearance since init
+    // needs a moment to reap the zombie. The orphaned sleep grandchild
+    // (which never matched the marker) exits on its own within a minute.
+    let mut gone = false;
+    for _ in 0..50 {
+        if !std::path::Path::new(&format!("/proc/{pid}")).exists() {
+            gone = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    assert!(gone, "marker script must be dead");
     let _ = std::fs::remove_dir_all(&marker_dir);
 }
 
