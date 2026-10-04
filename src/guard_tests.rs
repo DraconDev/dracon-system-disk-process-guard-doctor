@@ -450,6 +450,28 @@ fn memory_pressure_ignores_swap_occupancy_without_active_pressure() {
 }
 
 #[test]
+fn swapin_velocity_flags_thrash_at_or_above_threshold() {
+    // 2026-10-04: si ran at 100k+ pages/s while PSI sat at 3.9 and the
+    // verdict read "ok", because velocity was only measured as a
+    // PSI-absent fallback. Velocity is now a first-class thrash signal.
+    assert!(!crate::swapin_velocity_thrash(None, 1000));
+    assert!(!crate::swapin_velocity_thrash(Some(0.0), 1000));
+    assert!(!crate::swapin_velocity_thrash(Some(999.9), 1000));
+    assert!(crate::swapin_velocity_thrash(Some(1000.0), 1000));
+    assert!(crate::swapin_velocity_thrash(Some(170_000.0), 1000));
+}
+
+#[test]
+fn swapin_velocity_threshold_defaults_to_the_legacy_fallback() {
+    // The old hardcoded PSI-fallback constant was 1000 pages/s; the knob
+    // keeps that value, so PSI-absent hosts see no behavior change.
+    assert_eq!(
+        crate::GuardPolicy::default().mem_swapin_warn_pages_per_sec,
+        1000
+    );
+}
+
+#[test]
 fn memory_pressure_requires_persistence_before_transition() {
     let mut state = crate::GuardRuntimeState::default();
     let start = Instant::now();
