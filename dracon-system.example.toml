@@ -206,6 +206,10 @@ monitor_memory = true
 mem_available_warn_percent = 10
 swap_used_warn_percent = 50
 mem_psi_full_warn = 10.0
+# Swap-in velocity (pages/s) at or above which the guard reads thrashing,
+# independent of PSI — violent swap-in with moderate PSI is the classic
+# thrash signature. Healthy ~0/s, thrashing six digits.
+mem_swapin_warn_pages_per_sec = 1000
 memory_pressure_sustain_secs = 120
 auto_renice_on_memory = true
 bias_oom_on_pressure = true
