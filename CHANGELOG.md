@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Replace-on-re-quarantine stops the treadmill that filled `/mnt/data/quarantine` with 192G in 3 days (terhub/target was quarantined 9 times): an auto move now records `auto: true` provenance in its manifest and deletes older AUTO generations of the same origin after the new copy is secured. Manual CLI moves never trigger replacement and accumulate as before; pre-flag manifests (unknown provenance), other origins, unreadable manifests, and anything outside the quarantine root are always kept. A replacement failure is loud but non-fatal — TTL expiry remains the backstop. See `docs/design/quarantine-treadmill-2026-10-04.md`.
+
 ### Added
 
 - Opt-in guard auto-reap of abandoned dev servers (`reap_stale_dev_servers`, default OFF): with it set, reap candidates are re-verified live at kill time (sleeping, no tty, allowlist signature, exemptions, CPU ceiling, plus a starttime check against PID reuse) and then SIGTERMed, escalating to SIGKILL. Reserved PIDs and the guard itself are refused outright; zombies count as dead. Kills AND skipped re-verifies are recorded in the report's `reaped` array and echoed to stderr. The pass runs on a blocking thread so grace-period sleeps never stall a tokio worker. See `docs/design/guard-auto-reap-2026-10-04.md`.
