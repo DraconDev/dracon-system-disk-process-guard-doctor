@@ -95,7 +95,20 @@ pub(crate) fn quarantine_first_remove(
             0
         }
     });
-    let manifest = quarantine_move(origin, root, user_protected)?;
+    let manifest = quarantine_move_inner(origin, root, user_protected, true)?;
+    // Replace-on-re-quarantine (2026-10-04): the auto path re-quarantines
+    // the same rebuilt target/ every cycle. Older AUTO generations of this
+    // origin are superseded by the move that just landed, so they go now
+    // instead of sitting until the TTL. Runs AFTER the new manifest is
+    // published: the replacement copy is secured first, and a replacement
+    // failure only costs disk until TTL expiry, never data.
+    let replaced = replace_older_auto_generations(root, &manifest);
+    for name in &replaced {
+        eprintln!(
+            "quarantine: replaced older auto generation {name} (origin {})",
+            manifest.origin
+        );
+    }
     #[cfg(unix)]
     let same_dev = {
         use std::os::unix::fs::MetadataExt;
@@ -270,6 +283,61 @@ fn quarantine_move_inner(
         }
     })?;
     Ok(manifest)
+}
+
+/// Delete older AUTO generations of `new.origin`, keeping `new` itself.
+/// Returns the deleted entry names.
+///
+/// Every filter here fails closed: an entry is deleted only when its
+/// manifest is readable AND records `auto: true` AND names this origin
+/// AND is not the entry that just landed. Manual snapshots, pre-flag
+/// manifests (unknown provenance), other origins, unreadable manifests,
+/// and anything outside the canonical root are all kept. A deletion
+/// failure is loud but non-fatal — the TTL expiry is the backstop.
+pub(crate) fn replace_older_auto_generations(
+    root: &Path,
+    new: &QuarantineManifest,
+) -> Vec<String> {
+    let mut replaced = Vec::new();
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(e) => {
+            eprintln!(
+                "quarantine: cannot scan {} for older generations: {e} — keeping everything",
+                root.display()
+            );
+            return replaced;
+        }
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name == new.name {
+            continue;
+        }
+        let entry_dir = entry.path();
+        let Some(manifest) = read_manifest(&entry_dir) else {
+            continue;
+        };
+        if !manifest.auto || manifest.origin != new.origin {
+            continue;
+        }
+        // Containment + symlink refusal, same as purge/restore.
+        let dir = match resolve_entry_dir(root, &name) {
+            Ok(dir) => dir,
+            Err(e) => {
+                eprintln!("quarantine: skipping unresolvable older generation {name}: {e:#}");
+                continue;
+            }
+        };
+        match fs::remove_dir_all(&dir) {
+            Ok(()) => replaced.push(name),
+            Err(e) => eprintln!(
+                "quarantine: could not remove older auto generation {name}: {e} — TTL expiry remains the backstop"
+            ),
+        }
+    }
+    replaced.sort();
+    replaced
 }
 
 /// Why a fail-safe pin is reported to the operator.
