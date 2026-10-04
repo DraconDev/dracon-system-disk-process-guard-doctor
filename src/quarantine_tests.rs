@@ -833,7 +833,10 @@ fn auto_move_records_auto_provenance() {
     assert!(manifest.auto);
     // Provenance survives a serialize round-trip through the manifest file.
     let text = fs::read_to_string(qdir.join(&manifest.name).join(".quarantine.json")).unwrap();
-    assert!(text.contains("\"auto\": true"), "manifest must carry auto flag");
+    assert!(
+        text.contains("\"auto\": true"),
+        "manifest must carry auto flag"
+    );
     cleanup(&root);
 }
 
@@ -866,7 +869,10 @@ fn auto_move_keeps_an_older_manual_generation() {
     let manual = crate::quarantine_move(&src, &qdir, &[]).unwrap();
     let src = fixture_dir(&root);
     let second = auto_move(&src, &qdir);
-    assert!(qdir.join(&manual.name).exists(), "manual entry must survive");
+    assert!(
+        qdir.join(&manual.name).exists(),
+        "manual entry must survive"
+    );
     assert!(qdir.join(&second.name).exists());
     assert_eq!(entry_names(&qdir).len(), 2);
     cleanup(&root);
