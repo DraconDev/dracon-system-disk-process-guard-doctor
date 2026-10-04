@@ -27,6 +27,13 @@ pub(crate) struct QuarantineManifest {
     pub(crate) moved_at_unix: u64,
     pub(crate) bytes: u64,
     pub(crate) files: u64,
+    /// Provenance: true when the guard's action tier moved this entry
+    /// (`quarantine_first_remove`), false for a deliberate CLI `move`.
+    /// Missing (pre-flag manifests) deserializes to false: unknown
+    /// provenance fails closed to manual, so replace-on-re-quarantine
+    /// never deletes an entry it cannot prove is auto-created.
+    #[serde(default)]
+    pub(crate) auto: bool,
 }
 
 /// One listed entry (manifest may be missing for hand-placed dirs).
@@ -137,10 +144,27 @@ fn entry_dir_for(root: &Path, origin: &Path) -> PathBuf {
 
 /// Move `origin` into quarantine. Uses rename when possible (same filesystem),
 /// else copy + verify + remove. Refuses symlinks and protected paths.
+///
+/// This is the MANUAL entry point (CLI `move`): the manifest records
+/// `auto: false` and no replacement happens — deliberate snapshots
+/// accumulate and age out at the TTL.
 pub(crate) fn quarantine_move(
     origin: &Path,
     root: &Path,
     user_protected: &[String],
+) -> Result<QuarantineManifest> {
+    quarantine_move_inner(origin, root, user_protected, false)
+}
+
+/// The shared move implementation. `auto` records provenance in the
+/// manifest; replacement of older generations is NOT done here but by
+/// the auto caller (`quarantine_first_remove`), so the manual path can
+/// never trigger a delete no matter how it is invoked.
+fn quarantine_move_inner(
+    origin: &Path,
+    root: &Path,
+    user_protected: &[String],
+    auto: bool,
 ) -> Result<QuarantineManifest> {
     let meta = fs::symlink_metadata(origin)
         .map_err(|e| anyhow::anyhow!("cannot inspect {}: {}", origin.display(), e))?;
@@ -216,6 +240,7 @@ pub(crate) fn quarantine_move(
         moved_at_unix: now_unix(),
         bytes,
         files,
+        auto,
     };
     // Serialize before anything is unlinked: if the write below fails we
     // still have the bytes to report exactly where the data sits.
