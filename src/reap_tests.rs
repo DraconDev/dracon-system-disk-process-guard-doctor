@@ -805,3 +805,99 @@ fn elapsed_never_underflows_or_divides_by_zero() {
         "starttime 0 means it started at boot, so age is now - boot"
     );
 }
+
+// --- Pressure-gated orphan scan --------------------------------------------
+// The 24h auto-reap floor cannot catch a runaway whose owner just died
+// (2026-10-04: an 8G orphaned `bun test`, 10 min old, parent reparented
+// to systemd). Under memory pressure the guard may kill orphans with NO
+// age/CPU/state gates — but only when ALL of these hold: allowlisted
+// signature, parent is init/systemd (owner dead), no controlling
+// terminal (a disowned tmux job keeps its tty), not exempt.
+
+/// A hot young orphan: RUNNING, 1h of CPU, 10 min old — the exact shape
+/// the age-gated scan refuses and the pressure scan must catch.
+fn hot_orphan(fx: &Fixture, pid: i32) {
+    fx.fake_parent(9000, "systemd");
+    fx.proc_owned(
+        pid,
+        9000,
+        "bun",
+        &["bun", "test", "src/lib"],
+        'R',
+        0,
+        3600,
+        600,
+        8_388_608,
+    );
+}
+
+#[test]
+fn pressure_scan_finds_a_hot_young_orphan() {
+    let fx = Fixture::new("orphan-hot");
+    hot_orphan(&fx, 4242);
+    let found = fx.orphan_scan(&policy());
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].pid, 4242);
+    assert_eq!(found[0].signature, "bun test");
+}
+
+#[test]
+fn pressure_scan_keeps_processes_with_live_parents() {
+    let fx = Fixture::new("orphan-live-parent");
+    fx.fake_parent(9000, "pi");
+    fx.proc_owned(4242, 9000, "bun", &["bun", "test", "src/lib"], 'R', 0, 3600, 600, 1024);
+    assert!(fx.orphan_scan(&policy()).is_empty());
+}
+
+#[test]
+fn pressure_scan_keeps_processes_with_vanished_parents() {
+    let fx = Fixture::new("orphan-no-parent");
+    // No parent dir at all: the ppid is stale (exit-and-reuse race) or
+    // unreadable. Fail closed — an unprovable parent is not an orphan.
+    fx.proc_owned(4242, 9000, "bun", &["bun", "test", "src/lib"], 'R', 0, 3600, 600, 1024);
+    assert!(fx.orphan_scan(&policy()).is_empty());
+}
+
+#[test]
+fn pressure_scan_keeps_terminal_attached_processes() {
+    let fx = Fixture::new("orphan-tty");
+    fx.fake_parent(9000, "systemd");
+    // Reparented to systemd but still holding a tty: a disowned shell
+    // job, not an abandoned run — the tty is the operator's handle.
+    fx.proc_owned(4242, 9000, "bun", &["bun", "test", "src/lib"], 'S', 34816, 5, 600, 1024);
+    assert!(fx.orphan_scan(&policy()).is_empty());
+}
+
+#[test]
+fn pressure_scan_keeps_non_allowlisted_and_exempt_processes() {
+    let fx = Fixture::new("orphan-allowlist");
+    fx.fake_parent(9000, "systemd");
+    fx.proc_owned(4242, 9000, "sleep", &["sleep", "600"], 'S', 0, 5, 600, 1024);
+    assert!(fx.orphan_scan(&policy()).is_empty());
+    let mut exempt = policy();
+    exempt.exempt_names = vec!["bun test".to_string()];
+    let fx = Fixture::new("orphan-exempt");
+    fx.fake_parent(9000, "systemd");
+    fx.proc_owned(4242, 9000, "bun", &["bun", "test", "src/lib"], 'S', 0, 5, 600, 1024);
+    assert!(fx.orphan_scan(&exempt).is_empty());
+}
+
+#[test]
+fn pressure_scan_never_returns_reserved_or_own_pids() {
+    let fx = Fixture::new("orphan-reserved");
+    fx.fake_parent(9000, "systemd");
+    fx.proc_owned(1, 9000, "bun", &["bun", "test", "src/lib"], 'S', 0, 5, 600, 1024);
+    let me = std::process::id() as i32;
+    fx.proc_owned(me, 9000, "bun", &["bun", "test", "src/lib"], 'S', 0, 5, 600, 1024);
+    assert!(fx.orphan_scan(&policy()).is_empty());
+}
+
+#[test]
+fn parent_comm_check_fails_closed() {
+    let fx = Fixture::new("orphan-comm");
+    assert!(!parent_comm_is_systemd(&fx.root, 9000));
+    fx.fake_parent(9000, "systemd");
+    assert!(parent_comm_is_systemd(&fx.root, 9000));
+    fx.fake_parent(9001, "bash");
+    assert!(!parent_comm_is_systemd(&fx.root, 9001));
+}
