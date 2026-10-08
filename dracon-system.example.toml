@@ -293,7 +293,11 @@ clean_tmp = false
 # see reap.rs). A process is listed only when ALL hold: sleeping, no
 # controlling terminal, lifetime CPU under the ceiling, older than the
 # idle floor, command line matches a signature, not in
-# process_exempt_names above.
+# process_exempt_names above. NOTE (audit F119, 2026-10-08): in the REAPER
+# an exempt entry matches as a COMMAND-LINE SUBSTRING (`sleep 5 --flag
+# plasmashell` is exempt), while the same list in the renice path matches
+# the exact process name. Use bare process names here, not argument
+# fragments, unless the substring breadth is deliberate.
 # reap_report_min_idle_hours = 24   # hours old before listing (0 lists everything idle)
 # reap_report_max_cpu_seconds = 60  # lifetime CPU ceiling for "idle" (0 lists only never-ran)
 # reap_report_signatures = "eve web,vite,playwright,chromium,bun run,bun test,npm run test,.mjs,litestream,stub-auth-api"
