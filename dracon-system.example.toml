@@ -298,7 +298,7 @@ clean_tmp = false
 # plasmashell` is exempt), while the same list in the renice path matches
 # the exact process name. Use bare process names here, not argument
 # fragments, unless the substring breadth is deliberate.
-# reap_report_min_idle_hours = 24   # hours old before listing (0 lists everything idle)
+# reap_report_min_idle_hours = 24   # hours old before listing (0 lists everything idle; when reap_stale_dev_servers is ON the destructive path floors this at 1, so a kill always has an age floor)
 # reap_report_max_cpu_seconds = 60  # lifetime CPU ceiling for "idle" (0 lists only never-ran)
 # reap_report_signatures = "eve web,vite,playwright,chromium,bun run,bun test,npm run test,.mjs,litestream,stub-auth-api"
 # DESTRUCTIVE opt-in (default false): re-verify every listed candidate live
