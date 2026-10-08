@@ -579,7 +579,7 @@ pub(crate) fn reap_pressure_orphans(
     )
 }
 
-fn reap_verified_candidates(
+pub(crate) fn reap_verified_candidates(
     proc_root: &Path,
     policy: &ReapPolicy,
     candidates: &[ReapCandidate],
