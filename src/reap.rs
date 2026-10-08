@@ -290,8 +290,7 @@ pub(crate) const PROC_TICKS_PER_SEC: u64 = 100;
 /// How long SIGTERM gets to work before the SIGKILL escalation: 50 polls
 /// 100ms apart. A dev server that traps TERM for cleanup finishes in
 /// milliseconds; five seconds is already generous.
-const TERM_GRACE_POLLS: u32 = 50;
-/// How long SIGKILL gets before the kill is declared failed: 20 polls
+const TERM_GRACE_POLLS: u32 = 50;/// How long SIGKILL gets before the kill is declared failed: 20 polls
 /// 100ms apart. Only uninterruptible sleep survives SIGKILL, and no
 /// amount of waiting fixes that -- the bound just keeps the pass moving.
 const KILL_GRACE_POLLS: u32 = 20;
@@ -576,7 +575,21 @@ fn reap_verified_candidates(
     log_tag: &str,
 ) -> Vec<ReapedProcess> {
     let mut out = Vec::with_capacity(candidates.len());
+    // ADDED 2026-10-08 (audit F120): the pass runs SERIALLY on a blocking
+    // thread and each kill can sleep up to ~7s in grace polls, so an
+    // unbounded pass over the 97-process population the design doc
+    // describes could hold the blocking pool ~11 minutes and starve every
+    // other blocking task (relocation, quarantine, process collection).
+    // Cap the pass: candidates past the budget are left for the next
+    // pass, which re-scans and re-verifies them anyway. The ~7s worst
+    // case of the one terminate in flight is the only permitted overshoot.
+    let pass_started = std::time::Instant::now();
+    let mut deferred = 0usize;
     for candidate in candidates {
+        if pass_started.elapsed() >= REAP_PASS_BUDGET {
+            deferred += 1;
+            continue;
+        }
         let verified = verify(proc_root, candidate, policy, ticks_per_sec);
         if !verified {
             eprintln!(
@@ -604,6 +617,12 @@ fn reap_verified_candidates(
             verified: true,
             outcome: Some(outcome),
         });
+    }
+    if deferred > 0 {
+        eprintln!(
+            "🛡️ {log_tag}: pass budget ({:?}) reached — {} candidate(s) deferred to the next pass (re-scanned and re-verified there)",
+            REAP_PASS_BUDGET, deferred
+        );
     }
     out
 }
