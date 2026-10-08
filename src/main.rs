@@ -8103,6 +8103,41 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
         ),
     ]);
 
+    // ADDED 2026-10-08 (audit F118): the reaper's audit trail must be
+    // visible to a human running `guard once` without `--json`. `reaped` /
+    // `pressure_reaped` were serialized to JSON and stderr only, so the
+    // operator saw zero evidence that processes were killed. Same class as
+    // the relocation/quarantine visibility fixes: a destructive action with
+    // no table row is an action nobody can review.
+    if !guard.reap_stale_dev_servers {
+        table.add_row(vec![
+            Cell::new(""),
+            Cell::new("Reap candidates"),
+            Cell::new(if report.reap_candidates.is_empty() {
+                "none".to_string()
+            } else {
+                format!(
+                    "{} (reap_stale_dev_servers is OFF — report only)",
+                    report.reap_candidates.len()
+                )
+            }),
+        ]);
+    }
+    if !report.reaped.is_empty() {
+        table.add_row(vec![
+            Cell::new("🪓"),
+            Cell::new("Reaped (stale servers)"),
+            Cell::new(summarize_reaped(&report.reaped)),
+        ]);
+    }
+    if !report.pressure_reaped.is_empty() {
+        table.add_row(vec![
+            Cell::new("🪓"),
+            Cell::new("Reaped (pressure orphans)"),
+            Cell::new(summarize_reaped(&report.pressure_reaped)),
+        ]);
+    }
+
     println!("{table}");
 
     // ── Process detail table ──
