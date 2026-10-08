@@ -290,7 +290,18 @@ pub(crate) const PROC_TICKS_PER_SEC: u64 = 100;
 /// How long SIGTERM gets to work before the SIGKILL escalation: 50 polls
 /// 100ms apart. A dev server that traps TERM for cleanup finishes in
 /// milliseconds; five seconds is already generous.
-const TERM_GRACE_POLLS: u32 = 50;/// How long SIGKILL gets before the kill is declared failed: 20 polls
+const TERM_GRACE_POLLS: u32 = 50;
+
+/// ADDED 2026-10-08 (audit F120): wall-clock budget for one reap pass on the
+/// blocking thread. The pass is serial and a single kill can consume ~7s of
+/// grace polls, so without a budget the pass duration is unbounded in the
+/// candidate count (a 97-candidate pass could hold the blocking pool for
+/// ~11 minutes). Past the budget, remaining candidates are deferred to the
+/// next pass, which re-scans and re-verifies them — nothing is skipped
+/// permanently, and the destructive certainty bar is unchanged.
+const REAP_PASS_BUDGET: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// How long SIGKILL gets before the kill is declared failed: 20 polls
 /// 100ms apart. Only uninterruptible sleep survives SIGKILL, and no
 /// amount of waiting fixes that -- the bound just keeps the pass moving.
 const KILL_GRACE_POLLS: u32 = 20;
