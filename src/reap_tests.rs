@@ -1131,3 +1131,49 @@ fn orphan_reverification_rejects_a_gained_terminal() {
     );
     assert!(!verify_orphan_for_reap(&fx.root, &cand, &policy(), TICKS));
 }
+
+// --- ADDED 2026-10-08 (audit F120): the pass budget -------------------------
+
+#[test]
+fn reap_budget_defers_candidates_past_the_budget() {
+    // A zero budget means every candidate is deferred without a verify or a
+    // signal: the pass must never overrun the blocking thread on a large
+    // population. Deferred candidates are still RECORDED (skipped, not
+    // signalled) so the operator's table and the journal both show them.
+    let fx = Fixture::new("reap-budget");
+    let a = scanned_candidate(&fx);
+    let b = scanned_candidate(&fx);
+    let reaped = reap_verified_candidates(
+        &fx.root,
+        &policy(),
+        &[a, b],
+        TICKS,
+        verify_candidate_for_reap,
+        "reap",
+        std::time::Duration::ZERO,
+    );
+    assert_eq!(reaped.len(), 2, "deferred candidates must still be recorded");
+    for r in &reaped {
+        assert!(!r.verified, "a deferred candidate must never be signalled");
+        assert_eq!(r.outcome, None);
+    }
+}
+
+#[test]
+fn reap_budget_still_processes_a_candidate_within_the_budget() {
+    // The budget must not disable the pass when time remains: a generous
+    // budget behaves exactly like the pre-F120 path (one verified kill).
+    let fx = Fixture::new("reap-budget-room");
+    let cand = scanned_candidate(&fx);
+    let reaped = reap_verified_candidates(
+        &fx.root,
+        &policy(),
+        &[cand],
+        TICKS,
+        verify_candidate_for_reap,
+        "reap",
+        std::time::Duration::from_secs(60),
+    );
+    assert_eq!(reaped.len(), 1);
+    assert!(reaped[0].verified);
+}
