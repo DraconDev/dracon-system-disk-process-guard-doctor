@@ -522,12 +522,6 @@ pub(crate) struct GuardReport {
     reaped: Vec<ReapedProcess>,
     /// ADDED 2026-08-10 (v0.112.35): sustained disk fill rate (GiB/hour).
     disk_fill_gbph: Option<f64>,
-    /// What the `reap_orphans_on_pressure` pass did this cycle (empty
-    /// unless the opt-in is set and pressure is warn/critical): kills
-    /// AND skipped re-verifies, same record shape as `reaped`. Hoisted
-    /// out of `memory` onto the report so both reaper trails share one
-    /// place (audit F118, 2026-10-08).
-    pub(crate) pressure_reaped: Vec<ReapedProcess>,
 }
 
 /// Memory/swap pressure snapshot for the guard report (JSON + table).
