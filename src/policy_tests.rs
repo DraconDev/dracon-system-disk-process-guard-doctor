@@ -327,6 +327,47 @@ fn sentinel_zero_knobs_are_never_clamped() {
     assert_eq!(sentinel.rust_target_action_min_age_days, 0);
 }
 
+/// ADDED 2026-10-08 (audit F117): the reap_report_* 0s stay sentinels
+/// for the REPORT, but the DESTRUCTIVE reaper shares the same policy object
+/// — a 0 age floor there makes every idle terminal-less allowlisted process
+/// a kill candidate. With the destructive opt-in set, normalization must
+/// floor min_idle_hours at 1 and record the adjustment.
+#[test]
+fn destructive_reap_opt_in_floors_the_idle_age_gate() {
+    let mut policy = GuardPolicy {
+        reap_stale_dev_servers: true,
+        reap_report_min_idle_hours: 0,
+        ..Default::default()
+    };
+    let adjusted = normalize_guard_policy(&mut policy);
+    assert_eq!(
+        policy.reap_report_min_idle_hours, 1,
+        "the destructive reaper must never run without an age floor (adjusted: {adjusted:?})"
+    );
+    assert!(
+        adjusted.contains("reap_report_min_idle_hours"),
+        "the adjustment must be reported so SIGHUP logging names the knob: {adjusted:?}"
+    );
+}
+
+/// The flip side of the floor above: with the destructive opt-in OFF, 0 is
+/// still a legal report-only sentinel and must survive normalization
+/// untouched (pinned next to the destructive case so the pair stays honest).
+#[test]
+fn report_only_reap_keeps_the_zero_idle_sentinel() {
+    let mut policy = GuardPolicy {
+        reap_stale_dev_servers: false,
+        reap_report_min_idle_hours: 0,
+        ..Default::default()
+    };
+    let adjusted = normalize_guard_policy(&mut policy);
+    assert_eq!(
+        policy.reap_report_min_idle_hours, 0,
+        "the report-only path must keep its 0 sentinel (adjusted: {adjusted:?})"
+    );
+    assert!(!adjusted.contains("reap_report_min_idle_hours"));
+}
+
 /// The sentinel list is a contract, not documentation: if a knob is added to
 /// it, the list and the policy struct must still agree, and if a listed knob
 /// is removed from the struct the list must not drift silently.
