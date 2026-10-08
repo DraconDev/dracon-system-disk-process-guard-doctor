@@ -345,7 +345,7 @@ fn destructive_reap_opt_in_floors_the_idle_age_gate() {
         "the destructive reaper must never run without an age floor (adjusted: {adjusted:?})"
     );
     assert!(
-        adjusted.contains("reap_report_min_idle_hours"),
+        adjusted.contains(&"reap_report_min_idle_hours"),
         "the adjustment must be reported so SIGHUP logging names the knob: {adjusted:?}"
     );
 }
@@ -365,7 +365,7 @@ fn report_only_reap_keeps_the_zero_idle_sentinel() {
         policy.reap_report_min_idle_hours, 0,
         "the report-only path must keep its 0 sentinel (adjusted: {adjusted:?})"
     );
-    assert!(!adjusted.contains("reap_report_min_idle_hours"));
+    assert!(!adjusted.contains(&"reap_report_min_idle_hours"));
 }
 
 /// The sentinel list is a contract, not documentation: if a knob is added to
