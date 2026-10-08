@@ -9,12 +9,13 @@
 //! This module finds them and *reports* them. By default the report is
 //! the whole story: a diagnostic that can end a process is a different
 //! tool with a different blast radius, and the guard never ends anything
-//! unless the operator explicitly opts in with `reap_stale_dev_servers`.
-//! With the opt-in set, the same candidates are re-verified live at kill
-//! time (every scan criterion plus a starttime check against PID reuse)
-//! and then SIGTERMed, escalating to SIGKILL. The output is a worklist a
-//! human decides on -- or, under the opt-in, the audit trail of what the
-//! guard decided.
+//! unless the operator explicitly opts in with `reap_stale_dev_servers`
+//! (age-gated) or `reap_orphans_on_pressure` (memory-pressure orphanhood
+//! proof, no age/CPU/state gates). With an opt-in set, the same candidates
+//! are re-verified live at kill time (every scan criterion plus a
+//! starttime check against PID reuse) and then SIGTERMed, escalating to
+//! SIGKILL. The output is a worklist a human decides on -- or, under an
+//! opt-in, the audit trail of what the guard decided.
 //!
 //! Every criterion below is a precondition for reporting, and each one
 //! exists to rule out a live interactive session:
