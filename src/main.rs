@@ -8167,11 +8167,11 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
             Cell::new(summarize_reaped(&report.reaped)),
         ]);
     }
-    if !report.pressure_reaped.is_empty() {
+    if !report.memory.pressure_reaped.is_empty() {
         table.add_row(vec![
             Cell::new("🪓"),
             Cell::new("Reaped (pressure orphans)"),
-            Cell::new(summarize_reaped(&report.pressure_reaped)),
+            Cell::new(summarize_reaped(&report.memory.pressure_reaped)),
         ]);
     }
 
