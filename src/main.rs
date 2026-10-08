@@ -7858,6 +7858,43 @@ fn validate_storage_cleanup_path(path: &Path, user_protected: &[String]) -> Resu
     check_safe_to_delete_guard(path, user_protected)
 }
 
+/// One-line audit summary for the `guard once` table (audit F118,
+/// 2026-10-08). Without this, the kills existed only in JSON/stderr.
+/// Names each PID with its matched signature and outcome, capped at 5
+/// entries like the candidate rows above.
+fn summarize_reaped(reaped: &[ReapedProcess]) -> String {
+    let detail = |r: &ReapedProcess| -> String {
+        let outcome = match &r.outcome {
+            Some(TerminateOutcome::Signalled { escalated_to_sigkill }) => {
+                if *escalated_to_sigkill {
+                    "SIGTERM→SIGKILL"
+                } else {
+                    "SIGTERM"
+                }
+            }
+            Some(TerminateOutcome::AlreadyGone) => "already gone",
+            Some(TerminateOutcome::Refused { reason }) => reason,
+            Some(TerminateOutcome::Failed { reason }) => reason,
+            None => "skipped (re-verify)",
+        };
+        format!("pid={} {} [{}]", r.pid, r.signature, outcome)
+    };
+    if reaped.len() <= 5 {
+        format!(
+            "{}: {}",
+            reaped.len(),
+            reaped.iter().map(detail).collect::<Vec<_>>().join(", ")
+        )
+    } else {
+        format!(
+            "{}: {}, …and {} more",
+            reaped.len(),
+            reaped[..5].iter().map(detail).collect::<Vec<_>>().join(", "),
+            reaped.len() - 5
+        )
+    }
+}
+
 async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
     use comfy_table::{presets::UTF8_FULL_CONDENSED, Cell, ContentArrangement, Table};
 
