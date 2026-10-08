@@ -1370,7 +1370,19 @@ pub(crate) fn normalize_guard_policy_with_home(
     floor!(relocate_min_size_mb, 1);
     // relocate_min_age_days: 0 is a sentinel (fresh dirs are candidates).
     floor!(relocate_max_moves_per_pass, 1);
-    // reap_report_*: both 0s are sentinels, no clamp.
+    // reap_report_*: both 0s are sentinels for the REPORT — no clamp
+    // (0 means "list everything idle", harmless in a worklist).
+    //
+    // BUT the same policy object feeds the DESTRUCTIVE reaper
+    // (`reap_stale_dev_servers`), whose certainty bar cannot include
+    // "no age floor": with min_idle_hours = 0 every idle, terminal-less,
+    // allowlisted process is a kill candidate the moment it sleeps
+    // (audit F117, 2026-10-08). Floor only when the destructive opt-in is
+    // set, so the report-only contract keeps its sentinel while the kill
+    // path always has at least the one-hour default floor.
+    if policy.reap_stale_dev_servers {
+        floor!(reap_report_min_idle_hours, 1);
+    }
 
     // --- empty string fallbacks ------------------------------------------
     if policy.sync_freeze_marker.trim().is_empty() {
