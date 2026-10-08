@@ -7875,7 +7875,11 @@ fn summarize_reaped(reaped: &[ReapedProcess]) -> String {
             Some(TerminateOutcome::AlreadyGone) => "already gone",
             Some(TerminateOutcome::Refused { reason }) => reason,
             Some(TerminateOutcome::Failed { reason }) => reason,
-            None => "skipped (re-verify)",
+            // Covers both skip reasons with outcome=None: the candidate no
+            // longer verified at kill time, or the pass budget deferred it
+            // to a later pass (F120). Neither was acted on; the stderr
+            // journal distinguishes the reason.
+            None => "skipped",
         };
         format!("pid={} {} [{}]", r.pid, r.signature, outcome)
     };
