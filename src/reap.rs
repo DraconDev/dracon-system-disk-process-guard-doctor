@@ -506,6 +506,7 @@ pub(crate) fn auto_reap_stale_servers(
         ticks_per_sec,
         verify_candidate_for_reap,
         "reap",
+        REAP_PASS_BUDGET,
     )
 }
 
@@ -574,6 +575,7 @@ pub(crate) fn reap_pressure_orphans(
         ticks_per_sec,
         verify_orphan_for_reap,
         "pressure-reap",
+        REAP_PASS_BUDGET,
     )
 }
 
@@ -584,6 +586,7 @@ fn reap_verified_candidates(
     ticks_per_sec: u64,
     verify: fn(&Path, &ReapCandidate, &ReapPolicy, u64) -> bool,
     log_tag: &str,
+    budget: std::time::Duration,
 ) -> Vec<ReapedProcess> {
     let mut out = Vec::with_capacity(candidates.len());
     // ADDED 2026-10-08 (audit F120): the pass runs SERIALLY on a blocking
@@ -594,10 +597,26 @@ fn reap_verified_candidates(
     // Cap the pass: candidates past the budget are left for the next
     // pass, which re-scans and re-verifies them anyway. The ~7s worst
     // case of the one terminate in flight is the only permitted overshoot.
+    // `budget` is a parameter (not the const directly) so the deferral
+    // path is testable in milliseconds instead of a real minute.
     let pass_started = std::time::Instant::now();
     let mut deferred = 0usize;
     for candidate in candidates {
-        if pass_started.elapsed() >= REAP_PASS_BUDGET {
+        if pass_started.elapsed() >= budget {
+            // Recorded, not silently dropped: the operator's `guard once`
+            // table shows these as skipped entries, and the eprintln says
+            // why. They were NOT acted on and NOT re-verified.
+            eprintln!(
+                "🛡️ {log_tag}: pid {} ({}) deferred -- pass budget reached, next pass re-scans it",
+                candidate.pid, candidate.comm,
+            );
+            out.push(ReapedProcess {
+                pid: candidate.pid,
+                comm: candidate.comm.clone(),
+                signature: candidate.signature.clone(),
+                verified: false,
+                outcome: None,
+            });
             deferred += 1;
             continue;
         }
