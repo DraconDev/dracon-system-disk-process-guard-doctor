@@ -3364,44 +3364,53 @@ async fn proactive_cleanup_rust_targets(
 /// column logic is testable, and made position-independent. The old
 /// `lines().nth(1)` + `split_whitespace().nth(4)` assumed the data row is
 /// line 1 and IUse% is its 5th field; `df` wraps a too-long Filesystem
-/// column onto its own line, so both assumptions break. Fields are indexed
-/// from the END because `Mounted on` may itself contain spaces.
+/// column onto its own line, so the data row moves to line 3 with only 5
+/// fields, and both assumptions break.
+///
+/// Anchor on the only unambiguous token in the row: the `NN%` value, with
+/// the three integer fields immediately before it. That is stable whether
+/// the Filesystem column wrapped (row has 5 fields) or the `Mounted on`
+/// value itself contains spaces (row has 7+), neither of which a fixed
+/// index or a pure end-index can express. The header row cannot match
+/// because `Inodes`/`IUsed`/`IFree` are not integers.
 fn parse_inode_use_percent(output: &str) -> Option<u8> {
-    output.lines().find_map(|line| {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        (parts.len() >= 6)
-            .then(|| parts.get(parts.len() - 2).copied())
-            .flatten()
-            .and_then(|v| v.trim_end_matches('%').parse::<u8>().ok())
-    })
+    output
+        .lines()
+        .find_map(|line| inode_row_fields(line).map(|(_, pct)| pct))
 }
 
 /// Parse the (total, used, free) inode counts out of `df -Pi` output.
 ///
-/// FIXED 2026-10-09 (audit F132): same position-independence fix as
-/// `parse_inode_use_percent`, plus an explicit error instead of the old
-/// `.unwrap_or(0)` that turned any layout change into a silent
-/// `(0, 0, 0)` — and therefore into "0% inodes used, forever".
+/// FIXED 2026-10-09 (audit F132): same anchor as `parse_inode_use_percent`,
+/// plus an explicit Err instead of the old `.unwrap_or(0)` that turned any
+/// layout change into a silent `(0, 0, 0)` — and therefore into
+/// "0% inodes used, forever" with no error anywhere.
 fn parse_inode_info(output: &str) -> Result<(u64, u64, u64)> {
-    let line = output
+    output
         .lines()
-        .find(|line| line.split_whitespace().count() >= 6)
-        .ok_or_else(|| anyhow::anyhow!("no data line"))?;
+        .find_map(inode_row_fields)
+        .ok_or_else(|| anyhow::anyhow!("no inode data line in df -Pi output"))
+}
+
+/// Locate the inode row's four numeric fields in one `df -Pi` line:
+/// `(total, used, free, iuse_percent)`. Returns `None` when the line is
+/// the header or otherwise not an inode data row.
+fn inode_row_fields(line: &str) -> Option<(u64, u64, u64, u8)> {
     let parts: Vec<&str> = line.split_whitespace().collect();
-    let tail = parts.len();
-    let total = parts
-        .get(tail - 5)
-        .and_then(|v| v.parse().ok())
-        .ok_or_else(|| anyhow::anyhow!("unparseable inode total"))?;
-    let used = parts
-        .get(tail - 4)
-        .and_then(|v| v.parse().ok())
-        .ok_or_else(|| anyhow::anyhow!("unparseable inode used"))?;
-    let free = parts
-        .get(tail - 3)
-        .and_then(|v| v.parse().ok())
-        .ok_or_else(|| anyhow::anyhow!("unparseable inode free"))?;
-    Ok((total, used, free))
+    let pct_idx = parts.iter().position(|p| {
+        p.len() > 1
+            && p.ends_with('%')
+            && p[..p.len() - 1].chars().all(|c| c.is_ascii_digit())
+    })?;
+    if pct_idx < 3 {
+        return None;
+    }
+    let nums = &parts[pct_idx - 3..pct_idx];
+    let total = nums[0].parse::<u64>().ok()?;
+    let used = nums[1].parse::<u64>().ok()?;
+    let free = nums[2].parse::<u64>().ok()?;
+    let pct = parts[pct_idx].trim_end_matches('%').parse::<u8>().ok()?;
+    Some((total, used, free, pct))
 }
 
 async fn inode_use_percent(path: &str) -> Result<u8> {
