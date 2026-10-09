@@ -378,8 +378,8 @@ pub(crate) enum TerminateOutcome {
 }
 
 /// One candidate the auto-reap pass considered, with what it did about
-/// it. `outcome` is `None` when re-verification failed: recorded, not
-/// silently dropped, but nothing was signalled.
+/// it. `outcome` is `None` when re-verification failed or the pass was
+/// cut short: recorded, not silently dropped, but nothing was signalled.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ReapedProcess {
     pub(crate) pid: i32,
@@ -387,6 +387,28 @@ pub(crate) struct ReapedProcess {
     pub(crate) signature: String,
     pub(crate) verified: bool,
     pub(crate) outcome: Option<TerminateOutcome>,
+    /// FIXED 2026-10-09 (audit F124): before this, a budget-deferred
+    /// candidate and a candidate that no longer verified were
+    /// byte-identical records (`verified: false`, `outcome: None`), so
+    /// the JSON/table trail could not tell "deferred, re-scanned next
+    /// pass" from "permanently dropped" — and a PID that WAS signalled
+    /// in a later pass had no completed row naming it. Additive field:
+    /// `verified`/`outcome` keep their meaning and existing consumers.
+    pub(crate) disposition: ReapDisposition,
+}
+
+/// Why a candidate ended the pass the way it did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ReapDisposition {
+    /// A signal was sent, or the process was already gone.
+    Signalled,
+    /// The pass budget was reached before this candidate was reached; it
+    /// is re-scanned and re-verified on the next pass.
+    Deferred,
+    /// The candidate was re-verified at kill time and no longer met the
+    /// gate, so nothing was signalled and nothing further is planned.
+    NotVerified,
 }
 
 /// True when `pid` names a live process. EPERM means the process exists
@@ -617,6 +639,7 @@ pub(crate) fn reap_verified_candidates(
                 signature: candidate.signature.clone(),
                 verified: false,
                 outcome: None,
+                disposition: ReapDisposition::Deferred,
             });
             deferred += 1;
             continue;
@@ -633,6 +656,7 @@ pub(crate) fn reap_verified_candidates(
                 signature: candidate.signature.clone(),
                 verified: false,
                 outcome: None,
+                disposition: ReapDisposition::NotVerified,
             });
             continue;
         }
@@ -647,6 +671,7 @@ pub(crate) fn reap_verified_candidates(
             signature: candidate.signature.clone(),
             verified: true,
             outcome: Some(outcome),
+            disposition: ReapDisposition::Signalled,
         });
     }
     if deferred > 0 {
