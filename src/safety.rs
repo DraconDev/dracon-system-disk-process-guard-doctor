@@ -417,9 +417,17 @@ pub(crate) fn uncovered_storage_roots(
             PathBuf::from(crate::default_sync_freeze_marker()),
         ));
     } else {
-        // Mirrors sync_freeze_marker_path: no tilde expansion there,
-        // so none here — a `~` value would be written literally.
-        roots.push(("sync_freeze_marker", PathBuf::from(marker)));
+        // FIXED 2026-10-09 (audit F130): this arm used to mirror the
+        // write site's (missing) expansion verbatim — "no tilde
+        // expansion there, so none here — a `~` value would be written
+        // literally". That made the unit-hardening check certify the
+        // SAME wrong path the daemon would have written. Both sides now
+        // resolve through `resolve_policy_path`, so the check tests the
+        // path actually written.
+        roots.push((
+            "sync_freeze_marker",
+            crate::resolve_policy_path(marker),
+        ));
     }
     roots
         .into_iter()
