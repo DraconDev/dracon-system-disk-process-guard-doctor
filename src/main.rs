@@ -3360,7 +3360,7 @@ async fn proactive_cleanup_rust_targets(
 
 /// Parse the IUse% column out of `df -Pi` output.
 ///
-/// FIXED 2026-10-09 (audit F132): extracted from `inode_use_percent` so the
+/// FIXED 2026-10-09 (audit F131): extracted from `inode_use_percent` so the
 /// column logic is testable, and made position-independent. The old
 /// `lines().nth(1)` + `split_whitespace().nth(4)` assumed the data row is
 /// line 1 and IUse% is its 5th field; `df` wraps a too-long Filesystem
@@ -3381,7 +3381,7 @@ fn parse_inode_use_percent(output: &str) -> Option<u8> {
 
 /// Parse the (total, used, free) inode counts out of `df -Pi` output.
 ///
-/// FIXED 2026-10-09 (audit F132): same anchor as `parse_inode_use_percent`,
+/// FIXED 2026-10-09 (audit F131): same anchor as `parse_inode_use_percent`,
 /// plus an explicit Err instead of the old `.unwrap_or(0)` that turned any
 /// layout change into a silent `(0, 0, 0)` — and therefore into
 /// "0% inodes used, forever" with no error anywhere.
