@@ -7862,24 +7862,33 @@ fn validate_storage_cleanup_path(path: &Path, user_protected: &[String]) -> Resu
 /// 2026-10-08). Without this, the kills existed only in JSON/stderr.
 /// Names each PID with its matched signature and outcome, capped at 5
 /// entries like the candidate rows above.
+///
+/// REWORKED 2026-10-09 (audit F124): the `outcome: None` arm used to
+/// render "skipped" for BOTH skip reasons. A budget-deferred candidate is
+/// re-scanned next pass and may still be signalled, which is materially
+/// different from a candidate that no longer verifies, so the table now
+/// names the disposition instead of collapsing the two.
 fn summarize_reaped(reaped: &[ReapedProcess]) -> String {
     let detail = |r: &ReapedProcess| -> String {
-        let outcome = match &r.outcome {
-            Some(TerminateOutcome::Signalled { escalated_to_sigkill }) => {
-                if *escalated_to_sigkill {
+        let outcome = match (&r.outcome, r.disposition) {
+            (
+                Some(TerminateOutcome::Signalled {
+                    escalated_to_sigkill,
+                }),
+                _,
+            ) => {
+                if escalated_to_sigkill {
                     "SIGTERM→SIGKILL"
                 } else {
                     "SIGTERM"
                 }
             }
-            Some(TerminateOutcome::AlreadyGone) => "already gone",
-            Some(TerminateOutcome::Refused { reason }) => reason,
-            Some(TerminateOutcome::Failed { reason }) => reason,
-            // Covers both skip reasons with outcome=None: the candidate no
-            // longer verified at kill time, or the pass budget deferred it
-            // to a later pass (F120). Neither was acted on; the stderr
-            // journal distinguishes the reason.
-            None => "skipped",
+            (Some(TerminateOutcome::AlreadyGone), _) => "already gone",
+            (Some(TerminateOutcome::Refused { reason }), _) => reason,
+            (Some(TerminateOutcome::Failed { reason }), _) => reason,
+            (None, ReapDisposition::Deferred) => "deferred to next pass",
+            (None, ReapDisposition::NotVerified) => "no longer verifies",
+            (None, ReapDisposition::Signalled) => "skipped",
         };
         format!("pid={} {} [{}]", r.pid, r.signature, outcome)
     };
