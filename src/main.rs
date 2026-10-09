@@ -3358,62 +3358,36 @@ async fn proactive_cleanup_rust_targets(
     Ok(result)
 }
 
-async fn inode_use_percent(path: &str) -> Result<u8> {
-    let out = Command::new("df").args(["-Pi", path]).output().await?;
-
-    if !out.status.success() {
-        return Err(anyhow::anyhow!("df -i command failed"));
-    }
-
-    let text = String::from_utf8_lossy(&out.stdout);
-    // Parse: Filesystem Inodes IUsed IFree IUse% Mounted on
-    // FIXED 2026-10-09 (audit F132): `lines().nth(1)` assumed the data
-    // row is line index 1 and `nth(4)` assumed its 5th whitespace field
-    // is IUse%. `df` wraps a too-long Filesystem column onto a second
-    // line, so the data row can start later and the field index can be
-    // wrong. Pick the first line that actually has the 6 inode columns
-    // instead of assuming a fixed offset, and fail loudly rather than
-    // guessing when there is none.
-    text.lines()
-        .find_map(|line| {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            // Index from the END: `Mounted on` may itself contain spaces,
-            // so a fixed 6-field requirement would reject a valid row.
-            (parts.len() >= 6)
-                .then(|| parts.get(parts.len() - 2).copied())
-                .flatten()
-        })
-        .and_then(|v| v.trim_end_matches('%').parse::<u8>().ok())
-        .ok_or_else(|| anyhow::anyhow!("failed parsing df -i output"))
+/// Parse the IUse% column out of `df -Pi` output.
+///
+/// FIXED 2026-10-09 (audit F132): extracted from `inode_use_percent` so the
+/// column logic is testable, and made position-independent. The old
+/// `lines().nth(1)` + `split_whitespace().nth(4)` assumed the data row is
+/// line 1 and IUse% is its 5th field; `df` wraps a too-long Filesystem
+/// column onto its own line, so both assumptions break. Fields are indexed
+/// from the END because `Mounted on` may itself contain spaces.
+fn parse_inode_use_percent(output: &str) -> Option<u8> {
+    output.lines().find_map(|line| {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        (parts.len() >= 6)
+            .then(|| parts.get(parts.len() - 2).copied())
+            .flatten()
+            .and_then(|v| v.trim_end_matches('%').parse::<u8>().ok())
+    })
 }
 
-/// Get inode info for the configured filesystem.
-async fn get_inode_info(path: &str) -> Result<(u64, u64, u64)> {
-    let out = Command::new("df").args(["-Pi", path]).output().await?;
-
-    if !out.status.success() {
-        return Err(anyhow::anyhow!("df -i command failed"));
-    }
-
-    let text = String::from_utf8_lossy(&out.stdout);
-    // Parse: Filesystem Inodes IUsed IFree IUse% Mounted on
-    // FIXED 2026-10-09 (audit F132): this read `lines().nth(1)` and then
-    // `parts.get(1..3).unwrap_or(0)` with NO length validation, so any
-    // layout change — a wrapped `Filesystem` column, an extra header
-    // line, a multi-line device name — produced `(0, 0, 0)`, i.e. the
-    // inode monitor reported 0% used forever with no error at all.
-    // `parse_df_details` (above) already validates `parts.len() >= 6`;
-    // the inode pair now does the same, and an unparseable row is an
-    // Err rather than a silent zero.
-    let line = text
+/// Parse the (total, used, free) inode counts out of `df -Pi` output.
+///
+/// FIXED 2026-10-09 (audit F132): same position-independence fix as
+/// `parse_inode_use_percent`, plus an explicit error instead of the old
+/// `.unwrap_or(0)` that turned any layout change into a silent
+/// `(0, 0, 0)` — and therefore into "0% inodes used, forever".
+fn parse_inode_info(output: &str) -> Result<(u64, u64, u64)> {
+    let line = output
         .lines()
         .find(|line| line.split_whitespace().count() >= 6)
         .ok_or_else(|| anyhow::anyhow!("no data line"))?;
     let parts: Vec<&str> = line.split_whitespace().collect();
-
-    // Index from the END so a `Mounted on` value containing spaces still
-    // resolves: Inodes/IUsed/IFree are the three fields before IUse%,
-    // which is the field before the mount point.
     let tail = parts.len();
     let total = parts
         .get(tail - 5)
@@ -3427,8 +3401,30 @@ async fn get_inode_info(path: &str) -> Result<(u64, u64, u64)> {
         .get(tail - 3)
         .and_then(|v| v.parse().ok())
         .ok_or_else(|| anyhow::anyhow!("unparseable inode free"))?;
-
     Ok((total, used, free))
+}
+
+async fn inode_use_percent(path: &str) -> Result<u8> {
+    let out = Command::new("df").args(["-Pi", path]).output().await?;
+
+    if !out.status.success() {
+        return Err(anyhow::anyhow!("df -i command failed"));
+    }
+
+    let text = String::from_utf8_lossy(&out.stdout);
+    parse_inode_use_percent(&text).ok_or_else(|| anyhow::anyhow!("failed parsing df -i output"))
+}
+
+/// Get inode info for the configured filesystem.
+async fn get_inode_info(path: &str) -> Result<(u64, u64, u64)> {
+    let out = Command::new("df").args(["-Pi", path]).output().await?;
+
+    if !out.status.success() {
+        return Err(anyhow::anyhow!("df -i command failed"));
+    }
+
+    let text = String::from_utf8_lossy(&out.stdout);
+    parse_inode_info(&text)
 }
 
 /// Clean Docker resources
