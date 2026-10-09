@@ -3377,7 +3377,11 @@ async fn inode_use_percent(path: &str) -> Result<u8> {
     text.lines()
         .find_map(|line| {
             let parts: Vec<&str> = line.split_whitespace().collect();
-            (parts.len() == 6).then(|| parts.get(4).copied()).flatten()
+            // Index from the END: `Mounted on` may itself contain spaces,
+            // so a fixed 6-field requirement would reject a valid row.
+            (parts.len() >= 6)
+                .then(|| parts.get(parts.len() - 2).copied())
+                .flatten()
         })
         .and_then(|v| v.trim_end_matches('%').parse::<u8>().ok())
         .ok_or_else(|| anyhow::anyhow!("failed parsing df -i output"))
@@ -3403,20 +3407,24 @@ async fn get_inode_info(path: &str) -> Result<(u64, u64, u64)> {
     // Err rather than a silent zero.
     let line = text
         .lines()
-        .find(|line| line.split_whitespace().count() == 6)
+        .find(|line| line.split_whitespace().count() >= 6)
         .ok_or_else(|| anyhow::anyhow!("no data line"))?;
     let parts: Vec<&str> = line.split_whitespace().collect();
 
+    // Index from the END so a `Mounted on` value containing spaces still
+    // resolves: Inodes/IUsed/IFree are the three fields before IUse%,
+    // which is the field before the mount point.
+    let tail = parts.len();
     let total = parts
-        .get(1)
+        .get(tail - 5)
         .and_then(|v| v.parse().ok())
         .ok_or_else(|| anyhow::anyhow!("unparseable inode total"))?;
     let used = parts
-        .get(2)
+        .get(tail - 4)
         .and_then(|v| v.parse().ok())
         .ok_or_else(|| anyhow::anyhow!("unparseable inode used"))?;
     let free = parts
-        .get(3)
+        .get(tail - 3)
         .and_then(|v| v.parse().ok())
         .ok_or_else(|| anyhow::anyhow!("unparseable inode free"))?;
 
