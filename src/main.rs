@@ -3376,7 +3376,7 @@ async fn proactive_cleanup_rust_targets(
 fn parse_inode_use_percent(output: &str) -> Option<u8> {
     output
         .lines()
-        .find_map(|line| inode_row_fields(line).map(|(_, pct)| pct))
+        .find_map(|line| inode_row_fields(line).map(|(_, _, _, pct)| pct))
 }
 
 /// Parse the (total, used, free) inode counts out of `df -Pi` output.
@@ -3388,7 +3388,9 @@ fn parse_inode_use_percent(output: &str) -> Option<u8> {
 fn parse_inode_info(output: &str) -> Result<(u64, u64, u64)> {
     output
         .lines()
-        .find_map(inode_row_fields)
+        .find_map(|line| {
+            inode_row_fields(line).map(|(total, used, free, _)| (total, used, free))
+        })
         .ok_or_else(|| anyhow::anyhow!("no inode data line in df -Pi output"))
 }
 
