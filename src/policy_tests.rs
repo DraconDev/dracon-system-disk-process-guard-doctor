@@ -1651,8 +1651,7 @@ fn unresolvable_protected_entry_warns_once_and_does_not_refuse() {
         // validates candidates against the `/tmp`-rooted policy. `$TMPDIR`
         // is `/build` in the nix sandbox, so honoring it failed the test
         // there for reasons unrelated to the behavior under test.
-        let p = std::path::Path::new("/tmp")
-            .join(format!("dracon-failopen-probe-{pid}-{which}"));
+        let p = std::path::Path::new("/tmp").join(format!("dracon-failopen-probe-{pid}-{which}"));
         let _ = std::fs::remove_dir_all(&p);
         std::fs::create_dir_all(&p).unwrap();
         p
