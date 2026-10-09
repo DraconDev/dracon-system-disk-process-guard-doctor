@@ -1177,3 +1177,84 @@ fn reap_budget_still_processes_a_candidate_within_the_budget() {
     assert_eq!(reaped.len(), 1);
     assert!(reaped[0].verified);
 }
+
+// --- ADDED 2026-10-09 (audit F124): disposition must distinguish the
+// two `outcome: None` reasons. Before this they were byte-identical
+// records, so the audit trail could not tell "deferred, re-scanned next
+// pass" (and possibly signalled later) from "no longer verifies,
+// permanently dropped". ---------------------------------------------
+
+#[test]
+fn deferred_and_not_verified_are_distinguishable_records() {
+    let fx = Fixture::new("reap-disposition");
+
+    // (a) budget-deferred: zero budget, verify never runs.
+    let a = scanned_candidate(&fx);
+    let b = scanned_candidate(&fx);
+    let reaped = reap_verified_candidates(
+        &fx.root,
+        &policy(),
+        &[a, b],
+        TICKS,
+        verify_candidate_for_reap,
+        "reap",
+        std::time::Duration::ZERO,
+    );
+    assert_eq!(reaped.len(), 2);
+    for r in &reaped {
+        assert_eq!(r.disposition, ReapDisposition::Deferred);
+        assert!(!r.verified);
+        assert_eq!(r.outcome, None);
+    }
+
+    // (b) no-longer-verifies: the candidate gained a terminal between the
+    // scan and the kill, so re-verification refuses it.
+    let fx = Fixture::new("reap-disposition-stale");
+    let cand = scanned_candidate(&fx);
+    fx.proc_owned(
+        4242,
+        9000,
+        "bun",
+        &["bun", "test", "src/lib"],
+        'S',
+        34816,
+        3600,
+        600,
+        1024,
+    );
+    let reaped = reap_verified_candidates(
+        &fx.root,
+        &policy(),
+        &[cand],
+        TICKS,
+        verify_candidate_for_reap,
+        "reap",
+        std::time::Duration::from_secs(60),
+    );
+    assert_eq!(reaped.len(), 1);
+    assert_eq!(reaped[0].disposition, ReapDisposition::NotVerified);
+
+    // The two records must NOT be equal — that was the defect.
+    assert_ne!(reaped[0].disposition, ReapDisposition::Deferred);
+}
+
+#[test]
+fn signalled_disposition_is_reported_for_a_verified_kill() {
+    // A verified kill must say Signalled, so the table can render
+    // "deferred to next pass" only for the budget path.
+    let fx = Fixture::new("reap-disposition-kill");
+    let cand = scanned_candidate(&fx);
+    let reaped = reap_verified_candidates(
+        &fx.root,
+        &policy(),
+        &[cand],
+        TICKS,
+        // Always-verify stub keeps this hermetic (no real process).
+        |_, _, _, _| true,
+        "reap",
+        std::time::Duration::from_secs(60),
+    );
+    assert_eq!(reaped.len(), 1);
+    assert!(reaped[0].verified, "the always-verify stub must pass the gate");
+    assert_eq!(reaped[0].disposition, ReapDisposition::Signalled);
+}
