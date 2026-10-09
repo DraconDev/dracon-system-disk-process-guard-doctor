@@ -3367,9 +3367,18 @@ async fn inode_use_percent(path: &str) -> Result<u8> {
 
     let text = String::from_utf8_lossy(&out.stdout);
     // Parse: Filesystem Inodes IUsed IFree IUse% Mounted on
+    // FIXED 2026-10-09 (audit F132): `lines().nth(1)` assumed the data
+    // row is line index 1 and `nth(4)` assumed its 5th whitespace field
+    // is IUse%. `df` wraps a too-long Filesystem column onto a second
+    // line, so the data row can start later and the field index can be
+    // wrong. Pick the first line that actually has the 6 inode columns
+    // instead of assuming a fixed offset, and fail loudly rather than
+    // guessing when there is none.
     text.lines()
-        .nth(1)
-        .and_then(|line| line.split_whitespace().nth(4))
+        .find_map(|line| {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            (parts.len() == 6).then(|| parts.get(4).copied()).flatten()
+        })
         .and_then(|v| v.trim_end_matches('%').parse::<u8>().ok())
         .ok_or_else(|| anyhow::anyhow!("failed parsing df -i output"))
 }
@@ -3384,15 +3393,32 @@ async fn get_inode_info(path: &str) -> Result<(u64, u64, u64)> {
 
     let text = String::from_utf8_lossy(&out.stdout);
     // Parse: Filesystem Inodes IUsed IFree IUse% Mounted on
+    // FIXED 2026-10-09 (audit F132): this read `lines().nth(1)` and then
+    // `parts.get(1..3).unwrap_or(0)` with NO length validation, so any
+    // layout change — a wrapped `Filesystem` column, an extra header
+    // line, a multi-line device name — produced `(0, 0, 0)`, i.e. the
+    // inode monitor reported 0% used forever with no error at all.
+    // `parse_df_details` (above) already validates `parts.len() >= 6`;
+    // the inode pair now does the same, and an unparseable row is an
+    // Err rather than a silent zero.
     let line = text
         .lines()
-        .nth(1)
+        .find(|line| line.split_whitespace().count() == 6)
         .ok_or_else(|| anyhow::anyhow!("no data line"))?;
     let parts: Vec<&str> = line.split_whitespace().collect();
 
-    let total = parts.get(1).and_then(|v| v.parse().ok()).unwrap_or(0);
-    let used = parts.get(2).and_then(|v| v.parse().ok()).unwrap_or(0);
-    let free = parts.get(3).and_then(|v| v.parse().ok()).unwrap_or(0);
+    let total = parts
+        .get(1)
+        .and_then(|v| v.parse().ok())
+        .ok_or_else(|| anyhow::anyhow!("unparseable inode total"))?;
+    let used = parts
+        .get(2)
+        .and_then(|v| v.parse().ok())
+        .ok_or_else(|| anyhow::anyhow!("unparseable inode used"))?;
+    let free = parts
+        .get(3)
+        .and_then(|v| v.parse().ok())
+        .ok_or_else(|| anyhow::anyhow!("unparseable inode free"))?;
 
     Ok((total, used, free))
 }
