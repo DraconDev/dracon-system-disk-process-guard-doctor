@@ -4108,10 +4108,7 @@ fn inode_parsers_accept_a_wrapped_filesystem_column() {
                    /dev/mapper/vgubuntu--vg-verylongrootname-that-wraps\n\
                                      12345   6789    5556   55% /\n";
     assert_eq!(parse_inode_use_percent(wrapped), Some(55));
-    assert_eq!(
-        parse_inode_info(wrapped),
-        Some((12345, 6789, 5556))
-    );
+    assert_eq!(parse_inode_info(wrapped).unwrap(), (12345, 6789, 5556));
 }
 
 #[test]
@@ -4119,7 +4116,7 @@ fn inode_parsers_accept_a_mount_path_containing_spaces() {
     let spaced = "Filesystem Inodes IUsed IFree IUse% Mounted on\n\
                   /dev/sda1 1000 200 800 20% /mnt/my backup\n";
     assert_eq!(parse_inode_use_percent(spaced), Some(20));
-    assert_eq!(parse_inode_info(spaced), Some((1000, 200, 800)));
+    assert_eq!(parse_inode_info(spaced).unwrap(), (1000, 200, 800));
 }
 
 #[test]
@@ -4127,7 +4124,7 @@ fn inode_parsers_reject_garbage_instead_of_reporting_zero() {
     // The defect: a layout the parser did not understand returned
     // (0, 0, 0) / 0% with no error. Now it must be None/Err.
     assert_eq!(parse_inode_use_percent("Filesystem Inodes\n"), None);
-    assert_eq!(parse_inode_info("Filesystem Inodes\n"), None);
+    assert!(parse_inode_info("Filesystem Inodes\n").is_err());
 }
 
 // --- ADDED 2026-10-09 (audit F130): sync_freeze_marker_path did not
