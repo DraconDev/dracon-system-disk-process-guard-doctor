@@ -1713,8 +1713,23 @@ pub(crate) fn stabilize_memory_pressure_at(
     (state.memory_pressure_state.clone(), Some(previous), true)
 }
 
+/// Resolve the guard's sync-freeze marker path.
+///
+/// FIXED 2026-10-09 (audit F130): this was `PathBuf::from(raw)` with no
+/// expansion at all, while every sibling storage root expanded it
+/// (`quarantine_root`, `resolve_policy_path`, the log dirs). The code
+/// default is expanded at construction, but the shipped example config
+/// documents the value as `~/.dracon/dracon-sync.freeze`
+/// (dracon-system.example.toml), so following the example wrote a
+/// literal RELATIVE `~/.dracon/...` path — one that `dracon-sync pause`
+/// never watches, so sync was silently never frozen.
+///
+/// `resolve_policy_path` (not bare `expand_tilde`) is deliberate: the
+/// shipped unit sets `WorkingDirectory=%h`, so a relative policy value
+/// means "under $HOME" — the same fix audit 2026-10-01 applied to
+/// `relocate_cold_root`.
 fn sync_freeze_marker_path(guard: &GuardPolicy) -> PathBuf {
-    PathBuf::from(guard.sync_freeze_marker.clone())
+    crate::resolve_policy_path(guard.sync_freeze_marker.trim())
 }
 
 // Only remove markers written by this guard. The marker path is shared with
