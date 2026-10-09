@@ -157,7 +157,11 @@ fn setup_reports_stale_staging_without_gating_ready() {
 
 #[test]
 fn relative_policy_paths_resolve_against_home() {
-    let home = std::path::Path::new("/home/dracon");
+    // Resolve against the runtime$HOME, never a hardcoded operator path:
+    // the nix build sandbox (HOME=/homeless-shelter) and CI runners
+    // (HOME=/home/runner) run this suite too. A hardcoded expectation
+    // made every one of those environments fail.
+    let home = dirs::home_dir().expect("home directory");
     assert_eq!(
         crate::resolve_policy_path("cold"),
         home.join("cold"),
