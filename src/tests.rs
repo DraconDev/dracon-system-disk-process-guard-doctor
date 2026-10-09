@@ -4096,7 +4096,7 @@ fn probe_path_search_finds_first_executable_only() {
     assert_eq!(search_path_for_executable("probe-missing", &dirs), None);
 }
 
-// --- ADDED 2026-10-09 (audit F132): the inode parsers assumed a fixed
+// --- ADDED 2026-10-09 (audit F131): the inode parsers assumed a fixed
 // row offset AND fixed column index, so a wrapped `Filesystem` column
 // silently produced zeros and the inode monitor read 0% forever. ------
 
