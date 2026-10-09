@@ -7877,7 +7877,7 @@ fn summarize_reaped(reaped: &[ReapedProcess]) -> String {
                 }),
                 _,
             ) => {
-                if escalated_to_sigkill {
+                if *escalated_to_sigkill {
                     "SIGTERM→SIGKILL"
                 } else {
                     "SIGTERM"
