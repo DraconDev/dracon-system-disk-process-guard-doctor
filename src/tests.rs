@@ -1732,6 +1732,24 @@ fn write_file_with_mtime(path: &std::path::Path, contents: &[u8], age_secs: u64)
     f.set_modified(mtime).expect("set_modified");
 }
 
+/// Guard-facing variant pinned to `/tmp`: `std::env::temp_dir()`
+/// honours `$TMPDIR`, and the nix build sandbox sets it to `/build`,
+/// which is not under `/tmp` — every clean-tmp test that handed such a
+/// root to `clean_tmp_paths` failed there with "invalid
+/// tmp_search_paths entry". The SUT contract is a `/tmp` descendant
+/// (see `check_safe_tmp_root`), so the fixtures must create one.
+fn unique_test_tmp_root(tag: &str) -> std::path::PathBuf {
+    std::path::Path::new("/tmp").join(format!(
+        "dracon_system_{}_{}_{}",
+        tag,
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ))
+}
+
 fn unique_test_home(tag: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
         "dracon_system_{}_{}_{}",
@@ -2034,7 +2052,7 @@ async fn critical_tier_bypass_cleans_fresh_target() {
 /// swept regardless of age. A stale file must survive both modes.
 #[tokio::test]
 async fn clean_tmp_paths_zero_min_age_disables() {
-    let root = unique_test_home("tmp_zero_age");
+    let root = unique_test_tmp_root("tmp_zero_age");
     fs::create_dir_all(&root).expect("create tmp root");
     let stale = root.join("stale.log");
     write_file_with_mtime(&stale, b"old log data", 2 * 86_400);
@@ -2062,7 +2080,7 @@ async fn clean_tmp_paths_zero_min_age_disables() {
 #[cfg(unix)]
 #[tokio::test]
 async fn clean_tmp_paths_skips_unreadable_root() {
-    let root = unique_test_home("tmp_noread");
+    let root = unique_test_tmp_root("tmp_noread");
     fs::create_dir_all(&root).expect("create fixture");
     write_file_with_mtime(&root.join("stale.log"), b"stale", 2 * 86_400);
     fs::set_permissions(&root, fs::Permissions::from_mode(0o000)).expect("lock root");
@@ -2086,7 +2104,7 @@ async fn clean_tmp_paths_skips_unreadable_root() {
 
 #[tokio::test]
 async fn clean_tmp_paths_respects_age_dry_run_and_open_fds() {
-    let root = unique_test_home("tmp_clean");
+    let root = unique_test_tmp_root("tmp_clean");
     fs::create_dir_all(&root).expect("create tmp root");
     let old_file = root.join("stale-pi-bash.log");
     let new_file = root.join("active-session.log");
@@ -2139,7 +2157,7 @@ async fn clean_tmp_keeps_tree_with_fresh_nested_content() {
     // so a stale top dir can hide a freshly written nested file. The
     // cleaner must judge the tree by its newest entry, not the top dir.
     use std::time::Duration;
-    let root = unique_test_home("tmp_nested");
+    let root = unique_test_tmp_root("tmp_nested");
     fs::create_dir_all(&root).expect("create tmp root");
     let stale_dir = root.join("old-run");
     let nested = stale_dir.join("logs");
@@ -2212,7 +2230,7 @@ async fn clean_tmp_paths_rejects_home_search_root_before_apply() {
 #[cfg(unix)]
 #[tokio::test]
 async fn clean_tmp_paths_keeps_old_process_cwd_directory() {
-    let root = unique_test_home("tmp_cwd");
+    let root = unique_test_tmp_root("tmp_cwd");
     let proc_root = unique_test_home("proc_cwd");
     let cwd_dir = root.join("stale-working-directory");
     let unheld_file = root.join("stale-unheld-file");
@@ -2267,7 +2285,7 @@ async fn open_scan_skips_unreadable_fd_table_without_abandoning_pass() {
     // still collected, and the broken process's cwd is still
     // collected via its independent path. Guards against a future
     // editor extending the pid-level `return None` down to fd level.
-    let root = unique_test_home("tmp_fdfail");
+    let root = unique_test_tmp_root("tmp_fdfail");
     let proc_root = unique_test_home("proc_fdfail");
     let held = root.join("held-by-b.log");
     fs::create_dir_all(&root).expect("create fixture");
@@ -2309,7 +2327,7 @@ async fn open_scan_collects_running_executable() {
     // R4-SYS-12: a running executable is not an fd entry — the scan
     // must record /proc/<pid>/exe or tmp cleanup unlinks a stale
     // binary from under its own process.
-    let root = unique_test_home("tmp_exe");
+    let root = unique_test_tmp_root("tmp_exe");
     let proc_root = unique_test_home("proc_exe");
     let binary = root.join("stale-runner");
     fs::create_dir_all(&root).expect("create fixture");
@@ -2336,7 +2354,7 @@ async fn clean_tmp_paths_refuses_blind_cleanup_when_proc_unreadable() {
     // R3-L31: an unreadable /proc must abort the pass LOUD (no
     // silent empty protection set) and delete nothing — in BOTH
     // apply and dry-run (dry-run would otherwise over-report).
-    let root = unique_test_home("tmp_blind");
+    let root = unique_test_tmp_root("tmp_blind");
     let stale = root.join("stale-file");
     fs::create_dir_all(&root).expect("create fixture");
     write_file_with_mtime(&stale, b"stale", 2 * 86_400);
@@ -2624,8 +2642,10 @@ fn test_graduated_nice_value_memory_boundary() {
     assert_eq!(graduated_nice_value(0.0, 8192, 0, 0), 10);
 }
 
+/// Same nix-sandbox reasoning as `unique_test_tmp_root`: the guard
+/// accepts only `/tmp` descendants.
 fn guard_test_tmp(name: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!(
+    std::path::Path::new("/tmp").join(format!(
         "dracon_test_{}_{}_{}",
         name,
         std::process::id(),
