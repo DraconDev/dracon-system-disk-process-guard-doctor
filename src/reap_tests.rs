@@ -1152,7 +1152,11 @@ fn reap_budget_defers_candidates_past_the_budget() {
         "reap",
         std::time::Duration::ZERO,
     );
-    assert_eq!(reaped.len(), 2, "deferred candidates must still be recorded");
+    assert_eq!(
+        reaped.len(),
+        2,
+        "deferred candidates must still be recorded"
+    );
     for r in &reaped {
         assert!(!r.verified, "a deferred candidate must never be signalled");
         assert_eq!(r.outcome, None);
@@ -1255,6 +1259,9 @@ fn signalled_disposition_is_reported_for_a_verified_kill() {
         std::time::Duration::from_secs(60),
     );
     assert_eq!(reaped.len(), 1);
-    assert!(reaped[0].verified, "the always-verify stub must pass the gate");
+    assert!(
+        reaped[0].verified,
+        "the always-verify stub must pass the gate"
+    );
     assert_eq!(reaped[0].disposition, ReapDisposition::Signalled);
 }

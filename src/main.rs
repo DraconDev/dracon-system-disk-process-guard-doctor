@@ -3388,9 +3388,7 @@ fn parse_inode_use_percent(output: &str) -> Option<u8> {
 fn parse_inode_info(output: &str) -> Result<(u64, u64, u64)> {
     output
         .lines()
-        .find_map(|line| {
-            inode_row_fields(line).map(|(total, used, free, _)| (total, used, free))
-        })
+        .find_map(|line| inode_row_fields(line).map(|(total, used, free, _)| (total, used, free)))
         .ok_or_else(|| anyhow::anyhow!("no inode data line in df -Pi output"))
 }
 
@@ -3400,9 +3398,7 @@ fn parse_inode_info(output: &str) -> Result<(u64, u64, u64)> {
 fn inode_row_fields(line: &str) -> Option<(u64, u64, u64, u8)> {
     let parts: Vec<&str> = line.split_whitespace().collect();
     let pct_idx = parts.iter().position(|p| {
-        p.len() > 1
-            && p.ends_with('%')
-            && p[..p.len() - 1].chars().all(|c| c.is_ascii_digit())
+        p.len() > 1 && p.ends_with('%') && p[..p.len() - 1].chars().all(|c| c.is_ascii_digit())
     })?;
     if pct_idx < 3 {
         return None;
@@ -7958,7 +7954,11 @@ fn summarize_reaped(reaped: &[ReapedProcess]) -> String {
         format!(
             "{}: {}, …and {} more",
             reaped.len(),
-            reaped[..5].iter().map(detail).collect::<Vec<_>>().join(", "),
+            reaped[..5]
+                .iter()
+                .map(detail)
+                .collect::<Vec<_>>()
+                .join(", "),
             reaped.len() - 5
         )
     }

@@ -4139,5 +4139,8 @@ fn sync_freeze_marker_path_expands_the_documented_tilde_form() {
     let path = sync_freeze_marker_path(&guard);
     let home = dirs::home_dir().expect("home dir should exist");
     assert_eq!(path, home.join(".dracon/dracon-sync.freeze"));
-    assert!(path.is_absolute(), "must not stay a literal relative `~/...`");
+    assert!(
+        path.is_absolute(),
+        "must not stay a literal relative `~/...`"
+    );
 }

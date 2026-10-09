@@ -424,10 +424,7 @@ pub(crate) fn uncovered_storage_roots(
         // SAME wrong path the daemon would have written. Both sides now
         // resolve through `resolve_policy_path`, so the check tests the
         // path actually written.
-        roots.push((
-            "sync_freeze_marker",
-            crate::resolve_policy_path(marker),
-        ));
+        roots.push(("sync_freeze_marker", crate::resolve_policy_path(marker)));
     }
     roots
         .into_iter()
