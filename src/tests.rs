@@ -2292,18 +2292,36 @@ fn backdate_dir(path: &std::path::Path, age_secs: u64) {
 fn tmp_e2e_match_covers_glob_shapes() {
     let patterns = parse_tmp_e2e_patterns("reconcile-*,*-shield-*,hh-base,nb-run");
     assert!(tmp_e2e_match("reconcile-e2e-7m8NJm", &patterns), "prefix*");
-    assert!(tmp_e2e_match("reconcile-batch3-6Bo2kj", &patterns), "prefix* batch");
-    assert!(tmp_e2e_match("deathrun-shield-JRmPNh", &patterns), "*infix*");
+    assert!(
+        tmp_e2e_match("reconcile-batch3-6Bo2kj", &patterns),
+        "prefix* batch"
+    );
+    assert!(
+        tmp_e2e_match("deathrun-shield-JRmPNh", &patterns),
+        "*infix*"
+    );
     assert!(tmp_e2e_match("hh-base", &patterns), "exact");
     assert!(tmp_e2e_match("nb-run", &patterns), "exact fixed name");
-    assert!(!tmp_e2e_match("nb-runner", &patterns), "exact must not prefix-match");
+    assert!(
+        !tmp_e2e_match("nb-runner", &patterns),
+        "exact must not prefix-match"
+    );
     assert!(!tmp_e2e_match("my-notes.md", &patterns), "unrelated name");
-    assert!(!tmp_e2e_match("reconcile", &patterns), "prefix needs the dash");
+    assert!(
+        !tmp_e2e_match("reconcile", &patterns),
+        "prefix needs the dash"
+    );
     let suffix = parse_tmp_e2e_patterns("*-fresh");
     assert!(tmp_e2e_match("nb-fresh", &suffix), "*suffix");
-    assert!(!tmp_e2e_match("fresh-produce", &suffix), "suffix must anchor right");
+    assert!(
+        !tmp_e2e_match("fresh-produce", &suffix),
+        "suffix must anchor right"
+    );
     assert!(tmp_e2e_match("anything", &parse_tmp_e2e_patterns("*")));
-    assert!(parse_tmp_e2e_patterns("  , ,").is_empty(), "blanks drop out");
+    assert!(
+        parse_tmp_e2e_patterns("  , ,").is_empty(),
+        "blanks drop out"
+    );
     assert!(!tmp_e2e_match("x", &[]), "no patterns matches nothing");
 }
 
@@ -2316,10 +2334,22 @@ fn quarantine_budget_boundary_is_exclusive() {
         "MiB to bytes"
     );
     let ten = quarantine_budget_bytes(10240);
-    assert!(!quarantine_over_budget(0, ten, ten), "exactly at budget is allowed");
-    assert!(quarantine_over_budget(0, ten + 1, ten), "one byte over defers");
-    assert!(!quarantine_over_budget(ten, 0, ten), "zero-size entry always fits");
-    assert!(quarantine_over_budget(ten, 1, ten), "full budget defers anything");
+    assert!(
+        !quarantine_over_budget(0, ten, ten),
+        "exactly at budget is allowed"
+    );
+    assert!(
+        quarantine_over_budget(0, ten + 1, ten),
+        "one byte over defers"
+    );
+    assert!(
+        !quarantine_over_budget(ten, 0, ten),
+        "zero-size entry always fits"
+    );
+    assert!(
+        quarantine_over_budget(ten, 1, ten),
+        "full budget defers anything"
+    );
     assert!(
         !quarantine_over_budget(0, u64::MAX / 2, u64::MAX),
         "unlimited never defers"
@@ -2370,7 +2400,11 @@ async fn tmp_e2e_fast_path_owns_only_the_general_skipped_window() {
     .await
     .expect("dry run");
     assert!(dry_denied.is_empty());
-    assert_eq!(dry_lines.len(), 1, "only the windowed e2e entry: {dry_lines:?}");
+    assert_eq!(
+        dry_lines.len(),
+        1,
+        "only the windowed e2e entry: {dry_lines:?}"
+    );
     assert!(dry_lines[0].contains("reconcile-e2e-abcdef"));
     assert!(dry_bytes > 0);
 
@@ -2388,8 +2422,14 @@ async fn tmp_e2e_fast_path_owns_only_the_general_skipped_window() {
     .expect("apply");
     assert_eq!(lines.len(), 1);
     assert!(!e2e_old.exists(), "windowed e2e litter must be removed");
-    assert!(plain_old.exists(), "non-e2e entry is not fast-path business");
-    assert!(e2e_ancient.exists(), "general-owned entry left for the general pass");
+    assert!(
+        plain_old.exists(),
+        "non-e2e entry is not fast-path business"
+    );
+    assert!(
+        e2e_ancient.exists(),
+        "general-owned entry left for the general pass"
+    );
     assert!(e2e_fresh.exists(), "fresh entry must be kept");
     let _ = fs::remove_dir_all(&root);
 }
@@ -2452,7 +2492,10 @@ async fn tmp_e2e_fast_path_bypass_takes_fresh_unheld() {
     )
     .await
     .expect("gated dry run");
-    assert!(gated_lines.is_empty(), "fresh entry kept under the age gate");
+    assert!(
+        gated_lines.is_empty(),
+        "fresh entry kept under the age gate"
+    );
     let (_, bypass_lines, _) = clean_tmp_e2e_fast_path_with_proc(
         false,
         &roots,
@@ -2465,7 +2508,11 @@ async fn tmp_e2e_fast_path_bypass_takes_fresh_unheld() {
     )
     .await
     .expect("bypass dry run");
-    assert_eq!(bypass_lines.len(), 1, "bypass lists fresh unheld e2e litter");
+    assert_eq!(
+        bypass_lines.len(),
+        1,
+        "bypass lists fresh unheld e2e litter"
+    );
     assert!(bypass_lines[0].contains("hh-base"));
     let _ = fs::remove_dir_all(&root);
 }
@@ -2499,7 +2546,10 @@ async fn tmp_e2e_fast_path_keeps_open_held_tree() {
     )
     .await
     .expect("bypass apply");
-    assert!(lines.is_empty(), "open-held tree must be kept even on bypass");
+    assert!(
+        lines.is_empty(),
+        "open-held tree must be kept even on bypass"
+    );
     assert!(e2e_old.exists());
     drop(handle);
     let _ = fs::remove_dir_all(&root);
