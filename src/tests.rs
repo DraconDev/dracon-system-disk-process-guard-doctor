@@ -2302,6 +2302,15 @@ fn tmp_e2e_match_covers_glob_shapes() {
     );
     assert!(tmp_e2e_match("hh-base", &patterns), "exact");
     assert!(tmp_e2e_match("nb-run", &patterns), "exact fixed name");
+    let defaults = parse_tmp_e2e_patterns(&default_tmp_e2e_patterns());
+    assert!(
+        tmp_e2e_match("puppeteer_dev_chrome_profile-s9EHBY", &defaults),
+        "puppeteer profile (2026-10-12 162M orphan)"
+    );
+    assert!(
+        tmp_e2e_match("playwright_chromiumdev_profile-9oNqZ3", &defaults),
+        "playwright profile"
+    );
     assert!(
         !tmp_e2e_match("nb-runner", &patterns),
         "exact must not prefix-match"
