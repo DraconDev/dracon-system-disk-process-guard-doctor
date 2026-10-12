@@ -3044,6 +3044,15 @@ async fn auto_cleanup_rust_targets(
         .saturating_mul(1024)
         .saturating_mul(1024);
 
+    // ADDED 2026-10-12 (stall guard): cap cross-device quarantine-move bytes
+    // per pass. 2026-10-04 disabled this whole path after repeated 10-30 GiB
+    // copies to /mnt/data/quarantine stalled the desktop. The budget is
+    // reserved at gate time in BOTH dry-run and apply so preview == apply;
+    // a failed move wasting budget only defers others — safe direction.
+    // Direct deletes (quarantine-first off) are uncapped: no copy, no stall.
+    let quarantine_budget = quarantine_budget_bytes(guard.quarantine_max_bytes_per_pass_mb);
+    let mut quarantined_bytes = 0u64;
+
     for target in targets {
         // Skip if too small
         if target.bytes < min_size_bytes {
@@ -3142,6 +3151,22 @@ async fn auto_cleanup_rust_targets(
 
         // ADDED 2026-09-27 (space tiers Phase 2): quarantine-first routing —
         // move to quarantine (TTL'd, restorable) instead of deleting.
+        // ADDED 2026-10-12 (stall guard): over-budget entries defer with an
+        // explicit operator note instead of stalling the desktop mid-pass.
+        if guard.clean_quarantine_first
+            && quarantine_over_budget(quarantined_bytes, target.bytes, quarantine_budget)
+        {
+            result.protected_paths.push(format!(
+                "{} ({}, over per-pass quarantine budget {}, deferred — needs operator)",
+                target.path.display(),
+                human_bytes(target.bytes),
+                human_bytes(quarantine_budget)
+            ));
+            continue;
+        }
+        if guard.clean_quarantine_first {
+            quarantined_bytes = quarantined_bytes.saturating_add(target.bytes);
+        }
         let mut quarantined = false;
         let mut freed = target.bytes;
         if apply {
@@ -3260,6 +3285,12 @@ async fn proactive_cleanup_rust_targets(
         .saturating_mul(24)
         .saturating_mul(3600);
 
+    // ADDED 2026-10-12 (stall guard): same per-pass quarantine-move budget
+    // as the action path — a 14d-stale forgotten target is exactly the huge
+    // cross-device copy that stalled the desktop in 2026-10-04.
+    let quarantine_budget = quarantine_budget_bytes(guard.quarantine_max_bytes_per_pass_mb);
+    let mut quarantined_bytes = 0u64;
+
     for target in targets {
         if target.bytes < min_size_bytes {
             continue;
@@ -3288,6 +3319,22 @@ async fn proactive_cleanup_rust_targets(
         }
 
         // ADDED 2026-09-27 (space tiers Phase 2): quarantine-first routing.
+        // ADDED 2026-10-12 (stall guard): over-budget entries defer with an
+        // explicit operator note instead of stalling the desktop mid-pass.
+        if guard.clean_quarantine_first
+            && quarantine_over_budget(quarantined_bytes, target.bytes, quarantine_budget)
+        {
+            result.protected_paths.push(format!(
+                "{} ({}, over per-pass quarantine budget {}, deferred — needs operator)",
+                target.path.display(),
+                human_bytes(target.bytes),
+                human_bytes(quarantine_budget)
+            ));
+            continue;
+        }
+        if guard.clean_quarantine_first {
+            quarantined_bytes = quarantined_bytes.saturating_add(target.bytes);
+        }
         let mut quarantined = false;
         let mut freed = target.bytes;
         if apply {
@@ -6179,6 +6226,58 @@ async fn run_auto_cleanup(
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
+        // ADDED 2026-10-12 (obvious-fat fast path): e2e/test litter gets a
+        // shorter age gate. Runs FIRST; it owns only the window the general
+        // pass skips (newer than the general cutoff), so dry-run accounting
+        // never double-counts. Honours the whole-pass disable (general age 0)
+        // and its own 0 sentinel. Direct delete, never quarantine (/tmp is
+        // already disposable).
+        if guard.tmp_min_age_hours != 0 && guard.tmp_e2e_min_age_hours != 0 {
+            let e2e_patterns = parse_tmp_e2e_patterns(&guard.tmp_e2e_patterns);
+            // Critical tier lifts the e2e age gate (test copies are
+            // regeneratable; a full disk is not) — mirrors the rust-target
+            // critical bypass below.
+            let bypass_e2e_gate = used >= guard.disk_critical_percent;
+            if bypass_e2e_gate {
+                eprintln!(
+                    "🚨 disk at {}% (critical) — tmp e2e-litter age gate lifted for this pass",
+                    used
+                );
+            }
+            match tmp_age_cutoff(guard.tmp_min_age_hours) {
+                Ok(general_cutoff) => {
+                    match clean_tmp_e2e_fast_path(
+                        apply,
+                        &roots,
+                        general_cutoff,
+                        &e2e_patterns,
+                        guard.tmp_e2e_min_age_hours,
+                        bypass_e2e_gate,
+                        &guard.protected_paths,
+                    )
+                    .await
+                    {
+                        Ok((bytes, cleaned, denied)) => {
+                            total_reclaimed += bytes;
+                            all_cleaned.extend(cleaned.iter().map(|s| format!("Tmp-e2e: {}", s)));
+                            if apply && bytes > 0 {
+                                eprintln!("🧹 Tmp-e2e: {}", human_bytes(bytes));
+                            }
+                            if !denied.is_empty() {
+                                let sample: Vec<&str> = denied.iter().take(3).map(|s| s.as_str()).collect();
+                                eprintln!(
+                                    "🛡️ Tmp-e2e: {} entries need root to remove (e.g. {})",
+                                    denied.len(),
+                                    sample.join(", ")
+                                );
+                            }
+                        }
+                        Err(e) => eprintln!("⚠️ Tmp e2e fast-path failed: {}", e),
+                    }
+                }
+                Err(e) => eprintln!("⚠️ Tmp e2e fast-path failed: {}", e),
+            }
+        }
         match clean_tmp_paths(
             apply,
             &roots,
