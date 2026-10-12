@@ -2276,6 +2276,235 @@ async fn clean_tmp_paths_keeps_old_process_cwd_directory() {
     let _ = fs::remove_dir_all(&proc_root);
 }
 
+// --- 2026-10-12 (obvious-fat fast path): e2e-litter tmp window + quarantine budget ---
+
+/// Backdate a directory itself (creating children bumps it to now).
+fn backdate_dir(path: &std::path::Path, age_secs: u64) {
+    fs::OpenOptions::new()
+        .read(true)
+        .open(path)
+        .expect("open dir for mtime set")
+        .set_modified(SystemTime::now() - Duration::from_secs(age_secs))
+        .expect("backdate dir");
+}
+
+#[test]
+fn tmp_e2e_match_covers_glob_shapes() {
+    let patterns = parse_tmp_e2e_patterns("reconcile-*,*-shield-*,hh-base,nb-run");
+    assert!(tmp_e2e_match("reconcile-e2e-7m8NJm", &patterns), "prefix*");
+    assert!(tmp_e2e_match("reconcile-batch3-6Bo2kj", &patterns), "prefix* batch");
+    assert!(tmp_e2e_match("deathrun-shield-JRmPNh", &patterns), "*infix*");
+    assert!(tmp_e2e_match("hh-base", &patterns), "exact");
+    assert!(tmp_e2e_match("nb-run", &patterns), "exact fixed name");
+    assert!(!tmp_e2e_match("nb-runner", &patterns), "exact must not prefix-match");
+    assert!(!tmp_e2e_match("my-notes.md", &patterns), "unrelated name");
+    assert!(!tmp_e2e_match("reconcile", &patterns), "prefix needs the dash");
+    let suffix = parse_tmp_e2e_patterns("*-fresh");
+    assert!(tmp_e2e_match("nb-fresh", &suffix), "*suffix");
+    assert!(!tmp_e2e_match("fresh-produce", &suffix), "suffix must anchor right");
+    assert!(tmp_e2e_match("anything", &parse_tmp_e2e_patterns("*")));
+    assert!(parse_tmp_e2e_patterns("  , ,").is_empty(), "blanks drop out");
+    assert!(!tmp_e2e_match("x", &[]), "no patterns matches nothing");
+}
+
+#[test]
+fn quarantine_budget_boundary_is_exclusive() {
+    assert_eq!(quarantine_budget_bytes(0), u64::MAX, "0 = unlimited");
+    assert_eq!(
+        quarantine_budget_bytes(10240),
+        10240 * 1024 * 1024,
+        "MiB to bytes"
+    );
+    let ten = quarantine_budget_bytes(10240);
+    assert!(!quarantine_over_budget(0, ten, ten), "exactly at budget is allowed");
+    assert!(quarantine_over_budget(0, ten + 1, ten), "one byte over defers");
+    assert!(!quarantine_over_budget(ten, 0, ten), "zero-size entry always fits");
+    assert!(quarantine_over_budget(ten, 1, ten), "full budget defers anything");
+    assert!(
+        !quarantine_over_budget(0, u64::MAX / 2, u64::MAX),
+        "unlimited never defers"
+    );
+    assert!(
+        !quarantine_over_budget(u64::MAX, u64::MAX, u64::MAX),
+        "saturating add must not panic at the extremes"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn tmp_e2e_fast_path_owns_only_the_general_skipped_window() {
+    // Fast path owns e2e entries NEWER than the general cutoff; entries the
+    // general pass would take (>= 24h stale) are left alone so dry-run
+    // accounting never counts an entry twice.
+    let root = unique_test_tmp_root("tmp_e2e_window");
+    fs::create_dir_all(&root).expect("create tmp root");
+    let e2e_old = root.join("reconcile-e2e-abcdef");
+    fs::create_dir_all(&e2e_old).expect("e2e old");
+    write_file_with_mtime(&e2e_old.join("data.bin"), b"stale e2e", 7 * 3600);
+    backdate_dir(&e2e_old, 7 * 3600);
+    let plain_old = root.join("plain-old");
+    fs::create_dir_all(&plain_old).expect("plain old");
+    write_file_with_mtime(&plain_old.join("data.bin"), b"stale plain", 7 * 3600);
+    backdate_dir(&plain_old, 7 * 3600);
+    let e2e_ancient = root.join("cw-browser-test-ancient");
+    fs::create_dir_all(&e2e_ancient).expect("e2e ancient");
+    write_file_with_mtime(&e2e_ancient.join("data.bin"), b"ancient e2e", 30 * 3600);
+    backdate_dir(&e2e_ancient, 30 * 3600);
+    let e2e_fresh = root.join("dr-audit-fresh");
+    fs::create_dir_all(&e2e_fresh).expect("e2e fresh");
+    write_file_with_mtime(&e2e_fresh.join("data.bin"), b"fresh e2e", 60);
+
+    let roots = vec![root.display().to_string()];
+    let general_cutoff = SystemTime::now() - Duration::from_secs(24 * 3600);
+    let patterns = parse_tmp_e2e_patterns(&default_tmp_e2e_patterns());
+    let (dry_bytes, dry_lines, dry_denied) = clean_tmp_e2e_fast_path_with_proc(
+        false,
+        &roots,
+        general_cutoff,
+        &patterns,
+        6,
+        false,
+        &[],
+        Path::new("/proc"),
+    )
+    .await
+    .expect("dry run");
+    assert!(dry_denied.is_empty());
+    assert_eq!(dry_lines.len(), 1, "only the windowed e2e entry: {dry_lines:?}");
+    assert!(dry_lines[0].contains("reconcile-e2e-abcdef"));
+    assert!(dry_bytes > 0);
+
+    let (_, lines, _) = clean_tmp_e2e_fast_path_with_proc(
+        true,
+        &roots,
+        general_cutoff,
+        &patterns,
+        6,
+        false,
+        &[],
+        Path::new("/proc"),
+    )
+    .await
+    .expect("apply");
+    assert_eq!(lines.len(), 1);
+    assert!(!e2e_old.exists(), "windowed e2e litter must be removed");
+    assert!(plain_old.exists(), "non-e2e entry is not fast-path business");
+    assert!(e2e_ancient.exists(), "general-owned entry left for the general pass");
+    assert!(e2e_fresh.exists(), "fresh entry must be kept");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn tmp_e2e_fast_path_zero_age_disables() {
+    // 0 is the documented "fast path off" sentinel: matching stale entries
+    // must survive untouched (the general gate still applies separately).
+    let root = unique_test_tmp_root("tmp_e2e_zero");
+    fs::create_dir_all(&root).expect("create tmp root");
+    let e2e_old = root.join("reconcile-e2e-zero");
+    fs::create_dir_all(&e2e_old).expect("e2e old");
+    write_file_with_mtime(&e2e_old.join("data.bin"), b"stale e2e", 7 * 3600);
+    backdate_dir(&e2e_old, 7 * 3600);
+
+    let roots = vec![root.display().to_string()];
+    let general_cutoff = SystemTime::now() - Duration::from_secs(24 * 3600);
+    let patterns = parse_tmp_e2e_patterns(&default_tmp_e2e_patterns());
+    let (bytes, lines, denied) = clean_tmp_e2e_fast_path_with_proc(
+        true,
+        &roots,
+        general_cutoff,
+        &patterns,
+        0,
+        false,
+        &[],
+        Path::new("/proc"),
+    )
+    .await
+    .expect("apply with 0 age");
+    assert!(bytes == 0 && lines.is_empty() && denied.is_empty());
+    assert!(e2e_old.exists(), "0 age must disable the fast path");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn tmp_e2e_fast_path_bypass_takes_fresh_unheld() {
+    // Critical-tier bypass lifts the fast age gate for UNHELD e2e litter;
+    // without bypass the same entry is kept.
+    let root = unique_test_tmp_root("tmp_e2e_bypass");
+    fs::create_dir_all(&root).expect("create tmp root");
+    let e2e_fresh = root.join("hh-base");
+    fs::create_dir_all(&e2e_fresh).expect("e2e fresh");
+    write_file_with_mtime(&e2e_fresh.join("data.bin"), b"fresh e2e", 60);
+
+    let roots = vec![root.display().to_string()];
+    let general_cutoff = SystemTime::now() - Duration::from_secs(24 * 3600);
+    let patterns = parse_tmp_e2e_patterns(&default_tmp_e2e_patterns());
+    let (_, gated_lines, _) = clean_tmp_e2e_fast_path_with_proc(
+        false,
+        &roots,
+        general_cutoff,
+        &patterns,
+        6,
+        false,
+        &[],
+        Path::new("/proc"),
+    )
+    .await
+    .expect("gated dry run");
+    assert!(gated_lines.is_empty(), "fresh entry kept under the age gate");
+    let (_, bypass_lines, _) = clean_tmp_e2e_fast_path_with_proc(
+        false,
+        &roots,
+        general_cutoff,
+        &patterns,
+        6,
+        true,
+        &[],
+        Path::new("/proc"),
+    )
+    .await
+    .expect("bypass dry run");
+    assert_eq!(bypass_lines.len(), 1, "bypass lists fresh unheld e2e litter");
+    assert!(bypass_lines[0].contains("hh-base"));
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn tmp_e2e_fast_path_keeps_open_held_tree() {
+    // An entry held open by a live process is skipped even when old,
+    // matching, and (via bypass) age-eligible.
+    let root = unique_test_tmp_root("tmp_e2e_held");
+    fs::create_dir_all(&root).expect("create tmp root");
+    let e2e_old = root.join("jr-audit");
+    fs::create_dir_all(&e2e_old).expect("e2e old");
+    let held = e2e_old.join("held-open.bin");
+    write_file_with_mtime(&held, b"held", 7 * 3600);
+    backdate_dir(&e2e_old, 7 * 3600);
+    let handle = fs::File::open(&held).expect("open held file");
+
+    let roots = vec![root.display().to_string()];
+    let general_cutoff = SystemTime::now() - Duration::from_secs(24 * 3600);
+    let patterns = parse_tmp_e2e_patterns(&default_tmp_e2e_patterns());
+    let (_, lines, _) = clean_tmp_e2e_fast_path_with_proc(
+        true,
+        &roots,
+        general_cutoff,
+        &patterns,
+        6,
+        true,
+        &[],
+        Path::new("/proc"),
+    )
+    .await
+    .expect("bypass apply");
+    assert!(lines.is_empty(), "open-held tree must be kept even on bypass");
+    assert!(e2e_old.exists());
+    drop(handle);
+    let _ = fs::remove_dir_all(&root);
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn open_scan_skips_unreadable_fd_table_without_abandoning_pass() {
