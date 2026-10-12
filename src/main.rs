@@ -5864,7 +5864,11 @@ pub(crate) fn quarantine_budget_bytes(max_mb: u64) -> u64 {
 /// True when moving `entry_bytes` would exceed the per-pass quarantine
 /// budget. Pure boundary helper: exactly-at-budget is allowed, one byte
 /// over defers.
-pub(crate) fn quarantine_over_budget(moved_bytes: u64, entry_bytes: u64, budget_bytes: u64) -> bool {
+pub(crate) fn quarantine_over_budget(
+    moved_bytes: u64,
+    entry_bytes: u64,
+    budget_bytes: u64,
+) -> bool {
     moved_bytes.saturating_add(entry_bytes) > budget_bytes
 }
 
@@ -5940,7 +5944,10 @@ async fn clean_tmp_e2e_fast_path_with_proc(
         let mut rd = match tokio::fs::read_dir(root).await {
             Ok(rd) => rd,
             Err(e) => {
-                eprintln!("⚠️ Tmp fast-path: cannot list {} — skipping ({e})", root.display());
+                eprintln!(
+                    "⚠️ Tmp fast-path: cannot list {} — skipping ({e})",
+                    root.display()
+                );
                 continue;
             }
         };
@@ -6264,7 +6271,8 @@ async fn run_auto_cleanup(
                                 eprintln!("🧹 Tmp-e2e: {}", human_bytes(bytes));
                             }
                             if !denied.is_empty() {
-                                let sample: Vec<&str> = denied.iter().take(3).map(|s| s.as_str()).collect();
+                                let sample: Vec<&str> =
+                                    denied.iter().take(3).map(|s| s.as_str()).collect();
                                 eprintln!(
                                     "🛡️ Tmp-e2e: {} entries need root to remove (e.g. {})",
                                     denied.len(),
