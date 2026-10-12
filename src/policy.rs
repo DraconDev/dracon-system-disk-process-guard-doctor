@@ -509,7 +509,7 @@ pub(crate) fn default_tmp_min_age_hours() -> u64 {
 }
 
 pub(crate) fn default_tmp_e2e_patterns() -> String {
-    "reconcile-*,reconcile-batch*,deathrun-shield-*,dr-audit-*,cw-browser-test-*,hh-base,jr-audit,nb-run,nb-fresh,.tmp*,pi-subagents-uid-*".to_string()
+    "reconcile-*,reconcile-batch*,deathrun-shield-*,dr-audit-*,cw-browser-test-*,hh-base,jr-audit,nb-run,nb-fresh,.tmp*,pi-subagents-uid-*,puppeteer_dev_chrome_profile-*,playwright_chromiumdev_profile-*".to_string()
 }
 
 pub(crate) fn default_tmp_e2e_min_age_hours() -> u64 {
