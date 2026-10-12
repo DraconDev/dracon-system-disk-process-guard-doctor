@@ -282,6 +282,16 @@ clean_tmp = false
 # tmp_search_paths = "/tmp"          # comma-separated roots; only /tmp
                                       # (or descendants) are accepted
 # tmp_min_age_hours = 24              # only entries older than this (0 disables tmp hygiene)
+# e2e/test-litter fast path (defaults shown): machine-generated test-copy
+# namespaces get a SHORTER age gate, because a 20h-old 29 GiB reconcile-e2e
+# pile is obviously dead long before the general 24h gate fires.
+# tmp_e2e_patterns = "reconcile-*,reconcile-batch*,deathrun-shield-*,dr-audit-*,cw-browser-test-*,hh-base,jr-audit,nb-run,nb-fresh,.tmp*,pi-subagents-uid-*"
+# tmp_e2e_min_age_hours = 6            # fast-path age gate (0 disables the fast path)
+# Per-pass cap on cross-device quarantine-move bytes (default 10240 = 10 GiB;
+# 0 = unlimited). Over-budget candidates defer with an explicit note instead
+# of stalling the desktop mid-pass — the 2026-10-04 incident that disabled
+# auto_cleanup_rust outright. Direct deletes are uncapped (no copy, no stall).
+# quarantine_max_bytes_per_pass_mb = 10240
 # Trash recovery window (default 7 — 0 restores empty-everything).
 # trash_min_age_days = 7              # days before trash is purged (0 purges immediately)
 # Refuse to purge trash entries whose names look credential-bearing
