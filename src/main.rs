@@ -5914,7 +5914,7 @@ async fn clean_tmp_e2e_fast_path_with_proc(
     let mut cleaned = Vec::new();
     let mut denied: Vec<String> = Vec::new();
     if roots.is_empty() || e2e_patterns.is_empty() || e2e_min_age_hours == 0 {
-        return Ok((0, cleaned, denied);
+        return Ok((0, cleaned, denied));
     }
     let root_paths = resolve_safe_tmp_roots(roots)?;
     if root_paths.is_empty() {
