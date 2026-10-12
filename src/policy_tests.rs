@@ -379,6 +379,7 @@ fn sentinel_zero_knob_list_matches_the_policy_fields() {
         "log_size_mb",
         "node_modules_max_age_days",
         "tmp_min_age_hours",
+        "tmp_e2e_min_age_hours",
         "relocate_min_age_days",
         "trash_min_age_days",
         "rust_target_action_min_age_days",

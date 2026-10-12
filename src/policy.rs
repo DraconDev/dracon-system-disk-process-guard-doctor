@@ -290,6 +290,17 @@ pub(crate) struct GuardPolicy {
     pub(crate) tmp_search_paths: String,
     #[serde(default = "default_tmp_min_age_hours")]
     pub(crate) tmp_min_age_hours: u64,
+    // ADDED 2026-10-12 (obvious-fat fast path): machine-generated e2e/test
+    // litter under the tmp roots (reconcile-*, *-shield-*, cw-browser-test-*,
+    // ... — see default_tmp_e2e_patterns) is judged against a SHORTER age
+    // gate than user-adjacent tmp content. The 2026-10-11 incident left ~29 GiB
+    // of reconcile-e2e copies 20h old: under the general 24h gate the guard
+    // would never touch them before the disk went critical. 0 disables the
+    // fast path (the general gate still applies); a SENTINEL_ZERO_KNOBS entry.
+    #[serde(default = "default_tmp_e2e_patterns")]
+    pub(crate) tmp_e2e_patterns: String,
+    #[serde(default = "default_tmp_e2e_min_age_hours")]
+    pub(crate) tmp_e2e_min_age_hours: u64,
     // ADDED 2026-08-25 (v0.112.39): only purge trash entries older than
     // this many days, so clean_trash keeps a recovery window instead of
     // emptying everything at once at the next action-level event.
@@ -345,6 +356,16 @@ pub(crate) struct GuardPolicy {
     // deleting them. Explicit `guard clean` always deletes.
     #[serde(default)]
     pub(crate) clean_quarantine_first: bool,
+    // ADDED 2026-10-12 (stall guard): cap on cross-device quarantine-move
+    // bytes per cleanup pass. The 2026-10-04 stall was repeated full-copy
+    // moves of 10-30 GiB targets to /mnt/data/quarantine, after which
+    // auto_cleanup_rust was disabled outright. With a budget the guard moves
+    // candidates up to the cap and DEFERS the rest with an explicit note
+    // instead of stalling the desktop; the operator handles the huge ones
+    // deliberately. 0 = unlimited. NOT a zero-sentinel: 0 removes the limit
+    // rather than disabling a feature, so no floor is applied.
+    #[serde(default = "default_quarantine_max_bytes_per_pass_mb")]
+    pub(crate) quarantine_max_bytes_per_pass_mb: u64,
     // ADDED 2026-09-27 (space tiers Phase 2): scan for cold relocation
     // candidates at action/critical. Needs relocate_cold_root set; that
     // default is empty (disabled) so no machine path is ever assumed —
@@ -438,6 +459,8 @@ impl Default for GuardPolicy {
             clean_tmp: default_true(),
             tmp_search_paths: default_tmp_search_paths(),
             tmp_min_age_hours: default_tmp_min_age_hours(),
+            tmp_e2e_patterns: default_tmp_e2e_patterns(),
+            tmp_e2e_min_age_hours: default_tmp_e2e_min_age_hours(),
             trash_min_age_days: default_trash_min_age_days(),
             protected_paths: Vec::new(),
             proactive_cleanup_percent: default_proactive_cleanup_percent(),
@@ -449,6 +472,7 @@ impl Default for GuardPolicy {
             quarantine_ttl_days: default_quarantine_ttl_days(),
             quarantine_expire_interval_secs: default_quarantine_expire_interval_secs(),
             clean_quarantine_first: false,
+            quarantine_max_bytes_per_pass_mb: default_quarantine_max_bytes_per_pass_mb(),
             auto_relocate: default_true(),
             auto_relocate_apply: false,
             relocate_candidate_roots: default_relocate_candidate_roots(),
@@ -482,6 +506,18 @@ pub(crate) fn default_tmp_search_paths() -> String {
 
 pub(crate) fn default_tmp_min_age_hours() -> u64 {
     24
+}
+
+pub(crate) fn default_tmp_e2e_patterns() -> String {
+    "reconcile-*,reconcile-batch*,deathrun-shield-*,dr-audit-*,cw-browser-test-*,hh-base,jr-audit,nb-run,nb-fresh,.tmp*,pi-subagents-uid-*".to_string()
+}
+
+pub(crate) fn default_tmp_e2e_min_age_hours() -> u64 {
+    6
+}
+
+pub(crate) fn default_quarantine_max_bytes_per_pass_mb() -> u64 {
+    10240
 }
 
 pub(crate) fn default_trash_min_age_days() -> u64 {
@@ -1009,6 +1045,8 @@ pub(crate) const SENTINEL_ZERO_KNOBS: &[&str] = &[
     // opposite of `clean_tmp_paths_with_proc`'s `min_age_hours == 0`
     // early return; the example file agrees 0 disables).
     "tmp_min_age_hours",
+    // 0 = disable the e2e-litter fast path (general tmp gate unaffected).
+    "tmp_e2e_min_age_hours",
     // 0 = treat fresh directories as relocation candidates.
     "relocate_min_age_days",
     // 0 = purge trash immediately (no recovery window).

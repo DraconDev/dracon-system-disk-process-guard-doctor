@@ -5753,6 +5753,230 @@ fn resolve_safe_tmp_roots(roots: &[String]) -> Result<Vec<PathBuf>> {
     Ok(resolved)
 }
 
+/// e2e-litter fast path for /tmp (ADDED 2026-10-12, obvious-fat increment).
+///
+/// Machine-generated test-copy namespaces (`reconcile-*`, `*-shield-*`,
+/// `cw-browser-test-*`, ...) are never user documents, so they are judged
+/// against a SHORTER age gate (`e2e_min_age_hours`, default 6) than the
+/// general tmp gate. The 2026-10-11 incident left ~29 GiB of reconcile-e2e
+/// copies 20h old — under the general 24h gate the guard would never touch
+/// them before the disk went critical.
+///
+/// The fast path owns ONLY the age window the general pass skips: entries
+/// whose whole tree is older than `general_cutoff` are left for the general
+/// pass, so dry-run accounting can never double-count an entry. Every other
+/// protection is identical to the general pass (open fd / cwd / exe scan,
+/// symlink skip, protected paths, fail-closed tree walk). Deletion is DIRECT,
+/// never quarantine: /tmp is already disposable, and copying tens of GiB to
+/// quarantine just to delete it later defeats the purpose.
+///
+/// Returns `(reclaimed_bytes, cleaned, denied)` where `denied` holds entries
+/// that could not be removed (typically root-owned leftovers needing sudo).
+fn parse_tmp_e2e_patterns(csv: &str) -> Vec<String> {
+    csv.split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Minimal `*` glob over a tmp entry basename: exact, `prefix*`, `*suffix`,
+/// `*infix*`, and bare `*`. Case-sensitive; tmp litter names are
+/// machine-generated lowercase. No dependency, no regex — the pattern list
+/// is operator config, not user input under test.
+pub(crate) fn tmp_e2e_match(file_name: &str, patterns: &[String]) -> bool {
+    patterns.iter().any(|p| {
+        let p = p.trim();
+        if p.is_empty() {
+            return false;
+        }
+        if p == "*" {
+            return true;
+        }
+        let starts_star = p.starts_with('*');
+        let ends_star = p.ends_with('*');
+        let core = p.trim_matches('*');
+        match (starts_star, ends_star) {
+            (false, false) => file_name == p,
+            (true, false) => file_name.ends_with(core),
+            (false, true) => file_name.starts_with(core),
+            (true, true) => file_name.contains(core),
+        }
+    })
+}
+
+/// Quarantine-move budget in bytes. 0 = unlimited (`u64::MAX`, never hit by
+/// a saturating add). Pure so the boundary is unit-testable.
+pub(crate) fn quarantine_budget_bytes(max_mb: u64) -> u64 {
+    if max_mb == 0 {
+        u64::MAX
+    } else {
+        max_mb.saturating_mul(1024).saturating_mul(1024)
+    }
+}
+
+/// True when moving `entry_bytes` would exceed the per-pass quarantine
+/// budget. Pure boundary helper: exactly-at-budget is allowed, one byte
+/// over defers.
+pub(crate) fn quarantine_over_budget(moved_bytes: u64, entry_bytes: u64, budget_bytes: u64) -> bool {
+    moved_bytes.saturating_add(entry_bytes) > budget_bytes
+}
+
+/// Cutoff `SystemTime` for an age gate expressed in hours. Saturating: an
+/// absurd value collapses to the epoch ("delete nothing") instead of
+/// panicking — same hardening as the inline computation in
+/// `clean_tmp_paths_with_proc`.
+fn tmp_age_cutoff(min_age_hours: u64) -> Result<SystemTime> {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
+    let age = Duration::from_secs(min_age_hours.saturating_mul(3_600));
+    Ok(UNIX_EPOCH + now.checked_sub(age).unwrap_or(Duration::ZERO))
+}
+
+async fn clean_tmp_e2e_fast_path(
+    apply: bool,
+    roots: &[String],
+    general_cutoff: SystemTime,
+    e2e_patterns: &[String],
+    e2e_min_age_hours: u64,
+    bypass_age_gate: bool,
+    protected_paths: &[String],
+) -> Result<(u64, Vec<String>, Vec<String>)> {
+    clean_tmp_e2e_fast_path_with_proc(
+        apply,
+        roots,
+        general_cutoff,
+        e2e_patterns,
+        e2e_min_age_hours,
+        bypass_age_gate,
+        protected_paths,
+        Path::new("/proc"),
+    )
+    .await
+}
+
+async fn clean_tmp_e2e_fast_path_with_proc(
+    apply: bool,
+    roots: &[String],
+    general_cutoff: SystemTime,
+    e2e_patterns: &[String],
+    e2e_min_age_hours: u64,
+    bypass_age_gate: bool,
+    protected_paths: &[String],
+    proc_root: &Path,
+) -> Result<(u64, Vec<String>, Vec<String>)> {
+    let mut reclaimed = 0u64;
+    let mut cleaned = Vec::new();
+    let mut denied: Vec<String> = Vec::new();
+    if roots.is_empty() || e2e_patterns.is_empty() || e2e_min_age_hours == 0 {
+        return Ok((0, cleaned, denied);
+    }
+    let root_paths = resolve_safe_tmp_roots(roots)?;
+    if root_paths.is_empty() {
+        return Ok((0, cleaned, denied));
+    }
+    let open_paths = match collect_open_paths_under_from(proc_root, &root_paths).await {
+        Some(set) => set,
+        None => anyhow::bail!(
+            "open-file scan failed for {} — refusing tmp fast-path blind (cannot verify nothing is held open)",
+            proc_root.display()
+        ),
+    };
+    // At the critical tier the e2e age gate is lifted (mirrors the rust-target
+    // critical bypass: test copies are regeneratable, a full disk is not).
+    // Open/cwd/exe + symlink + protected checks below still apply, so a copy
+    // a live test run is writing to is never touched.
+    let fast_cutoff = if bypass_age_gate {
+        SystemTime::now()
+    } else {
+        tmp_age_cutoff(e2e_min_age_hours)?
+    };
+    for root in &root_paths {
+        let mut rd = match tokio::fs::read_dir(root).await {
+            Ok(rd) => rd,
+            Err(e) => {
+                eprintln!("⚠️ Tmp fast-path: cannot list {} — skipping ({e})", root.display());
+                continue;
+            }
+        };
+        while let Ok(Some(entry)) = rd.next_entry().await {
+            let path = entry.path();
+            match entry.file_type().await {
+                Ok(t) if t.is_symlink() => continue,
+                Err(_) => continue,
+                _ => {}
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !tmp_e2e_match(&name, e2e_patterns) {
+                continue;
+            }
+            let meta = match entry.metadata().await {
+                Ok(m) => m,
+                _ => continue,
+            };
+            // Exclusive window with the general pass: a tree entirely older
+            // than the general cutoff is a general-pass candidate — leave it
+            // so dry-run accounting never counts an entry twice.
+            if meta.is_dir() {
+                if !tree_has_fresh_content(&path, general_cutoff).await {
+                    continue;
+                }
+                if tree_has_fresh_content(&path, fast_cutoff).await {
+                    continue;
+                }
+            } else {
+                let modified = match meta.modified() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                if modified <= general_cutoff {
+                    continue;
+                }
+                if modified > fast_cutoff {
+                    continue;
+                }
+            }
+            if path_has_open_ancestor(&path, &open_paths) {
+                continue;
+            }
+            if let Err(e) = check_safe_to_delete_tmp_entry(&path, root, protected_paths) {
+                eprintln!("🛡️ keeping protected tmp entry {}: {}", path.display(), e);
+                continue;
+            }
+            let entry_size = if meta.is_dir() {
+                get_dir_size(&path).await.unwrap_or(0)
+            } else {
+                meta.len()
+            };
+            if !apply {
+                reclaimed += entry_size;
+                cleaned.push(format!(
+                    "{} ({}, dry-run)",
+                    path.display(),
+                    human_bytes(entry_size)
+                ));
+                continue;
+            }
+            let removed = if meta.is_dir() {
+                tokio::fs::remove_dir_all(&path).await
+            } else {
+                tokio::fs::remove_file(&path).await
+            };
+            match removed {
+                Ok(()) => {
+                    reclaimed += entry_size;
+                    cleaned.push(format!("{} ({})", path.display(), human_bytes(entry_size)));
+                }
+                Err(e) => {
+                    // Typically root-owned test leftovers (e.g. docker-spawned
+                    // build outputs) the unprivileged guard cannot unlink.
+                    eprintln!("⚠️ failed to remove tmp entry {}: {}", path.display(), e);
+                    denied.push(path.display().to_string());
+                }
+            }
+        }
+    }
+    Ok((reclaimed, cleaned, denied))
+}
+
 /// Age-based top-level /tmp cleanup (ADDED 2026-08-25, v0.112.39).
 /// Removes TOP-LEVEL entries of each root whose mtime is older than
 /// `min_age_hours`, skipping symlinks, protected paths, and anything
