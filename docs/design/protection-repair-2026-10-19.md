@@ -62,19 +62,26 @@ not a release or live-runtime qualification):
 
 ```
 CARGO_BUILD_JOBS=2 cargo test -p dracon-system --locked
-# PASS: 502 unit tests; 4 events_cli tests; 12 guard_service tests; 0 failures
-CARGO_BUILD_JOBS=2 cargo clippy -p dracon-system --locked -- -D warnings
+# PASS: 504 unit tests; 4 events_cli tests; 12 guard_service tests; 0 failures
+CARGO_BUILD_JOBS=2 cargo clippy --workspace --locked -- -D warnings
 # PASS
-cargo fmt --all
-# succeeded; final --check remains part of release gates
+cargo fmt --all -- --check
+# PASS
 ```
 
-Raw current logs: `/tmp/dracon-protection-followup-tests.log` and
-`/tmp/dracon-protection-followup-clippy.log`. These temporary paths are development
-logs only; final evidence must be copied into a durable report before claiming.
-The earlier full-workspace test invocation was interrupted; it is NOT claimed
-as passed. Full workspace tests, release build, workspace clippy, cargo deny,
-final format check and controlled deployment checks remain required.
+Raw current logs are preserved in `docs/evidence/protection-repair-2026-10-19/`:
+`dracon-protection-identity-tests.log`,
+`dracon-protection-identity-workspace-clippy.log`, and
+`dracon-protection-workspace-tests-identity.log`.
+
+The current full-workspace test invocation FAILED: the pre-existing live storage
+activity test expected an error containing `active`, but received a conservative
+refusal for an unrelated python3 process with an empty command line. It was not
+weakened or rewritten. The subsequent complete dracon-system test run passed,
+including that test and the new checks. This does NOT establish a passing full
+workspace run. An earlier workspace invocation was interrupted and is also NOT
+claimed as passed. Full workspace tests, release build, cargo deny and controlled
+deployment checks remain required after the architecture decision.
 
 New regressions exercise corrupt/truncated/unavailable ledger preservation,
 second-owner lock exclusion without truncation, gone-root legacy unit survival,
@@ -97,6 +104,19 @@ Also finish actual manager failure/lock-contention tests; review the CPU lease
 expiry and reconciliation changes; persist and validate probe boot/starttimes
 instead of checking only PID existence; assess generated helper sandboxing;
 and re-review every prior finding against the final revision.
+
+The subsequent read-only architecture review is saved in
+`docs/design/oom-provenance-decision-2026-10-19.md`. Its recommended repair needs
+launch-time job admission and a job-lifetime debt rather than ancestry polling.
+Cooperative admitted-job coverage requires explicit launcher integration and
+ownership assumptions; enforced containment requires a separately authorized
+privileged launcher/broker. Neither is silently adopted. Existing arbitrary
+running jobs cannot be retroactively certified by sampling or moving a root.
+
+Additional independent source fixes now require probe boot ID, both process
+incarnations, and scope InvocationID at restart. An unavailable unit identity
+also retains a CPU recovery obligation instead of treating emptiness as absence.
+Their new regressions passed in the recorded 504-unit-test run.
 
 No installed binary, guard policy or live guard service has been changed by
 this implementation batch. No existing user workload was terminated/restarted.
