@@ -4916,230 +4916,240 @@ async fn check_memory_pressure(
     // disabled". The releases now run whenever pressure recovers, and only the
     // renice half stays gated, which is the flag that actually governs a
     // reversible renice.
-    if pressure == "ok" && !state.mitigation_ledger_unavailable {
-        // Shared by all three release halves below: the renice, oom and CPU
-        // cooldown stamps are all measured from the same release window.
-        let now = Instant::now();
-        let release_dur = Duration::from_secs(guard.release_after_secs);
-        if can_restore_nice {
-            // Un-renice memory-limited pids after the release window.
-            let mut to_unrenice = Vec::new();
-            for &pid in state.memory_reniced_pids.keys() {
-                let cooled_at = state.memory_cooled_since.entry(pid).or_insert(now);
-                if now.duration_since(*cooled_at) >= release_dur {
-                    to_unrenice.push(pid);
+    if pressure == "ok" {
+        if !state.mitigation_ledger_unavailable {
+            // Shared by all three release halves below: the renice, oom and CPU
+            // cooldown stamps are all measured from the same release window.
+            let now = Instant::now();
+            let release_dur = Duration::from_secs(guard.release_after_secs);
+            if can_restore_nice {
+                // Un-renice memory-limited pids after the release window.
+                let mut to_unrenice = Vec::new();
+                for &pid in state.memory_reniced_pids.keys() {
+                    let cooled_at = state.memory_cooled_since.entry(pid).or_insert(now);
+                    if now.duration_since(*cooled_at) >= release_dur {
+                        to_unrenice.push(pid);
+                    }
                 }
-            }
-            for pid in to_unrenice {
-                let (original_nice, identity) = match state.memory_reniced_pids.get(&pid) {
-                    Some(entry) => (entry.original_nice, entry.identity.clone()),
-                    None => continue,
-                };
-                let restore_nice = state
-                    .reniced_pids
-                    .get(&pid)
-                    .filter(|entry| same_process_incarnation(&entry.identity, &identity))
-                    .map(|entry| entry.applied_nice)
-                    .unwrap_or(original_nice);
-                match process_identity_status(Path::new("/proc"), pid, &identity) {
-                    ProcessIdentityStatus::Match => {
-                        drop_stale_nice_adjustments(state, pid, &identity);
-                    }
-                    ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch => {
-                        remove_memory_renice(state, pid);
-                        continue;
-                    }
-                    ProcessIdentityStatus::Unavailable => {
-                        // Bounded defer: only retry the identity read a few times.
-                        // Unbounded deferral is what caused the long-running memory
-                        // leak when PIDs are in cgroups we cannot inspect.
-                        let attempts = state
-                            .memory_identity_unavailable_attempts
-                            .entry(pid)
-                            .or_insert(0);
-                        *attempts += 1;
-                        if *attempts >= IDENTITY_UNAVAILABLE_RETRY_LIMIT {
-                            eprintln!(
+                for pid in to_unrenice {
+                    let (original_nice, identity) = match state.memory_reniced_pids.get(&pid) {
+                        Some(entry) => (entry.original_nice, entry.identity.clone()),
+                        None => continue,
+                    };
+                    let restore_nice = state
+                        .reniced_pids
+                        .get(&pid)
+                        .filter(|entry| same_process_incarnation(&entry.identity, &identity))
+                        .map(|entry| entry.applied_nice)
+                        .unwrap_or(original_nice);
+                    match process_identity_status(Path::new("/proc"), pid, &identity) {
+                        ProcessIdentityStatus::Match => {
+                            drop_stale_nice_adjustments(state, pid, &identity);
+                        }
+                        ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch => {
+                            remove_memory_renice(state, pid);
+                            continue;
+                        }
+                        ProcessIdentityStatus::Unavailable => {
+                            // Bounded defer: only retry the identity read a few times.
+                            // Unbounded deferral is what caused the long-running memory
+                            // leak when PIDs are in cgroups we cannot inspect.
+                            let attempts = state
+                                .memory_identity_unavailable_attempts
+                                .entry(pid)
+                                .or_insert(0);
+                            *attempts += 1;
+                            if *attempts >= IDENTITY_UNAVAILABLE_RETRY_LIMIT {
+                                eprintln!(
                                 "⚠️ mem-unrenice dropping pid={} after {} unavailable identity reads (will not retry)",
                                 pid, *attempts
                             );
-                            state.memory_identity_unavailable_attempts.remove(&pid);
+                                state.memory_identity_unavailable_attempts.remove(&pid);
+                                remove_memory_renice(state, pid);
+                            } else {
+                                eprintln!(
+                                "⚠️ mem-unrenice deferred for pid={} — process identity unavailable (attempt {}/{})",
+                                pid, *attempts, IDENTITY_UNAVAILABLE_RETRY_LIMIT
+                            );
+                            }
+                            continue;
+                        }
+                    }
+                    // Identity was Match (or fell through after dropping) — clear any
+                    // prior unavailability counter for this pid.
+                    state.memory_identity_unavailable_attempts.remove(&pid);
+                    if let Err(e) = renice_process(pid, restore_nice).await {
+                        // Bounded defer: a renice that fails with Permission denied will
+                        // fail again every cycle. Retrying forever accumulates an entry
+                        // per PID in `memory_reniced_pids` and leaks memory until the
+                        // cgroup's MemoryMax trips.
+                        let attempts = state.memory_unrenice_failures.entry(pid).or_insert(0);
+                        *attempts += 1;
+                        if *attempts >= UNRENICE_RETRY_LIMIT {
+                            eprintln!(
+                            "⚠️ mem-unrenice dropping pid={} after {} failed renices: {} (will not retry)",
+                            pid, *attempts, e
+                        );
+                            state.memory_unrenice_failures.remove(&pid);
                             remove_memory_renice(state, pid);
                         } else {
                             eprintln!(
-                                "⚠️ mem-unrenice deferred for pid={} — process identity unavailable (attempt {}/{})",
-                                pid, *attempts, IDENTITY_UNAVAILABLE_RETRY_LIMIT
+                                "⚠️ mem-unrenice failed for pid={} (attempt {}/{}): {}",
+                                pid, *attempts, UNRENICE_RETRY_LIMIT, e
                             );
                         }
                         continue;
                     }
+                    eprintln!(
+                        "🛡️ mem-unrenice pid={} -> nice {} (pressure released)",
+                        pid, restore_nice
+                    );
+                    state.memory_unrenice_failures.remove(&pid);
+                    remove_memory_renice(state, pid);
                 }
-                // Identity was Match (or fell through after dropping) — clear any
-                // prior unavailability counter for this pid.
-                state.memory_identity_unavailable_attempts.remove(&pid);
-                if let Err(e) = renice_process(pid, restore_nice).await {
-                    // Bounded defer: a renice that fails with Permission denied will
-                    // fail again every cycle. Retrying forever accumulates an entry
-                    // per PID in `memory_reniced_pids` and leaks memory until the
-                    // cgroup's MemoryMax trips.
-                    let attempts = state.memory_unrenice_failures.entry(pid).or_insert(0);
-                    *attempts += 1;
-                    if *attempts >= UNRENICE_RETRY_LIMIT {
-                        eprintln!(
-                            "⚠️ mem-unrenice dropping pid={} after {} failed renices: {} (will not retry)",
-                            pid, *attempts, e
-                        );
-                        state.memory_unrenice_failures.remove(&pid);
-                        remove_memory_renice(state, pid);
-                    } else {
-                        eprintln!(
-                            "⚠️ mem-unrenice failed for pid={} (attempt {}/{}): {}",
-                            pid, *attempts, UNRENICE_RETRY_LIMIT, e
-                        );
+                state
+                    .memory_cooled_since
+                    .retain(|pid, _| state.memory_reniced_pids.contains_key(pid));
+            }
+            // Restore oom_score_adj after the release window.
+            let mut to_unbias = Vec::new();
+            for &pid in state.oom_biased_pids.keys() {
+                let cooled_at = state.oom_cooled_since.entry(pid).or_insert(now);
+                if now.duration_since(*cooled_at) >= release_dur {
+                    to_unbias.push(pid);
+                }
+            }
+            for pid in to_unbias {
+                let (orig, identity) = match state.oom_biased_pids.get(&pid).cloned() {
+                    Some(entry) => entry,
+                    None => continue,
+                };
+                match process_identity_status(Path::new("/proc"), pid, &identity) {
+                    ProcessIdentityStatus::Match => {}
+                    ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch => {
+                        remove_oom_bias(state, pid);
+                        continue;
                     }
-                    continue;
-                }
-                eprintln!(
-                    "🛡️ mem-unrenice pid={} -> nice {} (pressure released)",
-                    pid, restore_nice
-                );
-                state.memory_unrenice_failures.remove(&pid);
-                remove_memory_renice(state, pid);
-            }
-            state
-                .memory_cooled_since
-                .retain(|pid, _| state.memory_reniced_pids.contains_key(pid));
-        }
-        // Restore oom_score_adj after the release window.
-        let mut to_unbias = Vec::new();
-        for &pid in state.oom_biased_pids.keys() {
-            let cooled_at = state.oom_cooled_since.entry(pid).or_insert(now);
-            if now.duration_since(*cooled_at) >= release_dur {
-                to_unbias.push(pid);
-            }
-        }
-        for pid in to_unbias {
-            let (orig, identity) = match state.oom_biased_pids.get(&pid).cloned() {
-                Some(entry) => entry,
-                None => continue,
-            };
-            match process_identity_status(Path::new("/proc"), pid, &identity) {
-                ProcessIdentityStatus::Match => {}
-                ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch => {
-                    remove_oom_bias(state, pid);
-                    continue;
-                }
-                ProcessIdentityStatus::Unavailable => {
-                    if record_unavailable_attempt(&mut state.oom_identity_unavailable_attempts, pid)
-                    {
-                        eprintln!(
+                    ProcessIdentityStatus::Unavailable => {
+                        if record_unavailable_attempt(
+                            &mut state.oom_identity_unavailable_attempts,
+                            pid,
+                        ) {
+                            eprintln!(
                             "⚠️ oom-restore retaining pid={} after {} unavailable identity reads",
                             pid, IDENTITY_UNAVAILABLE_RETRY_LIMIT
                         );
-                        // A retry limit bounds warning cadence, never proof
-                        // that a live adjustment was restored.
-                        state
-                            .oom_identity_unavailable_attempts
-                            .insert(pid, IDENTITY_UNAVAILABLE_RETRY_LIMIT);
-                    } else {
-                        eprintln!(
+                            // A retry limit bounds warning cadence, never proof
+                            // that a live adjustment was restored.
+                            state
+                                .oom_identity_unavailable_attempts
+                                .insert(pid, IDENTITY_UNAVAILABLE_RETRY_LIMIT);
+                        } else {
+                            eprintln!(
                             "⚠️ oom-restore deferred for pid={} — process identity unavailable (attempt {}/{})",
                             pid,
                             state.oom_identity_unavailable_attempts.get(&pid).copied().unwrap_or(0),
                             IDENTITY_UNAVAILABLE_RETRY_LIMIT
                         );
+                        }
+                        continue;
+                    }
+                }
+                // Identity was readable: clear any prior unavailability count.
+                state.oom_identity_unavailable_attempts.remove(&pid);
+                if let Err(e) = oom_restore::restore(Path::new("/proc"), pid, &identity, orig) {
+                    eprintln!("⚠️ oom-restore failed for pid={}: {}", pid, e);
+                    continue;
+                }
+                eprintln!(
+                    "🛡️ oom-restore pid={} adj -> {} (pressure released)",
+                    pid, orig
+                );
+                remove_oom_bias(state, pid);
+            }
+            state
+                .oom_cooled_since
+                .retain(|pid, _| state.oom_biased_pids.contains_key(pid));
+            // Lift CPUQuota scopes after the release window.
+            let mut to_uncap = Vec::new();
+            for &pid in state.capped_pids.keys() {
+                let cooled_at = state.cap_cooled_since.entry(pid).or_insert(now);
+                if now.duration_since(*cooled_at) >= release_dur {
+                    to_uncap.push(pid);
+                }
+            }
+            for pid in to_uncap {
+                let (scope, orig_cgroup, identity) = match state.capped_pids.get(&pid).cloned() {
+                    Some(entry) => entry,
+                    None => continue,
+                };
+                if cpu_limit::is_lease(&scope) {
+                    match cpu_limit::release(&scope, &orig_cgroup).await {
+                        Ok(()) => remove_cpu_cap(state, pid),
+                        Err(e) => eprintln!("CPU lease release retained {scope}: {e}"),
                     }
                     continue;
                 }
-            }
-            // Identity was readable: clear any prior unavailability count.
-            state.oom_identity_unavailable_attempts.remove(&pid);
-            if let Err(e) = oom_restore::restore(Path::new("/proc"), pid, &identity, orig) {
-                eprintln!("⚠️ oom-restore failed for pid={}: {}", pid, e);
-                continue;
-            }
-            eprintln!(
-                "🛡️ oom-restore pid={} adj -> {} (pressure released)",
-                pid, orig
-            );
-            remove_oom_bias(state, pid);
-        }
-        state
-            .oom_cooled_since
-            .retain(|pid, _| state.oom_biased_pids.contains_key(pid));
-        // Lift CPUQuota scopes after the release window.
-        let mut to_uncap = Vec::new();
-        for &pid in state.capped_pids.keys() {
-            let cooled_at = state.cap_cooled_since.entry(pid).or_insert(now);
-            if now.duration_since(*cooled_at) >= release_dur {
-                to_uncap.push(pid);
-            }
-        }
-        for pid in to_uncap {
-            let (scope, orig_cgroup, identity) = match state.capped_pids.get(&pid).cloned() {
-                Some(entry) => entry,
-                None => continue,
-            };
-            if cpu_limit::is_lease(&scope) {
-                match cpu_limit::release(&scope, &orig_cgroup).await {
-                    Ok(()) => remove_cpu_cap(state, pid),
-                    Err(e) => eprintln!("CPU lease release retained {scope}: {e}"),
-                }
-                continue;
-            }
-            let allow_pid_move = match process_identity_status(Path::new("/proc"), pid, &identity) {
-                ProcessIdentityStatus::Match | ProcessIdentityStatus::Gone => true,
-                ProcessIdentityStatus::Mismatch => false,
-                ProcessIdentityStatus::Unavailable => {
-                    if record_unavailable_attempt(&mut state.cap_identity_unavailable_attempts, pid)
-                    {
-                        eprintln!(
-                            "⚠️ cpu-uncap retaining pid={} after {} unavailable identity reads",
-                            pid, IDENTITY_UNAVAILABLE_RETRY_LIMIT
-                        );
-                        // Unreadability never proves the legacy unit empty.
-                        // Keep its durable recovery obligation.
-                        state
-                            .cap_identity_unavailable_attempts
-                            .insert(pid, IDENTITY_UNAVAILABLE_RETRY_LIMIT);
-                    } else {
-                        eprintln!(
+                let allow_pid_move = match process_identity_status(
+                    Path::new("/proc"),
+                    pid,
+                    &identity,
+                ) {
+                    ProcessIdentityStatus::Match | ProcessIdentityStatus::Gone => true,
+                    ProcessIdentityStatus::Mismatch => false,
+                    ProcessIdentityStatus::Unavailable => {
+                        if record_unavailable_attempt(
+                            &mut state.cap_identity_unavailable_attempts,
+                            pid,
+                        ) {
+                            eprintln!(
+                                "⚠️ cpu-uncap retaining pid={} after {} unavailable identity reads",
+                                pid, IDENTITY_UNAVAILABLE_RETRY_LIMIT
+                            );
+                            // Unreadability never proves the legacy unit empty.
+                            // Keep its durable recovery obligation.
+                            state
+                                .cap_identity_unavailable_attempts
+                                .insert(pid, IDENTITY_UNAVAILABLE_RETRY_LIMIT);
+                        } else {
+                            eprintln!(
                             "⚠️ cpu-un cap deferred for pid={} — process identity unavailable (attempt {}/{})",
                             pid,
                             state.cap_identity_unavailable_attempts.get(&pid).copied().unwrap_or(0),
                             IDENTITY_UNAVAILABLE_RETRY_LIMIT
                         );
+                        }
+                        continue;
                     }
+                };
+                // Identity was readable: clear any prior unavailability count.
+                state.cap_identity_unavailable_attempts.remove(&pid);
+                let systemctl_bin = match resolve_bin_strict("systemctl") {
+                    Ok(b) => b,
+                    Err(e) => {
+                        eprintln!("cpu-uncap unavailable, skipping pid={pid}: {e:#}");
+                        continue;
+                    }
+                };
+                if let Err(e) = uncap_cpu_process_with_bin(
+                    &PathBuf::from(systemctl_bin),
+                    Path::new("/proc"),
+                    pid,
+                    &scope,
+                    &orig_cgroup,
+                    allow_pid_move,
+                )
+                .await
+                {
+                    eprintln!("⚠️ cpu-uncap failed for pid={} scope={}: {}", pid, scope, e);
                     continue;
                 }
-            };
-            // Identity was readable: clear any prior unavailability count.
-            state.cap_identity_unavailable_attempts.remove(&pid);
-            let systemctl_bin = match resolve_bin_strict("systemctl") {
-                Ok(b) => b,
-                Err(e) => {
-                    eprintln!("cpu-uncap unavailable, skipping pid={pid}: {e:#}");
-                    continue;
-                }
-            };
-            if let Err(e) = uncap_cpu_process_with_bin(
-                &PathBuf::from(systemctl_bin),
-                Path::new("/proc"),
-                pid,
-                &scope,
-                &orig_cgroup,
-                allow_pid_move,
-            )
-            .await
-            {
-                eprintln!("⚠️ cpu-uncap failed for pid={} scope={}: {}", pid, scope, e);
-                continue;
+                remove_cpu_cap(state, pid);
             }
-            remove_cpu_cap(state, pid);
+            state
+                .cap_cooled_since
+                .retain(|pid, _| state.capped_pids.contains_key(pid));
         }
-        state
-            .cap_cooled_since
-            .retain(|pid, _| state.capped_pids.contains_key(pid));
     } else {
         // Pressure persists: restart any release timers from zero.
         state.memory_cooled_since.clear();
