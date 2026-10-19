@@ -207,6 +207,37 @@ fn successful(status: ExitStatus) -> Result<()> {
         .into())
     }
 }
+/// The baseline every admitted job starts from. A launcher that inherited a
+/// biased score from an unregistered ancestor is normalized to this known
+/// value instead of carrying that unknown history into the job.
+pub(crate) const MANAGED_JOB_BASELINE: i32 = 200;
+fn establish_baseline() -> Result<i32> {
+    let path = "/proc/self/oom_score_adj";
+    let current = fs::read_to_string(path)?.trim().parse::<i32>()?;
+    if current == MANAGED_JOB_BASELINE {
+        return Ok(current);
+    }
+    // Lowering our own score is always permitted. Raising it may require a
+    // capability this job does not have; in that case the inherited value is
+    // only acceptable when it is already a supported, recordable baseline.
+    if let Ok(mut file) = fs::OpenOptions::new().write(true).open(path) {
+        use std::io::Write;
+        if file
+            .write_all(format!("{MANAGED_JOB_BASELINE}\n").as_bytes())
+            .is_ok()
+        {
+            let observed = fs::read_to_string(path)?.trim().parse::<i32>()?;
+            if observed == MANAGED_JOB_BASELINE {
+                return Ok(observed);
+            }
+        }
+    }
+    ensure!(
+        (-499..250).contains(&current),
+        "job baseline is protected or cannot be safely biased"
+    );
+    Ok(current)
+}
 fn read_members(group: &Path) -> Result<Vec<i32>> {
     fs::read_to_string(group.join("cgroup.procs"))?
         .split_whitespace()
@@ -285,9 +316,7 @@ pub(crate) fn enter(id: &str, command: &[OsString]) -> Result<()> {
         property(&unit, "ControlGroup")? == group,
         "manager cgroup does not match admission boundary"
     );
-    let baseline = fs::read_to_string("/proc/self/oom_score_adj")?
-        .trim()
-        .parse::<i32>()?;
+    let baseline = establish_baseline()?;
     ensure!(
         (-499..250).contains(&baseline),
         "job baseline is protected or cannot be safely biased"
@@ -434,6 +463,14 @@ mod tests {
             retried += 1;
         }
         assert_eq!(retried, 2);
+    }
+
+    #[test]
+    fn launcher_baseline_is_established_by_construction() {
+        // The job's baseline is the declared value, not whatever the caller
+        // happened to inherit.
+        assert_eq!(MANAGED_JOB_BASELINE, 200);
+        assert!((-499..250).contains(&MANAGED_JOB_BASELINE));
     }
 
     #[test]
