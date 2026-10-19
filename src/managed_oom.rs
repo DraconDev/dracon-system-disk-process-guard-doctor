@@ -215,6 +215,13 @@ async fn boundary(job: &Job) -> Result<PathBuf> {
 fn recoverer_armed(state: &str) -> bool {
     matches!(state, "active" | "activating" | "reloading")
 }
+
+/// The manager's own view of the recoverer's command is the identity source:
+/// a hardened service may not be allowed to read another process's exe link,
+/// and an unreadable link must never be read as "a different binary".
+fn recoverer_command_matches(exec_start: &str, expected: &str) -> bool {
+    exec_start.contains(expected) && exec_start.contains("oom-job-recover")
+}
 async fn ensure_recoverer(root: &Path) -> Result<()> {
     let state = cpu_limit::property(RECOVERER, "ActiveState")
         .await
@@ -274,8 +281,7 @@ async fn ensure_recoverer(root: &Path) -> Result<()> {
         .map_err(anyhow::Error::msg)?;
     let expected = std::env::current_exe()?;
     ensure!(
-        exec_start.contains(expected.to_string_lossy().as_ref())
-            && exec_start.contains("oom-job-recover"),
+        recoverer_command_matches(&exec_start, expected.to_string_lossy().as_ref()),
         "independent recovery unit runs a different command: {exec_start}"
     );
     Ok(())
@@ -660,6 +666,28 @@ mod tests {
         )
         .unwrap();
         assert_eq!(archived.attempts, 3);
+    }
+
+    #[test]
+    fn recoverer_identity_comes_from_the_manager_not_from_proc() {
+        assert!(recoverer_command_matches(
+            "{ path=/home/u/.local/bin/dracon-system ; argv[]=/home/u/.local/bin/dracon-system oom-job-recover ; }",
+            "/home/u/.local/bin/dracon-system"
+        ));
+        // A different binary, a different subcommand, or an empty view never
+        // passes as "the recoverer".
+        assert!(!recoverer_command_matches(
+            "{ path=/usr/bin/other ; argv[]=/usr/bin/other oom-job-recover ; }",
+            "/home/u/.local/bin/dracon-system"
+        ));
+        assert!(!recoverer_command_matches(
+            "{ path=/home/u/.local/bin/dracon-system ; argv[]=/home/u/.local/bin/dracon-system guard ; }",
+            "/home/u/.local/bin/dracon-system"
+        ));
+        assert!(!recoverer_command_matches(
+            "",
+            "/home/u/.local/bin/dracon-system"
+        ));
     }
 
     #[test]
