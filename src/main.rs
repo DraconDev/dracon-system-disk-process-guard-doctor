@@ -9462,6 +9462,8 @@ fn main() {
     // terminal proof relies on being the only remaining task in the boundary.
     let result = if let Commands::ManagedJobEnter { id, command } = &cli.cmd {
         oom_job::enter(id, command)
+    } else if let Commands::ManagedJob { command } = &cli.cmd {
+        oom_job::launch(command)
     } else {
         match tokio::runtime::Builder::new_multi_thread()
             .enable_all()

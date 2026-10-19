@@ -54,23 +54,51 @@ pub(crate) fn valid_id(id: &str) -> bool {
         })
 }
 pub(crate) fn root() -> Result<PathBuf> {
-    use std::{ffi::CStr, os::unix::{ffi::OsStrExt, fs::PermissionsExt}};
+    use std::{
+        ffi::CStr,
+        os::unix::ffi::OsStrExt,
+    };
     // Do not let a job's HOME override split admission and recovery registries.
-    let uid=unsafe {libc::geteuid()};
-    let mut pwd=std::mem::MaybeUninit::<libc::passwd>::uninit();
-    let mut found=std::ptr::null_mut();
-    let mut buffer=vec![0u8;65536];
-    let rc=unsafe {libc::getpwuid_r(uid,pwd.as_mut_ptr(),buffer.as_mut_ptr().cast(),buffer.len(),&mut found)};
-    ensure!(rc==0 && !found.is_null(),"cannot resolve canonical user home");
-    let pwd=unsafe {pwd.assume_init()};
-    ensure!(!pwd.pw_dir.is_null(),"user home unavailable");
-    let home=Path::new(std::ffi::OsStr::from_bytes(unsafe {CStr::from_ptr(pwd.pw_dir)}.to_bytes()));
-    let root=home.join(".dracon/oom-jobs");
+    let uid = unsafe { libc::geteuid() };
+    let mut pwd = std::mem::MaybeUninit::<libc::passwd>::uninit();
+    let mut found = std::ptr::null_mut();
+    let mut buffer = vec![0u8; 65536];
+    let rc = unsafe {
+        libc::getpwuid_r(
+            uid,
+            pwd.as_mut_ptr(),
+            buffer.as_mut_ptr().cast(),
+            buffer.len(),
+            &mut found,
+        )
+    };
+    ensure!(
+        rc == 0 && !found.is_null(),
+        "cannot resolve canonical user home"
+    );
+    let pwd = unsafe { pwd.assume_init() };
+    ensure!(!pwd.pw_dir.is_null(), "user home unavailable");
+    let home = Path::new(std::ffi::OsStr::from_bytes(
+        unsafe { CStr::from_ptr(pwd.pw_dir) }.to_bytes(),
+    ));
+    initialize_registry(home, uid, &mut |path| fs::File::open(path)?.sync_all())
+}
+fn initialize_registry(home:&Path, uid:u32, sync:&mut impl FnMut(&Path)->std::io::Result<()>) -> Result<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    let parent=home.join(".dracon");
+    let root=parent.join("oom-jobs");
     fs::create_dir_all(&root)?;
     let metadata=fs::symlink_metadata(&root)?;
     ensure!(metadata.is_dir() && metadata.uid()==uid,"unsafe managed-job state directory");
     fs::set_permissions(&root,fs::Permissions::from_mode(0o700))?;
+    // Admission must not outlive a newly initialized directory pathname.
+    // Persist both links in the short directory chain before exposing it.
+    for path in [&root,&parent,home] { sync(path)?; }
     Ok(root)
+}
+fn report_terminal_error(writer:&mut impl Write,id:&str,error:&anyhow::Error) {
+    // A full filesystem or closed stderr must never kill the proof writer.
+    let _=writeln!(writer,"managed-job {id}: terminal proof unresolved; retaining sentinel and retrying: {error:#}");
 }
 fn property(unit: &str, name: &str) -> Result<String> {
     let bin = super::resolve_bin_strict("systemctl")?;
@@ -136,7 +164,6 @@ pub(crate) fn launch(command: &[OsString]) -> Result<()> {
             "--user",
             "--scope",
             "--quiet",
-            "--same-dir",
             "--property=Delegate=no",
             "--unit",
             &unit,
@@ -190,11 +217,11 @@ fn terminal_candidate(sentinel: i32, members: &[i32], tasks: u64, own_threads: u
     own_threads == 1 && tasks == 1 && members == [sentinel]
 }
 
-fn same_admission(left:&Job,right:&Job)->bool {
-    let mut identity=left.clone();
-    identity.phase=right.phase;
-    identity.terminal_proof=right.terminal_proof;
-    identity==*right
+fn same_admission(left: &Job, right: &Job) -> bool {
+    let mut identity = left.clone();
+    identity.phase = right.phase;
+    identity.terminal_proof = right.terminal_proof;
+    identity == *right
 }
 
 /// Must be called before creating a runtime or any threads. Keep a non-forking
@@ -232,10 +259,23 @@ pub(crate) fn enter(id: &str, command: &[OsString]) -> Result<()> {
     );
     let directory = Path::new("/sys/fs/cgroup").join(group.trim_start_matches('/'));
     no_nested_groups(&directory)?;
-    let initial_members=read_members(&directory)?;
-    let initial_tasks=fs::read_to_string(directory.join("pids.current"))?.trim().parse::<u64>()?;
-    ensure!(terminal_candidate(pid,&initial_members,initial_tasks,fs::read_dir("/proc/self/task")?.count()),"new job scope already contains another task");
-    ensure!(property(&unit,"ControlGroup")?==group,"manager cgroup does not match admission boundary");
+    let initial_members = read_members(&directory)?;
+    let initial_tasks = fs::read_to_string(directory.join("pids.current"))?
+        .trim()
+        .parse::<u64>()?;
+    ensure!(
+        terminal_candidate(
+            pid,
+            &initial_members,
+            initial_tasks,
+            fs::read_dir("/proc/self/task")?.count()
+        ),
+        "new job scope already contains another task"
+    );
+    ensure!(
+        property(&unit, "ControlGroup")? == group,
+        "manager cgroup does not match admission boundary"
+    );
     let baseline = fs::read_to_string("/proc/self/oom_score_adj")?
         .trim()
         .parse::<i32>()?;
@@ -268,33 +308,62 @@ pub(crate) fn enter(id: &str, command: &[OsString]) -> Result<()> {
     }
     // Admission is durable before the first workload instruction. The command
     // inherits cwd, environment, standard descriptors and the known baseline.
-    ensure!(fs::read_to_string("/proc/self/oom_score_adj")?.trim().parse::<i32>()?==baseline,"baseline changed before workload launch");
+    ensure!(
+        fs::read_to_string("/proc/self/oom_score_adj")?
+            .trim()
+            .parse::<i32>()?
+            == baseline,
+        "baseline changed before workload launch"
+    );
     // Even an exec/spawn failure closes admission through the same durable
     // empty-boundary proof, rather than leaving an orphan registration.
     let status = Command::new(&command[0])
         .args(&command[1..])
         .spawn()
-        .and_then(|mut child| child.wait());
+        .map_err(|error| -> anyhow::Error {
+            match error.kind() {
+                std::io::ErrorKind::NotFound => JobExit(127).into(),
+                std::io::ErrorKind::PermissionDenied => JobExit(126).into(),
+                _ => error.into(),
+            }
+        })
+        .and_then(|mut child| child.wait().map_err(Into::into));
+    let mut failures = 0u64;
     loop {
-        no_nested_groups(&directory)?;
-        let current = fs::metadata(&directory)?;
-        ensure!(
-            current.dev() == job.group_device && current.ino() == job.group_inode,
-            "job cgroup was replaced"
-        );
-        let members = read_members(&directory)?;
-        let tasks = fs::read_to_string(directory.join("pids.current"))?
-            .trim()
-            .parse::<u64>()?;
-        let own_threads = fs::read_dir("/proc/self/task")?.count();
-        if terminal_candidate(pid, &members, tasks, own_threads) {
+        let attempt = (|| -> Result<bool> {
+            no_nested_groups(&directory)?;
+            let current = fs::metadata(&directory)?;
+            ensure!(
+                current.dev() == job.group_device && current.ino() == job.group_inode,
+                "job cgroup was replaced"
+            );
+            // Read membership before the atomic charged-task count: an omitted
+            // newborn must still prevent the single-task terminal certificate.
+            let members = read_members(&directory)?;
+            let tasks = fs::read_to_string(directory.join("pids.current"))?
+                .trim()
+                .parse::<u64>()?;
+            let own_threads = fs::read_dir("/proc/self/task")?.count();
+            if !terminal_candidate(pid, &members, tasks, own_threads) {
+                return Ok(false);
+            }
             let _lock = locked(&root, id)?;
             let mut final_job = load(&root, id)?;
-            ensure!(same_admission(&final_job,&job),"job ownership changed");
+            ensure!(same_admission(&final_job, &job), "job ownership changed");
             final_job.phase = Phase::Terminal;
             final_job.terminal_proof = true;
             save(&root, &final_job, false)?;
-            break;
+            Ok(true)
+        })();
+        match attempt {
+            Ok(true) => break,
+            Ok(false) => {}
+            Err(error) => {
+                if failures.is_multiple_of(120) {
+                    report_terminal_error(&mut std::io::stderr().lock(),id,&error);
+                }
+                failures = failures.saturating_add(1);
+            }
         }
         thread::sleep(Duration::from_millis(250));
     }
@@ -305,6 +374,40 @@ pub(crate) fn enter(id: &str, command: &[OsString]) -> Result<()> {
 mod tests {
     use super::*;
     #[test]
+    fn first_use_registry_links_are_synced_before_admission_and_fail_closed() {
+        for fail_at in 0..=3 {
+            let home=tempfile::tempdir().unwrap();
+            let mut order=Vec::new();
+            let result=initialize_registry(home.path(),unsafe {libc::geteuid()},&mut |path| {
+                order.push(path.to_owned());
+                if order.len()==fail_at {return Err(std::io::Error::from_raw_os_error(libc::ENOSPC));}
+                fs::File::open(path)?.sync_all()
+            });
+            assert_eq!(result.is_ok(),fail_at==0);
+            assert_eq!(order[0],home.path().join(".dracon/oom-jobs"));
+            if fail_at==0 { assert_eq!(order,vec![home.path().join(".dracon/oom-jobs"),home.path().join(".dracon"),home.path().to_owned()]); }
+            else { assert_eq!(order.len(),fail_at); }
+            assert!(fs::read_dir(home.path().join(".dracon/oom-jobs")).unwrap().next().is_none());
+        }
+    }
+
+    #[test]
+    fn failed_retry_diagnostic_does_not_interrupt_terminal_retry() {
+        struct Broken;
+        impl Write for Broken {
+            fn write(&mut self,_:&[u8])->std::io::Result<usize> {Err(std::io::Error::from_raw_os_error(libc::ENOSPC))}
+            fn flush(&mut self)->std::io::Result<()> {Ok(())}
+        }
+        let mut retried=0;
+        for _ in 0..2 {
+            let error=anyhow::anyhow!("injected terminal publication failure");
+            report_terminal_error(&mut Broken,"test-job",&error);
+            retried+=1;
+        }
+        assert_eq!(retried,2);
+    }
+
+    #[test]
     fn terminal_evidence_excludes_surviving_descendants_and_multithreaded_sentinels() {
         assert!(terminal_candidate(10, &[10], 1, 1));
         assert!(!terminal_candidate(10, &[10, 20], 2, 1));
@@ -313,6 +416,21 @@ mod tests {
         assert!(!terminal_candidate(10, &[], 0, 1));
         assert!(!terminal_candidate(10, &[20], 1, 1));
     }
+    #[test]
+    fn command_exit_codes_are_preserved_instead_of_becoming_infrastructure_errors() {
+        use std::os::unix::process::ExitStatusExt;
+        assert!(successful(ExitStatus::from_raw(0)).is_ok());
+        for code in [1, 42, 126, 127] {
+            let error = successful(ExitStatus::from_raw(code << 8)).unwrap_err();
+            assert_eq!(super::super::exit_status_for_error(&error), code);
+        }
+        let error = successful(ExitStatus::from_raw(libc::SIGTERM)).unwrap_err();
+        assert_eq!(
+            super::super::exit_status_for_error(&error),
+            128 + libc::SIGTERM
+        );
+    }
+
     #[test]
     fn admission_is_durable_and_cannot_replace_an_existing_generation() {
         let dir = tempfile::tempdir().unwrap();
@@ -340,6 +458,12 @@ mod tests {
         save(dir.path(), &draining, false).unwrap();
         assert_eq!(load(dir.path(), id).unwrap().phase, Phase::Draining);
         assert!(!load(dir.path(), id).unwrap().terminal_proof);
+        assert!(same_admission(&draining, &job));
+        draining.baseline += 1;
+        assert!(!same_admission(&draining, &job));
+        draining.baseline -= 1;
+        draining.group_inode += 1;
+        assert!(!same_admission(&draining, &job));
     }
 
     #[test]
