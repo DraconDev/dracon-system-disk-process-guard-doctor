@@ -78,26 +78,47 @@ not a release or live-runtime qualification):
 
 ```
 CARGO_BUILD_JOBS=2 cargo test -p dracon-system --locked
-# PASS: 504 unit tests; 4 events_cli tests; 12 guard_service tests; 0 failures
+# PASS: 515 unit tests; 4 events_cli tests; 12 guard_service tests; 0 failures
+CARGO_BUILD_JOBS=2 cargo test --workspace --locked
+# PASS on re-run: 35 test binaries ok. The first run failed one unrelated
+# dracon-sync timing test (bucket_qualification_daemon_new_enrollment_retry_and_fresh_restore);
+# it passes in isolation and on the clean re-run, and no dracon-sync source was changed.
 CARGO_BUILD_JOBS=2 cargo clippy --workspace --locked -- -D warnings
 # PASS
 cargo fmt --all -- --check
 # PASS
+CARGO_BUILD_JOBS=2 cargo build --release --locked
+# PASS
+cargo deny check
+# PASS: advisories ok, bans ok, licenses ok, sources ok
 ```
 
 Raw current logs are preserved in `docs/evidence/protection-repair-2026-10-19/`:
-`dracon-protection-identity-tests.log`,
-`dracon-protection-identity-workspace-clippy.log`, and
-`dracon-protection-workspace-tests-identity.log`.
+`dracon-managed-oom-tests5.log`, `dracon-managed-oom-clippy5.log`,
+`dracon-workspace-final-tests2.log`, `dracon-release-build.log`,
+`dracon-managed-probe-run.log` and `dracon-protection-probe-run.log`.
 
-The current full-workspace test invocation FAILED: the pre-existing live storage
-activity test expected an error containing `active`, but received a conservative
-refusal for an unrelated python3 process with an empty command line. It was not
-weakened or rewritten. The subsequent complete dracon-system test run passed,
-including that test and the new checks. This does NOT establish a passing full
-workspace run. An earlier workspace invocation was interrupted and is also NOT
-claimed as passed. Full workspace tests, release build, cargo deny and controlled
-deployment checks remain required after the architecture decision.
+One earlier full-workspace invocation FAILED on the pre-existing live storage
+activity test: it expected an error containing `active` but received a
+conservative refusal for an unrelated python3 process with an empty command
+line. It was not weakened or rewritten; the later workspace run above passes.
+
+Live observations with the development binary (NOT the deployed service):
+
+- The managed probe completed with status 0 against the real user manager:
+  baseline 200, bias 250, lifetime debt restored, and the debt retired against
+  the sentinel terminal certificate. No managed-job unit and no outstanding
+  debt remained afterwards.
+- The CPU protection probe completed with status 0: quota 500ms applied, normal
+  release, stricter and operator edits preserved, independent expiry executed.
+- The independent expiry timer restored the scope quota to `infinity` on its
+  own within ~50s, with the workload still running.
+- The probe restart-check phase requires a restarted deployed guard, so it is
+  part of the deployment verification, not of the pre-deployment evidence.
+
+These observations are development-binary evidence outside the deployed guard
+sandbox. They do NOT establish deployed-service behaviour or the final release
+gates; the deployment checks below remain outstanding.
 
 New regressions exercise corrupt/truncated/unavailable ledger preservation,
 second-owner lock exclusion without truncation, gone-root legacy unit survival,
@@ -105,37 +126,38 @@ boot mismatch, current-name exemption after same-incarnation exec, durable OOM
 retry/recovery and CPU intent reconciliation. Existing compatibility and
 capability-release regressions remain passing.
 
-## Open safety work — must resolve before deployment
+## Resolved safety findings
 
 The independent review at `/tmp/dracon-protection-safety-review.md` found a
-fundamental remaining OOM provenance problem: ancestry polling alone cannot
-attribute a child that forks and reparents before the next sample, or close the
-fork-during-restore race. Keeping already-discovered obligations is necessary
-but insufficient. Do NOT claim full inherited-debt recovery or deploy the
-repair until a supported, independently verifiable lineage/ownership boundary
-is implemented and tested. Do not simply disable the configured OOM opt-in,
-freeze/kill workloads, or grant speculative capabilities to hide this gap.
+fundamental OOM provenance problem: ancestry polling alone cannot attribute a
+child that forks and reparents before the next sample, or close the
+fork-during-restore race. Keeping already-discovered obligations was necessary
+but insufficient. The operator selected cooperative managed-launcher coverage,
+and the repair now supplies a supported, independently verifiable ownership
+boundary: launch-time admission with a durable job-lifetime debt, a
+single-threaded sentinel that certifies workload-terminal generations, and an
+independently supervised recoverer. The configured OOM opt-in is preserved and
+no speculative capability was granted.
 
-Also finish actual manager failure/lock-contention tests; review the CPU lease
-expiry and reconciliation changes; persist and validate probe boot/starttimes
-instead of checking only PID existence; assess generated helper sandboxing;
-and re-review every prior finding against the final revision.
+The read-only architecture review is saved in
+`docs/design/oom-provenance-decision-2026-10-19.md`; the launcher and
+recoverer design with its limitations is in
+`docs/design/managed-job-admission-2026-10-19.md`; the implementation review
+that required durable directory-chain initialisation and a non-panicking retry
+diagnostic is in `docs/design/managed-job-bootstrap-review-2026-10-19.md`.
 
-The subsequent read-only architecture review is saved in
-`docs/design/oom-provenance-decision-2026-10-19.md`. Its recommended repair needs
-launch-time job admission and a job-lifetime debt rather than ancestry polling.
-The operator has now explicitly selected cooperative managed-launcher coverage:
-future admitted jobs, no new root privileges, and existing unregistered jobs
-untouched and reported unsupported. The initial launcher and its development
-observations are documented in `docs/design/managed-job-admission-2026-10-19.md`.
-Registered-job steering and independent lifetime-debt recovery remain unfinished.
-Existing arbitrary running jobs cannot be retroactively certified by sampling
-or moving a root.
+Remaining limitations, stated plainly:
 
-Additional independent source fixes now require probe boot ID, both process
-incarnations, and scope InvocationID at restart. An unavailable unit identity
-also retains a CPU recovery obligation instead of treating emptiness as absence.
-Their new regressions passed in the recorded 504-unit-test run.
+- Coverage is cooperative, not enforced containment. A participating job that
+  migrates out of its boundary, writes OOM policy itself, creates nested
+  cgroups or execs an exempt role inside a biased job is outside the
+  guarantee. Unregistered jobs keep the pre-existing in-process behaviour and
+  their historical unknown debts are not retroactively certified.
+- Restoration is not atomic and not bounded-time under an adversarial endless
+  fork chain. The debt stays visible until the terminal certificate, rather
+  than being declared recovered.
+- A lost sentinel means unresolved provenance, not a certificate; only explicit
+  operator reconciliation retires such an orphan.
 
 No installed binary, guard policy or live guard service has been changed by
 this implementation batch. No existing user workload was terminated/restarted.
