@@ -67,6 +67,93 @@ async fn wait_file(path: &Path) -> Result<()> {
 fn checked<T>(r: std::result::Result<T, String>) -> Result<T> {
     r.map_err(anyhow::Error::msg)
 }
+/// Managed-job path: a disposable admitted job is biased through the
+/// registered-job lease, then its own lifetime debt restores it. Only the
+/// disposable job is touched.
+async fn exercise_managed(root: &Path) -> Result<()> {
+    fs::create_dir_all(root)?;
+    anyhow::ensure!(
+        !root.join("state.json").exists(),
+        "use a fresh probe directory"
+    );
+    let exe = std::env::current_exe()?;
+    // Launch a disposable admitted job whose workload outlives the probe.
+    let mut child = std::process::Command::new(&exe)
+        .args(["managed-job", "--", "sh", "-c", "sleep 600"])
+        .spawn()?;
+    let launcher = child.id() as i32;
+    let mut admitted = false;
+    for _ in 0..60 {
+        if let Ok(entries) = fs::read_dir(oom_job::root()?) {
+            if entries.flatten().any(|entry| {
+                entry.file_name().to_string_lossy().ends_with(".json")
+                    && !entry.file_name().to_string_lossy().contains("debt")
+            }) {
+                admitted = true;
+                break;
+            }
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    anyhow::ensure!(admitted, "no managed job admission appeared");
+    // Find the admitted job's registered workload member.
+    let mut target = None;
+    for _ in 0..80 {
+        let samples = process_samples().await?;
+        for sample in &samples {
+            if managed_oom::is_managed_job_process(sample.pid) {
+                target = Some(sample.clone());
+                break;
+            }
+        }
+        if target.is_some() {
+            break;
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    let sample =
+        target.ok_or_else(|| anyhow::anyhow!("no admitted managed job member appeared"))?;
+    let baseline = fs::read_to_string(format!("/proc/{}/oom_score_adj", sample.pid))?
+        .trim()
+        .parse::<i32>()?;
+    let exempt = HashSet::new();
+    let applied = managed_oom::bias(&sample, &exempt)
+        .await
+        .map_err(anyhow::Error::msg)?;
+    anyhow::ensure!(applied.is_some(), "managed OOM bias was not applied");
+    let biased = fs::read_to_string(format!("/proc/{}/oom_score_adj", sample.pid))?
+        .trim()
+        .parse::<i32>()?;
+    anyhow::ensure!(
+        biased == OOM_BIAS_TARGET,
+        "managed bias did not reach the target"
+    );
+    // The independent recoverer restores the lifetime debt to the baseline.
+    let mut restored = false;
+    for _ in 0..300 {
+        let current = fs::read_to_string(format!("/proc/{}/oom_score_adj", sample.pid))?
+            .trim()
+            .parse::<i32>()
+            .unwrap_or(biased);
+        if current == baseline {
+            restored = true;
+            break;
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    anyhow::ensure!(restored, "managed OOM lifetime debt was not restored");
+    let _ = fs::write(root.join("stop"), "");
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = fs::read(format!("/proc/{launcher}/stat"));
+    receipt(
+        root,
+        "managed",
+        json!({"baseline":baseline,"biased":biased,"restored":restored,"launcher":launcher}),
+    )?;
+    Ok(())
+}
+
 fn receipt(root: &Path, phase: &str, details: serde_json::Value) -> Result<()> {
     let exe = std::env::current_exe()?;
     let context = json!({"phase":phase,"pid":std::process::id(),"exe":exe,"version":env!("CARGO_PKG_VERSION"),
@@ -155,7 +242,13 @@ pub(crate) async fn run(root: &Path, phase: &str) -> Result<()> {
         fs::write(root.join("stop"), "")?;
         return Ok(());
     }
-    anyhow::ensure!(phase == "exercise", "unknown probe phase");
+    anyhow::ensure!(
+        phase == "exercise" || phase == "managed",
+        "unknown probe phase"
+    );
+    if phase == "managed" {
+        return exercise_managed(root).await;
+    }
     anyhow::ensure!(
         !root.join("state.json").exists(),
         "use a fresh probe directory"
