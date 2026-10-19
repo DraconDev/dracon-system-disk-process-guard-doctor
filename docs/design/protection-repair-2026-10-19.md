@@ -162,7 +162,69 @@ Remaining limitations, stated plainly:
 No installed binary, guard policy or live guard service has been changed by
 this implementation batch. No existing user workload was terminated/restarted.
 
-## Deployment and rollback (planned; not executed)
+## Deployment (executed 2026-10-19)
+
+- The installed binary was preserved at
+  `~/.local/bin/dracon-system.backup-2026-10-19-pre-repair` before the swap.
+- The tested release binary was installed atomically (write to a temporary path,
+  then rename) and `dracon-system-guard.service` was restarted. No other unit
+  was restarted, no workload was terminated, and no policy, exemption or
+  opt-in was changed.
+- The loaded executable was verified by hash against the built release binary
+  (`sha256sum /proc/<guard-pid>/exe` matched `target/release/dracon-system`).
+- The service sandbox was re-inspected after the restart and is unchanged:
+  `ProtectControlGroups=yes`, `ProtectHome=read-only`, `NoNewPrivileges=yes`,
+  `AmbientCapabilities=cap_sys_nice`, `CapabilityBoundingSet=cap_sys_nice`.
+
+## Live verification in the deployed service context
+
+The verification unit is a copy of the deployed guard unit with only the
+`ExecStart` line changed, so it runs the probe under the guard's REAL sandbox
+(`ProtectControlGroups`, `ProtectSystem=strict`, `ProtectHome=read-only`,
+`CapabilityBoundingSet=cap_sys_nice`, `SystemCallFilter=@system-service`,
+`NoNewPrivileges`). It is disposable and was removed afterwards.
+
+- CPU path: quota 500ms applied; sampled CPU 49.99%; normal release; a stricter
+  pre-existing quota and a later operator edit both preserved; the independent
+  expiry timer fired; the OOM permission-failure obligation was retained and
+  rehydrated across a restart; the root and its child were restored.
+- Guard restart recovery: after restarting the real guard, the quota of the
+  disposable scope went from 500ms back to `infinity`, while the disposable
+  worker and its child stayed alive and kept their cgroup and their restored
+  OOM values. The probe's restart-check confirmed `quota=infinity`,
+  `worker_alive=true`, `child_alive=true`, `oom_restored=true`.
+- Managed-job path: the admitted job started at baseline 200, was biased to
+  250, its lifetime debt restored it to the baseline, and the debt was retired
+  against the sentinel's terminal certificate, with no managed-job unit and no
+  outstanding debt left afterwards.
+- The probe's receipts record the sandbox itself: a read-only cgroup mount,
+  `CapEff=cap_sys_nice` only, and `NoNewPrivs=1`.
+
+## Pre-existing limitation found during deployment (not caused by this repair)
+
+The guard's memory-renice mitigation cannot be undone in this deployment. The
+guard runs in a nested user namespace (`uid_map` maps only uid 1000), while the
+session's processes live in the parent user namespace, so the guard's
+`CAP_SYS_NICE` does not reach them: lowering a nice value back fails with
+EACCES. The pre-repair binary logged exactly the same renice restore failures
+at 22:31:58 before any of this work was deployed, and two `pi` processes
+(684159, 866088) were already stranded at nice 5 with a `original_nice: 0`
+ledger record before the swap. The new ledger keeps those obligations visible
+and retried rather than dropping them, which is the intended behaviour.
+
+This is outside the repaired CPU/OOM scope and changing it would alter an
+existing opt-in's effective behaviour, so it was NOT changed in this batch. The
+OOM path is unaffected and was verified end to end: `oom_score_adj` writes
+succeeded across the namespace boundary (200 -> 250 -> 200 observed), and the
+only EACCES observed was the deliberately non-dumpable probe child, whose
+obligation was retained and later restored.
+
+Recommended follow-up (operator decision): make the renice capability probe
+verify that the capability actually applies to the target's user namespace, so
+the guard's existing "cannot restore, therefore do not apply" rule engages
+instead of stranding processes at a raised nice value.
+
+## Deployment and rollback (executed for the install; rollback retained)
 
 After all gates and safety findings are resolved, preserve the installed binary
 and unit configuration, atomically install the tested release binary, and restart
