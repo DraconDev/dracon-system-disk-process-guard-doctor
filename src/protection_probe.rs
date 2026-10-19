@@ -13,7 +13,19 @@ struct ProbeState {
     group: String,
     key: String,
     generation: String,
+    boot_id: String,
+    worker_identity: ProcIdentity,
+    child_identity: ProcIdentity,
+    invocation: String,
     original_oom: i32,
+}
+
+fn verify_incarnations(state: &ProbeState, proc_root: &Path, boot: &str) -> Result<()> {
+    anyhow::ensure!(state.boot_id == boot.trim(), "probe belongs to a different boot");
+    for (pid, identity) in [(state.pid, &state.worker_identity), (state.child, &state.child_identity)] {
+        anyhow::ensure!(matches!(process_identity_status(proc_root, pid, identity), ProcessIdentityStatus::Match), "probe process {pid} exited, was reused, or cannot be verified");
+    }
+    Ok(())
 }
 
 fn value(pid: i32) -> Result<i32> {
@@ -97,14 +109,9 @@ pub(crate) async fn run(root: &Path, phase: &str) -> Result<()> {
     fs::create_dir_all(root)?;
     if phase == "restart-check" {
         let s: ProbeState = serde_json::from_slice(&fs::read(root.join("state.json"))?)?;
-        anyhow::ensure!(
-            Path::new(&format!("/proc/{}", s.pid)).exists(),
-            "worker did not survive guard restart"
-        );
-        anyhow::ensure!(
-            Path::new(&format!("/proc/{}", s.child)).exists(),
-            "child did not survive guard restart"
-        );
+        verify_incarnations(&s, Path::new("/proc"), &fs::read_to_string("/proc/sys/kernel/random/boot_id")?)?;
+        anyhow::ensure!(checked(cpu_limit::property(&s.unit, "InvocationID").await)? == s.invocation, "probe scope was replaced");
+        anyhow::ensure!(fs::read_to_string(format!("/proc/{}/cgroup", s.child))? == s.group, "child ownership/cgroup changed");
         let quota = checked(cpu_limit::property(&s.unit, "CPUQuotaPerSecUSec").await)?;
         anyhow::ensure!(
             quota == "infinity",
@@ -146,6 +153,8 @@ pub(crate) async fn run(root: &Path, phase: &str) -> Result<()> {
 }
 
 async fn exercise(root: &Path, pid: i32) -> Result<()> {
+    let boot_id=fs::read_to_string("/proc/sys/kernel/random/boot_id")?.trim().to_owned();
+    let worker_identity=read_proc_identity(Path::new("/proc"),pid)?;
     let unit = format!("dracon-protection-test-{pid}.scope");
     checked(cpu_limit::create_probe_scope(&unit, pid as u32).await)?;
     for _ in 0..40 {
@@ -159,6 +168,8 @@ async fn exercise(root: &Path, pid: i32) -> Result<()> {
         group.contains(&unit),
         "scope start job did not move disposable worker"
     );
+    let invocation=checked(cpu_limit::property(&unit,"InvocationID").await)?;
+    anyhow::ensure!(!invocation.is_empty(),"probe scope invocation missing");
     let original_oom = value(pid)?;
     let exempt = HashSet::new();
     fs::write(root.join("busy"), "")?;
@@ -241,6 +252,7 @@ async fn exercise(root: &Path, pid: i32) -> Result<()> {
     fs::write(root.join("fork"), "")?;
     wait_file(&root.join("child.pid")).await?;
     let child: i32 = fs::read_to_string(root.join("child.pid"))?.parse()?;
+    let child_identity=read_proc_identity(Path::new("/proc"),child)?;
     anyhow::ensure!(
         value(child)? == OOM_BIAS_TARGET,
         "child did not inherit bias"
@@ -311,12 +323,38 @@ async fn exercise(root: &Path, pid: i32) -> Result<()> {
         group,
         key,
         generation,
+        boot_id,
+        worker_identity,
+        child_identity,
+        invocation,
         original_oom,
     };
+    verify_incarnations(&state,Path::new("/proc"),&fs::read_to_string("/proc/sys/kernel/random/boot_id")?)?;
     fs::write(root.join("state.json"), serde_json::to_vec_pretty(&state)?)?;
     receipt(
         root,
         "exercise",
         json!({"worker":pid,"child":child,"sampled_cpu_percent":cpu_percent,"quota":quota,"normal_release":true,"stricter_preserved":true,"operator_edit_preserved":true,"independent_expiry":true,"oom_permission_failure_retained":true,"oom_pending_rehydrated":true,"oom_root_and_child_restored":true,"restart_probe_armed":true}),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn restart_receipt_requires_both_original_incarnations_and_boot() {
+        let pid=std::process::id() as i32;
+        let identity=read_proc_identity(Path::new("/proc"),pid).unwrap();
+        let mut state=ProbeState {pid,child:pid,unit:"test.scope".into(),group:String::new(),key:String::new(),generation:String::new(),boot_id:"original-boot".into(),worker_identity:identity.clone(),child_identity:identity,invocation:"original-invocation".into(),original_oom:0};
+        assert!(verify_incarnations(&state,Path::new("/proc"),"original-boot\n").is_ok());
+        assert!(verify_incarnations(&state,Path::new("/proc"),"replacement-boot").is_err());
+        state.worker_identity.starttime+=1;
+        assert!(verify_incarnations(&state,Path::new("/proc"),"original-boot").is_err());
+        state.worker_identity.starttime-=1;
+        state.child_identity.starttime+=1;
+        assert!(verify_incarnations(&state,Path::new("/proc"),"original-boot").is_err());
+        state.child=i32::MAX;
+        assert!(verify_incarnations(&state,Path::new("/proc"),"original-boot").is_err());
+    }
 }
