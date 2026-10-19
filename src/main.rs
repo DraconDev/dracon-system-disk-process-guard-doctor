@@ -763,6 +763,9 @@ pub(crate) struct GuardRuntimeState {
     /// the test suite calls `run_guard_once` directly — neither should write
     /// into the operator's `~/.dracon` (audit 2026-10-01).
     pub(crate) persist_mitigations: bool,
+    /// Existing durable intent could not be safely loaded. Continue observing,
+    /// but never overwrite it or apply new process mitigations.
+    pub(crate) mitigation_ledger_unavailable: bool,
     pub(crate) last_proactive_cleanup: Option<Instant>,
     /// Last action-level cleanup scan. Even report-only scans are bounded
     /// because they walk large Rust and Node trees.
@@ -1844,7 +1847,7 @@ fn apply_oom_bias(
     samples: &[ProcSample],
     state: &mut GuardRuntimeState,
 ) -> Result<Option<(i32, i32)>, String> {
-    if state.oom_biased_pids.contains_key(&p.pid) || !process_sample_is_current(p) {
+    if state.mitigation_ledger_unavailable || state.oom_biased_pids.contains_key(&p.pid) || !process_sample_is_current(p) {
         return Ok(None);
     }
     let path = format!("/proc/{}/oom_score_adj", p.pid);
@@ -2093,27 +2096,6 @@ fn parse_cgroup_rel_path(cg_line: &str) -> Option<&str> {
     (!path.is_empty()).then_some(path)
 }
 
-async fn systemctl_user_action(
-    systemctl_bin: &Path,
-    action: &str,
-    scope: &str,
-) -> Result<(), String> {
-    let output = Command::new(systemctl_bin)
-        .args(["--user", action, scope])
-        .output()
-        .await
-        .map_err(|e| format!("systemctl {action} {scope}: {e}"))?;
-    if output.status.success() {
-        return Ok(());
-    }
-    let detail = String::from_utf8_lossy(&output.stderr);
-    Err(format!(
-        "systemctl {action} {scope} exited with {}: {}",
-        output.status,
-        detail.trim()
-    ))
-}
-
 /// Where a capped pid has to be written back to before the transient unit is
 /// stopped. The recorded cgroup is authoritative when the ledger has one.
 ///
@@ -2135,10 +2117,9 @@ fn restore_cgroup_target(orig_cgroup: &str, current_rel: &str) -> Option<String>
     (!parent.is_empty() && parent != "/").then(|| parent.to_string())
 }
 
-/// Lift a CPUQuota cap: move the pid back to its original cgroup and
-/// stop the now-empty transient scope. Every read, move, and systemd
-/// operation is checked so callers retain the cap entry when restoration
-/// cannot be verified.
+/// Release a manager-owned lease. Legacy migrated services are never stopped:
+/// a gone root does not prove their descendants exited. Keep unresolved legacy
+/// ownership debt unless the manager positively reports the unit absent.
 async fn uncap_cpu_process_with_bin(
     systemctl_bin: &Path,
     proc_root: &Path,
@@ -2193,51 +2174,16 @@ async fn uncap_cpu_process_with_bin(
         Err(e) => return Err(format!("read {}/cgroup: {e}", proc_root.display())),
     };
 
-    let mut errors = Vec::new();
-    if let Err(e) = systemctl_user_action(systemctl_bin, "stop", scope).await {
-        errors.push(e);
+    let _ = process_was_read;
+    // A missing/moved root proves nothing about surviving children. NEVER
+    // stop/reset a legacy service. Only a positively absent unit resolves it.
+    let output = Command::new(systemctl_bin)
+        .args(["--user", "show", scope, "--property=LoadState"])
+        .output().await.map_err(|e|format!("inspect legacy unit {scope}: {e}"))?;
+    if output.status.success() && String::from_utf8_lossy(&output.stdout).lines().any(|line|line == "LoadState=not-found") {
+        return Ok(());
     }
-    if let Err(e) = systemctl_user_action(systemctl_bin, "reset-failed", scope).await {
-        errors.push(e);
-    }
-
-    // If the process was readable before cleanup, prove it is no longer in
-    // the transient scope. An unreadable live process is indeterminate and
-    // must remain tracked for a later retry.
-    if process_was_read {
-        match std::fs::read_to_string(&cgroup_path) {
-            Ok(cg_line) => match parse_cgroup_rel_path(&cg_line) {
-                Some(rel) if rel.contains(scope) => {
-                    errors.push(format!("pid {pid} remains in CPUQuota scope {scope}"));
-                }
-                Some(_) => {}
-                None => errors.push(format!(
-                    "verify {}/cgroup: unparseable cgroup line",
-                    proc_root.display()
-                )),
-            },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let pid_dir = proc_root.join(pid.to_string());
-                let pid_gone = matches!(
-                    std::fs::metadata(&pid_dir),
-                    Err(dir_error) if dir_error.kind() == std::io::ErrorKind::NotFound
-                );
-                if !proc_root_is_available(proc_root) || !pid_gone {
-                    errors.push(format!(
-                        "verify {}/cgroup: source unavailable",
-                        proc_root.display()
-                    ));
-                }
-            }
-            Err(e) => errors.push(format!("verify {}/cgroup: {e}", proc_root.display())),
-        }
-    }
-
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(errors.join("; "))
-    }
+    Err(format!("legacy CPU service {scope} requires explicit ownership recovery; no unit was stopped and its debt remains recorded"))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -4760,7 +4706,7 @@ async fn check_memory_pressure(
     // loop that renice can't tame. See the user discussion
     // 2026-08-10 in AGENTS.md.
     let mut limited: Vec<String> = Vec::new();
-    if pressure != "ok" && guard.auto_renice_on_memory && can_restore_nice {
+    if !state.mitigation_ledger_unavailable && pressure != "ok" && guard.auto_renice_on_memory && can_restore_nice {
         for p in &top_rss {
             let identity_ok = process_sample_is_current(p);
             if !identity_ok {
@@ -4825,7 +4771,7 @@ async fn check_memory_pressure(
             }
         }
     }
-    if pressure == "critical" && guard.cap_offenders_cpu_percent > 0 {
+    if !state.mitigation_ledger_unavailable && pressure == "critical" && guard.cap_offenders_cpu_percent > 0 {
         for p in &top_rss {
             if state.capped_pids.contains_key(&p.pid) {
                 continue;
@@ -5099,11 +5045,12 @@ async fn check_memory_pressure(
                     if record_unavailable_attempt(&mut state.cap_identity_unavailable_attempts, pid)
                     {
                         eprintln!(
-                            "⚠️ cpu-uncap dropping pid={} after {} unavailable identity reads (will not retry)",
+                            "⚠️ cpu-uncap retaining pid={} after {} unavailable identity reads",
                             pid, IDENTITY_UNAVAILABLE_RETRY_LIMIT
                         );
-                        state.cap_identity_unavailable_attempts.remove(&pid);
-                        remove_cpu_cap(state, pid);
+                        // Unreadability never proves the legacy unit empty.
+                        // Keep its durable recovery obligation.
+                        state.cap_identity_unavailable_attempts.insert(pid, IDENTITY_UNAVAILABLE_RETRY_LIMIT);
                     } else {
                         eprintln!(
                             "⚠️ cpu-un cap deferred for pid={} — process identity unavailable (attempt {}/{})",
@@ -5328,6 +5275,7 @@ fn persist_mitigations(state: &mut GuardRuntimeState) -> bool {
 /// Write the ledger to an explicit path. Split out so the round trip is
 /// testable without touching the real `$HOME` (audit 2026-10-01).
 fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) -> bool {
+    if state.mitigation_ledger_unavailable { return false; }
     let mut records: Vec<MitigationRecord> = Vec::new();
     for (pid, entry) in &state.memory_reniced_pids {
         records.push(MitigationRecord {
@@ -5425,9 +5373,8 @@ fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) -> bool {
 /// state maps, so the EXISTING restore path (identity checks, bounded defers,
 /// SIGHUP drain) handles them with no new restore logic of its own.
 ///
-/// A missing or unreadable ledger is not an error: it just means there is
-/// nothing recorded to clean up, and failing to start over it would be worse
-/// than the problem it solves.
+/// Missing state is fresh state. Unreadable/corrupt state is NOT empty:
+/// preserve its bytes and disable new mutations until it can safely be loaded.
 fn hydrate_mitigations_from_disk(state: &mut GuardRuntimeState) {
     hydrate_mitigations_from(&mitigation_ledger_path(), state);
 }
@@ -5439,26 +5386,25 @@ fn hydrate_mitigations_from(path: &Path, state: &mut GuardRuntimeState) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
         Err(e) => {
-            eprintln!(
-                "⚠️ could not read the mitigation ledger {}: {e} — continuing without it",
-                path.display()
-            );
+            eprintln!("could not read mitigation ledger {}: {e}; new process mitigations disabled",path.display());
+            state.mitigation_ledger_unavailable = true;
             return;
         }
     };
     if text.trim().is_empty() {
+        state.mitigation_ledger_unavailable = true;
+        eprintln!("mitigation ledger {} is empty/truncated; refusing replacement",path.display());
         return;
     }
     let ledger: MitigationLedger = match serde_json::from_str(&text) {
         Ok(ledger) => ledger,
         Err(e) => {
-            eprintln!(
-                "⚠️ mitigation ledger {} is unreadable ({e}) — leaving it in place and continuing",
-                path.display()
-            );
+            eprintln!("mitigation ledger {} is unreadable ({e}); preserving it and disabling new process mitigations",path.display());
+            state.mitigation_ledger_unavailable = true;
             return;
         }
     };
+    state.mitigation_ledger_unavailable = false;
     for (pid, pending) in ledger.oom_pending {
         if !matches!(
             process_identity_status(Path::new("/proc"), pid, &pending.identity),
@@ -6536,7 +6482,7 @@ async fn check_heavy_processes(
         // 2026-08-09 incident. Notification only; no auto-kill.
         let stuck = sustained >= guard.process_stuck_after_secs;
 
-        if guard.auto_renice && can_restore_nice {
+        if !state.mitigation_ledger_unavailable && guard.auto_renice && can_restore_nice {
             // ADDED 2026-07-21 (v0.112.33, audit M34/F4.8): final
             // identity check before touching the process — the comm
             // must still match AND the starttime must equal the
@@ -8301,6 +8247,10 @@ fn summarize_reaped(reaped: &[ReapedProcess]) -> String {
 }
 
 async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
+    // One process owns hydrate/mutate/persist for the entire lifetime, just
+    // like the daemon. A diagnostic may not drain the running guard's state.
+    let _owner = acquire_daemon_lock("dracon-system-guard")
+        .with_context(|| "guard already owns process mitigation state; refusing concurrent guard once")?;
     use comfy_table::{presets::UTF8_FULL_CONDENSED, Cell, ContentArrangement, Table};
 
     // Only the daemon persists: a one-shot run restores everything before it
@@ -8764,6 +8714,9 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
     restore_runtime_adjustments(&mut runtime).await;
     persist_mitigations(&mut runtime);
     while !shutdown.load(Ordering::SeqCst) {
+        if runtime.mitigation_ledger_unavailable {
+            hydrate_mitigations_from_disk(&mut runtime);
+        }
         if reload_sighup.load(Ordering::SeqCst) {
             reload_sighup.store(false, Ordering::SeqCst);
             let result = load_system_policy();
