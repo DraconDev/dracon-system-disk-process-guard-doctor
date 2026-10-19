@@ -28,6 +28,8 @@ use dracon_system_lib::analyze_workspace_storage;
 mod cpu_limit;
 mod doctor;
 mod oom_restore;
+#[cfg(test)]
+mod protection_tests;
 pub(crate) use doctor::*;
 mod events;
 pub(crate) use events::*;
@@ -1904,13 +1906,6 @@ fn restore_pending_oom_descendants(
         let Some(mut pending) = state.oom_pending_descendants.get(&key).cloned() else {
             continue;
         };
-        if exempt_names.contains(&pending.identity.comm)
-            || is_kernel_process(&pending.identity.comm)
-        {
-            state.oom_pending_descendants.remove(&key);
-            remember_oom_descendant_identity(state, pending.root_pid, key.0, &pending.identity);
-            continue;
-        }
         match process_identity_status(proc_root, key.0, &pending.identity) {
             ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch => {
                 state.oom_pending_descendants.remove(&key);
@@ -1925,6 +1920,12 @@ fn restore_pending_oom_descendants(
                 continue;
             }
             ProcessIdentityStatus::Match => {}
+        }
+        if exempt_names.contains(&pending.identity.comm) || is_kernel_process(&pending.identity.comm) {
+            // Exemption forbids mutation, not remembering an unresolved debt.
+            result.deferred += 1;
+            record_oom_retry(state, key, &mut pending);
+            continue;
         }
         let adj_path = proc_root.join(key.0.to_string()).join("oom_score_adj");
         let current = match fs::read_to_string(&adj_path)
@@ -2035,6 +2036,9 @@ fn sweep_stranded_oom_descendants(
                 attempts: 0,
             },
         );
+    }
+    if !persist_mitigations(state) {
+        return OomSweepResult { restored: Vec::new(), deferred: state.oom_pending_descendants.len() };
     }
     restore_pending_oom_descendants(proc_root, state, exempt_names)
 }
