@@ -25,6 +25,7 @@ use dracon_system_lib::analyze_workspace_storage;
 // Re-export policy items (types and utility fns that live in policy.rs)
 // Note: GuardRuntimeState, ProcSample, AutoCleanupResult are in main.rs,
 // so tests use crate::* to access them without explicit re-exports.
+mod cpu_limit;
 mod doctor;
 pub(crate) use doctor::*;
 mod events;
@@ -159,6 +160,9 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Internal expiry recovery for a reversible CPU lease.
+    #[command(hide = true)]
+    CpuLeaseRelease { unit: String, original_cgroup: String },
     /// Show core path and service status.
     Status {
         /// Emit machine-readable JSON.
@@ -2058,77 +2062,7 @@ fn sweep_stranded_oom_descendants(
 /// service with `--no-block` returns instantly and persists under
 /// the manager — the cgroup survives for the pid move.
 async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), String> {
-    if percent == 0 || percent > 100 {
-        return Err(format!("invalid CPUQuota percent {percent}"));
-    }
-    // Current cgroup BEFORE moving (the path we restore to later).
-    let orig = std::fs::read_to_string(format!("/proc/{pid}/cgroup"))
-        .map_err(|e| format!("read /proc/{pid}/cgroup: {e}"))?;
-    let orig_rel = parse_cgroup_rel_path(&orig)
-        .ok_or_else(|| format!("unparseable cgroup line: {}", orig.trim()))?
-        .to_string();
-
-    let out = Command::new("systemd-run")
-        .args([
-            "--user",
-            "--no-block",
-            "-p",
-            &format!("CPUQuota={percent}%"),
-            "--",
-            "sleep",
-            "3600",
-        ])
-        .output()
-        .await
-        .map_err(|e| format!("systemd-run: {e}"))?;
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    if !out.status.success() {
-        return Err(format!("systemd-run: {} {}", out.status, stderr.trim()));
-    }
-    // systemd-run prints "Running as unit: X; invocation ID: ..."
-    // on STDERR — take the unit name up to the ';'.
-    let unit = stdout
-        .lines()
-        .chain(stderr.lines())
-        .find_map(|l| l.strip_prefix("Running as unit: "))
-        .map(|s| s.trim().split(';').next().unwrap_or("").trim().to_string())
-        .ok_or_else(|| format!("could not parse unit name from: {stdout} {stderr}"))?;
-
-    // --no-block returns before the unit's cgroup exists: poll for it.
-    let mut cg = String::new();
-    for _ in 0..10 {
-        let out = Command::new(resolve_bin_strict("systemctl").map_err(|e| e.to_string())?)
-            .args(["--user", "show", &unit, "-p", "ControlGroup", "--value"])
-            .output()
-            .await
-            .map_err(|e| format!("systemctl show: {e}"))?;
-        cg = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if !cg.is_empty() {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    }
-    if cg.is_empty() {
-        let _ = Command::new(
-            resolve_bin_strict("systemctl").map_err(|e| format!("resolve systemctl: {e:#}"))?,
-        )
-        .args(["--user", "stop", &unit])
-        .status()
-        .await;
-        return Err(format!("unit {unit} has no control group"));
-    }
-    let procs_file = format!("/sys/fs/cgroup/{cg}/cgroup.procs");
-    if let Err(e) = std::fs::write(&procs_file, format!("{pid}\n")) {
-        let _ = Command::new(
-            resolve_bin_strict("systemctl").map_err(|e| format!("resolve systemctl: {e:#}"))?,
-        )
-        .args(["--user", "stop", &unit])
-        .status()
-        .await;
-        return Err(format!("move pid {pid} into {procs_file}: {e}"));
-    }
-    Ok((unit, orig_rel))
+    cpu_limit::cap(pid, percent).await
 }
 
 fn parse_cgroup_rel_path(cg_line: &str) -> Option<&str> {
@@ -2194,6 +2128,11 @@ async fn uncap_cpu_process_with_bin(
     orig_cgroup: &str,
     allow_pid_move: bool,
 ) -> Result<(), String> {
+    if cpu_limit::is_lease(scope) {
+        // A lease owns its complete scope, including inherited descendants.
+        // Release never signals members or depends on the root PID surviving.
+        return cpu_limit::release(scope, orig_cgroup).await;
+    }
     let cgroup_path = proc_root.join(pid.to_string()).join("cgroup");
     let process_was_read = match std::fs::read_to_string(&cgroup_path) {
         Ok(cg_line) => {
@@ -2208,9 +2147,7 @@ async fn uncap_cpu_process_with_bin(
                 let target = restore_cgroup_target(orig_cgroup, rel).ok_or_else(|| {
                     format!("pid {pid} remains in {scope} and its original cgroup is unknown")
                 })?;
-                let procs_file = format!("/sys/fs/cgroup/{target}/cgroup.procs");
-                std::fs::write(&procs_file, format!("{pid}\n"))
-                    .map_err(|e| format!("move pid {pid} back to {procs_file}: {e}"))?;
+                cpu_limit::restore_legacy(pid, &target).await?;
             }
             true
         }
@@ -9288,6 +9225,7 @@ async fn run() -> Result<()> {
     VERBOSITY.store(cli.verbose, Ordering::SeqCst);
 
     match cli.cmd {
+        Commands::CpuLeaseRelease { unit, original_cgroup } => cpu_limit::release(&unit, &original_cgroup).await.map_err(anyhow::Error::msg),
         Commands::Status { json } => cmd_status(json).await,
         Commands::Doctor { json, strict } => cmd_doctor(json, strict).await,
         Commands::Storage {
