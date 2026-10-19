@@ -316,7 +316,25 @@ async fn bias_inner(sample: &ProcSample, exempt: &HashSet<String>) -> Result<Opt
     let mut file = fs::OpenOptions::new()
         .read(true)
         .write(true)
-        .open(format!("/proc/{}/oom_score_adj", sample.pid))?;
+        .open(format!("/proc/{}/oom_score_adj", sample.pid))
+        .map_err(|e| -> anyhow::Error {
+            let owner = fs::metadata(format!("/proc/{}/oom_score_adj", sample.pid))
+                .map(|m| {
+                    use std::os::unix::fs::MetadataExt;
+                    format!("uid={} mode={:o}", m.uid(), m.mode() & 0o777)
+                })
+                .unwrap_or_else(|_| "owner unavailable".into());
+            let dumpable = fs::read_to_string(format!("/proc/{}/status", sample.pid))
+                .ok()
+                .and_then(|status| {
+                    status
+                        .lines()
+                        .find(|l| l.starts_with("Uid:") || l.starts_with("Gid:"))
+                        .map(str::to_owned)
+                })
+                .unwrap_or_else(|| "status unavailable".into());
+            anyhow::anyhow!("opening /proc/{}/oom_score_adj ({owner}; {dumpable}): {e}", sample.pid)
+        })?;
     ensure!(
         process_sample_is_current(sample)
             && group_for(Path::new("/proc"), sample.pid)? == job.group,
