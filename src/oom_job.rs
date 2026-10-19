@@ -2,7 +2,7 @@
 //! containment: participating jobs must not migrate, change OOM policy, create
 //! delegated subgroups, or exec exempt roles inside a biased job.
 //! Runtime steering/recovery integration is a separate repair step.
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{ensure, Context, Result};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::{ffi::OsString, fs, io::Write, os::unix::fs::MetadataExt, path::{Path, PathBuf}, process::{Command, ExitStatus}, thread, time::Duration};
@@ -74,8 +74,15 @@ pub(crate) fn launch(command:&[OsString])->Result<()> {
         .arg(std::env::current_exe()?).arg("managed-job-enter").arg(id).arg("--").args(command).status()?;
     successful(status)
 }
+#[derive(Debug)]
+pub(crate) struct JobExit(pub i32);
+impl std::fmt::Display for JobExit {
+    fn fmt(&self,f:&mut std::fmt::Formatter<'_>)->std::fmt::Result {write!(f,"managed job exited with status {}",self.0)}
+}
+impl std::error::Error for JobExit {}
 fn successful(status:ExitStatus)->Result<()> {
-    if status.success() {Ok(())} else {bail!("managed job exited unsuccessfully: {status}")}
+    use std::os::unix::process::ExitStatusExt;
+    if status.success() {Ok(())} else {Err(JobExit(status.code().unwrap_or_else(||128+status.signal().unwrap_or(1))).into())}
 }
 fn read_members(group:&Path)->Result<Vec<i32>> {
     fs::read_to_string(group.join("cgroup.procs"))?.split_whitespace().map(|p|p.parse().map_err(Into::into)).collect()
