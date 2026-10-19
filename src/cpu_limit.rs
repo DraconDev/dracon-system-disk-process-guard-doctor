@@ -416,8 +416,24 @@ pub(crate) async fn release(key: &str, generation: &str) -> Result<(), String> {
     if lease.generation != generation {
         return Ok(());
     } // obsolete timer
-    let invocation = property(&lease.unit, "InvocationID").await?;
-    if lease.boot_id == boot_id()? && !invocation.is_empty() && invocation == lease.invocation {
+    let current_boot = boot_id()?;
+    let load_state = if current_boot == lease.boot_id {
+        property(&lease.unit, "LoadState").await?
+    } else {
+        String::new()
+    };
+    let invocation = if load_state == "loaded" {
+        property(&lease.unit, "InvocationID").await?
+    } else {
+        String::new()
+    };
+    if lease_is_owned(
+        &lease.boot_id,
+        &current_boot,
+        &lease.invocation,
+        &invocation,
+        &load_state,
+    )? {
         let current = quota_value(&property(&lease.unit, "CPUQuotaPerSecUSec").await?)?;
         // Compare-and-restore: never overwrite a later operator quota change.
         if current == lease.applied {
@@ -495,6 +511,22 @@ pub(crate) async fn restore_legacy(_pid: i32, _orig: &str) -> Result<(), String>
     Err("legacy migrated CPU service requires explicit recovery; refusing unsafe stop or guessed migration".into())
 }
 
+fn lease_is_owned(
+    saved_boot: &str,
+    current_boot: &str,
+    saved_invocation: &str,
+    invocation: &str,
+    load_state: &str,
+) -> Result<bool, String> {
+    if saved_boot != current_boot || load_state == "not-found" {
+        return Ok(false);
+    }
+    if load_state != "loaded" || invocation.is_empty() || saved_invocation.is_empty() {
+        return Err("unit ownership unavailable; retaining CPU recovery obligation".into());
+    }
+    Ok(saved_invocation == invocation)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum IntentAction {
     Reuse,
@@ -565,6 +597,19 @@ mod tests {
         save(dir.path(), &key, &lease).unwrap();
         assert_eq!(load(dir.path(), &key).unwrap().unwrap().original, u64::MAX);
         assert!(lock(dir.path(), &key).is_err());
+    }
+
+    #[test]
+    fn unavailable_unit_identity_never_discards_cpu_debt() {
+        assert!(lease_is_owned("b", "b", "i", "", "loaded").is_err());
+        assert!(lease_is_owned("b", "b", "i", "", "error").is_err());
+        assert_eq!(lease_is_owned("b", "b", "i", "i", "loaded"), Ok(true));
+        assert_eq!(
+            lease_is_owned("b", "b", "i", "replacement", "loaded"),
+            Ok(false)
+        );
+        assert_eq!(lease_is_owned("b", "b", "i", "", "not-found"), Ok(false));
+        assert_eq!(lease_is_owned("previous", "b", "i", "", ""), Ok(false));
     }
 
     #[test]
