@@ -200,11 +200,14 @@ async fn boundary(job: &Job) -> Result<PathBuf> {
     oom_job::no_nested_groups(&path)?;
     Ok(path)
 }
+fn recoverer_armed(state: &str) -> bool {
+    matches!(state, "active" | "activating" | "reloading")
+}
 async fn ensure_recoverer(root: &Path) -> Result<()> {
     let state = cpu_limit::property(RECOVERER, "ActiveState")
         .await
         .unwrap_or_default();
-    if state != "active" {
+    if !recoverer_armed(&state) {
         let run = resolve_bin_strict("systemd-run")?;
         let args = vec![
             "--user".into(),
@@ -230,19 +233,20 @@ async fn ensure_recoverer(root: &Path) -> Result<()> {
         ];
         if let Err(start_error) = cpu_limit::output(&run, &args).await {
             ensure!(
-                cpu_limit::property(RECOVERER, "ActiveState")
-                    .await
-                    .unwrap_or_default()
-                    == "active",
+                recoverer_armed(
+                    &cpu_limit::property(RECOVERER, "ActiveState")
+                        .await
+                        .unwrap_or_default()
+                ),
                 "independent OOM recovery could not start: {start_error}"
             );
         }
     }
+    let state = cpu_limit::property(RECOVERER, "ActiveState")
+        .await
+        .map_err(anyhow::Error::msg)?;
     ensure!(
-        cpu_limit::property(RECOVERER, "ActiveState")
-            .await
-            .map_err(anyhow::Error::msg)?
-            == "active",
+        recoverer_armed(&state),
         "independent OOM recoverer is not active"
     );
     let pid = cpu_limit::property(RECOVERER, "MainPID")
