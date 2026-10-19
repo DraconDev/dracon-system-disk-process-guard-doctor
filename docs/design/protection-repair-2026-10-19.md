@@ -108,10 +108,13 @@ and re-review every prior finding against the final revision.
 The subsequent read-only architecture review is saved in
 `docs/design/oom-provenance-decision-2026-10-19.md`. Its recommended repair needs
 launch-time job admission and a job-lifetime debt rather than ancestry polling.
-Cooperative admitted-job coverage requires explicit launcher integration and
-ownership assumptions; enforced containment requires a separately authorized
-privileged launcher/broker. Neither is silently adopted. Existing arbitrary
-running jobs cannot be retroactively certified by sampling or moving a root.
+The operator has now explicitly selected cooperative managed-launcher coverage:
+future admitted jobs, no new root privileges, and existing unregistered jobs
+untouched and reported unsupported. The initial launcher and its development
+observations are documented in `docs/design/managed-job-admission-2026-10-19.md`.
+Registered-job steering and independent lifetime-debt recovery remain unfinished.
+Existing arbitrary running jobs cannot be retroactively certified by sampling
+or moving a root.
 
 Additional independent source fixes now require probe boot ID, both process
 incarnations, and scope InvocationID at restart. An unavailable unit identity
