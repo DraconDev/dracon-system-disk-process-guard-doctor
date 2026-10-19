@@ -2046,23 +2046,12 @@ fn sweep_stranded_oom_descendants(
     restore_pending_oom_descendants(proc_root, state, exempt_names)
 }
 
-/// Cap a process's CPU to `percent`% via a transient user systemd
-/// unit (CPUQuota). Returns (unit_name, orig_cgroup_rel_path). The
-/// process is MOVED into the unit's cgroup — moving between cgroups
-/// never kills. On release, `uncap_cpu_process` moves it back and
-/// stops the now-empty unit. Fails cleanly (Err) when systemd-run
-/// is unavailable or the move is denied. The placeholder sleep lives
-/// 3600s, bounding a guard crash: the pid stays capped at most an
-/// hour, then the unit dies with no members.
-///
-/// WHY a transient SERVICE, not --scope (2026-08-10, verified live):
-/// `systemd-run --scope` runs the command in the foreground and
-/// blocks until it exits; `--scope --no-block` creates the scope but
-/// it is torn down the moment systemd-run exits. A plain transient
-/// service with `--no-block` returns instantly and persists under
-/// the manager — the cgroup survives for the pid move.
-async fn cap_cpu_process(pid: i32, percent: u32) -> Result<(String, String), String> {
-    cpu_limit::cap(pid, percent).await
+/// Apply a manager-owned lease to an existing isolated workload scope.
+/// Returns (durable lease key, generation). No process is moved or signalled;
+/// an independent timer restores quota without terminating the workload.
+/// Shared/unknown units and units containing exempt processes fail closed.
+async fn cap_cpu_process(pid: i32, percent: u32, exempt: &HashSet<String>) -> Result<(String, String), String> {
+    cpu_limit::cap(pid, percent, exempt).await
 }
 
 fn parse_cgroup_rel_path(cg_line: &str) -> Option<&str> {
@@ -4824,7 +4813,7 @@ async fn check_memory_pressure(
             if !identity_ok {
                 continue;
             }
-            match cap_cpu_process(p.pid, guard.cap_offenders_cpu_percent).await {
+            match cap_cpu_process(p.pid, guard.cap_offenders_cpu_percent, &exempt).await {
                 Ok((scope, orig_cgroup)) => {
                     state.capped_pids.insert(
                         p.pid,
@@ -8256,6 +8245,7 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
     // the EXISTING restore path before the first pass, so no process is left
     // reniced/biased/capped forever. Identity is re-verified on adoption, so a
     // recycled PID is never touched.
+    cpu_limit::recover().await;
     hydrate_mitigations_from_disk(&mut runtime);
     if !runtime.memory_reniced_pids.is_empty()
         || !runtime.oom_biased_pids.is_empty()
