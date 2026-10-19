@@ -100,10 +100,16 @@ fn debt_path(root: &Path, id: &str) -> PathBuf {
     root.join(format!("{id}.debt.json"))
 }
 fn load_debt(root: &Path, id: &str) -> Result<Option<Debt>> {
-    let bytes = match fs::read(debt_path(root, id)) {
+    let path = debt_path(root, id);
+    let bytes = match fs::read(&path) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(e.into()),
+        Err(e) => {
+            return Err(anyhow::anyhow!(
+                "reading the OOM debt {}: {e}",
+                path.display()
+            ))
+        }
     };
     let debt: Debt = serde_json::from_slice(&bytes)?;
     ensure!(
