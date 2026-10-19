@@ -125,6 +125,7 @@ async fn exercise_managed(root: &Path) -> Result<()> {
     }
     let sample =
         target.ok_or_else(|| anyhow::anyhow!("no admitted managed job member appeared"))?;
+    let job_id = managed_oom::job_id_for_process(sample.pid)?;
     let baseline = fs::read_to_string(format!("/proc/{}/oom_score_adj", sample.pid))?
         .trim()
         .parse::<i32>()?;
@@ -162,15 +163,13 @@ async fn exercise_managed(root: &Path) -> Result<()> {
     let status = tokio::time::timeout(Duration::from_secs(120), child.wait()).await;
     let mut retired = false;
     for _ in 0..200 {
-        if let Ok(id) = managed_oom::job_id_for_process(sample.pid) {
-            if oom_job::root()
-                .ok()
-                .map(|root| !root.join(format!("{id}.debt.json")).exists())
-                .unwrap_or(false)
-            {
-                retired = true;
-                break;
-            }
+        if oom_job::root()
+            .ok()
+            .map(|root| !root.join(format!("{job_id}.debt.json")).exists())
+            .unwrap_or(false)
+        {
+            retired = true;
+            break;
         }
         sleep(Duration::from_millis(100)).await;
     }
@@ -291,6 +290,16 @@ pub(crate) async fn run(root: &Path, phase: &str) -> Result<()> {
         .arg(root)
         .spawn()?;
     let pid = process.id() as i32;
+    // The disposable worker gets a known baseline instead of inheriting
+    // whatever score the caller's ancestors happened to carry. Without this,
+    // a caller that is itself biased cannot demonstrate the bias path at all.
+    if let Ok(mut file) = fs::OpenOptions::new()
+        .write(true)
+        .open(format!("/proc/{pid}/oom_score_adj"))
+    {
+        use std::io::Write;
+        let _ = file.write_all(b"200\n");
+    }
     // On any error, the worker still has a hard ten-minute lifetime; the
     // caller can write stop. Never signal an unverified/recycled PID.
     let result = exercise(root, pid).await;
@@ -454,7 +463,11 @@ async fn exercise(root: &Path, pid: i32) -> Result<()> {
     );
     anyhow::ensure!(
         restored.deferred == 0 && value(child)? == original_oom,
-        "child did not recover"
+        "child did not recover: deferred={} child_value={} original={} restored={:?}",
+        restored.deferred,
+        value(child).unwrap_or(-1),
+        original_oom,
+        restored.restored
     );
     checked(oom_restore::restore(
         Path::new("/proc"),
