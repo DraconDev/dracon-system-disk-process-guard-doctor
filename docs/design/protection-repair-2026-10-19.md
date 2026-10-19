@@ -1,4 +1,4 @@
-# Protection repair — in progress, NOT deployed
+# Protection repair — source complete, NOT deployed
 
 ## Confirmed causes
 
@@ -54,6 +54,22 @@ in the one-shot CLI rather than the real daemon.
   does not overwrite a score changed externally from the applied value.
 - Pending OOM obligations and pre-existing descendant identities survive retries
   and restart. Current command names, not only saved names, enforce exemptions.
+- Inherited-debt provenance is now launch-time, not sampled. `dracon-system
+  managed-job -- COMMAND` admits a job into a fresh nondelegated user scope,
+  records its baseline and identity durably before the first workload
+  instruction, and keeps a single-threaded sentinel alive until a
+  workload-terminal certificate is durable. Registered jobs carry a job-lifetime
+  OOM debt that is restored by an independently supervised recoverer and retired
+  only against that certificate. Unregistered jobs keep the existing in-process
+  behaviour and remain explicitly outside this guarantee; they cannot be
+  retroactively certified. The launcher establishes its own baseline rather
+  than inheriting the caller's score. Full design and the supported-job
+  contract are in `docs/design/managed-job-admission-2026-10-19.md`.
+- The independent recoverer runs with no capabilities and its executable
+  identity is verified before any bias is applied, so a mutation never happens
+  without independent recovery armed. An orphan debt whose boundary vanished
+  without a certificate is retired only by an explicit confirmed
+  `oom-job-reconcile`, which refuses while the scope, cgroup or sentinel lives.
 
 ## Verification observed so far
 
