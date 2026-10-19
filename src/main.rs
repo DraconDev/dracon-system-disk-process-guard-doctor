@@ -2776,6 +2776,16 @@ fn detect_active_package_manager_operations_from(
             continue;
         };
         if cmdline.is_empty() && is_package_process_wrapper(comm) {
+            // A zombie cannot execute or hold a package cache open. Linux
+            // deliberately exposes an empty cmdline for it; do not confuse
+            // that affirmative terminal state with unreadable live argv.
+            let status = fs::read_to_string(proc_root.join(pid.to_string()).join("status"));
+            if status.as_ref().is_ok_and(|text| text.lines().any(|line| {
+                line.strip_prefix("State:")
+                    .and_then(|state| state.split_whitespace().next()) == Some("Z")
+            })) {
+                continue;
+            }
             anyhow::bail!(
                 "empty command line for possible package-manager wrapper PID {} ({})",
                 pid,
