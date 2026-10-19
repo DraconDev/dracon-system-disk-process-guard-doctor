@@ -223,7 +223,10 @@ fn successful(status: ExitStatus) -> Result<()> {
 pub(crate) const MANAGED_JOB_BASELINE: i32 = 200;
 fn establish_baseline() -> Result<i32> {
     let path = "/proc/self/oom_score_adj";
-    let current = fs::read_to_string(path).context("reading the sentinel OOM baseline")?.trim().parse::<i32>()?;
+    let current = fs::read_to_string(path)
+        .context("reading the sentinel OOM baseline")?
+        .trim()
+        .parse::<i32>()?;
     if current == MANAGED_JOB_BASELINE {
         return Ok(current);
     }
