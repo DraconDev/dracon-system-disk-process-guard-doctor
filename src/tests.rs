@@ -1198,8 +1198,9 @@ async fn restore_runtime_adjustments_retains_failed_cpu_cap() {
     );
     assert!(state.capped_pids.contains_key(&999_999));
 
-    // Once systemd succeeds, the previously retained cap may be removed.
-    write_test_script(&systemctl, "exit 0");
+    // Only positively absent legacy units may be forgotten. Success alone
+    // does not prove the service has no surviving descendants.
+    write_test_script(&systemctl, "printf 'LoadState=not-found\\n'");
     assert!(restore_runtime_adjustments_with(&mut state, &renice, &systemctl, &tmp).await);
     assert!(state.capped_pids.is_empty());
 

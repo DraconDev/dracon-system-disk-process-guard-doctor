@@ -21,6 +21,12 @@ struct Lease {
     generation: String,
     timer: String,
     boot_id: String,
+    #[serde(default)]
+    armed: bool,
+    #[serde(default)]
+    applied_verified: bool,
+    #[serde(default)]
+    expires_at_unix_secs: u64,
 }
 
 async fn output(bin: &str, args: &[String]) -> Result<String, String> {
@@ -205,6 +211,20 @@ fn isolated_scope(group: &str) -> Result<&str, String> {
 
 fn group_members(group: &str) -> Result<Vec<i32>, String> {
     isolated_scope(group)?;
+    let dir = Path::new("/sys/fs/cgroup").join(group.trim_start_matches('/'));
+    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+        if entry
+            .map_err(|e| e.to_string())?
+            .file_type()
+            .map_err(|e| e.to_string())?
+            .is_dir()
+        {
+            return Err(
+                "nested cgroups are unsupported; refusing inherited quota on uninspected workloads"
+                    .into(),
+            );
+        }
+    }
     let text = std::fs::read_to_string(
         Path::new("/sys/fs/cgroup")
             .join(group.trim_start_matches('/'))
@@ -257,11 +277,38 @@ pub(crate) async fn cap_with_duration(
     let root = state_root()?;
     let key = lease_key(&unit);
     let _lock = lock(&root, &key)?;
-    if let Some(old) = load(&root, &key)? {
-        if old.invocation == invocation && old.boot_id == boot_id()? {
-            return Ok((key, old.generation));
+    if let Some(mut old) = load(&root, &key)? {
+        if old.invocation != invocation || old.boot_id != boot_id()? {
+            std::fs::remove_file(root.join(format!("{key}.json"))).map_err(|e| e.to_string())?;
+            return Err(
+                "stale CPU intent retired without touching replacement unit; retry next pass"
+                    .into(),
+            );
         }
-        return Err("stale CPU lease requires recovery before reuse".into());
+        let current = quota_value(&property(&unit, "CPUQuotaPerSecUSec").await?)?;
+        let armed = old.armed
+            && SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|e| e.to_string())?
+                .as_secs()
+                < old.expires_at_unix_secs
+            && property(&format!("{}.timer", old.timer), "ActiveState").await? == "active";
+        match reconcile_intent(&old, current, armed) {
+            IntentAction::Reuse => {
+                old.applied_verified = true;
+                save(&root, &key, &old)?;
+                return Ok((key, old.generation));
+            }
+            IntentAction::RestoreUnprotected => {
+                set_quota(&unit, old.original).await?;
+            }
+            IntentAction::DropUnapplied => {}
+            IntentAction::PreserveExternal => {
+                return Err("CPU lease state changed externally; no application claimed".into())
+            }
+        }
+        std::fs::remove_file(root.join(format!("{key}.json"))).map_err(|e| e.to_string())?;
+        return Err("incomplete CPU lease recovered; retry next pass".into());
     }
     let original = quota_value(&property(&unit, "CPUQuotaPerSecUSec").await?)?;
     let applied = original.min(u64::from(percent) * 10_000);
@@ -274,7 +321,7 @@ pub(crate) async fn cap_with_duration(
         .as_nanos()
         .to_string();
     let timer = format!("{key}-{generation}-expiry");
-    let lease = Lease {
+    let mut lease = Lease {
         unit: unit.clone(),
         invocation,
         original,
@@ -282,6 +329,13 @@ pub(crate) async fn cap_with_duration(
         generation: generation.clone(),
         timer: timer.clone(),
         boot_id: boot_id()?,
+        armed: false,
+        applied_verified: false,
+        expires_at_unix_secs: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_secs()
+            .saturating_add(lease_seconds),
     };
     // Durable intent precedes timer AND mutation. Recovery can distinguish an
     // unchanged original quota from a successful/ambiguous manager mutation.
@@ -296,6 +350,9 @@ pub(crate) async fn cap_with_duration(
             format!("--unit={timer}"),
             format!("--on-active={lease_seconds}s"),
             "--timer-property=AccuracySec=1s".into(),
+            "--property=Restart=on-failure".into(),
+            "--property=RestartSec=5s".into(),
+            "--property=StartLimitIntervalSec=0".into(),
             "--".into(),
             exe.to_string_lossy().into_owned(),
             "cpu-lease-release".into(),
@@ -304,6 +361,28 @@ pub(crate) async fn cap_with_duration(
         ],
     )
     .await?;
+    if property(&format!("{timer}.timer"), "ActiveState").await? != "active" {
+        return Err("CPU expiry timer is not armed; refusing quota mutation".into());
+    }
+    lease.armed = true;
+    save(&root, &key, &lease)?;
+    if property(&unit, "Delegate").await? != "no" {
+        return Err("delegated scopes are unsupported for safe CPU limiting".into());
+    }
+    let members = group_members(&group)?;
+    if !members.contains(&pid) {
+        return Err("workload left sampled scope".into());
+    }
+    for member in members {
+        let name =
+            std::fs::read_to_string(format!("/proc/{member}/comm")).map_err(|e| e.to_string())?;
+        if member == std::process::id() as i32 || exempt.contains(name.trim()) {
+            return Err("scope now contains guard or exempt process".into());
+        }
+    }
+    if quota_value(&property(&unit, "CPUQuotaPerSecUSec").await?)? != original {
+        return Err("CPU quota changed before apply".into());
+    }
     if !matches!(
         crate::process_identity_status(Path::new("/proc"), pid, &identity),
         crate::ProcessIdentityStatus::Match
@@ -311,7 +390,17 @@ pub(crate) async fn cap_with_duration(
     {
         return Err("process or unit identity changed before CPU cap".into());
     }
+    if SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_secs()
+        >= lease.expires_at_unix_secs
+    {
+        return Err("CPU lease expired during preparation; quota not applied".into());
+    }
     set_quota(&unit, applied).await?;
+    lease.applied_verified = true;
+    save(&root, &key, &lease)?;
     Ok((key, generation))
 }
 
@@ -406,6 +495,27 @@ pub(crate) async fn restore_legacy(_pid: i32, _orig: &str) -> Result<(), String>
     Err("legacy migrated CPU service requires explicit recovery; refusing unsafe stop or guessed migration".into())
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum IntentAction {
+    Reuse,
+    RestoreUnprotected,
+    DropUnapplied,
+    PreserveExternal,
+}
+fn reconcile_intent(lease: &Lease, current: u64, armed: bool) -> IntentAction {
+    if current == lease.applied {
+        if armed {
+            IntentAction::Reuse
+        } else {
+            IntentAction::RestoreUnprotected
+        }
+    } else if current == lease.original && !lease.applied_verified {
+        IntentAction::DropUnapplied
+    } else {
+        IntentAction::PreserveExternal
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -447,10 +557,47 @@ mod tests {
             generation: "1".into(),
             timer: "expiry".into(),
             boot_id: "boot".into(),
+            armed: false,
+            applied_verified: false,
+            expires_at_unix_secs: 0,
         };
         let _lock = lock(dir.path(), &key).unwrap();
         save(dir.path(), &key, &lease).unwrap();
         assert_eq!(load(dir.path(), &key).unwrap().unwrap().original, u64::MAX);
         assert!(lock(dir.path(), &key).is_err());
+    }
+
+    #[test]
+    fn incomplete_intent_never_counts_as_enforced_quota() {
+        let mut lease = Lease {
+            unit: "job.scope".into(),
+            invocation: "i".into(),
+            original: u64::MAX,
+            applied: 500_000,
+            generation: "g".into(),
+            timer: "t".into(),
+            boot_id: "b".into(),
+            armed: false,
+            applied_verified: false,
+            expires_at_unix_secs: 0,
+        };
+        assert_eq!(
+            reconcile_intent(&lease, u64::MAX, false),
+            IntentAction::DropUnapplied
+        );
+        assert_eq!(
+            reconcile_intent(&lease, 500_000, false),
+            IntentAction::RestoreUnprotected
+        );
+        assert_eq!(reconcile_intent(&lease, 500_000, true), IntentAction::Reuse);
+        lease.applied_verified = true;
+        assert_eq!(
+            reconcile_intent(&lease, 300_000, true),
+            IntentAction::PreserveExternal
+        );
+        assert_eq!(
+            reconcile_intent(&lease, u64::MAX, false),
+            IntentAction::PreserveExternal
+        );
     }
 }
