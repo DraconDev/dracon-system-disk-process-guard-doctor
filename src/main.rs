@@ -29,9 +29,9 @@ mod cpu_limit;
 mod doctor;
 #[cfg(test)]
 mod ledger_safety_tests;
+mod oom_job;
 mod oom_restore;
 mod protection_probe;
-mod oom_job;
 #[cfg(test)]
 mod protection_tests;
 pub(crate) use doctor::*;
@@ -173,13 +173,13 @@ struct Cli {
 enum Commands {
     /// Launch a future job in a registered cooperative recovery boundary.
     ManagedJob {
-        #[arg(required=true, trailing_var_arg=true, allow_hyphen_values=true)]
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<std::ffi::OsString>,
     },
-    #[command(hide=true)]
+    #[command(hide = true)]
     ManagedJobEnter {
         id: String,
-        #[arg(required=true, trailing_var_arg=true, allow_hyphen_values=true)]
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<std::ffi::OsString>,
     },
     /// Internal expiry recovery for a reversible CPU lease.
@@ -7692,7 +7692,7 @@ impl std::error::Error for PolicyLoadError {
 }
 
 fn exit_status_for_error(error: &anyhow::Error) -> i32 {
-    if let Some(status)=error.downcast_ref::<oom_job::JobExit>() {
+    if let Some(status) = error.downcast_ref::<oom_job::JobExit>() {
         status.0
     } else if error.downcast_ref::<PolicyLoadError>().is_some() {
         CONFIG_ERROR_EXIT_STATUS
@@ -9391,7 +9391,9 @@ async fn run(cli: Cli) -> Result<()> {
 
     match cli.cmd {
         Commands::ManagedJob { command } => oom_job::launch(&command),
-        Commands::ManagedJobEnter { .. } => anyhow::bail!("job entry requires the single-threaded startup path"),
+        Commands::ManagedJobEnter { .. } => {
+            anyhow::bail!("job entry requires the single-threaded startup path")
+        }
         Commands::ProtectionProbe { root, phase } => protection_probe::run(&root, &phase).await,
         Commands::ProtectionWorker { root, child } => protection_probe::worker(&root, child),
         Commands::CpuLeaseRelease {
@@ -9455,15 +9457,18 @@ async fn run(cli: Cli) -> Result<()> {
 }
 
 fn main() {
-    let cli=Cli::parse();
+    let cli = Cli::parse();
     // The job sentinel must never start a runtime or background threads: its
     // terminal proof relies on being the only remaining task in the boundary.
-    let result=if let Commands::ManagedJobEnter { id, command }=&cli.cmd {
-        oom_job::enter(id,command)
+    let result = if let Commands::ManagedJobEnter { id, command } = &cli.cmd {
+        oom_job::enter(id, command)
     } else {
-        match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
-            Ok(runtime)=>runtime.block_on(run(cli)),
-            Err(error)=>Err(error.into()),
+        match tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => runtime.block_on(run(cli)),
+            Err(error) => Err(error.into()),
         }
     };
     if let Err(error) = result {
