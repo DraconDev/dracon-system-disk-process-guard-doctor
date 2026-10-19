@@ -25,10 +25,7 @@ before proof persistence. A lost sentinel means unresolved provenance, not a
 certificate a recoverer can fabricate later.
 
 This is a workload-terminal certificate; the scope still contains the sentinel
-until it exits. It is not a cgroup-empty certificate. The state model includes
-admitted/active/draining/terminal; runtime steering and independent debt recovery
-are the next implementation step, not yet supplied by the bootstrap itself.
-Do not deploy or describe this initial launcher as a finished OOM repair.
+until it exits. It is not a cgroup-empty certificate.
 
 ## Explicit supported-job contract
 
@@ -58,25 +55,60 @@ No existing launcher was rewired without locating its actual producer and checki
 its completion/cancellation contract. Explicit registered-job coverage is provided
 by the new command; arbitrary future commands outside it are still unsupported.
 
+## Registered-job steering and lifetime debt (implemented)
+
+`src/managed_oom.rs` now owns the registered-job OOM path:
+
+- Steering applies only inside an admitted managed job. Unregistered jobs keep
+  the existing in-process behaviour; they are explicitly outside this guarantee.
+- The launcher establishes a known baseline (200) instead of inheriting the
+  caller's score. A caller that inherited a biased 250 no longer refuses
+  admission; it gets a job whose baseline is recorded by construction.
+- Biasing writes a durable job-level debt BEFORE any process is mutated, and
+  verifies the applied value afterwards. The sentinel is excluded by
+  incarnation, never by name.
+- The debt is retired only against the same-generation sentinel certificate.
+  A running lease, a clean scan, a root exit, retry exhaustion or an
+  unidentifiable member all keep the debt alive. A previous boot's debt is
+  archived, never restored into current processes.
+- Recovery runs in an independently supervised user service
+  (`dracon-system-oom-recovery.service`) started with Restart=on-failure,
+  RestartSec=2s and no capabilities. Its identity (executable inode and
+  command line) is checked before any bias is applied, so a mutation never
+  happens without independent recovery armed.
+- Recovery restores admitted members to the job baseline by compare-and-restore,
+  so an externally changed score is never overwritten.
+- An orphan whose boundary vanished without a certificate keeps its debt until
+  an explicit `oom-job-reconcile <id> --confirm` retires it. Reconciliation
+  refuses while the scope, cgroup or sentinel still exists.
+- The guard daemon also drains outstanding debts each pass, so a stale
+  independent recoverer cannot hide a stuck debt.
+
 ## Observations so far (development only)
 
-- Focused admission/persistence/proof tests passed, followed by all 508 unit,
-  4 events CLI and 12 guard-service tests; workspace clippy passed.
+- Focused admission/persistence/proof tests passed, followed by all 515 unit,
+  4 events CLI and 12 guard-service tests; workspace clippy and format check
+  passed.
 - A debug-binary `managed-job -- true` completed with status 0 through the actual
   user manager. Its durable record is terminal with proof=true and baseline=200.
   The installed guard and installed binary were NOT changed for this experiment.
-- A subsequent requested exit-42 check was REFUSED before execution because the
-  verification shell inherited oom_score_adj=250. The observed status was 1,
-  not 42. This is recorded as unsupported admission, NOT a passing exit-42 live
-  test. No original score was guessed or reset to bypass the refusal. Numeric
-  exit propagation is covered by unit tests but still needs qualifying live checks.
-- These are launcher-bootstrap observations outside the guard sandbox. They do
-  NOT establish deployed-service OOM recovery, independent recovery, full live
+- A requested exit-42 check was REFUSED before execution when the verification
+  shell inherited oom_score_adj=250, and the observed status was 1, not 42. The
+  launcher now establishes its own baseline, so this refusal no longer occurs;
+  the numeric exit path is covered by unit tests and still needs a qualifying
+  live check.
+- The managed probe (`protection-probe <dir> managed`, disposable workload only)
+  completed with status 0 against the real user manager: baseline 200, biased
+  250, lifetime debt restored to baseline, and the debt retired against the
+  terminal certificate. No managed-job unit and no outstanding debt remained
+  afterwards. A deliberately stopped disposable job left an orphan debt, which
+  `oom-job-reconcile --confirm` retired only after confirming the scope was
+  absent.
+- These are development-binary observations outside the deployed guard sandbox.
+  They do NOT establish deployed-service behaviour, the CPU path, full live
   compatibility or any final release gate.
 
-Next: implement registered-job-only steering, write-ahead active/draining lifetime
-debts, an independently supervised recoverer, restart reconciliation, and explicit
-unsupported coverage reports. Keep the sentinel exempt by incarnation, not merely
-by name. Retire debt only using its validated terminal certificate. Then finish
-failure/interleaving tests, final workspace gates, and authorized deployment/live
-checks of both repaired paths with disposable workloads.
+Next: qualify the CPU lease path under the same service context, finish
+failure/interleaving tests, run the full workspace gates (workspace tests,
+release build, cargo deny), then perform the authorized deployment and live
+verification of both repaired paths with disposable workloads.
