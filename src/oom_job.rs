@@ -223,7 +223,7 @@ fn successful(status: ExitStatus) -> Result<()> {
 pub(crate) const MANAGED_JOB_BASELINE: i32 = 200;
 fn establish_baseline() -> Result<i32> {
     let path = "/proc/self/oom_score_adj";
-    let current = fs::read_to_string(path)?.trim().parse::<i32>()?;
+    let current = fs::read_to_string(path).context("reading the sentinel OOM baseline")?.trim().parse::<i32>()?;
     if current == MANAGED_JOB_BASELINE {
         return Ok(current);
     }
@@ -288,7 +288,7 @@ pub(crate) fn enter(id: &str, command: &[OsString]) -> Result<()> {
     );
     let pid = std::process::id() as i32;
     let unit = format!("dracon-managed-job-{id}.scope");
-    let text = fs::read_to_string("/proc/self/cgroup")?;
+    let text = fs::read_to_string("/proc/self/cgroup").context("reading the sentinel cgroup")?;
     let group = text
         .lines()
         .find_map(|line| line.strip_prefix("0::"))
@@ -326,7 +326,7 @@ pub(crate) fn enter(id: &str, command: &[OsString]) -> Result<()> {
         property(&unit, "ControlGroup")? == group,
         "manager cgroup does not match admission boundary"
     );
-    let baseline = establish_baseline()?;
+    let baseline = establish_baseline().context("establishing the job baseline")?;
     ensure!(
         (-499..250).contains(&baseline),
         "job baseline is protected or cannot be safely biased"
@@ -351,8 +351,8 @@ pub(crate) fn enter(id: &str, command: &[OsString]) -> Result<()> {
         terminal_proof: false,
     };
     {
-        let _lock = locked(&root, id)?;
-        save(&root, &job, true)?;
+        let _lock = locked(&root, id).context("locking the job generation")?;
+        save(&root, &job, true).context("recording the job admission")?;
     }
     // Admission is durable before the first workload instruction. The command
     // inherits cwd, environment, standard descriptors and the known baseline.
