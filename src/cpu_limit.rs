@@ -197,9 +197,12 @@ fn isolated_scope(group: &str) -> Result<&str, String> {
         .strip_prefix(&prefix)
         .ok_or("process is outside the supported user workload slice")?;
     // tmux-spawn is the runner's per-job scope, NOT the shared tmux server or
-    // GUI terminal scope. Unsupported/shared units are deliberately untouched.
+    // GUI terminal scope. dracon-managed-job-* is this tool's own admitted
+    // per-job scope. Unsupported/shared units are deliberately untouched.
     if !unit.ends_with(".scope")
-        || !(unit.starts_with("tmux-spawn-") || unit.starts_with("dracon-protection-test-"))
+        || !(unit.starts_with("tmux-spawn-")
+            || unit.starts_with("dracon-managed-job-")
+            || unit.starts_with("dracon-protection-test-"))
         || !unit
             .bytes()
             .all(|c| c.is_ascii_alphanumeric() || b"-_.".contains(&c))
