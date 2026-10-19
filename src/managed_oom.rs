@@ -333,7 +333,10 @@ async fn bias_inner(sample: &ProcSample, exempt: &HashSet<String>) -> Result<Opt
                         .map(str::to_owned)
                 })
                 .unwrap_or_else(|| "status unavailable".into());
-            anyhow::anyhow!("opening /proc/{}/oom_score_adj ({owner}; {dumpable}): {e}", sample.pid)
+            anyhow::anyhow!(
+                "opening /proc/{}/oom_score_adj ({owner}; {dumpable}): {e}",
+                sample.pid
+            )
         })?;
     ensure!(
         process_sample_is_current(sample)
