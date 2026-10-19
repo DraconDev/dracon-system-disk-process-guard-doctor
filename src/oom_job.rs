@@ -88,17 +88,18 @@ fn initialize_registry(
     use std::os::unix::fs::PermissionsExt;
     let parent = home.join(".dracon");
     let root = parent.join("oom-jobs");
-    fs::create_dir_all(&root)?;
+    fs::create_dir_all(&root).context("creating the managed-job state directory")?;
     let metadata = fs::symlink_metadata(&root)?;
     ensure!(
         metadata.is_dir() && metadata.uid() == uid,
         "unsafe managed-job state directory"
     );
-    fs::set_permissions(&root, fs::Permissions::from_mode(0o700))?;
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
+        .context("restricting the managed-job state directory")?;
     // Admission must not outlive a newly initialized directory pathname.
     // Persist both links in the short directory chain before exposing it.
     for path in [&root, &parent, home] {
-        sync(path)?;
+        sync(path).with_context(|| format!("syncing {}", path.display()))?;
     }
     Ok(root)
 }
@@ -134,16 +135,22 @@ pub(crate) fn locked(root: &Path, id: &str) -> Result<fs::File> {
 }
 pub(crate) fn save(root: &Path, job: &Job, initial: bool) -> Result<()> {
     ensure!(valid_id(&job.id), "invalid job generation");
-    let mut temp = tempfile::NamedTempFile::new_in(root)?;
+    let mut temp = tempfile::NamedTempFile::new_in(root).context("creating the job record")?;
     temp.write_all(&serde_json::to_vec(job)?)?;
     temp.as_file().sync_all()?;
     let destination = root.join(format!("{}.json", job.id));
     if initial {
-        temp.persist_noclobber(destination).map_err(|e| e.error)?;
+        temp.persist_noclobber(destination)
+            .map_err(|e| e.error)
+            .context("publishing the job record")?;
     } else {
-        temp.persist(destination).map_err(|e| e.error)?;
+        temp.persist(destination)
+            .map_err(|e| e.error)
+            .context("publishing the job record")?;
     }
-    fs::File::open(root)?.sync_all()?;
+    fs::File::open(root)
+        .and_then(|f| f.sync_all())
+        .context("syncing the managed-job state directory")?;
     Ok(())
 }
 pub(crate) fn load(root: &Path, id: &str) -> Result<Job> {
