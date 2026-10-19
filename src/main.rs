@@ -179,6 +179,12 @@ enum Commands {
     },
     #[command(hide = true)]
     OomJobRecover,
+    /// Retire an orphaned managed-job debt after its boundary is gone.
+    OomJobReconcile {
+        id: String,
+        #[arg(long)]
+        confirm: bool,
+    },
     #[command(hide = true)]
     ManagedJobEnter {
         id: String,
@@ -9422,6 +9428,9 @@ async fn run(cli: Cli) -> Result<()> {
     match cli.cmd {
         Commands::ManagedJob { command } => oom_job::launch(&command),
         Commands::OomJobRecover => managed_oom::recover_loop().await,
+        Commands::OomJobReconcile { id, confirm } => {
+            managed_oom::reconcile_orphan(&id, confirm).await
+        }
         Commands::ManagedJobEnter { .. } => {
             anyhow::bail!("job entry requires the single-threaded startup path")
         }

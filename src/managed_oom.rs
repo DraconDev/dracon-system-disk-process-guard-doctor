@@ -431,12 +431,44 @@ async fn drain_one(root: &Path, id: &str, force: bool, exempt: &HashSet<String>)
     debt.last_error = result.err().map(|e| format!("{e:#}"));
     save_debt(root, &debt)?;
     if let Some(error) = &debt.last_error {
-        let _ = writeln!(
-            std::io::stderr().lock(),
-            "managed OOM job {id}: restoration pending: {error}"
-        );
+        // Report the first failure and then periodically, so a persistent
+        // problem stays visible without flooding the journal.
+        if debt.attempts == 1 || debt.attempts % 60 == 0 {
+            let _ = writeln!(
+                std::io::stderr().lock(),
+                "managed OOM job {id}: restoration pending (attempt {}): {error}",
+                debt.attempts
+            );
+        }
     }
     Ok(true)
+}
+/// Explicit operator reconciliation for a debt whose job boundary vanished
+/// without a sentinel certificate. This never touches processes: it only
+/// retires the RECORD after showing the evidence, and refuses while the
+/// boundary or its sentinel is still present.
+pub(crate) async fn reconcile_orphan(id: &str, confirmed: bool) -> Result<()> {
+    ensure!(oom_job::valid_id(id), "invalid managed job generation");
+    ensure!(confirmed, "reconciliation requires explicit confirmation");
+    let root = oom_job::root()?;
+    let Some(debt) = load_debt(&root, id)? else {
+        anyhow::bail!("no outstanding debt for this generation")
+    };
+    let scope_state = cpu_limit::property(&debt.admission.unit, "LoadState")
+        .await
+        .unwrap_or_else(|_| String::from("unavailable"));
+    let sentinel_alive = Path::new(&format!("/proc/{}", debt.admission.sentinel)).exists();
+    let group = Path::new("/sys/fs/cgroup").join(debt.admission.group.trim_start_matches('/'));
+    let boundary_present = group.exists();
+    ensure!(
+        scope_state == "not-found" || scope_state == "unavailable",
+        "job scope is still known to the manager: {scope_state}"
+    );
+    ensure!(!boundary_present, "job cgroup still exists");
+    ensure!(!sentinel_alive, "job sentinel is still running");
+    let _=writeln!(std::io::stderr().lock(),"managed OOM job {id}: reconciled orphan debt (scope={scope_state}, boundary absent, sentinel gone)");
+    retire(&root, &debt)?;
+    Ok(())
 }
 /// Returns outstanding lifetime debts, not just currently visible biased roots.
 pub(crate) async fn drain(force: bool, exempt: &HashSet<String>) -> Result<usize> {
