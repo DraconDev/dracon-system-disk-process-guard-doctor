@@ -162,7 +162,10 @@ struct Cli {
 enum Commands {
     /// Internal expiry recovery for a reversible CPU lease.
     #[command(hide = true)]
-    CpuLeaseRelease { unit: String, original_cgroup: String },
+    CpuLeaseRelease {
+        unit: String,
+        original_cgroup: String,
+    },
     /// Show core path and service status.
     Status {
         /// Emit machine-readable JSON.
@@ -661,6 +664,18 @@ fn prune_oom_known_descendants(state: &mut GuardRuntimeState, all_processes: &[P
 fn oom_descendant_attempts_exhausted(pending: &mut OomPendingDescendant) -> bool {
     pending.attempts = pending.attempts.saturating_add(1);
     pending.attempts >= OOM_DESCENDANT_RETRY_LIMIT
+}
+
+fn record_oom_retry(
+    state: &mut GuardRuntimeState,
+    key: (i32, u64),
+    pending: &mut OomPendingDescendant,
+) -> bool {
+    let escalated = oom_descendant_attempts_exhausted(pending);
+    state.oom_pending_descendants.insert(key, pending.clone());
+    // Bound warning noise, not the lifetime of a real restoration obligation.
+    escalated
+        && (pending.attempts == OOM_DESCENDANT_RETRY_LIMIT || pending.attempts.is_power_of_two())
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1902,7 +1917,7 @@ fn restore_pending_oom_descendants(
             }
             ProcessIdentityStatus::Unavailable => {
                 result.deferred += 1;
-                if oom_descendant_attempts_exhausted(&mut pending) {
+                if record_oom_retry(state, key, &mut pending) {
                     eprintln!("⚠️ oom-descendant-restore retaining pid={} parent={} after {} unavailable identity reads", key.0, pending.root_pid, pending.attempts);
                     state.oom_pending_descendants.insert(key, pending.clone());
                 }
@@ -1918,7 +1933,7 @@ fn restore_pending_oom_descendants(
             Some(current) => current,
             None => {
                 result.deferred += 1;
-                if oom_descendant_attempts_exhausted(&mut pending) {
+                if record_oom_retry(state, key, &mut pending) {
                     eprintln!("⚠️ oom-descendant-restore retaining pid={} parent={} after {} unreadable oom_score_adj reads", key.0, pending.root_pid, pending.attempts);
                     state.oom_pending_descendants.insert(key, pending.clone());
                 }
@@ -1936,8 +1951,11 @@ fn restore_pending_oom_descendants(
                 key.0, pending.root_pid, error
             );
             result.deferred += 1;
-            if oom_descendant_attempts_exhausted(&mut pending) {
-                eprintln!("⚠️ oom-descendant-restore retaining pid={} parent={} after {} failed writes", key.0, pending.root_pid, pending.attempts);
+            if record_oom_retry(state, key, &mut pending) {
+                eprintln!(
+                    "⚠️ oom-descendant-restore retaining pid={} parent={} after {} failed writes",
+                    key.0, pending.root_pid, pending.attempts
+                );
                 state.oom_pending_descendants.insert(key, pending.clone());
             }
             continue;
@@ -2022,7 +2040,11 @@ fn sweep_stranded_oom_descendants(
 /// Returns (durable lease key, generation). No process is moved or signalled;
 /// an independent timer restores quota without terminating the workload.
 /// Shared/unknown units and units containing exempt processes fail closed.
-async fn cap_cpu_process(pid: i32, percent: u32, exempt: &HashSet<String>) -> Result<(String, String), String> {
+async fn cap_cpu_process(
+    pid: i32,
+    percent: u32,
+    exempt: &HashSet<String>,
+) -> Result<(String, String), String> {
     cpu_limit::cap(pid, percent, exempt).await
 }
 
@@ -2678,10 +2700,13 @@ fn detect_active_package_manager_operations_from(
             // deliberately exposes an empty cmdline for it; do not confuse
             // that affirmative terminal state with unreadable live argv.
             let status = fs::read_to_string(proc_root.join(pid.to_string()).join("status"));
-            if status.as_ref().is_ok_and(|text| text.lines().any(|line| {
-                line.strip_prefix("State:")
-                    .and_then(|state| state.split_whitespace().next()) == Some("Z")
-            })) {
+            if status.as_ref().is_ok_and(|text| {
+                text.lines().any(|line| {
+                    line.strip_prefix("State:")
+                        .and_then(|state| state.split_whitespace().next())
+                        == Some("Z")
+                })
+            }) {
                 continue;
             }
             anyhow::bail!(
@@ -5308,15 +5333,27 @@ fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) {
         });
     }
     records.sort_by_key(|r| r.pid);
-    let mut oom_pending: Vec<_> = state.oom_pending_descendants.iter().map(|((pid, _), pending)| (*pid, pending.clone())).collect();
+    let mut oom_pending: Vec<_> = state
+        .oom_pending_descendants
+        .iter()
+        .map(|((pid, _), pending)| (*pid, pending.clone()))
+        .collect();
     oom_pending.sort_by_key(|(pid, pending)| (*pid, pending.identity.starttime));
-    let mut oom_known: Vec<_> = state.oom_known_descendants.iter().map(|(pid, known)| {
-        let mut members: Vec<_> = known.iter().copied().collect();
-        members.sort_unstable();
-        (*pid, members)
-    }).collect();
+    let mut oom_known: Vec<_> = state
+        .oom_known_descendants
+        .iter()
+        .map(|(pid, known)| {
+            let mut members: Vec<_> = known.iter().copied().collect();
+            members.sort_unstable();
+            (*pid, members)
+        })
+        .collect();
     oom_known.sort_by_key(|(pid, _)| *pid);
-    let ledger = MitigationLedger { records, oom_pending, oom_known };
+    let ledger = MitigationLedger {
+        records,
+        oom_pending,
+        oom_known,
+    };
     let encoded = match serde_json::to_vec(&ledger) {
         Ok(bytes) => bytes,
         Err(e) => {
@@ -5388,16 +5425,30 @@ fn hydrate_mitigations_from(path: &Path, state: &mut GuardRuntimeState) {
             return;
         }
     };
-    if ledger.records.is_empty() {
-        return;
+    for (pid, pending) in ledger.oom_pending {
+        if !matches!(
+            process_identity_status(Path::new("/proc"), pid, &pending.identity),
+            ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch
+        ) {
+            state
+                .oom_pending_descendants
+                .insert((pid, pending.identity.starttime), pending);
+        }
+    }
+    for (pid, known) in ledger.oom_known {
+        state
+            .oom_known_descendants
+            .insert(pid, known.into_iter().collect());
     }
     let mut adopted = 0usize;
     for record in ledger.records {
         // Never adopt a recycled PID: the starttime is what proves it is the
         // same process the previous run adjusted.
-        if !matches!(
-            process_identity_status(Path::new("/proc"), record.pid, &record.identity),
-            ProcessIdentityStatus::Match
+        let status = process_identity_status(Path::new("/proc"), record.pid, &record.identity);
+        // Unavailable is NOT gone. Retain for later identity-safe recovery.
+        if matches!(
+            status,
+            ProcessIdentityStatus::Gone | ProcessIdentityStatus::Mismatch
         ) {
             continue;
         }
@@ -9199,7 +9250,12 @@ async fn run() -> Result<()> {
     VERBOSITY.store(cli.verbose, Ordering::SeqCst);
 
     match cli.cmd {
-        Commands::CpuLeaseRelease { unit, original_cgroup } => cpu_limit::release(&unit, &original_cgroup).await.map_err(anyhow::Error::msg),
+        Commands::CpuLeaseRelease {
+            unit,
+            original_cgroup,
+        } => cpu_limit::release(&unit, &original_cgroup)
+            .await
+            .map_err(anyhow::Error::msg),
         Commands::Status { json } => cmd_status(json).await,
         Commands::Doctor { json, strict } => cmd_doctor(json, strict).await,
         Commands::Storage {

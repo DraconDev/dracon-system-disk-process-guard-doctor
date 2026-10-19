@@ -3460,10 +3460,16 @@ fn package_cache_empty_wrapper_requires_affirmative_zombie_state() {
     fs::write(process.join("cmdline"), b"").unwrap();
     for state in ["State:\tS (sleeping)\n", "State:\t?\n", "missing state\n"] {
         fs::write(process.join("status"), state).unwrap();
-        assert!(detect_active_package_manager_operations_from("202 bash\n", proc_root.path()).is_err());
+        assert!(
+            detect_active_package_manager_operations_from("202 bash\n", proc_root.path()).is_err()
+        );
     }
     fs::write(process.join("status"), "Name:\tbash\nState:\tZ (zombie)\n").unwrap();
-    assert!(detect_active_package_manager_operations_from("202 bash\n", proc_root.path()).unwrap().is_empty());
+    assert!(
+        detect_active_package_manager_operations_from("202 bash\n", proc_root.path())
+            .unwrap()
+            .is_empty()
+    );
     fs::remove_file(process.join("status")).unwrap();
     assert!(detect_active_package_manager_operations_from("202 bash\n", proc_root.path()).is_err());
 }
