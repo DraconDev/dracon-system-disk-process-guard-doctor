@@ -77,11 +77,15 @@ async fn exercise_managed(root: &Path) -> Result<()> {
         "use a fresh probe directory"
     );
     let exe = std::env::current_exe()?;
-    // Launch a disposable admitted job whose workload outlives the probe.
-    let mut child = std::process::Command::new(&exe)
-        .args(["managed-job", "--", "sh", "-c", "sleep 600"])
+    // Launch a disposable admitted job whose workload exits on its own stop
+    // marker, so the sentinel can certify an empty boundary afterwards.
+    let mut child = tokio::process::Command::new(&exe)
+        .args(["managed-job", "--"])
+        .arg(&exe)
+        .args(["protection-worker", root.to_str().unwrap_or_default()])
+        .kill_on_drop(true)
         .spawn()?;
-    let launcher = child.id() as i32;
+    let launcher = child.id().unwrap_or_default() as i32;
     let mut admitted = false;
     for _ in 0..60 {
         if let Ok(entries) = fs::read_dir(oom_job::root()?) {
@@ -96,15 +100,23 @@ async fn exercise_managed(root: &Path) -> Result<()> {
         sleep(Duration::from_millis(100)).await;
     }
     anyhow::ensure!(admitted, "no managed job admission appeared");
-    // Find the admitted job's registered workload member.
+    // Find the admitted job's registered workload member. The sentinel is
+    // never a bias target.
     let mut target = None;
     for _ in 0..80 {
         let samples = process_samples().await?;
         for sample in &samples {
-            if managed_oom::is_managed_job_process(sample.pid) {
-                target = Some(sample.clone());
-                break;
+            let Ok(id) = managed_oom::job_id_for_process(sample.pid) else {
+                continue;
+            };
+            let Ok(job) = oom_job::load(&oom_job::root()?, &id) else {
+                continue;
+            };
+            if sample.pid == job.sentinel {
+                continue;
             }
+            target = Some(sample.clone());
+            break;
         }
         if target.is_some() {
             break;
@@ -128,7 +140,8 @@ async fn exercise_managed(root: &Path) -> Result<()> {
         biased == OOM_BIAS_TARGET,
         "managed bias did not reach the target"
     );
-    // The independent recoverer restores the lifetime debt to the baseline.
+    // The lifetime debt restores the job's baseline. The independent
+    // recoverer owns this; the probe forces a pass to observe it promptly.
     let mut restored = false;
     for _ in 0..300 {
         let current = fs::read_to_string(format!("/proc/{}/oom_score_adj", sample.pid))?
@@ -139,17 +152,37 @@ async fn exercise_managed(root: &Path) -> Result<()> {
             restored = true;
             break;
         }
+        managed_oom::drain(true, &exempt).await.ok();
         sleep(Duration::from_millis(100)).await;
     }
     anyhow::ensure!(restored, "managed OOM lifetime debt was not restored");
-    let _ = fs::write(root.join("stop"), "");
-    let _ = child.kill();
-    let _ = child.wait();
-    let _ = fs::read(format!("/proc/{launcher}/stat"));
+    fs::write(root.join("stop"), "")?;
+    // The workload exits on the marker; the sentinel then certifies the empty
+    // boundary and the lifetime debt retires against that certificate.
+    let status = tokio::time::timeout(Duration::from_secs(120), child.wait()).await;
+    let mut retired = false;
+    for _ in 0..200 {
+        if let Ok(id) = managed_oom::job_id_for_process(sample.pid) {
+            if oom_job::root()
+                .ok()
+                .map(|root| !root.join(format!("{id}.debt.json")).exists())
+                .unwrap_or(false)
+            {
+                retired = true;
+                break;
+            }
+        }
+        sleep(Duration::from_millis(100)).await;
+    }
+    anyhow::ensure!(status.is_ok(), "managed job launcher did not finish");
+    anyhow::ensure!(
+        retired,
+        "lifetime debt was not retired against the terminal certificate"
+    );
     receipt(
         root,
         "managed",
-        json!({"baseline":baseline,"biased":biased,"restored":restored,"launcher":launcher}),
+        json!({"baseline":baseline,"biased":biased,"restored":restored,"retired":retired,"launcher":launcher}),
     )?;
     Ok(())
 }

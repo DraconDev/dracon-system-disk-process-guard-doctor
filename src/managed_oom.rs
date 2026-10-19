@@ -82,6 +82,11 @@ pub(crate) fn is_managed_job_process(pid: i32) -> bool {
         Err(_) => false,
     }
 }
+/// The registered generation of the managed job this process belongs to.
+pub(crate) fn job_id_for_process(pid: i32) -> Result<String> {
+    let group = group_for(Path::new("/proc"), pid)?;
+    Ok(id_for(&group)?.to_owned())
+}
 fn id_for(group: &str) -> Result<&str> {
     let name = group.rsplit('/').next().unwrap_or_default();
     let id = name
