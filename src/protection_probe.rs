@@ -126,7 +126,8 @@ async fn exercise_managed(root: &Path) -> Result<()> {
     let sample =
         target.ok_or_else(|| anyhow::anyhow!("no admitted managed job member appeared"))?;
     let job_id = managed_oom::job_id_for_process(sample.pid)?;
-    let baseline = fs::read_to_string(format!("/proc/{}/oom_score_adj", sample.pid))?
+    let baseline = fs::read_to_string(format!("/proc/{}/oom_score_adj", sample.pid))
+        .with_context(|| format!("reading the managed member baseline of pid={}", sample.pid))?
         .trim()
         .parse::<i32>()?;
     let exempt = HashSet::new();
@@ -134,7 +135,8 @@ async fn exercise_managed(root: &Path) -> Result<()> {
         .await
         .map_err(anyhow::Error::msg)?;
     anyhow::ensure!(applied.is_some(), "managed OOM bias was not applied");
-    let biased = fs::read_to_string(format!("/proc/{}/oom_score_adj", sample.pid))?
+    let biased = fs::read_to_string(format!("/proc/{}/oom_score_adj", sample.pid))
+        .with_context(|| format!("reading the managed member bias of pid={}", sample.pid))?
         .trim()
         .parse::<i32>()?;
     anyhow::ensure!(
@@ -157,7 +159,8 @@ async fn exercise_managed(root: &Path) -> Result<()> {
         sleep(Duration::from_millis(100)).await;
     }
     anyhow::ensure!(restored, "managed OOM lifetime debt was not restored");
-    fs::write(root.join("stop"), "")?;
+    fs::write(root.join("stop"), "")
+        .with_context(|| format!("writing the stop marker under {}", root.display()))?;
     // The workload exits on the marker; the sentinel then certifies the empty
     // boundary and the lifetime debt retires against that certificate.
     let status = tokio::time::timeout(Duration::from_secs(120), child.wait()).await;
