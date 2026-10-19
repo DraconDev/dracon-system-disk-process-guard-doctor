@@ -194,8 +194,10 @@ enum Commands {
     /// Internal expiry recovery for a reversible CPU lease.
     #[command(hide = true)]
     CpuLeaseRelease {
-        unit: String,
-        original_cgroup: String,
+        /// Durable lease key of the CPU lease to release.
+        key: String,
+        /// Generation of that lease; older generations are obsolete timers.
+        generation: String,
     },
     /// Bounded disposable-process diagnostics under the caller's sandbox.
     #[command(hide = true)]
@@ -9436,10 +9438,7 @@ async fn run(cli: Cli) -> Result<()> {
         }
         Commands::ProtectionProbe { root, phase } => protection_probe::run(&root, &phase).await,
         Commands::ProtectionWorker { root, child } => protection_probe::worker(&root, child),
-        Commands::CpuLeaseRelease {
-            unit,
-            original_cgroup,
-        } => cpu_limit::release(&unit, &original_cgroup)
+        Commands::CpuLeaseRelease { key, generation } => cpu_limit::release(&key, &generation)
             .await
             .map_err(anyhow::Error::msg),
         Commands::Status { json } => cmd_status(json).await,
