@@ -266,20 +266,17 @@ async fn ensure_recoverer(root: &Path) -> Result<()> {
         .map_err(anyhow::Error::msg)?
         .parse::<i32>()?;
     ensure!(pid > 0, "independent OOM recoverer has no process");
-    let expected =
-        fs::metadata(std::env::current_exe()?).context("reading the running executable")?;
-    let actual = fs::metadata(format!("/proc/{pid}/exe"))
-        .with_context(|| format!("reading the recoverer executable of pid={pid}"))?;
+    // The recoverer's identity is taken from the MANAGER, not from /proc: a
+    // hardened service may not be allowed to read another process's exe
+    // link, and an unreadable link must never be read as "another binary".
+    let exec_start = cpu_limit::property(RECOVERER, "ExecStart")
+        .await
+        .map_err(anyhow::Error::msg)?;
+    let expected = std::env::current_exe()?;
     ensure!(
-        expected.dev() == actual.dev() && expected.ino() == actual.ino(),
-        "independent OOM recoverer runs a different binary"
-    );
-    let cmd = fs::read(format!("/proc/{pid}/cmdline"))
-        .with_context(|| format!("reading the recoverer command line of pid={pid}"))?;
-    let args: Vec<_> = cmd.split(|b| *b == 0).filter(|s| !s.is_empty()).collect();
-    ensure!(
-        args.len() == 2 && args[1] == b"oom-job-recover",
-        "independent recovery command identity differs"
+        exec_start.contains(expected.to_string_lossy().as_ref())
+            && exec_start.contains("oom-job-recover"),
+        "independent recovery unit runs a different command: {exec_start}"
     );
     Ok(())
 }
