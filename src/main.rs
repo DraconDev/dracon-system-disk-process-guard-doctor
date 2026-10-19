@@ -27,6 +27,7 @@ use dracon_system_lib::analyze_workspace_storage;
 // so tests use crate::* to access them without explicit re-exports.
 mod cpu_limit;
 mod doctor;
+mod oom_restore;
 pub(crate) use doctor::*;
 mod events;
 pub(crate) use events::*;
@@ -1945,7 +1946,9 @@ fn restore_pending_oom_descendants(
             remember_oom_descendant_identity(state, pending.root_pid, key.0, &pending.identity);
             continue;
         }
-        if let Err(error) = fs::write(&adj_path, format!("{}\n", pending.original_adj)) {
+        if let Err(error) =
+            oom_restore::restore(proc_root, key.0, &pending.identity, pending.original_adj)
+        {
             eprintln!(
                 "⚠️ oom-descendant-restore failed for pid={} parent={} : {}",
                 key.0, pending.root_pid, error
@@ -2419,6 +2422,19 @@ async fn restore_runtime_adjustments_with_samples(
     proc_root: &Path,
     samples: &[ProcSample],
 ) -> bool {
+    // Unit leases do not depend on the sampled root remaining readable/alive.
+    let leases: Vec<_> = state
+        .capped_pids
+        .iter()
+        .filter(|(_, (key, _, _))| cpu_limit::is_lease(key))
+        .map(|(pid, (key, generation, _))| (*pid, key.clone(), generation.clone()))
+        .collect();
+    for (pid, key, generation) in leases {
+        match cpu_limit::release(&key, &generation).await {
+            Ok(()) => remove_cpu_cap(state, pid),
+            Err(e) => eprintln!("CPU lease recovery retained {key}: {e}"),
+        }
+    }
     let sweep = sweep_stranded_oom_descendants(proc_root, samples, state, &HashSet::new());
     if sweep.deferred > 0 {
         eprintln!(
@@ -2462,15 +2478,9 @@ async fn restore_runtime_adjustments_with_samples(
                 identity,
             } => match process_identity_status(proc_root, pid, &identity) {
                 ProcessIdentityStatus::Match => {
-                    if oom_root_has_pending_descendants(state, pid) {
-                        eprintln!(
-                            "⚠ SIGHUP deferring oom restore for pid={} until descendants recover",
-                            pid
-                        );
-                        continue;
-                    }
-                    let adj_path = proc_root.join(pid.to_string()).join("oom_score_adj");
-                    match fs::write(&adj_path, format!("{orig_adj}\n")) {
+                    // Restore the root promptly even while child obligations
+                    // remain; otherwise every new fork inherits its bias.
+                    match oom_restore::restore(proc_root, pid, &identity, orig_adj) {
                         Ok(()) => remove_oom_bias(state, pid),
                         Err(e) => eprintln!(
                             "⚠ SIGHUP failed to restore oom_score_adj for pid={} comm={}: {}",
@@ -4782,15 +4792,23 @@ async fn check_memory_pressure(
                 .and_then(|s| s.trim().parse::<i32>().ok());
             if let Some(orig) = cur {
                 if let Some(target) = oom_bias_target(orig) {
-                    if fs::write(&adj_path, format!("{target}\n")).is_ok() {
-                        let known_descendants = process_descendant_samples(all_processes, p.pid)
-                            .into_iter()
-                            .map(|child| (child.pid, child.starttime))
-                            .collect();
-                        state
-                            .oom_biased_pids
-                            .insert(p.pid, (orig, process_sample_identity(p)));
-                        state.oom_known_descendants.insert(p.pid, known_descendants);
+                    let known_descendants = process_descendant_samples(all_processes, p.pid)
+                        .into_iter()
+                        .map(|child| (child.pid, child.starttime))
+                        .collect();
+                    state
+                        .oom_biased_pids
+                        .insert(p.pid, (orig, process_sample_identity(p)));
+                    state.oom_known_descendants.insert(p.pid, known_descendants);
+                    // Write-ahead intent: a crash cannot lose the root's original
+                    // score or the pre-existing descendant provenance.
+                    if !persist_mitigations(state) {
+                        remove_oom_bias(state, p.pid);
+                        continue;
+                    }
+                    if process_sample_is_current(p)
+                        && fs::write(&adj_path, format!("{target}\n")).is_ok()
+                    {
                         eprintln!(
                             "🛡️ oom-bias pid={} cmd={} adj {} -> {} (critical pressure)",
                             p.pid, p.command, orig, target
@@ -5014,11 +5032,14 @@ async fn check_memory_pressure(
                     if record_unavailable_attempt(&mut state.oom_identity_unavailable_attempts, pid)
                     {
                         eprintln!(
-                            "⚠️ oom-restore dropping pid={} after {} unavailable identity reads (will not retry)",
+                            "⚠️ oom-restore retaining pid={} after {} unavailable identity reads",
                             pid, IDENTITY_UNAVAILABLE_RETRY_LIMIT
                         );
-                        state.oom_identity_unavailable_attempts.remove(&pid);
-                        remove_oom_bias(state, pid);
+                        // A retry limit bounds warning cadence, never proof
+                        // that a live adjustment was restored.
+                        state
+                            .oom_identity_unavailable_attempts
+                            .insert(pid, IDENTITY_UNAVAILABLE_RETRY_LIMIT);
                     } else {
                         eprintln!(
                             "⚠️ oom-restore deferred for pid={} — process identity unavailable (attempt {}/{})",
@@ -5032,14 +5053,7 @@ async fn check_memory_pressure(
             }
             // Identity was readable: clear any prior unavailability count.
             state.oom_identity_unavailable_attempts.remove(&pid);
-            if oom_root_has_pending_descendants(state, pid) {
-                eprintln!(
-                    "⚠️ oom-restore deferred for pid={} until descendants recover",
-                    pid
-                );
-                continue;
-            }
-            if let Err(e) = fs::write(format!("/proc/{pid}/oom_score_adj"), format!("{orig}\n")) {
+            if let Err(e) = oom_restore::restore(Path::new("/proc"), pid, &identity, orig) {
                 eprintln!("⚠️ oom-restore failed for pid={}: {}", pid, e);
                 continue;
             }
@@ -5065,6 +5079,13 @@ async fn check_memory_pressure(
                 Some(entry) => entry,
                 None => continue,
             };
+            if cpu_limit::is_lease(&scope) {
+                match cpu_limit::release(&scope, &orig_cgroup).await {
+                    Ok(()) => remove_cpu_cap(state, pid),
+                    Err(e) => eprintln!("CPU lease release retained {scope}: {e}"),
+                }
+                continue;
+            }
             let allow_pid_move = match process_identity_status(Path::new("/proc"), pid, &identity) {
                 ProcessIdentityStatus::Match | ProcessIdentityStatus::Gone => true,
                 ProcessIdentityStatus::Mismatch => false,
@@ -5291,16 +5312,16 @@ fn mitigation_ledger_path() -> PathBuf {
 
 /// Write the currently-applied mitigations to disk, but only when they changed
 /// (an unchanged pass must not rewrite the file every interval).
-fn persist_mitigations(state: &mut GuardRuntimeState) {
+fn persist_mitigations(state: &mut GuardRuntimeState) -> bool {
     if !state.persist_mitigations {
-        return;
+        return true;
     }
-    persist_mitigations_to(state, &mitigation_ledger_path());
+    persist_mitigations_to(state, &mitigation_ledger_path())
 }
 
 /// Write the ledger to an explicit path. Split out so the round trip is
 /// testable without touching the real `$HOME` (audit 2026-10-01).
-fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) {
+fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) -> bool {
     let mut records: Vec<MitigationRecord> = Vec::new();
     for (pid, entry) in &state.memory_reniced_pids {
         records.push(MitigationRecord {
@@ -5358,11 +5379,11 @@ fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) {
         Ok(bytes) => bytes,
         Err(e) => {
             eprintln!("⚠️ could not serialise the mitigation ledger: {e}");
-            return;
+            return false;
         }
     };
     if state.last_persisted_mitigations.as_deref() == Some(encoded.as_slice()) {
-        return;
+        return true;
     }
     if let Some(parent) = path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
@@ -5370,7 +5391,7 @@ fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) {
                 "⚠️ could not create {} for the mitigation ledger: {e}",
                 parent.display()
             );
-            return;
+            return false;
         }
     }
     // Atomic: a torn ledger would be worse than none, because it is the record
@@ -5382,9 +5403,10 @@ fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) {
             path.display()
         );
         let _ = fs::remove_file(&tmp);
-        return;
+        return false;
     }
     state.last_persisted_mitigations = Some(encoded);
+    true
 }
 
 /// Reload mitigations applied by a previous run and put them back into the live
