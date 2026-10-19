@@ -29,7 +29,7 @@ struct Lease {
     expires_at_unix_secs: u64,
 }
 
-async fn output(bin: &str, args: &[String]) -> Result<String, String> {
+pub(crate) async fn output(bin: &str, args: &[String]) -> Result<String, String> {
     let mut cmd = Command::new(bin);
     cmd.args(args).kill_on_drop(true);
     let out = tokio::time::timeout(Duration::from_secs(15), cmd.output())

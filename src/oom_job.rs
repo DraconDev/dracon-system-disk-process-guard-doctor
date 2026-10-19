@@ -111,7 +111,7 @@ fn property(unit: &str, name: &str) -> Result<String> {
     );
     Ok(String::from_utf8(out.stdout)?.trim().into())
 }
-fn locked(root: &Path, id: &str) -> Result<fs::File> {
+pub(crate) fn locked(root: &Path, id: &str) -> Result<fs::File> {
     ensure!(valid_id(id), "invalid job generation");
     fs::create_dir_all(root)?;
     let f = fs::OpenOptions::new()
@@ -204,7 +204,7 @@ fn read_members(group: &Path) -> Result<Vec<i32>> {
         .map(|p| p.parse().map_err(Into::into))
         .collect()
 }
-fn no_nested_groups(group: &Path) -> Result<()> {
+pub(crate) fn no_nested_groups(group: &Path) -> Result<()> {
     for entry in fs::read_dir(group)? {
         ensure!(
             !entry?.file_type()?.is_dir(),
@@ -217,7 +217,7 @@ fn terminal_candidate(sentinel: i32, members: &[i32], tasks: u64, own_threads: u
     own_threads == 1 && tasks == 1 && members == [sentinel]
 }
 
-fn same_admission(left: &Job, right: &Job) -> bool {
+pub(crate) fn same_admission(left: &Job, right: &Job) -> bool {
     let mut identity = left.clone();
     identity.phase = right.phase;
     identity.terminal_proof = right.terminal_proof;
