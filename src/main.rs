@@ -608,7 +608,7 @@ pub(crate) struct MemoryReniceState {
     pub(crate) identity: ProcessIdentity,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct OomPendingDescendant {
     pub(crate) root_pid: i32,
     pub(crate) original_adj: i32,
@@ -659,7 +659,7 @@ fn prune_oom_known_descendants(state: &mut GuardRuntimeState, all_processes: &[P
 
 /// Bump the attempt counter; true once the entry must be given up on.
 fn oom_descendant_attempts_exhausted(pending: &mut OomPendingDescendant) -> bool {
-    pending.attempts += 1;
+    pending.attempts = pending.attempts.saturating_add(1);
     pending.attempts >= OOM_DESCENDANT_RETRY_LIMIT
 }
 
@@ -1903,19 +1903,8 @@ fn restore_pending_oom_descendants(
             ProcessIdentityStatus::Unavailable => {
                 result.deferred += 1;
                 if oom_descendant_attempts_exhausted(&mut pending) {
-                    eprintln!(
-                        "⚠️ oom-descendant-restore dropping pid={} parent={} after {} unavailable identity reads (will not retry)",
-                        key.0,
-                        pending.root_pid,
-                        pending.attempts
-                    );
-                    state.oom_pending_descendants.remove(&key);
-                    remember_oom_descendant_identity(
-                        state,
-                        pending.root_pid,
-                        key.0,
-                        &pending.identity,
-                    );
+                    eprintln!("⚠️ oom-descendant-restore retaining pid={} parent={} after {} unavailable identity reads", key.0, pending.root_pid, pending.attempts);
+                    state.oom_pending_descendants.insert(key, pending.clone());
                 }
                 continue;
             }
@@ -1930,19 +1919,8 @@ fn restore_pending_oom_descendants(
             None => {
                 result.deferred += 1;
                 if oom_descendant_attempts_exhausted(&mut pending) {
-                    eprintln!(
-                        "⚠️ oom-descendant-restore dropping pid={} parent={} after {} unreadable oom_score_adj reads (will not retry)",
-                        key.0,
-                        pending.root_pid,
-                        pending.attempts
-                    );
-                    state.oom_pending_descendants.remove(&key);
-                    remember_oom_descendant_identity(
-                        state,
-                        pending.root_pid,
-                        key.0,
-                        &pending.identity,
-                    );
+                    eprintln!("⚠️ oom-descendant-restore retaining pid={} parent={} after {} unreadable oom_score_adj reads", key.0, pending.root_pid, pending.attempts);
+                    state.oom_pending_descendants.insert(key, pending.clone());
                 }
                 continue;
             }
@@ -1959,14 +1937,8 @@ fn restore_pending_oom_descendants(
             );
             result.deferred += 1;
             if oom_descendant_attempts_exhausted(&mut pending) {
-                eprintln!(
-                    "⚠️ oom-descendant-restore dropping pid={} parent={} after {} failed writes (will not retry)",
-                    key.0,
-                    pending.root_pid,
-                    pending.attempts
-                );
-                state.oom_pending_descendants.remove(&key);
-                remember_oom_descendant_identity(state, pending.root_pid, key.0, &pending.identity);
+                eprintln!("⚠️ oom-descendant-restore retaining pid={} parent={} after {} failed writes", key.0, pending.root_pid, pending.attempts);
+                state.oom_pending_descendants.insert(key, pending.clone());
             }
             continue;
         }
@@ -5277,6 +5249,10 @@ struct MitigationRecord {
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct MitigationLedger {
     records: Vec<MitigationRecord>,
+    #[serde(default)]
+    oom_pending: Vec<(i32, OomPendingDescendant)>,
+    #[serde(default)]
+    oom_known: Vec<(i32, Vec<(i32, u64)>)>,
 }
 
 /// Where the ledger lives. `~/.dracon` is a REQUIRED ReadWritePaths entry in the
@@ -5332,7 +5308,15 @@ fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) {
         });
     }
     records.sort_by_key(|r| r.pid);
-    let ledger = MitigationLedger { records };
+    let mut oom_pending: Vec<_> = state.oom_pending_descendants.iter().map(|((pid, _), pending)| (*pid, pending.clone())).collect();
+    oom_pending.sort_by_key(|(pid, pending)| (*pid, pending.identity.starttime));
+    let mut oom_known: Vec<_> = state.oom_known_descendants.iter().map(|(pid, known)| {
+        let mut members: Vec<_> = known.iter().copied().collect();
+        members.sort_unstable();
+        (*pid, members)
+    }).collect();
+    oom_known.sort_by_key(|(pid, _)| *pid);
+    let ledger = MitigationLedger { records, oom_pending, oom_known };
     let encoded = match serde_json::to_vec(&ledger) {
         Ok(bytes) => bytes,
         Err(e) => {
