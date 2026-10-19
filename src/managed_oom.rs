@@ -122,10 +122,12 @@ fn save_debt(root: &Path, debt: &Debt) -> Result<()> {
 }
 /// A previous boot's debt can never be restored into current processes. Keep
 /// its bytes for operator review instead of deleting or applying them.
-fn archive_previous_boot(root:&Path,debt:&Debt)->Result<()> {
-    let destination=root.join(format!("{}.previous-boot.json",debt.admission.id));
-    if !destination.exists() {fs::copy(debt_path(root,&debt.admission.id),&destination)?;}
-    fs::remove_file(debt_path(root,&debt.admission.id))?;
+fn archive_previous_boot(root: &Path, debt: &Debt) -> Result<()> {
+    let destination = root.join(format!("{}.previous-boot.json", debt.admission.id));
+    if !destination.exists() {
+        fs::copy(debt_path(root, &debt.admission.id), &destination)?;
+    }
+    fs::remove_file(debt_path(root, &debt.admission.id))?;
     fs::File::open(root)?.sync_all()?;
     Ok(())
 }
@@ -355,18 +357,24 @@ async fn drain_one(root: &Path, id: &str, force: bool, exempt: &HashSet<String>)
         return Ok(false);
     };
     let mut job = oom_job::load(root, id)?;
-    let facts=Facts {
-        same_boot:job.boot_id==boot()?,
-        terminal_proof:job.phase==Phase::Terminal && job.terminal_proof,
-        same_admission:oom_job::same_admission(&job,&debt.admission),
-        deadline_passed:force || now()?>=debt.deadline,
-        draining:debt.draining,
+    let facts = Facts {
+        same_boot: job.boot_id == boot()?,
+        terminal_proof: job.phase == Phase::Terminal && job.terminal_proof,
+        same_admission: oom_job::same_admission(&job, &debt.admission),
+        deadline_passed: force || now()? >= debt.deadline,
+        draining: debt.draining,
     };
     match decide(&facts) {
-        Action::Retire=>{retire(root,&debt)?;return Ok(false);}
-        Action::ArchivePreviousBoot=>{archive_previous_boot(root,&debt)?;return Ok(false);}
-        Action::Hold=>return Ok(true),
-        Action::Drain=>{},
+        Action::Retire => {
+            retire(root, &debt)?;
+            return Ok(false);
+        }
+        Action::ArchivePreviousBoot => {
+            archive_previous_boot(root, &debt)?;
+            return Ok(false);
+        }
+        Action::Hold => return Ok(true),
+        Action::Drain => {}
     }
     debt.draining = true;
     save_debt(root, &debt)?;
@@ -441,6 +449,155 @@ pub(crate) async fn drain(force: bool, exempt: &HashSet<String>) -> Result<usize
     }
     Ok(pending)
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn facts(
+        same_boot: bool,
+        terminal_proof: bool,
+        same_admission: bool,
+        deadline_passed: bool,
+        draining: bool,
+    ) -> Facts {
+        Facts {
+            same_boot,
+            terminal_proof,
+            same_admission,
+            deadline_passed,
+            draining,
+        }
+    }
+
+    #[test]
+    fn only_a_terminal_certificate_retires_a_lifetime_debt() {
+        // A running lease, a clean scan, root exit and retry exhaustion all
+        // keep the debt alive.
+        assert_eq!(
+            decide(&facts(true, false, true, false, false)),
+            Action::Hold
+        );
+        assert_eq!(
+            decide(&facts(true, false, true, true, false)),
+            Action::Drain
+        );
+        assert_eq!(
+            decide(&facts(true, false, true, false, true)),
+            Action::Drain
+        );
+        // Unverifiable ownership drains conservatively and never retires.
+        assert_eq!(
+            decide(&facts(true, false, false, true, false)),
+            Action::Drain
+        );
+        assert_eq!(
+            decide(&facts(true, true, false, true, false)),
+            Action::Drain
+        );
+        // Only the same-generation sentinel certificate retires.
+        assert_eq!(decide(&facts(true, true, true, true, true)), Action::Retire);
+        // A previous boot is archived, never restored into current processes.
+        assert_eq!(
+            decide(&facts(false, false, true, true, true)),
+            Action::ArchivePreviousBoot
+        );
+        assert_eq!(
+            decide(&facts(false, true, true, true, true)),
+            Action::ArchivePreviousBoot
+        );
+    }
+
+    #[test]
+    fn lifetime_debt_survives_restart_and_is_never_silently_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = "12345678-1234-1234-1234-123456789abc";
+        let pid = std::process::id() as i32;
+        let admission = Job {
+            version: 1,
+            id: id.into(),
+            boot_id: "boot".into(),
+            unit: format!("dracon-managed-job-{id}.scope"),
+            invocation: "inv".into(),
+            group: "/x".into(),
+            group_device: 1,
+            group_inode: 2,
+            sentinel: pid,
+            sentinel_identity: read_proc_identity(Path::new("/proc"), pid).unwrap(),
+            baseline: 200,
+            phase: Phase::Active,
+            terminal_proof: false,
+        };
+        let debt = Debt {
+            admission: admission.clone(),
+            deadline: 42,
+            draining: false,
+            attempts: 0,
+            last_error: None,
+        };
+        save_debt(dir.path(), &debt).unwrap();
+        // A restarted recoverer must find the debt again, not an empty set.
+        let restored = load_debt(dir.path(), id)
+            .unwrap()
+            .expect("debt survived restart");
+        assert_eq!(restored.deadline, 42);
+        assert!(!restored.draining);
+        // A conflicting generation cannot be retired over the existing record.
+        let mut other = debt.clone();
+        other.admission.baseline = 123;
+        assert!(retire(dir.path(), &other).is_err());
+        assert!(load_debt(dir.path(), id).unwrap().is_some());
+    }
+
+    #[test]
+    fn previous_boot_debt_is_archived_and_removed_without_touching_processes() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = "12345678-1234-1234-1234-123456789abc";
+        let pid = std::process::id() as i32;
+        let admission = Job {
+            version: 1,
+            id: id.into(),
+            boot_id: "previous".into(),
+            unit: format!("dracon-managed-job-{id}.scope"),
+            invocation: "inv".into(),
+            group: "/x".into(),
+            group_device: 1,
+            group_inode: 2,
+            sentinel: pid,
+            sentinel_identity: read_proc_identity(Path::new("/proc"), pid).unwrap(),
+            baseline: 200,
+            phase: Phase::Active,
+            terminal_proof: false,
+        };
+        let debt = Debt {
+            admission,
+            deadline: 0,
+            draining: false,
+            attempts: 3,
+            last_error: None,
+        };
+        save_debt(dir.path(), &debt).unwrap();
+        archive_previous_boot(dir.path(), &debt).unwrap();
+        assert!(load_debt(dir.path(), id).unwrap().is_none());
+        let archived: Debt = serde_json::from_slice(
+            &fs::read(dir.path().join(format!("{id}.previous-boot.json"))).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(archived.attempts, 3);
+    }
+
+    #[test]
+    fn unregistered_workloads_are_not_treated_as_managed_jobs() {
+        assert!(!id_for("/user.slice/app-foo.scope").is_ok());
+        assert!(!id_for("/user.slice/dracon-managed-job-nope.scope").is_ok());
+        assert!(!id_for("/user.slice/dracon-managed-job-.scope").is_ok());
+        assert_eq!(
+            id_for("/user.slice/dracon-managed-job-12345678-1234-1234-1234-123456789abc.scope")
+                .unwrap(),
+            "12345678-1234-1234-1234-123456789abc"
+        );
+    }
+}
+
 pub(crate) async fn recover_loop() -> Result<()> {
     loop {
         // Read the same configured exemptions on every pass; no privilege or

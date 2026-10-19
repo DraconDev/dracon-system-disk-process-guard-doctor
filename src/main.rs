@@ -8973,6 +8973,16 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
                 format!("pass failed: {e}"),
             ));
         }
+        // Registered managed jobs carry their own lifetime OOM debt. The
+        // independent recoverer owns it; the daemon only observes progress so
+        // a stuck recovery stays visible instead of silently drifting.
+        match managed_oom::drain(false, &parse_kinds(&guard.process_exempt_names)).await {
+            Ok(0) => {}
+            Ok(pending) => {
+                eprintln!("managed OOM recovery: {pending} registered job debt(s) outstanding")
+            }
+            Err(e) => eprintln!("managed OOM recovery check failed: {e:#}"),
+        }
         // FIXED 2026-07-26 (audit H-12): `elapsed` must reset EVERY pass.
         // Previously declared once before the outer loop, so after the
         // first interval the inner sleep loop never ran again — the daemon
