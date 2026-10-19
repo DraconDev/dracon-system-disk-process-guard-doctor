@@ -1,4 +1,4 @@
-# Protection repair — source complete, NOT deployed
+# Protection repair — implemented and deployed (2026-10-19)
 
 ## Confirmed causes
 
@@ -78,11 +78,11 @@ not a release or live-runtime qualification):
 
 ```
 CARGO_BUILD_JOBS=2 cargo test -p dracon-system --locked
-# PASS: 515 unit tests; 4 events_cli tests; 12 guard_service tests; 0 failures
+# PASS: 516 unit tests; 4 events_cli tests; 12 guard_service tests; 0 failures
 CARGO_BUILD_JOBS=2 cargo test --workspace --locked
-# PASS on re-run: 35 test binaries ok. The first run failed one unrelated
-# dracon-sync timing test (bucket_qualification_daemon_new_enrollment_retry_and_fresh_restore);
-# it passes in isolation and on the clean re-run, and no dracon-sync source was changed.
+# PASS: 35 test binaries ok. An earlier run failed one unrelated dracon-sync
+# timing test (bucket_qualification_daemon_new_enrollment_retry_and_fresh_restore);
+# it passes in isolation and on every later run, and no dracon-sync source was changed.
 CARGO_BUILD_JOBS=2 cargo clippy --workspace --locked -- -D warnings
 # PASS
 cargo fmt --all -- --check
@@ -94,16 +94,17 @@ cargo deny check
 ```
 
 Raw current logs are preserved in `docs/evidence/protection-repair-2026-10-19/`:
-`dracon-managed-oom-tests5.log`, `dracon-managed-oom-clippy5.log`,
-`dracon-workspace-final-tests2.log`, `dracon-release-build.log`,
-`dracon-managed-probe-run.log` and `dracon-protection-probe-run.log`.
+`dracon-final2-crate-tests.log`, `dracon-final2-clippy.log`,
+`dracon-final3-workspace-tests.log`, `dracon-final3-release.log`,
+`deployed-binary-hashes.log`, `deployed-guard-service-properties.log` and
+`deployed-guard-journal.log`.
 
 One earlier full-workspace invocation FAILED on the pre-existing live storage
 activity test: it expected an error containing `active` but received a
 conservative refusal for an unrelated python3 process with an empty command
-line. It was not weakened or rewritten; the later workspace run above passes.
+line. It was not weakened or rewritten; the later workspace runs above pass.
 
-Live observations with the development binary (NOT the deployed service):
+Live observations with the development binary, before deployment:
 
 - The managed probe completed with status 0 against the real user manager:
   baseline 200, bias 250, lifetime debt restored, and the debt retired against
@@ -113,12 +114,8 @@ Live observations with the development binary (NOT the deployed service):
   release, stricter and operator edits preserved, independent expiry executed.
 - The independent expiry timer restored the scope quota to `infinity` on its
   own within ~50s, with the workload still running.
-- The probe restart-check phase requires a restarted deployed guard, so it is
-  part of the deployment verification, not of the pre-deployment evidence.
 
-These observations are development-binary evidence outside the deployed guard
-sandbox. They do NOT establish deployed-service behaviour or the final release
-gates; the deployment checks below remain outstanding.
+The deployed-service verification is recorded in its own section below.
 
 New regressions exercise corrupt/truncated/unavailable ledger preservation,
 second-owner lock exclusion without truncation, gone-root legacy unit survival,
