@@ -559,6 +559,10 @@ mod tests {
         let uid = unsafe { libc::geteuid() };
         let prefix = format!("/user.slice/user-{uid}.slice/user@{uid}.service/app.slice/");
         assert!(isolated_scope(&(prefix.clone() + "tmux-spawn-a.scope")).is_ok());
+        assert!(isolated_scope(
+            &(prefix.clone() + "dracon-managed-job-12345678-1234-1234-1234-123456789abc.scope")
+        )
+        .is_ok());
         for unit in [
             "editor.scope",
             "konsole.scope",
