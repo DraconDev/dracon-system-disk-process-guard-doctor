@@ -54,10 +54,7 @@ pub(crate) fn valid_id(id: &str) -> bool {
         })
 }
 pub(crate) fn root() -> Result<PathBuf> {
-    use std::{
-        ffi::CStr,
-        os::unix::ffi::OsStrExt,
-    };
+    use std::{ffi::CStr, os::unix::ffi::OsStrExt};
     // Do not let a job's HOME override split admission and recovery registries.
     let uid = unsafe { libc::geteuid() };
     let mut pwd = std::mem::MaybeUninit::<libc::passwd>::uninit();
@@ -83,22 +80,34 @@ pub(crate) fn root() -> Result<PathBuf> {
     ));
     initialize_registry(home, uid, &mut |path| fs::File::open(path)?.sync_all())
 }
-fn initialize_registry(home:&Path, uid:u32, sync:&mut impl FnMut(&Path)->std::io::Result<()>) -> Result<PathBuf> {
+fn initialize_registry(
+    home: &Path,
+    uid: u32,
+    sync: &mut impl FnMut(&Path) -> std::io::Result<()>,
+) -> Result<PathBuf> {
     use std::os::unix::fs::PermissionsExt;
-    let parent=home.join(".dracon");
-    let root=parent.join("oom-jobs");
+    let parent = home.join(".dracon");
+    let root = parent.join("oom-jobs");
     fs::create_dir_all(&root)?;
-    let metadata=fs::symlink_metadata(&root)?;
-    ensure!(metadata.is_dir() && metadata.uid()==uid,"unsafe managed-job state directory");
-    fs::set_permissions(&root,fs::Permissions::from_mode(0o700))?;
+    let metadata = fs::symlink_metadata(&root)?;
+    ensure!(
+        metadata.is_dir() && metadata.uid() == uid,
+        "unsafe managed-job state directory"
+    );
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700))?;
     // Admission must not outlive a newly initialized directory pathname.
     // Persist both links in the short directory chain before exposing it.
-    for path in [&root,&parent,home] { sync(path)?; }
+    for path in [&root, &parent, home] {
+        sync(path)?;
+    }
     Ok(root)
 }
-fn report_terminal_error(writer:&mut impl Write,id:&str,error:&anyhow::Error) {
+fn report_terminal_error(writer: &mut impl Write, id: &str, error: &anyhow::Error) {
     // A full filesystem or closed stderr must never kill the proof writer.
-    let _=writeln!(writer,"managed-job {id}: terminal proof unresolved; retaining sentinel and retrying: {error:#}");
+    let _ = writeln!(
+        writer,
+        "managed-job {id}: terminal proof unresolved; retaining sentinel and retrying: {error:#}"
+    );
 }
 fn property(unit: &str, name: &str) -> Result<String> {
     let bin = super::resolve_bin_strict("systemctl")?;
@@ -360,7 +369,7 @@ pub(crate) fn enter(id: &str, command: &[OsString]) -> Result<()> {
             Ok(false) => {}
             Err(error) => {
                 if failures.is_multiple_of(120) {
-                    report_terminal_error(&mut std::io::stderr().lock(),id,&error);
+                    report_terminal_error(&mut std::io::stderr().lock(), id, &error);
                 }
                 failures = failures.saturating_add(1);
             }
@@ -376,18 +385,34 @@ mod tests {
     #[test]
     fn first_use_registry_links_are_synced_before_admission_and_fail_closed() {
         for fail_at in 0..=3 {
-            let home=tempfile::tempdir().unwrap();
-            let mut order=Vec::new();
-            let result=initialize_registry(home.path(),unsafe {libc::geteuid()},&mut |path| {
-                order.push(path.to_owned());
-                if order.len()==fail_at {return Err(std::io::Error::from_raw_os_error(libc::ENOSPC));}
-                fs::File::open(path)?.sync_all()
-            });
-            assert_eq!(result.is_ok(),fail_at==0);
-            assert_eq!(order[0],home.path().join(".dracon/oom-jobs"));
-            if fail_at==0 { assert_eq!(order,vec![home.path().join(".dracon/oom-jobs"),home.path().join(".dracon"),home.path().to_owned()]); }
-            else { assert_eq!(order.len(),fail_at); }
-            assert!(fs::read_dir(home.path().join(".dracon/oom-jobs")).unwrap().next().is_none());
+            let home = tempfile::tempdir().unwrap();
+            let mut order = Vec::new();
+            let result =
+                initialize_registry(home.path(), unsafe { libc::geteuid() }, &mut |path| {
+                    order.push(path.to_owned());
+                    if order.len() == fail_at {
+                        return Err(std::io::Error::from_raw_os_error(libc::ENOSPC));
+                    }
+                    fs::File::open(path)?.sync_all()
+                });
+            assert_eq!(result.is_ok(), fail_at == 0);
+            assert_eq!(order[0], home.path().join(".dracon/oom-jobs"));
+            if fail_at == 0 {
+                assert_eq!(
+                    order,
+                    vec![
+                        home.path().join(".dracon/oom-jobs"),
+                        home.path().join(".dracon"),
+                        home.path().to_owned()
+                    ]
+                );
+            } else {
+                assert_eq!(order.len(), fail_at);
+            }
+            assert!(fs::read_dir(home.path().join(".dracon/oom-jobs"))
+                .unwrap()
+                .next()
+                .is_none());
         }
     }
 
@@ -395,16 +420,20 @@ mod tests {
     fn failed_retry_diagnostic_does_not_interrupt_terminal_retry() {
         struct Broken;
         impl Write for Broken {
-            fn write(&mut self,_:&[u8])->std::io::Result<usize> {Err(std::io::Error::from_raw_os_error(libc::ENOSPC))}
-            fn flush(&mut self)->std::io::Result<()> {Ok(())}
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::from_raw_os_error(libc::ENOSPC))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
         }
-        let mut retried=0;
+        let mut retried = 0;
         for _ in 0..2 {
-            let error=anyhow::anyhow!("injected terminal publication failure");
-            report_terminal_error(&mut Broken,"test-job",&error);
-            retried+=1;
+            let error = anyhow::anyhow!("injected terminal publication failure");
+            report_terminal_error(&mut Broken, "test-job", &error);
+            retried += 1;
         }
-        assert_eq!(retried,2);
+        assert_eq!(retried, 2);
     }
 
     #[test]

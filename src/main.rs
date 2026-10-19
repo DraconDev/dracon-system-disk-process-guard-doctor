@@ -29,6 +29,7 @@ mod cpu_limit;
 mod doctor;
 #[cfg(test)]
 mod ledger_safety_tests;
+mod managed_oom;
 mod oom_job;
 mod oom_restore;
 mod protection_probe;
@@ -176,6 +177,8 @@ enum Commands {
         #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<std::ffi::OsString>,
     },
+    #[command(hide = true)]
+    OomJobRecover,
     #[command(hide = true)]
     ManagedJobEnter {
         id: String,
@@ -4816,6 +4819,23 @@ async fn check_memory_pressure(
     }
     if pressure == "critical" && guard.bias_oom_on_pressure {
         for p in &top_rss {
+            // Registered managed jobs carry their own lifetime debt and an
+            // independent recoverer. Ancestry-based bias must not be applied
+            // on top of it, and unregistered jobs stay explicitly unsupported.
+            if managed_oom::is_managed_job_process(p.pid) {
+                match managed_oom::bias(p, &exempt).await {
+                    Ok(Some((orig, target))) => {
+                        eprintln!(
+                            "🛡️ managed oom-bias pid={} cmd={} adj {} -> {} (critical pressure)",
+                            p.pid, p.command, orig, target
+                        );
+                        limited.push(format!("oom-bias {}={}", p.command, target));
+                    }
+                    Ok(None) => {}
+                    Err(e) => eprintln!("managed OOM bias not applied pid={}: {e}", p.pid),
+                }
+                continue;
+            }
             match apply_oom_bias(p, all_processes, state) {
                 Ok(Some((orig, target))) => {
                     eprintln!(
@@ -9391,6 +9411,7 @@ async fn run(cli: Cli) -> Result<()> {
 
     match cli.cmd {
         Commands::ManagedJob { command } => oom_job::launch(&command),
+        Commands::OomJobRecover => managed_oom::recover_loop().await,
         Commands::ManagedJobEnter { .. } => {
             anyhow::bail!("job entry requires the single-threaded startup path")
         }
