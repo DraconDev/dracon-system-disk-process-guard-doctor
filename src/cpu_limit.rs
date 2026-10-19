@@ -59,7 +59,7 @@ async fn manager(method: &str, signature: &str, values: &[String]) -> Result<Str
     output(&bin, &args).await
 }
 
-async fn property(unit: &str, name: &str) -> Result<String, String> {
+pub(crate) async fn property(unit: &str, name: &str) -> Result<String, String> {
     let bin = crate::resolve_bin_strict("systemctl").map_err(|e| e.to_string())?;
     output(
         &bin,
@@ -75,7 +75,7 @@ async fn property(unit: &str, name: &str) -> Result<String, String> {
     .await
 }
 
-async fn set_quota(unit: &str, quota: u64) -> Result<(), String> {
+pub(crate) async fn set_quota(unit: &str, quota: u64) -> Result<(), String> {
     manager(
         "SetUnitProperties",
         "sba(sv)",
@@ -377,6 +377,29 @@ pub(crate) async fn recover() {
             Ok(None) => {}
         }
     }
+}
+
+/// Diagnostic-only creation: PID is a disposable child of the probe runner.
+pub(crate) async fn create_probe_scope(unit: &str, pid: u32) -> Result<(), String> {
+    if !unit.starts_with("dracon-protection-test-") || !unit.ends_with(".scope") {
+        return Err("invalid probe scope".into());
+    }
+    manager(
+        "StartTransientUnit",
+        "ssa(sv)a(sa(sv))",
+        &[
+            unit.into(),
+            "fail".into(),
+            "1".into(),
+            "PIDs".into(),
+            "au".into(),
+            "1".into(),
+            pid.to_string(),
+            "0".into(),
+        ],
+    )
+    .await
+    .map(|_| ())
 }
 
 pub(crate) async fn restore_legacy(_pid: i32, _orig: &str) -> Result<(), String> {
