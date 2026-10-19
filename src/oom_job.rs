@@ -155,7 +155,10 @@ pub(crate) fn save(root: &Path, job: &Job, initial: bool) -> Result<()> {
 }
 pub(crate) fn load(root: &Path, id: &str) -> Result<Job> {
     ensure!(valid_id(id), "invalid job generation");
-    let job: Job = serde_json::from_slice(&fs::read(root.join(format!("{id}.json")))?)?;
+    let path = root.join(format!("{id}.json"));
+    let job: Job = serde_json::from_slice(
+        &fs::read(&path).with_context(|| format!("reading the job record {}", path.display()))?,
+    )?;
     ensure!(
         job.version == 1 && job.id == id,
         "unsupported or mismatched job record"
