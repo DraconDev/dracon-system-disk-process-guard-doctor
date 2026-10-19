@@ -1,0 +1,201 @@
+Oct 19 23:31:21 nixos dracon-system[1248264]: ⚠ SIGHUP failed to restore nice value for pid=1531069 comm=MainThread: renice exited with status exit status: 1: renice: failed to set priority for 1531069 (process ID): Permission denied
+Oct 19 23:31:21 nixos dracon-system[1248264]: ⚠ SIGHUP failed to restore nice value for pid=10362 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 10362 (process ID): Permission denied
+Oct 19 23:31:21 nixos dracon-system[1248264]: ⚠ SIGHUP failed to restore nice value for pid=1531153 comm=esbuild: renice exited with status exit status: 1: renice: failed to set priority for 1531153 (process ID): Permission denied
+Oct 19 23:31:21 nixos dracon-system[1248264]: ⚠ shutdown: some process adjustments could not be restored; durable obligations retained
+Oct 19 23:31:21 nixos systemd[1224]: Stopped Dracon System Guard - Proactive disk space monitoring and cleanup.
+Oct 19 23:31:21 nixos systemd[1224]: dracon-system-guard.service: Consumed 13.289s CPU time, 1.4G memory peak, 40.1M memory swap peak.
+Oct 19 23:31:21 nixos systemd[1224]: Started Dracon System Guard - Proactive disk space monitoring and cleanup.
+Oct 19 23:31:22 nixos dracon-system[1712872]: 🛡️ adopted 3 mitigation(s) left applied by a previous run — restoring them now
+Oct 19 23:31:22 nixos dracon-system[1712872]: ⚠ SIGHUP failed to restore nice value for pid=1531069 comm=MainThread: renice exited with status exit status: 1: renice: failed to set priority for 1531069 (process ID): Permission denied
+Oct 19 23:31:22 nixos dracon-system[1712872]: ⚠ SIGHUP failed to restore nice value for pid=1531153 comm=esbuild: renice exited with status exit status: 1: renice: failed to set priority for 1531153 (process ID): Permission denied
+Oct 19 23:31:22 nixos dracon-system[1712872]: ⚠ SIGHUP failed to restore nice value for pid=10362 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 10362 (process ID): Permission denied
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ trash: keeping 72 flagged entries (71 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/tmp.SXlOE9BGwl/app/.env, /home/dracon/.local/share/Trash/files/tmp.8b1vXeg6nw/app/.env, /home/dracon/.local/share/Trash/files/tmp.wzrNaKSA7U/app/.env; 597 unobservable capped subtrees; 1 unreadable subtrees), purging the rest
+Oct 19 23:31:42 nixos dracon-system[1712872]: [2026-10-19T22:31:42.029039453+00:00] Warn: trash/credential-guard - trash purge skipping 72 flagged entries (71 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/tmp.SXlOE9BGwl/app/.env, /home/dracon/.local/share/Trash/files/tmp.8b1vXeg6nw/app/.env, /home/dracon/.local/share/Trash/files/tmp.wzrNaKSA7U/app/.env; 597 unobservable capped subtrees; 1 unreadable subtrees)
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7ff15ff7b5649df1.2
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.SXlOE9BGwl
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.8b1vXeg6nw
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.wzrNaKSA7U
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7ff15ff7b5649df1.3
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-cdfb7895c72dc07e.4
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/chrome-shot.png
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-cdfb7895c72dc07e.2
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/sb.2
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-d9e2f44fd8d5b995.3
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/freshclone
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.4AkYeTSBaA
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.hEvmIT507Q
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7581a3866282d5c3
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/doomtap-verify-2496184
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/glla-c.2
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.6
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.i3nxk64oLH
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7ff15ff7b5649df1.4
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/finaldata
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/audithome
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/finalclone
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-d9e2f44fd8d5b995
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.2tA2gd6gZq
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-621ac3009971b541
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.uV3dLzWozA
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.2
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.rnJq76Gd6s
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/glla-bidir-3AqQ
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.cS2O7c96kp
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-cdfb7895c72dc07e
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/pkgtest
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.8
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.VJEGdSWo6D
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.2N06QOXQiV
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/m3.1-showcase
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.NqtVRfY6dT
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.DhjpSn9Sss
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/output
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/yff-before
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.82h4iRUiyo
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/audithome2
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-cdfb7895c72dc07e.5
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.OCjhkjEkTt
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/glla-c
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-cdfb7895c72dc07e.3
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/freshdata
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7581a3866282d5c3.2
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-d9e2f44fd8d5b995.2
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.LcbPi3T2Sy
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-d9e2f44fd8d5b995.4
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.9
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/sb
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7ff15ff7b5649df1
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.4
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7581a3866282d5c3.3
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/aff-prefix-check
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.7
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.5
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.10
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.3
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.hSZVBNztK6
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.wR1pCWHU7M
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/build.2
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.yM8fb3BcOv
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.WM6MvAKSkX
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.89SOY2DvIc
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.0mE8AHTRlt
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7581a3866282d5c3.4
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.oLT9dfZjBk
+Oct 19 23:31:42 nixos dracon-system[1712872]: 🚨 disk at 98% (critical) — tmp e2e-litter age gate lifted for this pass
+Oct 19 23:31:44 nixos dracon-system[1712872]: 🧹 Tmp-e2e: 215.6 MiB
+Oct 19 23:31:45 nixos dracon-system[1712872]: ⚠️ failed to remove tmp entry /tmp/eve-install-backup-cleanup-1897637-1792137438351935114: Permission denied (os error 13)
+Oct 19 23:31:45 nixos dracon-system[1712872]: ⚠️ failed to remove tmp entry /tmp/sd-root169: Permission denied (os error 13)
+Oct 19 23:31:45 nixos dracon-system[1712872]: ⚠️ failed to remove tmp entry /tmp/sddm-auth-14ad0f27-5e27-488d-a0be-2c559b916d32: Operation not permitted (os error 1)
+Oct 19 23:31:46 nixos dracon-system[1712872]: ⚠️ failed to remove tmp entry /tmp/.XIM-unix: Operation not permitted (os error 1)
+Oct 19 23:31:47 nixos dracon-system[1712872]: ⚠️ failed to remove tmp entry /tmp/.font-unix: Operation not permitted (os error 1)
+Oct 19 23:31:47 nixos dracon-system[1712872]: ⚠️ failed to remove tmp entry /tmp/audit-sandbox-home: Permission denied (os error 13)
+Oct 19 23:31:47 nixos dracon-system[1712872]: ⚠️ failed to remove tmp entry /tmp/eve10-readonly-replay-3085601-1790790071511169641: Permission denied (os error 13)
+Oct 19 23:31:47 nixos dracon-system[1712872]: ⚠️ failed to remove tmp entry /tmp/.X11-unix: Operation not permitted (os error 1)
+Oct 19 23:31:47 nixos dracon-system[1712872]: ⚠️ failed to remove tmp entry /tmp/nb-probe-logs: Operation not permitted (os error 1)
+Oct 19 23:31:47 nixos dracon-system[1712872]: ⚠️ failed to remove tmp entry /tmp/.ICE-unix: Operation not permitted (os error 1)
+Oct 19 23:31:47 nixos systemd[1224]: Stopping Dracon System Guard - Proactive disk space monitoring and cleanup...
+Oct 19 23:31:48 nixos dracon-system[1712872]: ⚠️ failed to remove tmp entry /tmp/fNguO13r: Permission denied (os error 13)
+Oct 19 23:31:48 nixos dracon-system[1712872]: 🧹 Tmp: 5.5 MiB
+Oct 19 23:31:48 nixos dracon-system[1712872]: ⚠️ nix-env system-profile generation prune failed (exit status: 1): error: opening lock file '/nix/var/nix/profiles/default.lock': Read-only file system (needs root; user GC still runs)
+Oct 19 23:32:25 nixos dracon-system[1712872]: ⚠ SIGHUP failed to restore nice value for pid=1531153 comm=esbuild: renice exited with status exit status: 1: renice: failed to set priority for 1531153 (process ID): Permission denied
+Oct 19 23:32:25 nixos dracon-system[1712872]: ⚠ SIGHUP failed to restore nice value for pid=10362 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 10362 (process ID): Permission denied
+Oct 19 23:32:25 nixos dracon-system[1712872]: ⚠ SIGHUP failed to restore nice value for pid=1531069 comm=MainThread: renice exited with status exit status: 1: renice: failed to set priority for 1531069 (process ID): Permission denied
+Oct 19 23:32:25 nixos dracon-system[1712872]: ⚠ shutdown: some process adjustments could not be restored; durable obligations retained
+Oct 19 23:32:25 nixos systemd[1224]: Stopped Dracon System Guard - Proactive disk space monitoring and cleanup.
+Oct 19 23:32:25 nixos systemd[1224]: dracon-system-guard.service: Consumed 9.472s CPU time, 933.7M memory peak, 40.1M memory swap peak.
+Oct 19 23:32:25 nixos systemd[1224]: Started Dracon System Guard - Proactive disk space monitoring and cleanup.
+Oct 19 23:32:26 nixos dracon-system[1742290]: 🛡️ adopted 3 mitigation(s) left applied by a previous run — restoring them now
+Oct 19 23:32:26 nixos dracon-system[1742290]: ⚠ SIGHUP failed to restore nice value for pid=1531153 comm=esbuild: renice exited with status exit status: 1: renice: failed to set priority for 1531153 (process ID): Permission denied
+Oct 19 23:32:26 nixos dracon-system[1742290]: ⚠ SIGHUP failed to restore nice value for pid=1531069 comm=MainThread: renice exited with status exit status: 1: renice: failed to set priority for 1531069 (process ID): Permission denied
+Oct 19 23:32:26 nixos dracon-system[1742290]: ⚠ SIGHUP failed to restore nice value for pid=10362 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 10362 (process ID): Permission denied
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ trash: keeping 72 flagged entries (71 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/tmp.SXlOE9BGwl/app/.env, /home/dracon/.local/share/Trash/files/tmp.8b1vXeg6nw/app/.env, /home/dracon/.local/share/Trash/files/tmp.wzrNaKSA7U/app/.env; 597 unobservable capped subtrees; 1 unreadable subtrees), purging the rest
+Oct 19 23:32:44 nixos dracon-system[1742290]: [2026-10-19T22:32:44.691458779+00:00] Warn: trash/credential-guard - trash purge skipping 72 flagged entries (71 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/tmp.SXlOE9BGwl/app/.env, /home/dracon/.local/share/Trash/files/tmp.8b1vXeg6nw/app/.env, /home/dracon/.local/share/Trash/files/tmp.wzrNaKSA7U/app/.env; 597 unobservable capped subtrees; 1 unreadable subtrees)
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7ff15ff7b5649df1.2
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.SXlOE9BGwl
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.8b1vXeg6nw
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.wzrNaKSA7U
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7ff15ff7b5649df1.3
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-cdfb7895c72dc07e.4
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/chrome-shot.png
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-cdfb7895c72dc07e.2
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/sb.2
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-d9e2f44fd8d5b995.3
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/freshclone
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.4AkYeTSBaA
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.hEvmIT507Q
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7581a3866282d5c3
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/doomtap-verify-2496184
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/glla-c.2
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.6
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.i3nxk64oLH
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7ff15ff7b5649df1.4
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/finaldata
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/audithome
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/finalclone
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-d9e2f44fd8d5b995
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.2tA2gd6gZq
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-621ac3009971b541
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.uV3dLzWozA
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.2
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.rnJq76Gd6s
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/glla-bidir-3AqQ
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.cS2O7c96kp
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-cdfb7895c72dc07e
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/pkgtest
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.8
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.VJEGdSWo6D
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.2N06QOXQiV
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/m3.1-showcase
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.NqtVRfY6dT
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.DhjpSn9Sss
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/output
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/yff-before
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.82h4iRUiyo
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/audithome2
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-cdfb7895c72dc07e.5
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.OCjhkjEkTt
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/glla-c
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-cdfb7895c72dc07e.3
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/freshdata
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7581a3866282d5c3.2
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-d9e2f44fd8d5b995.2
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.LcbPi3T2Sy
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-d9e2f44fd8d5b995.4
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.9
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/sb
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7ff15ff7b5649df1
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.4
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7581a3866282d5c3.3
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/aff-prefix-check
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.7
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.5
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.10
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.3
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.hSZVBNztK6
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.wR1pCWHU7M
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/build.2
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.yM8fb3BcOv
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.WM6MvAKSkX
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.89SOY2DvIc
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.0mE8AHTRlt
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7581a3866282d5c3.4
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.oLT9dfZjBk
+Oct 19 23:32:44 nixos dracon-system[1742290]: 🚨 disk at 98% (critical) — tmp e2e-litter age gate lifted for this pass
+Oct 19 23:32:45 nixos dracon-system[1742290]: ⚠️ failed to remove tmp entry /tmp/puppeteer_dev_chrome_profile-vvJjCr: Directory not empty (os error 39)
+Oct 19 23:32:46 nixos dracon-system[1742290]: 🛡️ Tmp-e2e: 1 entries need root to remove (e.g. /tmp/puppeteer_dev_chrome_profile-vvJjCr)
+Oct 19 23:32:47 nixos dracon-system[1742290]: ⚠️ failed to remove tmp entry /tmp/eve-install-backup-cleanup-1897637-1792137438351935114: Permission denied (os error 13)
+Oct 19 23:32:47 nixos dracon-system[1742290]: ⚠️ failed to remove tmp entry /tmp/sd-root169: Permission denied (os error 13)
+Oct 19 23:32:47 nixos dracon-system[1742290]: ⚠️ failed to remove tmp entry /tmp/sddm-auth-14ad0f27-5e27-488d-a0be-2c559b916d32: Operation not permitted (os error 1)
+Oct 19 23:32:48 nixos dracon-system[1742290]: ⚠️ failed to remove tmp entry /tmp/.XIM-unix: Operation not permitted (os error 1)
+Oct 19 23:32:49 nixos dracon-system[1742290]: ⚠️ failed to remove tmp entry /tmp/.font-unix: Operation not permitted (os error 1)
+Oct 19 23:32:49 nixos dracon-system[1742290]: ⚠️ failed to remove tmp entry /tmp/audit-sandbox-home: Permission denied (os error 13)
+Oct 19 23:32:49 nixos dracon-system[1742290]: ⚠️ failed to remove tmp entry /tmp/eve10-readonly-replay-3085601-1790790071511169641: Permission denied (os error 13)
+Oct 19 23:32:49 nixos dracon-system[1742290]: ⚠️ failed to remove tmp entry /tmp/.X11-unix: Operation not permitted (os error 1)
+Oct 19 23:32:49 nixos dracon-system[1742290]: ⚠️ failed to remove tmp entry /tmp/nb-probe-logs: Operation not permitted (os error 1)
+Oct 19 23:32:49 nixos dracon-system[1742290]: ⚠️ failed to remove tmp entry /tmp/.ICE-unix: Operation not permitted (os error 1)
+Oct 19 23:32:50 nixos dracon-system[1742290]: ⚠️ failed to remove tmp entry /tmp/fNguO13r: Permission denied (os error 13)
+Oct 19 23:32:50 nixos dracon-system[1742290]: ⚠️ nix-env system-profile generation prune failed (exit status: 1): error: opening lock file '/nix/var/nix/profiles/default.lock': Read-only file system (needs root; user GC still runs)
