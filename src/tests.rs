@@ -3452,6 +3452,23 @@ fn package_cache_process_detection_fails_closed_on_missing_cmdline() {
 }
 
 #[test]
+fn package_cache_empty_wrapper_requires_affirmative_zombie_state() {
+    let proc_root = tempfile::tempdir().unwrap();
+    fs::create_dir(proc_root.path().join("self")).unwrap();
+    let process = proc_root.path().join("202");
+    fs::create_dir(&process).unwrap();
+    fs::write(process.join("cmdline"), b"").unwrap();
+    for state in ["State:\tS (sleeping)\n", "State:\t?\n", "missing state\n"] {
+        fs::write(process.join("status"), state).unwrap();
+        assert!(detect_active_package_manager_operations_from("202 bash\n", proc_root.path()).is_err());
+    }
+    fs::write(process.join("status"), "Name:\tbash\nState:\tZ (zombie)\n").unwrap();
+    assert!(detect_active_package_manager_operations_from("202 bash\n", proc_root.path()).unwrap().is_empty());
+    fs::remove_file(process.join("status")).unwrap();
+    assert!(detect_active_package_manager_operations_from("202 bash\n", proc_root.path()).is_err());
+}
+
+#[test]
 fn package_cache_process_detection_rejects_malformed_ps_output() {
     let proc_root = unique_test_home("package_proc_malformed");
     fs::create_dir_all(proc_root.join("self")).expect("create proc fixture");
