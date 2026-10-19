@@ -27,6 +27,8 @@ use dracon_system_lib::analyze_workspace_storage;
 // so tests use crate::* to access them without explicit re-exports.
 mod cpu_limit;
 mod doctor;
+#[cfg(test)]
+mod ledger_safety_tests;
 mod oom_restore;
 mod protection_probe;
 #[cfg(test)]
@@ -124,14 +126,18 @@ pub(crate) fn acquire_daemon_lock(name: &str) -> Result<File> {
     std::fs::create_dir_all(&lock_dir)?;
     let lock_file = lock_dir.join(format!("{}.lock", name));
 
+    acquire_daemon_lock_at(&lock_file)
+}
+
+fn acquire_daemon_lock_at(lock_file: &Path) -> Result<File> {
     let file = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
         .write(true)
         .mode(0o600)
-        .open(&lock_file)?;
+        .open(lock_file)?;
 
-    if file.lock_exclusive().is_err() {
+    if FileExt::try_lock_exclusive(&file).is_err() {
         return Err(anyhow::anyhow!("lock file is held by another process"));
     }
 
@@ -1847,15 +1853,27 @@ fn apply_oom_bias(
     samples: &[ProcSample],
     state: &mut GuardRuntimeState,
 ) -> Result<Option<(i32, i32)>, String> {
-    if state.mitigation_ledger_unavailable || state.oom_biased_pids.contains_key(&p.pid) || !process_sample_is_current(p) {
+    if state.mitigation_ledger_unavailable
+        || state.oom_biased_pids.contains_key(&p.pid)
+        || !process_sample_is_current(p)
+    {
         return Ok(None);
     }
+    use std::io::{Read, Seek, SeekFrom, Write};
     let path = format!("/proc/{}/oom_score_adj", p.pid);
-    let original = fs::read_to_string(&path)
-        .map_err(|e| format!("read original {path}: {e}"))?
-        .trim()
-        .parse::<i32>()
-        .map_err(|e| e.to_string())?;
+    // Hold one proc descriptor across identity checks, original-value capture,
+    // durable intent and write. Reopening by PID could target a replacement.
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(|e| format!("open {path}: {e}"))?;
+    if !process_sample_is_current(p) {
+        return Err("process changed after OOM descriptor open".into());
+    }
+    let mut text = String::new();
+    file.read_to_string(&mut text).map_err(|e| e.to_string())?;
+    let original = text.trim().parse::<i32>().map_err(|e| e.to_string())?;
     let Some(target) = oom_bias_target(original) else {
         return Ok(None);
     };
@@ -1876,8 +1894,15 @@ fn apply_oom_bias(
     if !process_sample_is_current(p) {
         return Err("process changed before OOM bias".into());
     }
-    fs::write(&path, format!("{target}\n"))
-        .map_err(|e| format!("write {path}: {e}; recovery intent retained"))?;
+    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    file.write_all(format!("{target}\n").as_bytes())
+        .map_err(|e| format!("write opened {path}: {e}; recovery intent retained"))?;
+    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    text.clear();
+    file.read_to_string(&mut text).map_err(|e| e.to_string())?;
+    if text.trim().parse::<i32>().ok() != Some(target) {
+        return Err("OOM apply verification failed; recovery intent retained".into());
+    }
     Ok(Some((original, target)))
 }
 
@@ -1968,8 +1993,16 @@ fn restore_pending_oom_descendants(
             }
             ProcessIdentityStatus::Match => {}
         }
-        if exempt_names.contains(&pending.identity.comm)
-            || is_kernel_process(&pending.identity.comm)
+        let current_identity = match read_proc_identity(proc_root, key.0) {
+            Ok(identity) => identity,
+            Err(_) => {
+                result.deferred += 1;
+                record_oom_retry(state, key, &mut pending);
+                continue;
+            }
+        };
+        if exempt_names.contains(&current_identity.comm)
+            || is_kernel_process(&current_identity.comm)
         {
             // Exemption forbids mutation, not remembering an unresolved debt.
             result.deferred += 1;
@@ -2179,8 +2212,14 @@ async fn uncap_cpu_process_with_bin(
     // stop/reset a legacy service. Only a positively absent unit resolves it.
     let output = Command::new(systemctl_bin)
         .args(["--user", "show", scope, "--property=LoadState"])
-        .output().await.map_err(|e|format!("inspect legacy unit {scope}: {e}"))?;
-    if output.status.success() && String::from_utf8_lossy(&output.stdout).lines().any(|line|line == "LoadState=not-found") {
+        .output()
+        .await
+        .map_err(|e| format!("inspect legacy unit {scope}: {e}"))?;
+    if output.status.success()
+        && String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|line| line == "LoadState=not-found")
+    {
         return Ok(());
     }
     Err(format!("legacy CPU service {scope} requires explicit ownership recovery; no unit was stopped and its debt remains recorded"))
@@ -2402,6 +2441,9 @@ async fn restore_runtime_adjustments_with_samples(
     samples: &[ProcSample],
 ) -> bool {
     // Unit leases do not depend on the sampled root remaining readable/alive.
+    if state.mitigation_ledger_unavailable {
+        return false;
+    }
     let leases: Vec<_> = state
         .capped_pids
         .iter()
@@ -4706,7 +4748,11 @@ async fn check_memory_pressure(
     // loop that renice can't tame. See the user discussion
     // 2026-08-10 in AGENTS.md.
     let mut limited: Vec<String> = Vec::new();
-    if !state.mitigation_ledger_unavailable && pressure != "ok" && guard.auto_renice_on_memory && can_restore_nice {
+    if !state.mitigation_ledger_unavailable
+        && pressure != "ok"
+        && guard.auto_renice_on_memory
+        && can_restore_nice
+    {
         for p in &top_rss {
             let identity_ok = process_sample_is_current(p);
             if !identity_ok {
@@ -4771,7 +4817,10 @@ async fn check_memory_pressure(
             }
         }
     }
-    if !state.mitigation_ledger_unavailable && pressure == "critical" && guard.cap_offenders_cpu_percent > 0 {
+    if !state.mitigation_ledger_unavailable
+        && pressure == "critical"
+        && guard.cap_offenders_cpu_percent > 0
+    {
         for p in &top_rss {
             if state.capped_pids.contains_key(&p.pid) {
                 continue;
@@ -4867,7 +4916,7 @@ async fn check_memory_pressure(
     // disabled". The releases now run whenever pressure recovers, and only the
     // renice half stays gated, which is the flag that actually governs a
     // reversible renice.
-    if pressure == "ok" {
+    if pressure == "ok" && !state.mitigation_ledger_unavailable {
         // Shared by all three release halves below: the renice, oom and CPU
         // cooldown stamps are all measured from the same release window.
         let now = Instant::now();
@@ -5050,7 +5099,9 @@ async fn check_memory_pressure(
                         );
                         // Unreadability never proves the legacy unit empty.
                         // Keep its durable recovery obligation.
-                        state.cap_identity_unavailable_attempts.insert(pid, IDENTITY_UNAVAILABLE_RETRY_LIMIT);
+                        state
+                            .cap_identity_unavailable_attempts
+                            .insert(pid, IDENTITY_UNAVAILABLE_RETRY_LIMIT);
                     } else {
                         eprintln!(
                             "⚠️ cpu-un cap deferred for pid={} — process identity unavailable (attempt {}/{})",
@@ -5247,6 +5298,10 @@ struct MitigationRecord {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct MitigationLedger {
+    #[serde(default)]
+    version: u32,
+    #[serde(default)]
+    boot_id: Option<String>,
     records: Vec<MitigationRecord>,
     #[serde(default)]
     oom_pending: Vec<(i32, OomPendingDescendant)>,
@@ -5275,7 +5330,9 @@ fn persist_mitigations(state: &mut GuardRuntimeState) -> bool {
 /// Write the ledger to an explicit path. Split out so the round trip is
 /// testable without touching the real `$HOME` (audit 2026-10-01).
 fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) -> bool {
-    if state.mitigation_ledger_unavailable { return false; }
+    if state.mitigation_ledger_unavailable {
+        return false;
+    }
     let mut records: Vec<MitigationRecord> = Vec::new();
     for (pid, entry) in &state.memory_reniced_pids {
         records.push(MitigationRecord {
@@ -5324,7 +5381,16 @@ fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) -> bool {
         })
         .collect();
     oom_known.sort_by_key(|(pid, _)| *pid);
+    let boot_id = match fs::read_to_string("/proc/sys/kernel/random/boot_id") {
+        Ok(id) if !id.trim().is_empty() => id.trim().to_owned(),
+        _ => {
+            eprintln!("boot identity unavailable; refusing process mitigation persistence");
+            return false;
+        }
+    };
     let ledger = MitigationLedger {
+        version: 1,
+        boot_id: Some(boot_id),
         records,
         oom_pending,
         oom_known,
@@ -5386,14 +5452,20 @@ fn hydrate_mitigations_from(path: &Path, state: &mut GuardRuntimeState) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
         Err(e) => {
-            eprintln!("could not read mitigation ledger {}: {e}; new process mitigations disabled",path.display());
+            eprintln!(
+                "could not read mitigation ledger {}: {e}; new process mitigations disabled",
+                path.display()
+            );
             state.mitigation_ledger_unavailable = true;
             return;
         }
     };
     if text.trim().is_empty() {
         state.mitigation_ledger_unavailable = true;
-        eprintln!("mitigation ledger {} is empty/truncated; refusing replacement",path.display());
+        eprintln!(
+            "mitigation ledger {} is empty/truncated; refusing replacement",
+            path.display()
+        );
         return;
     }
     let ledger: MitigationLedger = match serde_json::from_str(&text) {
@@ -5404,7 +5476,51 @@ fn hydrate_mitigations_from(path: &Path, state: &mut GuardRuntimeState) {
             return;
         }
     };
-    state.mitigation_ledger_unavailable = false;
+    if ledger.version > 1 {
+        state.mitigation_ledger_unavailable = true;
+        eprintln!(
+            "unsupported mitigation ledger version {}; preserving original",
+            ledger.version
+        );
+        return;
+    }
+    let current_boot = match fs::read_to_string("/proc/sys/kernel/random/boot_id") {
+        Ok(id) if !id.trim().is_empty() => id.trim().to_owned(),
+        _ => {
+            state.mitigation_ledger_unavailable = true;
+            return;
+        }
+    };
+    let has_obligations = !ledger.records.is_empty() || !ledger.oom_pending.is_empty();
+    let legacy_unverified = has_obligations && ledger.boot_id.is_none();
+    if legacy_unverified {
+        eprintln!("legacy mitigation ledger has obligations without boot provenance; retaining compatibility records read-only for explicit recovery");
+    }
+    if ledger
+        .boot_id
+        .as_ref()
+        .is_some_and(|id| id != &current_boot)
+    {
+        // Incarnations cannot cross boots. Preserve the historical bytes, but
+        // never restore a previous boot's values into current PID matches.
+        let archive = || -> std::io::Result<()> {
+            use std::io::Write;
+            let parent = path.parent().unwrap_or_else(|| Path::new("."));
+            let mut copy = tempfile::Builder::new()
+                .prefix("guard-mitigations-previous-boot-")
+                .suffix(".json")
+                .tempfile_in(parent)?;
+            copy.write_all(text.as_bytes())?;
+            copy.as_file().sync_all()?;
+            copy.keep().map_err(|e| e.error)?;
+            fs::File::open(parent)?.sync_all()
+        };
+        state.mitigation_ledger_unavailable = archive().is_err();
+        return;
+    }
+    // Legacy records remain inspectable, but may neither be applied nor
+    // persisted until their boot provenance is independently established.
+    state.mitigation_ledger_unavailable = legacy_unverified;
     for (pid, pending) in ledger.oom_pending {
         if !matches!(
             process_identity_status(Path::new("/proc"), pid, &pending.identity),
@@ -8249,8 +8365,9 @@ fn summarize_reaped(reaped: &[ReapedProcess]) -> String {
 async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
     // One process owns hydrate/mutate/persist for the entire lifetime, just
     // like the daemon. A diagnostic may not drain the running guard's state.
-    let _owner = acquire_daemon_lock("dracon-system-guard")
-        .with_context(|| "guard already owns process mitigation state; refusing concurrent guard once")?;
+    let _owner = acquire_daemon_lock("dracon-system-guard").with_context(|| {
+        "guard already owns process mitigation state; refusing concurrent guard once"
+    })?;
     use comfy_table::{presets::UTF8_FULL_CONDENSED, Cell, ContentArrangement, Table};
 
     // Only the daemon persists: a one-shot run restores everything before it
@@ -8627,12 +8744,12 @@ pub(crate) fn apply_policy_reload(
     adjustments_restored: bool,
 ) -> ReloadOutcome {
     let disabling = !new_policy.enabled;
-    if !adjustments_restored && !disabling {
+    if (!adjustments_restored || runtime.mitigation_ledger_unavailable) && !disabling {
         return ReloadOutcome::Deferred;
     }
     *guard = new_policy;
     normalize_guard_policy(guard);
-    if adjustments_restored {
+    if adjustments_restored && !runtime.mitigation_ledger_unavailable {
         let persist_mitigations = runtime.persist_mitigations;
         *runtime = GuardRuntimeState {
             persist_mitigations,
