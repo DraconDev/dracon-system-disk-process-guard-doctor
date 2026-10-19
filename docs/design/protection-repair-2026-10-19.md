@@ -20,7 +20,7 @@ The code also discarded failed descendant obligations after retry escalation,
 omitted their provenance from persistence, and initialized recovery/persistence
 in the one-shot CLI rather than the real daemon.
 
-## Implemented source changes (not a completion judgment)
+## Implemented source changes
 
 - CPU quota leases use the user manager on existing recognized, isolated job
   scopes. They do not migrate processes or stop workload units. Unknown/shared,
@@ -221,19 +221,15 @@ verify that the capability actually applies to the target's user namespace, so
 the guard's existing "cannot restore, therefore do not apply" rule engages
 instead of stranding processes at a raised nice value.
 
-## Deployment and rollback (executed for the install; rollback retained)
+## Rollback (retained; not needed so far)
 
-After all gates and safety findings are resolved, preserve the installed binary
-and unit configuration, atomically install the tested release binary, and restart
-ONLY dracon-system-guard.service. Preserve hardening/capabilities and configured
-opt-ins. Use bounded disposable scopes for application, release, expiry,
-permission failure, descendants and real guard-restart verification. Record the
-loaded executable identity, raw quota/CPU observations, process incarnations,
-service context and journals. Stop disposable workers by their controlled stop
-marker, never a possibly reused unverified PID.
+The installed binary is preserved at
+`~/.local/bin/dracon-system.backup-2026-10-19-pre-repair`. To roll back:
+release/reconcile all new CPU leases and process obligations using the NEW
+binary first, then restore the saved binary and restart ONLY the guard. Do not
+restore an old binary incapable of reading current recovery state until all
+obligations are resolved or a reviewed migration keeps them recoverable. Verify
+the loaded executable identity afterwards and record any residual risk.
 
-Rollback must first release/reconcile all new CPU leases and process obligations
-using the new binary. Do not restore an old binary incapable of reading current
-recovery state until all obligations are resolved or a reviewed migration keeps
-them recoverable. Restore the saved binary/unit and restart only the guard;
-verify its loaded identity and record any residual risk explicitly.
+The installed unit file was NOT modified, so no unit rollback is required; the
+deployed unit still matches the shipped repository unit byte for byte.
