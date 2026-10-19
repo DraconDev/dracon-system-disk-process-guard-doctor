@@ -132,6 +132,14 @@ fn archive_previous_boot(root: &Path, debt: &Debt) -> Result<()> {
     Ok(())
 }
 fn retire(root: &Path, debt: &Debt) -> Result<()> {
+    // The retiring record must be the live debt of this generation. A stale
+    // or foreign generation can never retire another generation's debt.
+    let live = load_debt(root, &debt.admission.id)?
+        .ok_or_else(|| anyhow::anyhow!("no live debt to retire"))?;
+    ensure!(
+        oom_job::same_admission(&live.admission, &debt.admission),
+        "retiring record does not own the live debt"
+    );
     let destination = root.join(format!("{}.retired.json", debt.admission.id));
     if destination.exists() {
         let previous: Debt = serde_json::from_slice(&fs::read(&destination)?)?;
