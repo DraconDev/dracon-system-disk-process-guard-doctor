@@ -221,6 +221,53 @@ verify that the capability actually applies to the target's user namespace, so
 the guard's existing "cannot restore, therefore do not apply" rule engages
 instead of stranding processes at a raised nice value.
 
+## Audit-gate finding: the contract commands were not self-locating
+
+The 2026-10-19T22:42:56Z independent audit did not judge this repair. It
+fast-failed earlier, in the deterministic mechanical pre-audit gate, with:
+
+```
+Deterministic Pre-Audit Fast-Fail: Mechanical contract check failed:
+`cargo test --workspace --locked` (exit code 101)
+error: could not find `Cargo.toml` in `/home/dracon/.dracon/convos`
+or any parent directory
+```
+
+The gate extracts a command from the verification contract and runs it with
+the session's working directory. The contract scoped that command to the
+repository in prose ("passes from /home/dracon/Dev/dracon-utilities"), but a
+mechanical runner cannot act on a prose "from <dir>" qualifier, so the
+extracted command was `cargo test --workspace --locked` and it ran in the
+session directory, which holds no `Cargo.toml`. The exit code 101 therefore
+reported a missing manifest, not a failing test.
+
+The durable fix is to make every contract command self-locating, so the same
+bytes are checked regardless of the caller's working directory:
+
+```
+cargo test  --workspace --locked --manifest-path <repo>/Cargo.toml --config <repo>/.cargo/config.toml
+cargo fmt   --all --manifest-path <repo>/Cargo.toml -- --check
+cargo clippy --workspace --locked --manifest-path <repo>/Cargo.toml -- -D warnings
+cargo build --release --locked --manifest-path <repo>/Cargo.toml
+```
+
+`--config <repo>/.cargo/config.toml` is required, not optional: that file
+pins `RUST_TEST_THREADS=1` because the dracon-sync storage tests mutate
+process-global `HOME`/`PATH` and hold flock leases. Without it a run from
+any directory executes the suite in parallel and the storage tests fail
+nondeterministically. Observed at `--test-threads=16`: three failures, all
+`journal lease is busy or unavailable`; the same suite with the repository
+config passes 144/144.
+
+`cargo deny check` has no `--manifest-path` flag and resolves the workspace
+from the current directory, so it must keep running from the repository root.
+The contract states that explicitly rather than pretending otherwise.
+
+All four self-locating commands were re-run from the session directory
+`/home/dracon/.dracon/convos` and each exited 0: the workspace suite passed
+twice with 35 test binaries ok, and fmt, clippy and the release build were
+clean.
+
 ## Rollback (retained; not needed so far)
 
 The installed binary is preserved at
