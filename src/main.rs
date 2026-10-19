@@ -1921,7 +1921,9 @@ fn restore_pending_oom_descendants(
             }
             ProcessIdentityStatus::Match => {}
         }
-        if exempt_names.contains(&pending.identity.comm) || is_kernel_process(&pending.identity.comm) {
+        if exempt_names.contains(&pending.identity.comm)
+            || is_kernel_process(&pending.identity.comm)
+        {
             // Exemption forbids mutation, not remembering an unresolved debt.
             result.deferred += 1;
             record_oom_retry(state, key, &mut pending);
@@ -2038,7 +2040,10 @@ fn sweep_stranded_oom_descendants(
         );
     }
     if !persist_mitigations(state) {
-        return OomSweepResult { restored: Vec::new(), deferred: state.oom_pending_descendants.len() };
+        return OomSweepResult {
+            restored: Vec::new(),
+            deferred: state.oom_pending_descendants.len(),
+        };
     }
     restore_pending_oom_descendants(proc_root, state, exempt_names)
 }
@@ -8675,7 +8680,11 @@ pub(crate) fn apply_policy_reload(
     *guard = new_policy;
     normalize_guard_policy(guard);
     if adjustments_restored {
-        *runtime = GuardRuntimeState::default();
+        let persist_mitigations = runtime.persist_mitigations;
+        *runtime = GuardRuntimeState {
+            persist_mitigations,
+            ..GuardRuntimeState::default()
+        };
     }
     ReloadOutcome::Applied
 }
@@ -8742,7 +8751,15 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
         guard.interval_secs
     );
     let mut interval = guard.interval_secs;
-    let mut runtime = GuardRuntimeState::default();
+    let mut runtime = GuardRuntimeState {
+        persist_mitigations: true,
+        ..GuardRuntimeState::default()
+    };
+    // Recovery belongs to the daemon, not merely the one-shot CLI path.
+    cpu_limit::recover().await;
+    hydrate_mitigations_from_disk(&mut runtime);
+    restore_runtime_adjustments(&mut runtime).await;
+    persist_mitigations(&mut runtime);
     while !shutdown.load(Ordering::SeqCst) {
         if reload_sighup.load(Ordering::SeqCst) {
             reload_sighup.store(false, Ordering::SeqCst);
@@ -8851,8 +8868,9 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
         }
     }
     if !restore_runtime_adjustments(&mut runtime).await {
-        eprintln!("⚠ shutdown: some process adjustments could not be restored");
+        eprintln!("⚠ shutdown: some process adjustments could not be restored; durable obligations retained");
     }
+    persist_mitigations(&mut runtime);
     veprintln!(1, "system: guard daemon shutdown complete");
     Ok(())
 }

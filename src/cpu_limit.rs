@@ -221,6 +221,15 @@ pub(crate) async fn cap(
     percent: u32,
     exempt: &HashSet<String>,
 ) -> Result<(String, String), String> {
+    cap_with_duration(pid, percent, exempt, 3600).await
+}
+
+pub(crate) async fn cap_with_duration(
+    pid: i32,
+    percent: u32,
+    exempt: &HashSet<String>,
+    lease_seconds: u64,
+) -> Result<(String, String), String> {
     if !(1..=100).contains(&percent) {
         return Err("invalid CPU quota".into());
     }
@@ -285,7 +294,7 @@ pub(crate) async fn cap(
             "--user".into(),
             "--collect".into(),
             format!("--unit={timer}"),
-            "--on-active=1h".into(),
+            format!("--on-active={lease_seconds}s"),
             "--timer-property=AccuracySec=1s".into(),
             "--".into(),
             exe.to_string_lossy().into_owned(),
