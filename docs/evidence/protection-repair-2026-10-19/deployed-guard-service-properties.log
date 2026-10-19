@@ -1,7 +1,7 @@
 ActiveState=active
 FragmentPath=/home/dracon/.config/systemd/user/dracon-system-guard.service
-MainPID=1742290
-ExecMainStartTimestamp=Mon 2026-10-19 23:32:25 BST
+MainPID=2030880
+ExecMainStartTimestamp=Mon 2026-10-19 23:40:36 BST
 CapabilityBoundingSet=cap_sys_nice
 AmbientCapabilities=cap_sys_nice
 PrivateTmp=no
