@@ -23,7 +23,7 @@ async fn output(bin: &str, args: &[String]) -> Result<String, String> {
 async fn manager(method: &str, signature: &str, values: &[String]) -> Result<String, String> {
     let bin = crate::resolve_bin_strict("busctl").map_err(|e| e.to_string())?;
     let mut args: Vec<String> = ["--user", "--timeout=10s", "call", MANAGER, MANAGER_PATH,
-        MANAGER, method, signature].iter().map(|s| s.to_string()).collect();
+        "org.freedesktop.systemd1.Manager", method, signature].iter().map(|s| s.to_string()).collect();
     args.extend_from_slice(values);
     output(&bin, &args).await
 }
