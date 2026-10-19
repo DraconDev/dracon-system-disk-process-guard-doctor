@@ -25,7 +25,7 @@ pub(crate) enum Phase {
     Terminal,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Job {
     pub version: u32,
     pub id: String,
@@ -54,9 +54,23 @@ pub(crate) fn valid_id(id: &str) -> bool {
         })
 }
 pub(crate) fn root() -> Result<PathBuf> {
-    Ok(dirs::home_dir()
-        .context("HOME unavailable")?
-        .join(".dracon/oom-jobs"))
+    use std::{ffi::CStr, os::unix::{ffi::OsStrExt, fs::PermissionsExt}};
+    // Do not let a job's HOME override split admission and recovery registries.
+    let uid=unsafe {libc::geteuid()};
+    let mut pwd=std::mem::MaybeUninit::<libc::passwd>::uninit();
+    let mut found=std::ptr::null_mut();
+    let mut buffer=vec![0u8;65536];
+    let rc=unsafe {libc::getpwuid_r(uid,pwd.as_mut_ptr(),buffer.as_mut_ptr().cast(),buffer.len(),&mut found)};
+    ensure!(rc==0 && !found.is_null(),"cannot resolve canonical user home");
+    let pwd=unsafe {pwd.assume_init()};
+    ensure!(!pwd.pw_dir.is_null(),"user home unavailable");
+    let home=Path::new(std::ffi::OsStr::from_bytes(unsafe {CStr::from_ptr(pwd.pw_dir)}.to_bytes()));
+    let root=home.join(".dracon/oom-jobs");
+    fs::create_dir_all(&root)?;
+    let metadata=fs::symlink_metadata(&root)?;
+    ensure!(metadata.is_dir() && metadata.uid()==uid,"unsafe managed-job state directory");
+    fs::set_permissions(&root,fs::Permissions::from_mode(0o700))?;
+    Ok(root)
 }
 fn property(unit: &str, name: &str) -> Result<String> {
     let bin = super::resolve_bin_strict("systemctl")?;
@@ -123,6 +137,7 @@ pub(crate) fn launch(command: &[OsString]) -> Result<()> {
             "--scope",
             "--quiet",
             "--same-dir",
+            "--property=Delegate=no",
             "--unit",
             &unit,
             "--",
@@ -175,6 +190,13 @@ fn terminal_candidate(sentinel: i32, members: &[i32], tasks: u64, own_threads: u
     own_threads == 1 && tasks == 1 && members == [sentinel]
 }
 
+fn same_admission(left:&Job,right:&Job)->bool {
+    let mut identity=left.clone();
+    identity.phase=right.phase;
+    identity.terminal_proof=right.terminal_proof;
+    identity==*right
+}
+
 /// Must be called before creating a runtime or any threads. Keep a non-forking
 /// sentinel alive until terminal evidence is durable; clean scans alone never
 /// allow the guard/recoverer to retire a job debt.
@@ -210,10 +232,10 @@ pub(crate) fn enter(id: &str, command: &[OsString]) -> Result<()> {
     );
     let directory = Path::new("/sys/fs/cgroup").join(group.trim_start_matches('/'));
     no_nested_groups(&directory)?;
-    ensure!(
-        read_members(&directory)? == [pid],
-        "new job scope already contains another process"
-    );
+    let initial_members=read_members(&directory)?;
+    let initial_tasks=fs::read_to_string(directory.join("pids.current"))?.trim().parse::<u64>()?;
+    ensure!(terminal_candidate(pid,&initial_members,initial_tasks,fs::read_dir("/proc/self/task")?.count()),"new job scope already contains another task");
+    ensure!(property(&unit,"ControlGroup")?==group,"manager cgroup does not match admission boundary");
     let baseline = fs::read_to_string("/proc/self/oom_score_adj")?
         .trim()
         .parse::<i32>()?;
@@ -246,6 +268,7 @@ pub(crate) fn enter(id: &str, command: &[OsString]) -> Result<()> {
     }
     // Admission is durable before the first workload instruction. The command
     // inherits cwd, environment, standard descriptors and the known baseline.
+    ensure!(fs::read_to_string("/proc/self/oom_score_adj")?.trim().parse::<i32>()?==baseline,"baseline changed before workload launch");
     // Even an exec/spawn failure closes admission through the same durable
     // empty-boundary proof, rather than leaving an orphan registration.
     let status = Command::new(&command[0])
@@ -267,12 +290,7 @@ pub(crate) fn enter(id: &str, command: &[OsString]) -> Result<()> {
         if terminal_candidate(pid, &members, tasks, own_threads) {
             let _lock = locked(&root, id)?;
             let mut final_job = load(&root, id)?;
-            ensure!(
-                final_job.boot_id == job.boot_id
-                    && final_job.invocation == job.invocation
-                    && final_job.sentinel_identity.starttime == job.sentinel_identity.starttime,
-                "job ownership changed"
-            );
+            ensure!(same_admission(&final_job,&job),"job ownership changed");
             final_job.phase = Phase::Terminal;
             final_job.terminal_proof = true;
             save(&root, &final_job, false)?;
