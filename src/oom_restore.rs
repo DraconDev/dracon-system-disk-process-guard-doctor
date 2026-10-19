@@ -10,7 +10,7 @@ pub(crate) fn restore(
     pid: i32,
     identity: &crate::ProcessIdentity,
     original: i32,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let path = proc_root.join(pid.to_string()).join("oom_score_adj");
     let describe = |stage: &str, error: std::io::Error| {
         #[cfg(unix)]
@@ -50,7 +50,7 @@ pub(crate) fn restore(
         .parse::<i32>()
         .map_err(|e| format!("invalid oom_score_adj: {e}"))?;
     if current != crate::OOM_BIAS_TARGET {
-        return Ok(());
+        return Ok(false);
     }
     file.seek(SeekFrom::Start(0))
         .map_err(|e| describe("seek", e))?;
@@ -71,5 +71,5 @@ pub(crate) fn restore(
     if text.trim().parse::<i32>().ok() != Some(original) {
         return Err("OOM restore verification failed; obligation retained".into());
     }
-    Ok(())
+    Ok(true)
 }

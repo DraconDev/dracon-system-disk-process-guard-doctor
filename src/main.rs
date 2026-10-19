@@ -28,6 +28,7 @@ use dracon_system_lib::analyze_workspace_storage;
 mod cpu_limit;
 mod doctor;
 mod oom_restore;
+mod protection_probe;
 #[cfg(test)]
 mod protection_tests;
 pub(crate) use doctor::*;
@@ -168,6 +169,15 @@ enum Commands {
     CpuLeaseRelease {
         unit: String,
         original_cgroup: String,
+    },
+    /// Bounded disposable-process diagnostics under the caller's sandbox.
+    #[command(hide = true)]
+    ProtectionProbe { root: PathBuf, phase: String },
+    #[command(hide = true)]
+    ProtectionWorker {
+        root: PathBuf,
+        #[arg(long)]
+        child: bool,
     },
     /// Show core path and service status.
     Status {
@@ -619,20 +629,15 @@ pub(crate) struct OomPendingDescendant {
     pub(crate) root_pid: i32,
     pub(crate) original_adj: i32,
     pub(crate) identity: ProcessIdentity,
-    /// ADDED 2026-10-01 (audit): bounded retries. An unavailable identity, an
-    /// unreadable `oom_score_adj` and a failed write each used to just
-    /// `deferred += 1` forever, so one such child pinned its root at
-    /// `oom_score_adj=250` for the lifetime of the process, grew this map
-    /// without bound, and made `restore_runtime_adjustments` return false on
-    /// every SIGHUP — i.e. the reload path was permanently Deferred.
+    /// Retry/escalation counter, persisted with the obligation. Failed reads
+    /// or writes are not proof of restoration; retain them across restarts
+    /// until restored, externally changed, gone, or provably reused.
     pub(crate) attempts: u32,
 }
 
-/// How many passes a single descendant restoration is retried before the guard
-/// gives up on it and lets the root be released. The same shape as
-/// IDENTITY_UNAVAILABLE_RETRY_LIMIT, for the same reason: an EACCES on
-/// `/proc/<pid>/oom_score_adj` will not fix itself, and an entry that can never
-/// succeed must not be retried forever.
+/// Escalate after this many failed passes. This bounds initial warning noise,
+/// not the lifetime of unresolved restoration state. Roots restore promptly
+/// while independent descendant obligations remain durable.
 const OOM_DESCENDANT_RETRY_LIMIT: u32 = 5;
 
 /// Cap on remembered descendant incarnations per biased root. ADDED
@@ -663,7 +668,7 @@ fn prune_oom_known_descendants(state: &mut GuardRuntimeState, all_processes: &[P
     });
 }
 
-/// Bump the attempt counter; true once the entry must be given up on.
+/// Bump the attempt counter; true once failures warrant escalation.
 fn oom_descendant_attempts_exhausted(pending: &mut OomPendingDescendant) -> bool {
     pending.attempts = pending.attempts.saturating_add(1);
     pending.attempts >= OOM_DESCENDANT_RETRY_LIMIT
@@ -1834,6 +1839,45 @@ async fn renice_process(pid: i32, value: i32) -> Result<()> {
 pub(crate) const OOM_BIAS_TARGET: i32 = 250;
 pub(crate) const OOM_PROTECTED_ADJ: i32 = -500;
 
+fn apply_oom_bias(
+    p: &ProcSample,
+    samples: &[ProcSample],
+    state: &mut GuardRuntimeState,
+) -> Result<Option<(i32, i32)>, String> {
+    if state.oom_biased_pids.contains_key(&p.pid) || !process_sample_is_current(p) {
+        return Ok(None);
+    }
+    let path = format!("/proc/{}/oom_score_adj", p.pid);
+    let original = fs::read_to_string(&path)
+        .map_err(|e| format!("read original {path}: {e}"))?
+        .trim()
+        .parse::<i32>()
+        .map_err(|e| e.to_string())?;
+    let Some(target) = oom_bias_target(original) else {
+        return Ok(None);
+    };
+    state
+        .oom_biased_pids
+        .insert(p.pid, (original, process_sample_identity(p)));
+    state.oom_known_descendants.insert(
+        p.pid,
+        process_descendant_samples(samples, p.pid)
+            .into_iter()
+            .map(|child| (child.pid, child.starttime))
+            .collect(),
+    );
+    if !persist_mitigations(state) {
+        remove_oom_bias(state, p.pid);
+        return Err("write-ahead restoration intent could not be persisted".into());
+    }
+    if !process_sample_is_current(p) {
+        return Err("process changed before OOM bias".into());
+    }
+    fs::write(&path, format!("{target}\n"))
+        .map_err(|e| format!("write {path}: {e}; recovery intent retained"))?;
+    Ok(Some((original, target)))
+}
+
 pub(crate) fn oom_bias_target(current: i32) -> Option<i32> {
     if current >= OOM_BIAS_TARGET || current <= OOM_PROTECTED_ADJ {
         None
@@ -1929,51 +1973,31 @@ fn restore_pending_oom_descendants(
             record_oom_retry(state, key, &mut pending);
             continue;
         }
-        let adj_path = proc_root.join(key.0.to_string()).join("oom_score_adj");
-        let current = match fs::read_to_string(&adj_path)
-            .ok()
-            .and_then(|value| value.trim().parse::<i32>().ok())
-        {
-            Some(current) => current,
-            None => {
+        let changed = match oom_restore::restore(
+            proc_root,
+            key.0,
+            &pending.identity,
+            pending.original_adj,
+        ) {
+            Ok(changed) => changed,
+            Err(error) => {
                 result.deferred += 1;
                 if record_oom_retry(state, key, &mut pending) {
-                    eprintln!("⚠️ oom-descendant-restore retaining pid={} parent={} after {} unreadable oom_score_adj reads", key.0, pending.root_pid, pending.attempts);
-                    state.oom_pending_descendants.insert(key, pending.clone());
+                    eprintln!("⚠️ oom-descendant-restore retaining pid={} parent={} after {} failures: {}",key.0,pending.root_pid,pending.attempts,error);
                 }
                 continue;
             }
         };
-        if current != OOM_BIAS_TARGET {
-            state.oom_pending_descendants.remove(&key);
-            remember_oom_descendant_identity(state, pending.root_pid, key.0, &pending.identity);
-            continue;
-        }
-        if let Err(error) =
-            oom_restore::restore(proc_root, key.0, &pending.identity, pending.original_adj)
-        {
+        if changed {
             eprintln!(
-                "⚠️ oom-descendant-restore failed for pid={} parent={} : {}",
-                key.0, pending.root_pid, error
+                "🛡️ oom-descendant-restore pid={} parent={} adj -> {}",
+                key.0, pending.root_pid, pending.original_adj
             );
-            result.deferred += 1;
-            if record_oom_retry(state, key, &mut pending) {
-                eprintln!(
-                    "⚠️ oom-descendant-restore retaining pid={} parent={} after {} failed writes",
-                    key.0, pending.root_pid, pending.attempts
-                );
-                state.oom_pending_descendants.insert(key, pending.clone());
-            }
-            continue;
+            result.restored.push(format!(
+                "oom-restore-descendant {}={}",
+                pending.identity.comm, pending.original_adj
+            ));
         }
-        eprintln!(
-            "🛡️ oom-descendant-restore pid={} parent={} adj -> {}",
-            key.0, pending.root_pid, pending.original_adj
-        );
-        result.restored.push(format!(
-            "oom-restore-descendant {}={}",
-            pending.identity.comm, pending.original_adj
-        ));
         state.oom_pending_descendants.remove(&key);
         remember_oom_descendant_identity(state, pending.root_pid, key.0, &pending.identity);
     }
@@ -2490,7 +2514,7 @@ async fn restore_runtime_adjustments_with_samples(
                     // Restore the root promptly even while child obligations
                     // remain; otherwise every new fork inherits its bias.
                     match oom_restore::restore(proc_root, pid, &identity, orig_adj) {
-                        Ok(()) => remove_oom_bias(state, pid),
+                        Ok(_) => remove_oom_bias(state, pid),
                         Err(e) => eprintln!(
                             "⚠ SIGHUP failed to restore oom_score_adj for pid={} comm={}: {}",
                             pid, identity.comm, e
@@ -4788,43 +4812,16 @@ async fn check_memory_pressure(
     }
     if pressure == "critical" && guard.bias_oom_on_pressure {
         for p in &top_rss {
-            if state.oom_biased_pids.contains_key(&p.pid) {
-                continue;
-            }
-            let identity_ok = process_sample_is_current(p);
-            if !identity_ok {
-                continue;
-            }
-            let adj_path = format!("/proc/{}/oom_score_adj", p.pid);
-            let cur = fs::read_to_string(&adj_path)
-                .ok()
-                .and_then(|s| s.trim().parse::<i32>().ok());
-            if let Some(orig) = cur {
-                if let Some(target) = oom_bias_target(orig) {
-                    let known_descendants = process_descendant_samples(all_processes, p.pid)
-                        .into_iter()
-                        .map(|child| (child.pid, child.starttime))
-                        .collect();
-                    state
-                        .oom_biased_pids
-                        .insert(p.pid, (orig, process_sample_identity(p)));
-                    state.oom_known_descendants.insert(p.pid, known_descendants);
-                    // Write-ahead intent: a crash cannot lose the root's original
-                    // score or the pre-existing descendant provenance.
-                    if !persist_mitigations(state) {
-                        remove_oom_bias(state, p.pid);
-                        continue;
-                    }
-                    if process_sample_is_current(p)
-                        && fs::write(&adj_path, format!("{target}\n")).is_ok()
-                    {
-                        eprintln!(
-                            "🛡️ oom-bias pid={} cmd={} adj {} -> {} (critical pressure)",
-                            p.pid, p.command, orig, target
-                        );
-                        limited.push(format!("oom-bias {}={}", p.command, target));
-                    }
+            match apply_oom_bias(p, all_processes, state) {
+                Ok(Some((orig, target))) => {
+                    eprintln!(
+                        "🛡️ oom-bias pid={} cmd={} adj {} -> {} (critical pressure)",
+                        p.pid, p.command, orig, target
+                    );
+                    limited.push(format!("oom-bias {}={}", p.command, target));
                 }
+                Ok(None) => {}
+                Err(e) => eprintln!("OOM bias not applied pid={}: {e}", p.pid),
             }
         }
     }
@@ -5403,15 +5400,21 @@ fn persist_mitigations_to(state: &mut GuardRuntimeState, path: &Path) -> bool {
             return false;
         }
     }
-    // Atomic: a torn ledger would be worse than none, because it is the record
-    // of what still needs restoring.
-    let tmp = path.with_extension("json.tmp");
-    if let Err(e) = fs::write(&tmp, &encoded).and_then(|()| fs::rename(&tmp, path)) {
+    // Write-ahead means durable before mutation, not just atomic rename.
+    let persist = || -> std::io::Result<()> {
+        use std::io::Write;
+        let parent = path.parent().unwrap_or_else(|| Path::new("."));
+        let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
+        tmp.write_all(&encoded)?;
+        tmp.as_file().sync_all()?;
+        tmp.persist(path).map_err(|e| e.error)?;
+        fs::File::open(parent)?.sync_all()
+    };
+    if let Err(e) = persist() {
         eprintln!(
             "⚠️ could not persist the mitigation ledger to {}: {e}",
             path.display()
         );
-        let _ = fs::remove_file(&tmp);
         return false;
     }
     state.last_persisted_mitigations = Some(encoded);
@@ -9294,6 +9297,8 @@ async fn run() -> Result<()> {
     VERBOSITY.store(cli.verbose, Ordering::SeqCst);
 
     match cli.cmd {
+        Commands::ProtectionProbe { root, phase } => protection_probe::run(&root, &phase).await,
+        Commands::ProtectionWorker { root, child } => protection_probe::worker(&root, child),
         Commands::CpuLeaseRelease {
             unit,
             original_cgroup,
