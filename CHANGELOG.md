@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > is the canonical record.
 
 ## [Unreleased]
+
+### Fixed
+
+- Rapid disk-fill detection starts a fresh sample window after reclaimed space, so a large cleanup cannot mask subsequent growth. Recovery also re-arms the rapid-fill notification. Warnings now report user-available GiB and conditional hours until full.
+
 ## [0.112.45] - 2026-10-12
 
 ### Fixed

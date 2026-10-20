@@ -28,7 +28,8 @@ A large reclaim can make the rolling byte-history regression negative and
 hide rapid growth after recovery until the older samples expire. Compute
 rate only from samples since the most recent drop in used bytes. Retain
 the existing minimum of three samples over 60 seconds, so a cleanup alone
-cannot invent growth. Small fluctuations can delay an estimate; disk usage
+cannot invent growth. Reclamation also clears the previous rapid verdict so
+fresh rapid growth can send a new entry notification. Small fluctuations can delay an estimate; disk usage
 threshold alerts continue independently.
 
 Rapid-fill notifications and structured events now include user-available
