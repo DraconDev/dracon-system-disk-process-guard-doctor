@@ -1,0 +1,50 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.31s
+     Running unittests src/main.rs (target/debug/deps/dracon_system-f9d2cc9c68e546da)
+
+running 13 tests
+test cpu_limit::lifecycle_tests::ambiguous_application_and_failed_expiry_remain_recoverable_until_retry_succeeds ... FAILED
+test cpu_limit::lifecycle_tests::expiry_manager_outage_preserves_verified_lease_across_reload_then_restores ... FAILED
+test cpu_limit::lifecycle_tests::rejected_application_retains_debt_and_next_pass_recovers_before_reapplying ... FAILED
+test cpu_limit::lifecycle_tests::rejected_timer_retains_intent_without_applying_and_restart_retires_it ... ok
+test cpu_limit::lifecycle_tests::replaced_unit_before_application_and_before_expiry_is_never_mutated ... ok
+test cpu_limit::lifecycle_tests::stale_timer_and_external_quota_preserve_current_ownership ... ok
+test cpu_limit::lifecycle_tests::uncertain_unit_retains_debt_until_confirmed_disappearance_without_writes ... ok
+test cpu_limit::lifecycle_tests::workload_revalidation_failure_leaves_only_unapplied_intent ... ok
+test cpu_limit::tests::incomplete_intent_never_counts_as_enforced_quota ... ok
+test cpu_limit::tests::lease_intent_survives_restart_and_keys_cannot_escape_state_root ... ok
+test cpu_limit::tests::only_isolated_job_scopes_are_eligible ... ok
+test cpu_limit::tests::quota_round_trip_preserves_stricter_existing_limits ... ok
+test cpu_limit::tests::unavailable_unit_identity_never_discards_cpu_debt ... ok
+
+failures:
+
+---- cpu_limit::lifecycle_tests::ambiguous_application_and_failed_expiry_remain_recoverable_until_retry_succeeds stdout ----
+
+thread 'cpu_limit::lifecycle_tests::ambiguous_application_and_failed_expiry_remain_recoverable_until_retry_succeeds' (346997) panicked at dracon-system/src/cpu_lease_tests.rs:196:5:
+assertion failed: m.expire(&lease_key(UNIT), &lease.generation).await.is_err()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- cpu_limit::lifecycle_tests::expiry_manager_outage_preserves_verified_lease_across_reload_then_restores stdout ----
+CPU lease recovery retained dracon-cpu-unit-01034e5059c624db: manager unavailable
+
+thread 'cpu_limit::lifecycle_tests::expiry_manager_outage_preserves_verified_lease_across_reload_then_restores' (347038) panicked at dracon-system/src/cpu_lease_tests.rs:221:5:
+assertion `left == right` failed
+  left: 500000
+ right: 18446744073709551615
+
+---- cpu_limit::lifecycle_tests::rejected_application_retains_debt_and_next_pass_recovers_before_reapplying stdout ----
+
+thread 'cpu_limit::lifecycle_tests::rejected_application_retains_debt_and_next_pass_recovers_before_reapplying' (347078) panicked at dracon-system/src/cpu_lease_tests.rs:177:5:
+assertion `left == right` failed
+  left: 500000
+ right: 18446744073709551615
+
+
+failures:
+    cpu_limit::lifecycle_tests::ambiguous_application_and_failed_expiry_remain_recoverable_until_retry_succeeds
+    cpu_limit::lifecycle_tests::expiry_manager_outage_preserves_verified_lease_across_reload_then_restores
+    cpu_limit::lifecycle_tests::rejected_application_retains_debt_and_next_pass_recovers_before_reapplying
+
+test result: FAILED. 10 passed; 3 failed; 0 ignored; 0 measured; 511 filtered out; finished in 0.79s
+
+error: test failed, to rerun pass `-p dracon-system --bin dracon-system`
