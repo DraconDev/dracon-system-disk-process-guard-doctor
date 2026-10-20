@@ -181,13 +181,20 @@ pub(crate) fn launch(command: &[OsString]) -> Result<()> {
 /// Construct a launcher for a caller-owned generation. Diagnostics allocate the
 /// generation before spawning, so admission cannot be confused with another job.
 pub(crate) fn launch_command(id: &str, command: &[OsString]) -> Result<Command> {
-    ensure!(valid_id(id) && !command.is_empty(), "invalid managed job launch");
+    ensure!(
+        valid_id(id) && !command.is_empty(),
+        "invalid managed job launch"
+    );
     let root = root()?;
-    ensure!(!root.join(format!("{id}.json")).exists(), "job generation already exists");
+    ensure!(
+        !root.join(format!("{id}.json")).exists(),
+        "job generation already exists"
+    );
     let unit = format!("dracon-managed-job-{id}.scope");
     let run = super::resolve_bin_strict("systemd-run")?;
     let mut launcher = Command::new(run);
-    launcher.args([
+    launcher
+        .args([
             "--user",
             "--scope",
             "--quiet",
