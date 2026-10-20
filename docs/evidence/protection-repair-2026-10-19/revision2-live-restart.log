@@ -1,0 +1,8 @@
+Before real guard restart:
+CPUQuotaPerSecUSec=500ms
+After real guard restart:
+CPUQuotaPerSecUSec=infinity
+    PID CMD
+ 178240 /home/dracon/.local/bin/dracon-system protection-worker /tmp/dracon-cpu-r2-probe-fIR9xU
+ 181211 /home/dracon/.local/bin/dracon-system protection-worker /tmp/dracon-cpu-r2-probe-fIR9xU --child
+ExecMainStatus=0

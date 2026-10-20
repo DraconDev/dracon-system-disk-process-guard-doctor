@@ -1,0 +1,122 @@
+[Unit]
+Description=Dracon System Guard - Proactive disk space monitoring and cleanup
+Documentation=https://github.com/DraconDev/dracon-utilities
+After=network.target
+
+[Service]
+Type=simple
+StandardOutput=journal
+StandardError=journal
+# NixOS-optimized PATH. On non-NixOS distributions, customize or use
+# PassEnvironment=PATH after running `systemctl --user import-environment PATH`.
+Environment=PATH=%h/.local/bin:/run/wrappers/bin:%h/.local/share/flatpak/exports/bin:/var/lib/flatpak/exports/bin:%h/.nix-profile/bin:/nix/profile/bin:%h/.local/state/nix/profile/bin:/etc/profiles/per-user/%u/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin
+ExecStart=%h/.local/bin/dracon-system protection-probe /tmp/dracon-cpu-r2-managed-J5rVCW managed
+# ADDED 2026-09-29 (DECIDE #2 follow-up): without an ExecReload,
+# `systemctl --user reload` had no handler and the documented SIGHUP reload
+# path could not be invoked through systemd. SIGHUP is the reload signal the
+# guard already handles; this just makes it reachable from the service
+# manager. It is NOT a freshness mechanism: the daemon re-reads the policy
+# file every pass, but only to pick up `links` entries — `[guard]` and
+# `[storage]` come from the copy the daemon holds, so a threshold change
+# needs this signal (or a restart) to take effect.
+#
+# /bin/sh, not /bin/kill: this unit is NixOS-targeted but also serves plain
+# distros, and on NixOS /bin contains only `sh` — `systemd-analyze verify`
+# rejects `/bin/kill` there with "Command /bin/kill is not executable". /bin/sh
+# is universal, and `kill` is a POSIX shell builtin, so no PATH lookup is
+# involved at all. The NixOS store path would verify but is absent off NixOS.
+ExecReload=/bin/sh -c 'kill -HUP $MAINPID'
+# Do not restart clean policy-disabled exits; restart crashes and failures.
+Restart=no
+RestartSec=10
+# 78 = EX_CONFIG for malformed/unreadable startup policy; 2 = CLI usage error.
+RestartPreventExitStatus=2 78
+
+# Keep any intentionally relative policy paths stable for the user service.
+WorkingDirectory=%h
+
+# Run as the user who owns the service
+# For system-wide deployment, create a dedicated user
+# User=dracon-guard
+# Group=dracon-guard
+
+# Resource limits
+MemoryMax=2147483648
+CPUQuota=20%
+TasksMax=64
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+# clean_tmp targets the host /tmp (the policy default), so do not create a
+# service-private temporary namespace. ProtectSystem remains strict; /tmp is
+# the explicit writable exception needed for age-based top-level cleanup.
+# CHANGED 2026-09-20 (space audit): %h/.local/state/nix is writable so
+# nix-env can lock the user profile for generation pruning (without it
+# every nix cleanup failed with "Read-only file system" under
+# ProtectHome=read-only). Deployed units predating the PrivateTmp=false
+# fix MUST be reinstalled — with PrivateTmp=true the guard "cleans" an
+# empty private namespace while host /tmp (86 GiB on 2026-09-20) grows.
+# CHANGED 2026-09-27 (audit F94): %h/.local/share is writable so the
+# example policy's log_dirs (~/.local/share/opencode/log) is reachable —
+# without it truncate_log_file's write-mode open fails EROFS under
+# ProtectSystem=strict and auto_truncate_logs reclaims nothing. /var/log
+# is deliberately NOT granted: an unprivileged user service cannot
+# truncate it under this hardening, so shipping it in log_dirs only
+# produced a permanent "failed to truncate" warning.
+# CHANGED 2026-10-01 (audit): systemd REFUSES TO START a unit whose
+# ReadWritePaths entry does not exist (verified live with a scratch unit:
+# Result=exit-code, ExecMainStatus=226/NOPERM) unless the entry is prefixed
+# with '-', which means "ignore if missing". Every entry below is a path some
+# tool creates for itself, so on a host that never trashed a file, never ran
+# nix-env, or has no ~/Dev the guard did not start AT ALL — no monitoring, and
+# a Restart=no loop. The guard's own state roots stay REQUIRED: it
+# writes there, and `dracon-system setup` provisions them, so their absence is a
+# real misconfiguration worth failing loudly for.
+# ReadWritePaths=%h/.dracon %h/.local/state/dracon %h/.local/share -%h/Dev -%h/.local/share/Trash -%h/.cargo -%h/.cache -%h/.npm -%h/.local/state/nix /tmp
+# CHANGED 2026-10-01: the two OPERATOR-CONFIGURED storage roots are granted too.
+# `quarantine_dir` and `relocate_cold_root` are policy values, not defaults, so
+# they cannot be inferred here — but whichever paths the example config teaches
+# are the ones an operator copies, and until they are listed every quarantine
+# move AND every expiry failed with "Read-only file system (os error 30)": the
+# reclaim path was dead exactly when the disk needed it, and the ~20G already
+# quarantined could not be expired at all. The example config ships these two
+# paths, so they are listed here and pinned by
+# `the_example_configs_storage_roots_are_inside_the_units_readwritepaths`
+# (src/policy_tests.rs); the daemon additionally names any root the operator has
+# repointed elsewhere at startup instead of failing silently per candidate.
+# Both are '-'-prefixed: a host with no second drive must still start.
+ReadWritePaths=%h/.dracon %h/.local/state/dracon %h/.local/share -%h/Dev -%h/.local/share/Trash -%h/.cargo -%h/.cache -%h/.npm -%h/.local/state/nix /tmp -/mnt/data/quarantine -/mnt/data/cold
+PrivateTmp=false
+
+# Kernel-level sandboxing (all certain — these daemons never use these privileges)
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+# CHANGED 2026-08-25 (v0.112.39): grant CAP_SYS_NICE so
+# auto_renice_on_memory actually runs — without it the guard could lower
+# an offender's priority but never restore it, so it emitted
+# "renice mitigation disabled" and did nothing during pressure.
+# Scoped to exactly this one capability; NoNewPrivileges stays on.
+# (Adopted into the repo 2026-09-20; previously live-only edit.)
+AmbientCapabilities=CAP_SYS_NICE
+CapabilityBoundingSet=CAP_SYS_NICE
+RestrictNamespaces=true
+
+# Syscall allowlist — returns EPERM instead of SIGSYS for safe discovery
+# (SystemCallErrorNumber makes the comment true: without it systemd's
+# default is SIGSYS termination. Audit M6, 2026-10-02.)
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=default.target
