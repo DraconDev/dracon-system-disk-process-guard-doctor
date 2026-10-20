@@ -188,3 +188,28 @@
    Compiling dirs v6.0.0
    Compiling iana-time-zone v0.1.65
    Compiling unicode-segmentation v1.13.3
+   Compiling unicode-width v0.2.2
+   Compiling comfy-table v7.2.2
+   Compiling chrono v0.4.45
+   Compiling tempfile v3.27.0
+   Compiling dracon-system-lib v94.2.7
+   Compiling clap v4.6.7
+   Compiling toml v0.8.23
+   Compiling fs2 v0.4.3
+   Compiling dracon-system v0.112.45 (/tmp/dracon-probe-isolation-mutation-gAQtE9/dracon-system)
+warning: unused variable: `expected`
+   --> dracon-system/src/managed_oom.rs:432:31
+    |
+432 | pub(crate) async fn drain_job(expected: &Job, exempt: &HashSet<String>) -> Result<bool> {
+    |                               ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_expected`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `drain_job_in` is never used
+   --> dracon-system/src/managed_oom.rs:446:10
+    |
+446 | async fn drain_job_in(root: &Path, expected: &Job, exempt: &HashSet<String>) -> Result<bool> {
+    |          ^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
