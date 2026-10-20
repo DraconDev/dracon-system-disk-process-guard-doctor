@@ -1,0 +1,1 @@
+command: timeout 900 cargo clippy --workspace --locked --manifest-path /home/dracon/Dev/dracon-utilities/Cargo.toml -- -D warnings
