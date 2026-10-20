@@ -291,20 +291,32 @@ pub(crate) async fn bias(
     sample: &ProcSample,
     exempt: &HashSet<String>,
 ) -> Result<Option<(i32, i32)>, String> {
-    bias_inner(sample, exempt)
+    bias_inner(sample, exempt, None)
         .await
         .map_err(|e| format!("{e:#}"))
 }
-async fn bias_inner(sample: &ProcSample, exempt: &HashSet<String>) -> Result<Option<(i32, i32)>> {
+/// Diagnostic application must stay inside the caller's captured admission,
+/// including revalidation under the generation lock before any record/write.
+pub(crate) async fn bias_job(sample: &ProcSample, exempt: &HashSet<String>, expected: &Job) -> Result<Option<(i32, i32)>> {
+    bias_inner(sample, exempt, Some(expected)).await
+}
+
+async fn bias_inner(sample: &ProcSample, exempt: &HashSet<String>, expected: Option<&Job>) -> Result<Option<(i32, i32)>> {
     ensure!(
         process_sample_is_current(sample),
         "process incarnation changed before managed OOM application"
     );
     let group = group_for(Path::new("/proc"), sample.pid)?;
     let id = id_for(&group)?;
+    if let Some(expected) = expected {
+        ensure!(id == expected.id, "target is outside the expected job generation");
+    }
     let root = oom_job::root()?;
     let _lock = oom_job::locked(&root, id)?;
     let mut job = oom_job::load(&root, id)?;
+    if let Some(expected) = expected {
+        ensure!(oom_job::same_admission(&job, expected), "expected job admission changed");
+    }
     ensure!(
         !job.terminal_proof && job.phase != Phase::Terminal,
         "managed job has terminated"
@@ -402,12 +414,42 @@ async fn bias_inner(sample: &ProcSample, exempt: &HashSet<String>) -> Result<Opt
     Ok(Some((original, OOM_BIAS_TARGET)))
 }
 
-async fn drain_one(root: &Path, id: &str, force: bool, exempt: &HashSet<String>) -> Result<bool> {
+/// Restore only this captured generation; never enumerate other job debts.
+pub(crate) async fn drain_job(expected: &Job, exempt: &HashSet<String>) -> Result<bool> {
+    drain_one(&oom_job::root()?, &expected.id, true, exempt, Some(expected)).await
+}
+
+/// Retirement is a matching terminal certificate plus a matching retired debt,
+/// not merely an absent debt pathname.
+pub(crate) fn job_retired(root: &Path, expected: &Job) -> Result<bool> {
+    let _lock = oom_job::locked(root, &expected.id)?;
+    let job = oom_job::load(root, &expected.id)?;
+    ensure!(oom_job::same_admission(&job, expected), "job admission changed before retirement check");
+    if job.phase != Phase::Terminal || !job.terminal_proof || debt_path(root, &expected.id).exists() {
+        return Ok(false);
+    }
+    let retired = root.join(format!("{}.retired.json", expected.id));
+    let bytes = match fs::read(retired) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    let debt: Debt = serde_json::from_slice(&bytes)?;
+    ensure!(oom_job::same_admission(&debt.admission, expected), "retired debt belongs to another admission");
+    Ok(true)
+}
+
+async fn drain_one(root: &Path, id: &str, force: bool, exempt: &HashSet<String>, expected: Option<&Job>) -> Result<bool> {
     let _lock = oom_job::locked(root, id)?;
     let Some(mut debt) = load_debt(root, id)? else {
         return Ok(false);
     };
     let mut job = oom_job::load(root, id)?;
+    if let Some(expected) = expected {
+        ensure!(id == expected.id && oom_job::same_admission(&job, expected)
+            && oom_job::same_admission(&debt.admission, expected),
+            "refusing restoration of a different job admission");
+    }
     let facts = Facts {
         same_boot: job.boot_id == boot()?,
         terminal_proof: job.phase == Phase::Terminal && job.terminal_proof,
@@ -518,7 +560,7 @@ pub(crate) async fn drain(force: bool, exempt: &HashSet<String>) -> Result<usize
         else {
             continue;
         };
-        match drain_one(&root, id, force, exempt).await {
+        match drain_one(&root, id, force, exempt, None).await {
             Ok(true) => pending += 1,
             Ok(false) => {}
             Err(error) => {
