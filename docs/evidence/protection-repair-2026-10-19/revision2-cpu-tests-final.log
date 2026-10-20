@@ -1,2 +1,13 @@
     Blocking waiting for file lock on package cache
    Compiling dracon-system v0.112.45 (/home/dracon/Dev/dracon-utilities/dracon-system)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 59.09s
+     Running unittests src/main.rs (target/debug/deps/dracon_system-f9d2cc9c68e546da)
+
+running 13 tests
+test cpu_limit::lifecycle_tests::ambiguous_application_and_failed_expiry_remain_recoverable_until_retry_succeeds ... ok
+test cpu_limit::lifecycle_tests::expiry_manager_outage_preserves_verified_lease_across_reload_then_restores ... ok
+test cpu_limit::lifecycle_tests::rejected_application_retains_debt_and_next_pass_recovers_before_reapplying ... ok
+test cpu_limit::lifecycle_tests::rejected_timer_retains_intent_without_applying_and_restart_retires_it ... ok
+test cpu_limit::lifecycle_tests::replaced_unit_before_application_and_before_expiry_is_never_mutated ... ok
+test cpu_limit::lifecycle_tests::stale_timer_and_external_quota_preserve_current_ownership ... ok
+test cpu_limit::lifecycle_tests::uncertain_unit_retains_debt_until_confirmed_disappearance_without_writes ... 
