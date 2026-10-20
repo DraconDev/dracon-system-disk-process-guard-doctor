@@ -51,3 +51,19 @@
    Compiling fastrand v2.5.0
    Compiling once_cell v1.21.4
    Compiling toml_edit v0.25.15+spec-1.1.0
+   Compiling tinystr v0.8.4
+   Compiling vcpkg v0.2.15
+   Compiling writeable v0.6.4
+   Compiling litemap v0.8.3
+   Compiling futures-io v0.3.34
+   Compiling icu_locale_core v2.3.0
+   Compiling proc-macro-crate v3.5.0
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling zvariant_utils v4.2.0
+   Compiling enumflags2_derive v0.7.12
+   Compiling event-listener v5.4.2
+   Compiling concurrent-queue v2.5.0
+   Compiling ring v0.17.14
+   Compiling tokio-macros v2.7.2
+   Compiling socket2 v0.6.5
