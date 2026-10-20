@@ -1,0 +1,4 @@
+cwd: /home/dracon/Dev/dracon-utilities
+environment: source docs/evidence/protection-repair-2026-10-19/build-environment.sh
+command: timeout 60 cargo fmt --all --manifest-path /home/dracon/Dev/dracon-utilities/Cargo.toml -- --check
+exit=0

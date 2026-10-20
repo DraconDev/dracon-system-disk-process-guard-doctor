@@ -1,0 +1,4 @@
+cwd: /home/dracon/Dev/dracon-utilities
+environment: source docs/evidence/protection-repair-2026-10-19/build-environment.sh
+command: timeout 1200 cargo build --release --locked --manifest-path /home/dracon/Dev/dracon-utilities/Cargo.toml
+   Compiling dracon-system v0.112.45 (/home/dracon/Dev/dracon-utilities/dracon-system)
