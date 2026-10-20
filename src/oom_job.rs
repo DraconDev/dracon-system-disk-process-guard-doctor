@@ -175,11 +175,19 @@ pub(crate) fn launch(command: &[OsString]) -> Result<()> {
     let id = fs::read_to_string("/proc/sys/kernel/random/uuid")?
         .trim()
         .to_owned();
-    ensure!(valid_id(&id), "kernel returned invalid job generation");
+    successful(launch_command(&id, command)?.status()?)
+}
+
+/// Construct a launcher for a caller-owned generation. Diagnostics allocate the
+/// generation before spawning, so admission cannot be confused with another job.
+pub(crate) fn launch_command(id: &str, command: &[OsString]) -> Result<Command> {
+    ensure!(valid_id(id) && !command.is_empty(), "invalid managed job launch");
+    let root = root()?;
+    ensure!(!root.join(format!("{id}.json")).exists(), "job generation already exists");
     let unit = format!("dracon-managed-job-{id}.scope");
     let run = super::resolve_bin_strict("systemd-run")?;
-    let status = Command::new(run)
-        .args([
+    let mut launcher = Command::new(run);
+    launcher.args([
             "--user",
             "--scope",
             "--quiet",
@@ -192,9 +200,8 @@ pub(crate) fn launch(command: &[OsString]) -> Result<()> {
         .arg("managed-job-enter")
         .arg(id)
         .arg("--")
-        .args(command)
-        .status()?;
-    successful(status)
+        .args(command);
+    Ok(launcher)
 }
 #[derive(Debug)]
 pub(crate) struct JobExit(pub i32);
