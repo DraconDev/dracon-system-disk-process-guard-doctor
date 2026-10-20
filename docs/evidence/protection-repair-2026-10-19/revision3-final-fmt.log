@@ -1,0 +1,4 @@
+cwd: /home/dracon/Dev/dracon-utilities
+environment: build-environment.sh
+command: timeout 60 cargo fmt --all --manifest-path /home/dracon/Dev/dracon-utilities/Cargo.toml -- --check
+exit=0

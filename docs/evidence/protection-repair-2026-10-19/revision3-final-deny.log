@@ -1,0 +1,6 @@
+cwd: /home/dracon/Dev/dracon-utilities
+environment: build-environment.sh
+command: timeout 300 cargo deny check
+timeout: invalid time interval ‘cargo’
+Try 'timeout --help' for more information.
+exit=125
