@@ -3602,8 +3602,13 @@ fn live_pidfile_under(root: &Path) -> Option<PathBuf> {
         .max_depth(3)
         .into_iter()
         .filter_entry(|e| {
-            e.depth() == 0
-                || e.file_type().is_dir() && !SKIP_DIRS.contains(&e.file_name().to_string_lossy().as_ref())
+            // Files always pass; only PRUNE directories. Cargo's cache dirs
+            // never hold service state, and they hold the bulk of the
+            // entries — skipping them keeps this scan cheap on a
+            // multi-gigabyte target dir.
+            !e.file_type().is_dir()
+                || e.depth() == 0
+                || !SKIP_DIRS.contains(&e.file_name().to_string_lossy().as_ref())
         })
         .filter_map(Result::ok)
         .filter(|e| e.file_type().is_file())

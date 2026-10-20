@@ -4394,6 +4394,13 @@ async fn storage_cleanup_activity_refuses_live_pidfile() {
     fs::create_dir_all(root.join("dev-stack")).unwrap();
     let pidfile = root.join("dev-stack").join("api.pid");
     fs::write(&pidfile, format!("{}\n", std::process::id())).unwrap();
+    // Age the tree past the 60s mtime backstop so the LIVE-SERVICE check
+    // is the one under test (not the recency backstop).
+    let old = SystemTime::now() - Duration::from_secs(120);
+    File::open(&root)
+        .unwrap()
+        .set_times(std::fs::FileTimes::new().set_modified(old))
+        .unwrap();
     let error = validate_storage_cleanup_activity("rust-build", &root)
         .await
         .unwrap_err();
