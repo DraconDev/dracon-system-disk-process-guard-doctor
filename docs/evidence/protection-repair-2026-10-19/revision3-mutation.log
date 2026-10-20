@@ -213,3 +213,28 @@ warning: function `drain_job_in` is never used
     |
     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
 
+warning: `dracon-system` (bin "dracon-system") generated 2 warnings (run `cargo fix --bin "dracon-system" -p dracon-system` to apply 1 suggestion)
+warning: `dracon-system` (bin "dracon-system" test) generated 1 warning (1 duplicate)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 32s
+     Running unittests src/main.rs (target/debug/deps/dracon_system-e8d5ad58bccac19a)
+
+running 3 tests
+test managed_oom::probe_isolation_tests::absent_debt_is_not_a_probe_retirement_certificate ... ok
+test managed_oom::probe_isolation_tests::replaced_probe_admission_or_debt_is_rejected_before_mutation ... ok
+test managed_oom::probe_isolation_tests::scoped_probe_restoration_and_retirement_leave_other_jobs_and_debts_byte_identical ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 529 filtered out; finished in 0.14s
+
+     Running tests/events_cli.rs (target/debug/deps/events_cli-0bdc83782937cc0b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/guard_service.rs (target/debug/deps/guard_service-519f4ad2985f109d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+
+exit=0 (expected nonzero)
