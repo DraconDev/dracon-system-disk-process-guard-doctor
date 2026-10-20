@@ -284,3 +284,23 @@ command: timeout 1800 cargo test --workspace --locked --manifest-path /home/drac
    Compiling native-tls v0.2.18
    Compiling unicode-width v0.2.2
    Compiling console v0.16.6
+   Compiling clap_builder v4.6.7
+   Compiling toml_edit v0.22.27
+   Compiling clap_derive v4.6.7
+   Compiling ansi-str v0.9.0
+   Compiling hyper v1.11.1
+   Compiling url v2.5.8
+   Compiling crossterm v0.29.0
+   Compiling rustls-webpki v0.103.15
+   Compiling zvariant v5.15.0
+   Compiling async-channel v2.5.0
+   Compiling unicode-segmentation v1.13.3
+   Compiling iana-time-zone v0.1.65
+   Compiling ipnet v2.12.2
+   Compiling openssl-probe v0.2.1
+   Compiling zbus_names v4.3.4
+   Compiling hyper-util v0.1.20
+   Compiling chrono v0.4.45
+   Compiling comfy-table v7.2.2
+   Compiling async-signal v0.2.14
+   Compiling clap v4.6.7
