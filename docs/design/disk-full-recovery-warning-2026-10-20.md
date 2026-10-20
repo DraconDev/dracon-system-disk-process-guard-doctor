@@ -74,3 +74,26 @@ The validation jobs were restarted in temporary systemd scopes, each with
 CPU budget while separating build ownership from the interactive session.
 A future guard review should preserve interactive peers by admitting explicit
 per-job boundaries rather than applying a whole-session quota.
+
+## Validation and deployment
+
+- All workspace tests passed, including all six disk-warning regressions,
+  535 dracon-system unit tests and 12 guard-service integration tests.
+- `cargo build --release --locked`, `cargo clippy --workspace --locked --
+  -D warnings`, `cargo deny check`, rustfmt and diff whitespace checks passed.
+- Validation used one Cargo build job, dev/test debug info disabled, and
+  temporary half-CPU systemd scopes. The release profile was unchanged.
+- Both new binaries were installed atomically with rollback copies at
+  `~/.local/state/dracon/deployments/20261020T200723Z-disk-warning-legend/`.
+  Its manifest records old/new hashes, source heads and lockfile hash.
+- The guard restarted successfully (PID 1883816). The installed CLI's full
+  legend was checked. The system sync daemon stayed running (PID 2039261).
+- Final disk check: root 161 GiB available; second disk 159 GiB available.
+
+The restart exposed pre-existing failed nice restorations: the same permission
+errors were already logged at 13:27 before this deployment. The new guard
+adopted the 11 outstanding mitigation records rather than dropping them.
+Its effective/ambient CAP_SYS_NICE is present, so this needs an end-to-end
+restoration privilege review, not blindly granting the capability again.
+No service sandbox, process priority or global mitigation policy was changed
+by this repair. This remains a separate guard limitation.
