@@ -1558,3 +1558,25 @@ fn rapid_fill_warning_reports_user_available_runway() {
     let full = crate::rapid_disk_fill_message(40.0, 100, 0);
     assert!(full.contains("0.0 hours"));
 }
+
+#[tokio::test]
+async fn disk_reclamation_rearms_the_rapid_fill_notification() {
+    let guard = crate::GuardPolicy::default();
+    let mut state = crate::GuardRuntimeState::default();
+    crate::report_state_transition(&mut state, "disk-rapid-fill", "rapid", 3600);
+    let now = Instant::now();
+    state.disk_bytes_history = vec![
+        (now - Duration::from_secs(60), 800),
+        (now - Duration::from_secs(30), 801),
+    ];
+    assert!(
+        crate::check_rapid_disk_fill(&guard, &mut state, 600, 60, 400)
+            .await
+            .is_none()
+    );
+    assert_eq!(state.report_states["disk-rapid-fill"].value, "unmeasured");
+    let (previous, due) =
+        crate::report_state_transition(&mut state, "disk-rapid-fill", "rapid", 3600);
+    assert_ne!(previous.as_deref(), Some("rapid"));
+    assert!(due);
+}

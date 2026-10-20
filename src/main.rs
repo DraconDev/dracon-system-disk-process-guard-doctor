@@ -4824,7 +4824,17 @@ async fn check_rapid_disk_fill(
         let excess = state.disk_bytes_history.len() - 200;
         state.disk_bytes_history.drain(0..excess);
     }
-    let rate = disk_fill_rate_gbph(&state.disk_bytes_history)?;
+    let Some(rate) = disk_fill_rate_gbph(&state.disk_bytes_history) else {
+        // Re-arm the entry alert after reclamation. An old "rapid" verdict
+        // must not suppress notification when a fresh growth window appears.
+        report_state_transition(
+            state,
+            "disk-rapid-fill",
+            "unmeasured",
+            guard.report_repeat_secs,
+        );
+        return None;
+    };
     let rapid = rate >= guard.disk_rapid_fill_gbph;
     let (previous, event_due) = report_state_transition(
         state,
