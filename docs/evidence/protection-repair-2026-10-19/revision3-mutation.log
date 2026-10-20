@@ -160,3 +160,78 @@
    Compiling serde_urlencoded v0.7.1
    Compiling dirs-sys v0.5.0
    Compiling document-features v0.2.12
+   Compiling anstream v1.0.0
+   Compiling rayon v1.12.0
+   Compiling hyper-rustls v0.27.9
+   Compiling tower-http v0.6.11
+   Compiling http-body-util v0.1.5
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling toml_write v0.1.2
+   Compiling clap_lex v1.1.1
+   Compiling heck v0.5.0
+   Compiling winnow v0.7.15
+   Compiling same-file v1.0.6
+   Compiling strsim v0.11.1
+   Compiling clap_builder v4.6.7
+   Compiling walkdir v2.5.0
+   Compiling toml_edit v0.22.27
+   Compiling clap_derive v4.6.7
+   Compiling reqwest v0.12.28
+   Compiling notify-rust v4.18.0
+   Compiling ssh2 v0.9.6
+   Compiling sysinfo v0.32.1
+   Compiling crossterm v0.29.0
+   Compiling dirs v6.0.0
+   Compiling iana-time-zone v0.1.65
+   Compiling unicode-segmentation v1.13.3
+   Compiling unicode-width v0.2.2
+   Compiling comfy-table v7.2.2
+   Compiling chrono v0.4.45
+   Compiling dracon-system-lib v94.2.7
+   Compiling tempfile v3.27.0
+   Compiling clap v4.6.7
+   Compiling toml v0.8.23
+   Compiling fs2 v0.4.3
+   Compiling dracon-system v0.112.45 (/tmp/dracon-probe-isolation-mutation2-xLi7Pt/dracon-system)
+warning: unused variable: `expected`
+   --> dracon-system/src/managed_oom.rs:433:44
+    |
+433 | pub(crate) async fn drain_job(root: &Path, expected: &Job, exempt: &HashSet<String>) -> Result<bool> {
+    |                                            ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_expected`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `dracon-system` (bin "dracon-system") generated 1 warning (run `cargo fix --bin "dracon-system" -p dracon-system` to apply 1 suggestion)
+warning: `dracon-system` (bin "dracon-system" test) generated 1 warning (1 duplicate)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 59s
+     Running unittests src/main.rs (target/debug/deps/dracon_system-e8d5ad58bccac19a)
+
+running 3 tests
+test managed_oom::probe_isolation_tests::absent_debt_is_not_a_probe_retirement_certificate ... ok
+test managed_oom::probe_isolation_tests::replaced_probe_admission_or_debt_is_rejected_before_mutation ... FAILED
+test managed_oom::probe_isolation_tests::scoped_probe_restoration_and_retirement_leave_other_jobs_and_debts_byte_identical ... FAILED
+
+failures:
+
+---- managed_oom::probe_isolation_tests::replaced_probe_admission_or_debt_is_rejected_before_mutation stdout ----
+
+thread 'managed_oom::probe_isolation_tests::replaced_probe_admission_or_debt_is_rejected_before_mutation' (2397147) panicked at dracon-system/src/managed_probe_tests.rs:101:5:
+assertion failed: drain_job(dir.path(), &original, &HashSet::new()).await.is_err()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- managed_oom::probe_isolation_tests::scoped_probe_restoration_and_retirement_leave_other_jobs_and_debts_byte_identical stdout ----
+
+thread 'managed_oom::probe_isolation_tests::scoped_probe_restoration_and_retirement_leave_other_jobs_and_debts_byte_identical' (2397188) panicked at dracon-system/src/managed_probe_tests.rs:70:9:
+assertion `left == right` failed: probe changed unrelated 22222222-2222-2222-2222-222222222222.json
+  left: [123, 34, 118, 101, 114, 115, 105, 111, 110, 34, 58, 49, 44, 34, 105, 100, 34, 58, 34, 50, 50, 50, 50, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 34, 44, 34, 98, 111, 111, 116, 95, 105, 100, 34, 58, 34, 50, 56, 50, 50, 101, 57, 56, 51, 45, 50, 97, 55, 100, 45, 52, 98, 101, 101, 45, 57, 98, 101, 99, 45, 97, 100, 100, 57, 98, 53, 52, 49, 98, 54, 56, 53, 34, 44, 34, 117, 110, 105, 116, 34, 58, 34, 100, 114, 97, 99, 111, 110, 45, 109, 97, 110, 97, 103, 101, 100, 45, 106, 111, 98, 45, 50, 50, 50, 50, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 46, 115, 99, 111, 112, 101, 34, 44, 34, 105, 110, 118, 111, 99, 97, 116, 105, 111, 110, 34, 58, 34, 105, 110, 118, 45, 50, 50, 50, 50, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 34, 44, 34, 103, 114, 111, 117, 112, 34, 58, 34, 47, 102, 105, 120, 116, 117, 114, 101, 47, 100, 114, 97, 99, 111, 110, 45, 109, 97, 110, 97, 103, 101, 100, 45, 106, 111, 98, 45, 50, 50, 50, 50, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 46, 115, 99, 111, 112, 101, 34, 44, 34, 103, 114, 111, 117, 112, 95, 100, 101, 118, 105, 99, 101, 34, 58, 49, 44, 34, 103, 114, 111, 117, 112, 95, 105, 110, 111, 100, 101, 34, 58, 50, 44, 34, 115, 101, 110, 116, 105, 110, 101, 108, 34, 58, 50, 51, 57, 55, 49, 50, 52, 44, 34, 115, 101, 110, 116, 105, 110, 101, 108, 95, 105, 100, 101, 110, 116, 105, 116, 121, 34, 58, 123, 34, 99, 111, 109, 109, 34, 58, 34, 100, 114, 97, 99, 111, 110, 95, 115, 121, 115, 116, 101, 109, 45, 101, 34, 44, 34, 115, 116, 97, 114, 116, 116, 105, 109, 101, 34, 58, 50, 50, 48, 53, 57, 53, 50, 53, 51, 125, 44, 34, 98, 97, 115, 101, 108, 105, 110, 101, 34, 58, 50, 48, 48, 44, 34, 112, 104, 97, 115, 101, 34, 58, 34, 100, 114, 97, 105, 110, 105, 110, 103, 34, 44, 34, 116, 101, 114, 109, 105, 110, 97, 108, 95, 112, 114, 111, 111, 102, 34, 58, 102, 97, 108, 115, 101, 125]
+ right: [123, 34, 118, 101, 114, 115, 105, 111, 110, 34, 58, 49, 44, 34, 105, 100, 34, 58, 34, 50, 50, 50, 50, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 34, 44, 34, 98, 111, 111, 116, 95, 105, 100, 34, 58, 34, 50, 56, 50, 50, 101, 57, 56, 51, 45, 50, 97, 55, 100, 45, 52, 98, 101, 101, 45, 57, 98, 101, 99, 45, 97, 100, 100, 57, 98, 53, 52, 49, 98, 54, 56, 53, 34, 44, 34, 117, 110, 105, 116, 34, 58, 34, 100, 114, 97, 99, 111, 110, 45, 109, 97, 110, 97, 103, 101, 100, 45, 106, 111, 98, 45, 50, 50, 50, 50, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 46, 115, 99, 111, 112, 101, 34, 44, 34, 105, 110, 118, 111, 99, 97, 116, 105, 111, 110, 34, 58, 34, 105, 110, 118, 45, 50, 50, 50, 50, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 34, 44, 34, 103, 114, 111, 117, 112, 34, 58, 34, 47, 102, 105, 120, 116, 117, 114, 101, 47, 100, 114, 97, 99, 111, 110, 45, 109, 97, 110, 97, 103, 101, 100, 45, 106, 111, 98, 45, 50, 50, 50, 50, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 45, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 46, 115, 99, 111, 112, 101, 34, 44, 34, 103, 114, 111, 117, 112, 95, 100, 101, 118, 105, 99, 101, 34, 58, 49, 44, 34, 103, 114, 111, 117, 112, 95, 105, 110, 111, 100, 101, 34, 58, 50, 44, 34, 115, 101, 110, 116, 105, 110, 101, 108, 34, 58, 50, 51, 57, 55, 49, 50, 52, 44, 34, 115, 101, 110, 116, 105, 110, 101, 108, 95, 105, 100, 101, 110, 116, 105, 116, 121, 34, 58, 123, 34, 99, 111, 109, 109, 34, 58, 34, 100, 114, 97, 99, 111, 110, 95, 115, 121, 115, 116, 101, 109, 45, 101, 34, 44, 34, 115, 116, 97, 114, 116, 116, 105, 109, 101, 34, 58, 50, 50, 48, 53, 57, 53, 50, 53, 51, 125, 44, 34, 98, 97, 115, 101, 108, 105, 110, 101, 34, 58, 50, 48, 48, 44, 34, 112, 104, 97, 115, 101, 34, 58, 34, 97, 99, 116, 105, 118, 101, 34, 44, 34, 116, 101, 114, 109, 105, 110, 97, 108, 95, 112, 114, 111, 111, 102, 34, 58, 102, 97, 108, 115, 101, 125]
+
+
+failures:
+    managed_oom::probe_isolation_tests::replaced_probe_admission_or_debt_is_rejected_before_mutation
+    managed_oom::probe_isolation_tests::scoped_probe_restoration_and_retirement_leave_other_jobs_and_debts_byte_identical
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 529 filtered out; finished in 0.23s
+
+error: test failed, to rerun pass `-p dracon-system --bin dracon-system`

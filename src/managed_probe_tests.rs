@@ -38,8 +38,8 @@ fn publish(root: &Path, job: &Job) {
     )
     .unwrap();
 }
-fn bytes(root: &Path, name: &str) -> Vec<u8> {
-    fs::read(root.join(name)).unwrap()
+fn bytes(root: &Path, name: &str) -> String {
+    String::from_utf8(fs::read(root.join(name)).unwrap()).unwrap()
 }
 
 #[tokio::test]
@@ -68,12 +68,12 @@ async fn scoped_probe_restoration_and_retirement_leave_other_jobs_and_debts_byte
     assert!(job_retired(root, &own).unwrap());
     for (name, original) in names.iter().zip(before.iter()) {
         assert_eq!(
-            &bytes(root, name),
-            original,
+            bytes(root, name),
+            *original,
             "probe changed unrelated {name}"
         );
     }
-    assert_eq!(bytes(root, corrupt), b"unrelated corrupt debt");
+    assert_eq!(bytes(root, corrupt), "unrelated corrupt debt");
     assert_eq!(
         fs::read(format!("/proc/{pid}/oom_score_adj")).unwrap(),
         score
