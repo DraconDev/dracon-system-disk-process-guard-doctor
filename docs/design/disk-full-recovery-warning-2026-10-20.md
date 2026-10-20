@@ -62,3 +62,15 @@ The parent workspace lockfile now selects the advisory's patch fixes,
 0.103.16 and 1.0.10 respectively. No dependency manifest constraints or
 other locked versions were changed. Validation and deployment use this
 updated lockfile.
+
+## Build-isolation finding
+
+Validation initially inherited `cpu.max = 50000 100000` from an interactive
+tmux scope containing Codex, Pi, release tests and compiler jobs. The half-CPU
+budget was shared by unrelated interactive work and these builds. No process
+from another session was killed and that existing quota was not changed.
+The validation jobs were restarted in temporary systemd scopes, each with
+`CPUQuota=50%`, `--collect`, and one Cargo build job. This preserved a bounded
+CPU budget while separating build ownership from the interactive session.
+A future guard review should preserve interactive peers by admitting explicit
+per-job boundaries rather than applying a whole-session quota.
