@@ -66,7 +66,9 @@ source dracon-system/docs/evidence/protection-repair-2026-10-19/build-environmen
 
 That snapshot names the split OpenSSL 3.6.2 header and library store paths,
 sets pkg-config's search path explicitly, checks the files exist, and sets two
-Cargo build jobs. It does not read credentials or require a desktop shell.
+Cargo build jobs. Verification defaults to a private target directory under
+`~/.local/state/dracon/protection-repair-2026-10-20/verification-target` with
+incremental compilation disabled. It does not read credentials or require a desktop shell.
 On another machine use the locked development shell rather than assuming
 these local store paths exist. The verification run explicitly removed all
 inherited OPENSSL_* and PKG_CONFIG_PATH values before sourcing the snapshot.
@@ -82,7 +84,23 @@ cargo build --release --locked
 cargo deny check
 ```
 
-All commands are bounded by `timeout` in the raw logs; all gates must pass.
+All commands are bounded by `timeout` in the raw logs; all gates passed.
+Final raw results under `docs/evidence/protection-repair-2026-10-19/`:
+
+| Gate | Log | Result |
+| --- | --- | --- |
+| Current workspace tests, private target | `revision2-workspace-isolated.log` | exit 0; all suites passed |
+| Workspace clippy, private target | `revision2-clippy-isolated.log` | exit 0; warnings denied |
+| Current workspace locked release | `revision2-release-qualified.log` | exit 0 |
+| Workspace format | `revision2-fmt-qualified.log` | exit 0 |
+| Dependency checks | `revision2-deny-qualified.log` | exit 0; advisories/bans/licenses/sources ok |
+| Scoped deployment crate tests | `revision2-scoped-tests-final.log` | exit 0 |
+| Scoped deployment release | `revision2-scoped-release.log` | exit 0 |
+
+`revision2-final-environment.log` records the final explicit environment.
+The release gate reuses the original workspace target directory (recorded in
+its log) but is a build only, not a test re-execution. Its output is **not**
+installed because it includes concurrent unrelated source changes.
 Always load the repository cargo config for tests from outside the repository:
 its existing RUST_TEST_THREADS=1 setting applies to the full workspace and
 avoids interference among existing process-global/fork-based tests.
@@ -93,6 +111,12 @@ Observed failures are retained, not overwritten:
 - `revision2-workspace-retry.log`: a concurrent disk-cleanup test failed while
   its owner was editing it. This work did not weaken or change that test.
 - `revision2-workspace-final.log`: subsequent full unchanged workspace passed.
+- `revision2-workspace-qualified.log`: another later run encountered ENOENT in
+  existing crash/re-exec tests. Another Cargo workspace test command was observed
+  using the shared target concurrently. This was consistent with executable
+  replacement during a test run; it was not treated as passing evidence. A fresh
+  private-target build/run (`revision2-workspace-isolated.log`) then passed the
+  complete suite, without changing or excluding any tests.
 - `revision2-scoped-tests.log`: running from outside the workspace without its
   cargo config exposed parallel fork/lock interference; the config was added.
 - `revision2-scoped-tests-serial.log`: the disposable workspace initially lacked
