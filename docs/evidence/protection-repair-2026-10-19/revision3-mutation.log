@@ -107,3 +107,28 @@
    Compiling rustls v0.23.46
    Compiling async-task v4.7.1
    Compiling want v0.3.1
+   Compiling idna_adapter v1.2.2
+   Compiling rustls-webpki v0.103.15
+   Compiling form_urlencoded v1.2.2
+   Compiling zvariant v5.15.0
+   Compiling async-channel v2.5.0
+   Compiling futures-channel v0.3.34
+   Compiling subtle v2.6.1
+   Compiling rayon-core v1.13.0
+   Compiling zmij v1.0.23
+   Compiling zbus_names v4.3.4
+   Compiling hyper v1.11.1
+   Compiling async-signal v0.2.14
+   Compiling idna v1.1.0
+   Compiling async-lock v3.4.2
+   Compiling piper v0.2.5
+   Compiling libssh2-sys v0.3.3
+   Compiling sync_wrapper v1.0.2
+   Compiling serde_json v1.0.151
+   Compiling utf8parse v0.2.2
+   Compiling memchr v2.8.3
+   Compiling tower-layer v0.3.3
+   Compiling ipnet v2.12.2
+   Compiling base64 v0.22.1
+   Compiling tower v0.5.3
+   Compiling hyper-util v0.1.20
