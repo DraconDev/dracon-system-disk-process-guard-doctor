@@ -1,0 +1,5 @@
+cwd: /home/dracon/Dev/dracon-utilities
+environment: source docs/evidence/protection-repair-2026-10-19/build-environment.sh
+command: timeout 300 cargo deny check
+advisories ok, bans ok, licenses ok, sources ok
+exit=0

@@ -5,3 +5,7 @@ e8ae96aaf0346e5f0900f887cd5bb610dd1f74a7e1cbd3c57bc8173afb214b70  /tmp/dracon-pr
 Workspace manifest and lock copied from /home/dracon/Dev/dracon-utilities
 Build directory: /tmp/dracon-protection-release-rSyH9P
 9804ee6f7b8c6f2e4a61b11c4542fe66ad9e33ace6108b93a7fab64c425cc696  /tmp/dracon-protection-release-rSyH9P/dracon-system-scoped-release
+Durable rollback predecessor:
+14eb015c1813891ced51beb41a1c8d9fe45e934220a2d2e64b2cfc04a56f7ff7  /home/dracon/.local/bin/dracon-system.backup-2026-10-20-pre-cpu-lifecycle
+Durable scoped artifact:
+9804ee6f7b8c6f2e4a61b11c4542fe66ad9e33ace6108b93a7fab64c425cc696  /home/dracon/.local/state/dracon/protection-repair-2026-10-20/dracon-system
