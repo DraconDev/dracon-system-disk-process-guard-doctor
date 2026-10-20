@@ -245,3 +245,73 @@ command: timeout 900 cargo clippy --workspace --locked --manifest-path /home/dra
     Checking console v0.16.6
     Checking zbus v5.19.0
     Checking encoding_rs v0.8.41
+   Compiling clap_derive v4.6.7
+    Checking serde_urlencoded v0.7.1
+    Checking rayon v1.12.0
+    Checking curve25519-dalek v4.1.3
+    Checking hyper-tls v0.6.0
+    Checking hyper-rustls v0.27.9
+    Checking ansi-str v0.9.0
+    Checking rand_chacha v0.3.1
+   Compiling proc-macro-error-attr v1.0.4
+   Compiling fluent v0.16.1
+    Checking crossterm v0.29.0
+    Checking tower-http v0.6.11
+   Compiling syn v1.0.109
+   Compiling rust-embed v8.12.0
+    Checking poly1305 v0.8.0
+    Checking chacha20 v0.9.1
+   Compiling arc-swap v1.9.2
+    Checking bstr v1.13.1
+    Checking iana-time-zone v0.1.65
+   Compiling lazy_static v1.5.0
+    Checking unicode-segmentation v1.13.3
+    Checking comfy-table v7.2.2
+    Checking reqwest v0.12.28
+   Compiling i18n-embed v0.14.1
+    Checking chrono v0.4.45
+   Compiling dashmap v5.5.3
+    Checking globset v0.4.20
+    Checking chacha20poly1305 v0.10.1
+   Compiling proc-macro-error v1.0.4
+    Checking tempfile v3.27.0
+    Checking rand v0.8.8
+    Checking notify-rust v4.18.0
+    Checking clap v4.6.7
+    Checking toml v0.8.23
+    Checking regex v1.13.1
+    Checking cookie-factory v0.3.3
+    Checking polyval v0.6.2
+    Checking pbkdf2 v0.12.2
+    Checking hkdf v0.12.4
+    Checking salsa20 v0.10.2
+    Checking secrecy v0.8.0
+   Compiling pin-project-internal v1.1.13
+    Checking openssl-probe v0.1.6
+    Checking io_tee v0.1.1
+    Checking signature v2.2.0
+    Checking base64 v0.21.7
+    Checking age-core v0.10.0
+    Checking ed25519 v2.2.3
+   Compiling i18n-embed-fl v0.7.0
+    Checking pin-project v1.1.13
+    Checking scrypt v0.11.0
+    Checking ghash v0.5.1
+    Checking x25519-dalek v2.0.1
+    Checking aes v0.8.4
+    Checking ctr v0.9.2
+    Checking bech32 v0.9.1
+    Checking age v0.10.1
+    Checking aes-gcm v0.10.3
+    Checking ed25519-dalek v2.2.0
+    Checking sysinfo v0.32.1
+    Checking ssh2 v0.9.6
+    Checking terminal_size v0.4.4
+    Checking urlencoding v2.1.3
+    Checking bech32 v0.11.1
+    Checking dracon-security v0.4.0 (/home/dracon/Dev/dracon-utilities/dracon-warden/src/security)
+    Checking dracon-system-lib v94.2.7
+    Checking hostname v0.4.2
+    Checking fs2 v0.4.3
+    Checking dracon-system v0.112.45 (/home/dracon/Dev/dracon-utilities/dracon-system)
+    Checking dracon-warden v0.113.16 (/home/dracon/Dev/dracon-utilities/dracon-warden)
