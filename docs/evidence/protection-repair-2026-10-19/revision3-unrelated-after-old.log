@@ -1,0 +1,4 @@
+=== old binary's effect on the unrelated registered job:
+5b8b76f1e022b7ab858fca255f56b84d  /home/dracon/.dracon/oom-jobs/616a6609-bc8d-42ff-a19d-128885c6f081.debt.json
+93dd561a783ac4be85a6b6103a075fef  /home/dracon/.dracon/oom-jobs/616a6609-bc8d-42ff-a19d-128885c6f081.json
+sentinel oom_score_adj: 200
