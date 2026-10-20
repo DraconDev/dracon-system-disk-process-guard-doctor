@@ -1,0 +1,6 @@
+cwd: /home/dracon/Dev/dracon-utilities
+environment: build-environment.sh
+command: timeout 900 cargo clippy --workspace --locked --manifest-path /home/dracon/Dev/dracon-utilities/Cargo.toml -- -D warnings
+    Checking dracon-system v0.112.45 (/home/dracon/Dev/dracon-utilities/dracon-system)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 7.22s
+exit=0
