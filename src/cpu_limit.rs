@@ -243,14 +243,30 @@ fn group_members(group: &str) -> Result<Vec<i32>, String> {
 trait LeaseManager {
     async fn property(&self, unit: &str, name: &str) -> Result<String, String>;
     async fn set_quota(&self, unit: &str, quota: u64) -> Result<(), String>;
-    async fn arm(&self, timer: &str, seconds: u64, key: &str, generation: &str) -> Result<(), String>;
+    async fn arm(
+        &self,
+        timer: &str,
+        seconds: u64,
+        key: &str,
+        generation: &str,
+    ) -> Result<(), String>;
     async fn stop_timer(&self, timer: &str);
 }
 struct SystemLeaseManager;
 impl LeaseManager for SystemLeaseManager {
-    async fn property(&self, unit: &str, name: &str) -> Result<String, String> { property(unit, name).await }
-    async fn set_quota(&self, unit: &str, quota: u64) -> Result<(), String> { set_quota(unit, quota).await }
-    async fn arm(&self, timer: &str, seconds: u64, key: &str, generation: &str) -> Result<(), String> {
+    async fn property(&self, unit: &str, name: &str) -> Result<String, String> {
+        property(unit, name).await
+    }
+    async fn set_quota(&self, unit: &str, quota: u64) -> Result<(), String> {
+        set_quota(unit, quota).await
+    }
+    async fn arm(
+        &self,
+        timer: &str,
+        seconds: u64,
+        key: &str,
+        generation: &str,
+    ) -> Result<(), String> {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         let run = crate::resolve_bin_strict("systemd-run").map_err(|e| e.to_string())?;
         output(&run, &expiry_args(timer, seconds, &exe, key, generation)).await?;
@@ -258,16 +274,30 @@ impl LeaseManager for SystemLeaseManager {
     }
     async fn stop_timer(&self, timer: &str) {
         if let Ok(bin) = crate::resolve_bin_strict("systemctl") {
-            let _ = output(&bin, &["--user".into(), "stop".into(), format!("{timer}.timer")]).await;
+            let _ = output(
+                &bin,
+                &["--user".into(), "stop".into(), format!("{timer}.timer")],
+            )
+            .await;
         }
     }
 }
 fn expiry_args(timer: &str, seconds: u64, exe: &Path, key: &str, generation: &str) -> Vec<String> {
-    vec!["--user".into(), "--collect".into(), format!("--unit={timer}"),
-        format!("--on-active={seconds}s"), "--timer-property=AccuracySec=1s".into(),
-        "--property=Restart=on-failure".into(), "--property=RestartSec=5s".into(),
-        "--property=StartLimitIntervalSec=0".into(), "--".into(),
-        exe.to_string_lossy().into_owned(), "cpu-lease-release".into(), key.into(), generation.into()]
+    vec![
+        "--user".into(),
+        "--collect".into(),
+        format!("--unit={timer}"),
+        format!("--on-active={seconds}s"),
+        "--timer-property=AccuracySec=1s".into(),
+        "--property=Restart=on-failure".into(),
+        "--property=RestartSec=5s".into(),
+        "--property=StartLimitIntervalSec=0".into(),
+        "--".into(),
+        exe.to_string_lossy().into_owned(),
+        "cpu-lease-release".into(),
+        key.into(),
+        generation.into(),
+    ]
 }
 
 pub(crate) async fn cap(
@@ -304,33 +334,53 @@ pub(crate) async fn cap_with_duration(
             return Err(format!("scope contains exempt process {}", name.trim()));
         }
     }
-    cap_prepared(&SystemLeaseManager, &state_root()?, &boot_id()?, &unit, percent, lease_seconds, || {
-        let members = group_members(&group)?;
-        if !members.contains(&pid) { return Err("workload left sampled scope".into()); }
-        for member in members {
-            let name = std::fs::read_to_string(format!("/proc/{member}/comm")).map_err(|e| e.to_string())?;
-            if member == std::process::id() as i32 || exempt.contains(name.trim()) {
-                return Err("scope now contains guard or exempt process".into());
+    cap_prepared(
+        &SystemLeaseManager,
+        &state_root()?,
+        &boot_id()?,
+        &unit,
+        percent,
+        lease_seconds,
+        || {
+            let members = group_members(&group)?;
+            if !members.contains(&pid) {
+                return Err("workload left sampled scope".into());
             }
-        }
-        if !matches!(crate::process_identity_status(Path::new("/proc"), pid, &identity), crate::ProcessIdentityStatus::Match) {
-            return Err("process identity changed before CPU cap".into());
-        }
-        Ok(())
-    }).await
+            for member in members {
+                let name = std::fs::read_to_string(format!("/proc/{member}/comm"))
+                    .map_err(|e| e.to_string())?;
+                if member == std::process::id() as i32 || exempt.contains(name.trim()) {
+                    return Err("scope now contains guard or exempt process".into());
+                }
+            }
+            if !matches!(
+                crate::process_identity_status(Path::new("/proc"), pid, &identity),
+                crate::ProcessIdentityStatus::Match
+            ) {
+                return Err("process identity changed before CPU cap".into());
+            }
+            Ok(())
+        },
+    )
+    .await
 }
 
 async fn cap_prepared(
-    manager: &impl LeaseManager, root: &Path, current_boot: &str, unit: &str,
-    percent: u32, lease_seconds: u64, validate_workload: impl Fn() -> Result<(), String>,
+    manager: &impl LeaseManager,
+    root: &Path,
+    current_boot: &str,
+    unit: &str,
+    percent: u32,
+    lease_seconds: u64,
+    validate_workload: impl Fn() -> Result<(), String>,
 ) -> Result<(String, String), String> {
     let invocation = manager.property(unit, "InvocationID").await?;
     if invocation.is_empty() || manager.property(unit, "ActiveState").await? != "active" {
         return Err("workload scope not active".into());
     }
     let key = lease_key(unit);
-    let _lock = lock(&root, &key)?;
-    if let Some(mut old) = load(&root, &key)? {
+    let _lock = lock(root, &key)?;
+    if let Some(mut old) = load(root, &key)? {
         if old.invocation != invocation || old.boot_id != current_boot {
             std::fs::remove_file(root.join(format!("{key}.json"))).map_err(|e| e.to_string())?;
             return Err(
@@ -345,11 +395,14 @@ async fn cap_prepared(
                 .map_err(|e| e.to_string())?
                 .as_secs()
                 < old.expires_at_unix_secs
-            && manager.property(&format!("{}.timer", old.timer), "ActiveState").await? == "active";
+            && manager
+                .property(&format!("{}.timer", old.timer), "ActiveState")
+                .await?
+                == "active";
         match reconcile_intent(&old, current, armed) {
             IntentAction::Reuse => {
                 old.applied_verified = true;
-                save(&root, &key, &old)?;
+                save(root, &key, &old)?;
                 return Ok((key, old.generation));
             }
             IntentAction::RestoreUnprotected => {
@@ -392,55 +445,27 @@ async fn cap_prepared(
     };
     // Durable intent precedes timer AND mutation. Recovery can distinguish an
     // unchanged original quota from a successful/ambiguous manager mutation.
-    save(&root, &key, &lease)?;
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let run = crate::resolve_bin_strict("systemd-run").map_err(|e| e.to_string())?;
-    output(
-        &run,
-        &[
-            "--user".into(),
-            "--collect".into(),
-            format!("--unit={timer}"),
-            format!("--on-active={lease_seconds}s"),
-            "--timer-property=AccuracySec=1s".into(),
-            "--property=Restart=on-failure".into(),
-            "--property=RestartSec=5s".into(),
-            "--property=StartLimitIntervalSec=0".into(),
-            "--".into(),
-            exe.to_string_lossy().into_owned(),
-            "cpu-lease-release".into(),
-            key.clone(),
-            generation.clone(),
-        ],
-    )
-    .await?;
-    if property(&format!("{timer}.timer"), "ActiveState").await? != "active" {
+    save(root, &key, &lease)?;
+    manager
+        .arm(&timer, lease_seconds, &key, &generation)
+        .await?;
+    if manager
+        .property(&format!("{timer}.timer"), "ActiveState")
+        .await?
+        != "active"
+    {
         return Err("CPU expiry timer is not armed; refusing quota mutation".into());
     }
     lease.armed = true;
-    save(&root, &key, &lease)?;
-    if property(&unit, "Delegate").await? != "no" {
+    save(root, &key, &lease)?;
+    if manager.property(unit, "Delegate").await? != "no" {
         return Err("delegated scopes are unsupported for safe CPU limiting".into());
     }
-    let members = group_members(&group)?;
-    if !members.contains(&pid) {
-        return Err("workload left sampled scope".into());
-    }
-    for member in members {
-        let name =
-            std::fs::read_to_string(format!("/proc/{member}/comm")).map_err(|e| e.to_string())?;
-        if member == std::process::id() as i32 || exempt.contains(name.trim()) {
-            return Err("scope now contains guard or exempt process".into());
-        }
-    }
-    if quota_value(&property(&unit, "CPUQuotaPerSecUSec").await?)? != original {
+    validate_workload()?;
+    if quota_value(&manager.property(unit, "CPUQuotaPerSecUSec").await?)? != original {
         return Err("CPU quota changed before apply".into());
     }
-    if !matches!(
-        crate::process_identity_status(Path::new("/proc"), pid, &identity),
-        crate::ProcessIdentityStatus::Match
-    ) || property(&unit, "InvocationID").await? != lease.invocation
-    {
+    if manager.property(unit, "InvocationID").await? != lease.invocation {
         return Err("process or unit identity changed before CPU cap".into());
     }
     if SystemTime::now()
@@ -451,9 +476,9 @@ async fn cap_prepared(
     {
         return Err("CPU lease expired during preparation; quota not applied".into());
     }
-    set_quota(&unit, applied).await?;
+    manager.set_quota(unit, applied).await?;
     lease.applied_verified = true;
-    save(&root, &key, &lease)?;
+    save(root, &key, &lease)?;
     Ok((key, generation))
 }
 
@@ -461,50 +486,55 @@ pub(crate) async fn release(key: &str, generation: &str) -> Result<(), String> {
     if !is_lease(key) {
         return Err("invalid CPU lease key".into());
     }
-    let root = state_root()?;
-    let _lock = lock(&root, key)?;
-    let Some(lease) = load(&root, key)? else {
+    release_with(
+        &SystemLeaseManager,
+        &state_root()?,
+        &boot_id()?,
+        key,
+        generation,
+    )
+    .await
+}
+
+async fn release_with(
+    manager: &impl LeaseManager,
+    root: &Path,
+    current_boot: &str,
+    key: &str,
+    generation: &str,
+) -> Result<(), String> {
+    let _lock = lock(root, key)?;
+    let Some(lease) = load(root, key)? else {
         return Ok(());
     };
     if lease.generation != generation {
         return Ok(());
     } // obsolete timer
-    let current_boot = boot_id()?;
     let load_state = if current_boot == lease.boot_id {
-        property(&lease.unit, "LoadState").await?
+        manager.property(&lease.unit, "LoadState").await?
     } else {
         String::new()
     };
     let invocation = if load_state == "loaded" {
-        property(&lease.unit, "InvocationID").await?
+        manager.property(&lease.unit, "InvocationID").await?
     } else {
         String::new()
     };
     if lease_is_owned(
         &lease.boot_id,
-        &current_boot,
+        current_boot,
         &lease.invocation,
         &invocation,
         &load_state,
     )? {
-        let current = quota_value(&property(&lease.unit, "CPUQuotaPerSecUSec").await?)?;
+        let current = quota_value(&manager.property(&lease.unit, "CPUQuotaPerSecUSec").await?)?;
         // Compare-and-restore: never overwrite a later operator quota change.
         if current == lease.applied {
-            set_quota(&lease.unit, lease.original).await?;
+            manager.set_quota(&lease.unit, lease.original).await?;
         }
     }
     std::fs::remove_file(root.join(format!("{key}.json"))).map_err(|e| e.to_string())?;
-    if let Ok(bin) = crate::resolve_bin_strict("systemctl") {
-        let _ = output(
-            &bin,
-            &[
-                "--user".into(),
-                "stop".into(),
-                format!("{}.timer", lease.timer),
-            ],
-        )
-        .await;
-    }
+    manager.stop_timer(&lease.timer).await;
     Ok(())
 }
 
@@ -514,6 +544,13 @@ pub(crate) async fn recover() {
     let Ok(root) = state_root() else {
         return;
     };
+    let Ok(current_boot) = boot_id() else {
+        return;
+    };
+    recover_with(&SystemLeaseManager, &root, &current_boot).await;
+}
+
+async fn recover_with(manager: &impl LeaseManager, root: &Path, current_boot: &str) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
@@ -527,7 +564,9 @@ pub(crate) async fn recover() {
         }
         match load(path.parent().unwrap(), key) {
             Ok(Some(lease)) => {
-                if let Err(e) = release(key, &lease.generation).await {
+                if let Err(e) =
+                    release_with(manager, root, current_boot, key, &lease.generation).await
+                {
                     eprintln!("CPU lease recovery retained {key}: {e}");
                 }
             }
@@ -600,6 +639,10 @@ fn reconcile_intent(lease: &Lease, current: u64, armed: bool) -> IntentAction {
         IntentAction::PreserveExternal
     }
 }
+
+#[cfg(test)]
+#[path = "cpu_lease_tests.rs"]
+mod lifecycle_tests;
 
 #[cfg(test)]
 mod tests {
