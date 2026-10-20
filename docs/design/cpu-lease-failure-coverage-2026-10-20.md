@@ -100,6 +100,14 @@ Observed failures are retained, not overwritten:
   fixture produced the passing `revision2-scoped-tests-final.log`.
 - The initial format check observed concurrent unformatted disk-cleanup edits;
   a later formatted checkout is used for final gate verification.
+- The mutation rehearsal and real workspace shared Cargo's target directory.
+  Cargo reused the mutated test executable on a later focused invocation even
+  though both source copies had been restored. The resulting failures are kept
+  in `revision2-cpu-tests-cache-collision.log`. Updating the real source mtime
+  forced recompilation from the canonical checkout; all 13 CPU tests then
+  passed (`revision2-cpu-tests-final.log`). The scoped release binary had been
+  built and saved before the mutation and was never affected. Future mutation
+  rehearsals should use a separate CARGO_TARGET_DIR, not shared cache output.
 
 ## Scoped deployment, avoiding concurrent unrelated storage work
 
@@ -125,8 +133,11 @@ The scoped tested binary was atomically installed; only the real guard was
 restarted. The installed unit's before/after hashes match. Loaded and installed
 binary SHA-256:
 `9804ee6f7b8c6f2e4a61b11c4542fe66ad9e33ace6108b93a7fab64c425cc696`.
-The earlier binary is preserved alongside the source snapshot (directory in
-provenance log), in addition to the original pre-repair backup.
+The predecessor is durably preserved at
+`~/.local/bin/dracon-system.backup-2026-10-20-pre-cpu-lifecycle`, in addition to
+the original pre-repair backup. The scoped release artifact is also retained at
+`~/.local/state/dracon/protection-repair-2026-10-20/dracon-system`; it is distinct
+from the current workspace's release artifact containing unrelated edits.
 
 The temporary probe unit copies the installed guard unit, changing its command
 and disabling probe restarts; it includes the guard's effective 2 GiB memory

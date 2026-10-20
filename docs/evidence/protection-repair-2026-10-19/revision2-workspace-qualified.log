@@ -1,0 +1,8 @@
+cwd: /home/dracon/Dev/dracon-utilities
+environment: source docs/evidence/protection-repair-2026-10-19/build-environment.sh
+command: timeout 1200 cargo test --workspace --locked --manifest-path /home/dracon/Dev/dracon-utilities/Cargo.toml --config /home/dracon/Dev/dracon-utilities/.cargo/config.toml
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling libz-sys v1.1.29
+   Compiling libssh2-sys v0.3.3
