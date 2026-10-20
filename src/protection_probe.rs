@@ -70,70 +70,70 @@ fn checked<T>(r: std::result::Result<T, String>) -> Result<T> {
 /// Managed-job path: a disposable admitted job is biased through the
 /// registered-job lease, then its own lifetime debt restores it. Only the
 /// disposable job is touched.
+#[derive(Serialize, Deserialize)]
+struct ManagedWorker {
+    pid: i32,
+    identity: ProcessIdentity,
+    group: String,
+}
+
+struct StopProbeOnDrop(PathBuf);
+impl Drop for StopProbeOnDrop {
+    fn drop(&mut self) {
+        // Only this invocation's fresh, caller-owned disposable worker reads it.
+        let _ = fs::write(self.0.join("stop"), "");
+    }
+}
+
+fn managed_target<'a>(samples: &'a [ProcSample], worker: &ManagedWorker, job: &oom_job::Job) -> Result<&'a ProcSample> {
+    anyhow::ensure!(worker.group == job.group && worker.pid != job.sentinel,
+        "probe worker is outside its admitted generation");
+    samples.iter().find(|sample| sample.pid == worker.pid
+        && sample.starttime == worker.identity.starttime
+        && sample.command == worker.identity.comm)
+        .ok_or_else(|| anyhow::anyhow!("probe worker incarnation unavailable"))
+}
+
 async fn exercise_managed(root: &Path) -> Result<()> {
     fs::create_dir_all(root)?;
     anyhow::ensure!(
-        !root.join("state.json").exists(),
+        !root.join("state.json").exists() && !root.join("managed-worker.json").exists()
+            && !root.join("managed.json").exists() && !root.join("stop").exists(),
         "use a fresh probe directory"
     );
+    let _stop = StopProbeOnDrop(root.into());
     let exe = std::env::current_exe()?;
-    // Launch a disposable admitted job whose workload exits on its own stop
-    // marker, so the sentinel can certify an empty boundary afterwards.
-    let mut child = tokio::process::Command::new(&exe)
-        .args(["managed-job", "--"])
-        .arg(&exe)
-        .args(["protection-worker", root.to_str().unwrap_or_default()])
-        .kill_on_drop(true)
+    let job_id = fs::read_to_string("/proc/sys/kernel/random/uuid")?.trim().to_owned();
+    // Choose the generation BEFORE launch. Never discover authority by scanning
+    // the shared registry or selecting an arbitrary registered process.
+    let command = [exe.as_os_str().to_owned(), "protection-worker".into(), root.as_os_str().to_owned()];
+    let launcher_command = oom_job::launch_command(&job_id, &command)?;
+    let mut child = tokio::process::Command::from(launcher_command)
+        .kill_on_drop(false)
         .spawn()?;
     let launcher = child.id().unwrap_or_default() as i32;
-    let mut admitted = false;
-    for _ in 0..60 {
-        if let Ok(entries) = fs::read_dir(oom_job::root()?) {
-            if entries.flatten().any(|entry| {
-                entry.file_name().to_string_lossy().ends_with(".json")
-                    && !entry.file_name().to_string_lossy().contains("debt")
-            }) {
-                admitted = true;
-                break;
-            }
-        }
-        sleep(Duration::from_millis(100)).await;
-    }
-    anyhow::ensure!(admitted, "no managed job admission appeared");
-    // Find the admitted job's registered workload member. The sentinel is
-    // never a bias target.
-    let mut target = None;
-    for _ in 0..80 {
-        let samples = process_samples().await?;
-        for sample in &samples {
-            let Ok(id) = managed_oom::job_id_for_process(sample.pid) else {
-                continue;
-            };
-            let Ok(job) = oom_job::load(&oom_job::root()?, &id) else {
-                continue;
-            };
-            if sample.pid == job.sentinel {
-                continue;
-            }
-            target = Some(sample.clone());
-            break;
-        }
-        if target.is_some() {
-            break;
-        }
-        sleep(Duration::from_millis(100)).await;
-    }
-    let sample =
-        target.ok_or_else(|| anyhow::anyhow!("no admitted managed job member appeared"))?;
-    let job_id = managed_oom::job_id_for_process(sample.pid)?;
+    let registry = oom_job::root()?;
+    wait_file(&registry.join(format!("{job_id}.json"))).await?;
+    wait_file(&root.join("managed-worker.json")).await?;
+    let job = oom_job::load(&registry, &job_id)?;
+    anyhow::ensure!(job.unit == format!("dracon-managed-job-{job_id}.scope")
+        && job.boot_id == fs::read_to_string("/proc/sys/kernel/random/boot_id")?.trim()
+        && !job.terminal_proof, "probe admission is invalid");
+    let worker: ManagedWorker = serde_json::from_slice(&fs::read(root.join("managed-worker.json"))?)?;
+    anyhow::ensure!(matches!(process_identity_status(Path::new("/proc"), worker.pid, &worker.identity),
+        ProcessIdentityStatus::Match), "probe worker incarnation changed");
+    anyhow::ensure!(managed_oom::job_id_for_process(worker.pid)? == job_id,
+        "probe worker changed job generation");
+    let samples = process_samples().await?;
+    let sample = managed_target(&samples, &worker, &job)?.clone();
     let baseline = fs::read_to_string(format!("/proc/{}/oom_score_adj", sample.pid))
         .with_context(|| format!("reading the managed member baseline of pid={}", sample.pid))?
         .trim()
         .parse::<i32>()?;
-    let exempt = HashSet::new();
-    let applied = managed_oom::bias(&sample, &exempt)
-        .await
-        .map_err(anyhow::Error::msg)?;
+    anyhow::ensure!(baseline == job.baseline, "probe baseline differs from its admission");
+    let (_, policy) = load_system_policy()?;
+    let exempt = parse_kinds(&policy.guard.process_exempt_names);
+    let applied = managed_oom::bias_job(&sample, &exempt, &job).await?;
     anyhow::ensure!(applied.is_some(), "managed OOM bias was not applied");
     let biased = fs::read_to_string(format!("/proc/{}/oom_score_adj", sample.pid))
         .with_context(|| format!("reading the managed member bias of pid={}", sample.pid))?
@@ -155,7 +155,7 @@ async fn exercise_managed(root: &Path) -> Result<()> {
             restored = true;
             break;
         }
-        managed_oom::drain(true, &exempt).await.ok();
+        managed_oom::drain_job(&job, &exempt).await?;
         sleep(Duration::from_millis(100)).await;
     }
     anyhow::ensure!(restored, "managed OOM lifetime debt was not restored");
@@ -166,17 +166,15 @@ async fn exercise_managed(root: &Path) -> Result<()> {
     let status = tokio::time::timeout(Duration::from_secs(120), child.wait()).await;
     let mut retired = false;
     for _ in 0..200 {
-        if oom_job::root()
-            .ok()
-            .map(|root| !root.join(format!("{job_id}.debt.json")).exists())
-            .unwrap_or(false)
-        {
+        managed_oom::drain_job(&job, &exempt).await?;
+        if managed_oom::job_retired(&registry, &job)? {
             retired = true;
             break;
         }
         sleep(Duration::from_millis(100)).await;
     }
-    anyhow::ensure!(status.is_ok(), "managed job launcher did not finish");
+    let status = status.context("managed job launcher did not finish")??;
+    anyhow::ensure!(status.success(), "managed job launcher failed: {status}");
     anyhow::ensure!(
         retired,
         "lifetime debt was not retired against the terminal certificate"
@@ -184,7 +182,7 @@ async fn exercise_managed(root: &Path) -> Result<()> {
     receipt(
         root,
         "managed",
-        json!({"baseline":baseline,"biased":biased,"restored":restored,"retired":retired,"launcher":launcher}),
+        json!({"baseline":baseline,"biased":biased,"restored":restored,"retired":retired,"launcher":launcher,"job_id":job_id,"worker":worker.pid,"invocation":job.invocation}),
     )?;
     Ok(())
 }
@@ -204,6 +202,22 @@ fn receipt(root: &Path, phase: &str, details: serde_json::Value) -> Result<()> {
 }
 
 pub(crate) fn worker(root: &Path, child: bool) -> Result<()> {
+    // Disposable workers have their own role name so configured exemptions
+    // remain enforced without exempting the guard itself from production rules.
+    if unsafe { libc::prctl(libc::PR_SET_NAME, c"dracon-probe".as_ptr(), 0, 0, 0) } != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    if !child {
+        let pid = std::process::id() as i32;
+        let worker = ManagedWorker {
+            pid, identity: read_proc_identity(Path::new("/proc"), pid)?,
+            group: fs::read_to_string("/proc/self/cgroup")?.lines()
+                .find_map(|line| line.strip_prefix("0::")).context("worker cgroup unavailable")?.into(),
+        };
+        let mut file = tempfile::NamedTempFile::new_in(root)?;
+        serde_json::to_writer(file.as_file_mut(), &worker)?;
+        file.persist_noclobber(root.join("managed-worker.json")).map_err(|e| e.error)?;
+    }
     let start = Instant::now();
     let mut spawned = false;
     let mut dumpable = true;
