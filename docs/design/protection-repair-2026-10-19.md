@@ -73,6 +73,18 @@ in the one-shot CLI rather than the real daemon.
   without a certificate is retired only by an explicit confirmed
   `oom-job-reconcile`, which refuses while the scope, cgroup or sentinel lives.
 
+## Managed-probe isolation follow-up (2026-10-20)
+
+The live managed probe previously discovered a target among all registered jobs
+and forced a global drain, so verification could touch an unrelated registered
+workload. The probe is now bound to its own pre-chosen disposable generation:
+target selection uses the worker's own recorded incarnation, bias revalidates
+the admission, restoration is scoped to that generation, and retirement needs a
+matching terminal certificate. A regression proves an unrelated registered job
+and its debt stay byte-identical, and a mutation rehearsal shows that check
+fails when the scoped path is reverted to a global sweep. Details, live evidence
+and deployment scope are in `managed-probe-isolation-2026-10-20.md`.
+
 ## Follow-up qualification (2026-10-20)
 
 The latest lifecycle tests, explicit OpenSSL build prerequisites, raw gate
