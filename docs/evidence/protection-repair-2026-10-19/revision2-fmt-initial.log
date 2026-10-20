@@ -1,0 +1,88 @@
+command: timeout 60 cargo fmt --all -- --check
+Diff in /home/dracon/Dev/dracon-utilities/dracon-system/src/main.rs:3566:
+         if !name.chars().all(|c| c.is_ascii_digit()) {
+             continue;
+         }
+[31m-        let Ok(pid) = name.parse::<i32>() else { continue };
+(B[m[32m+        let Ok(pid) = name.parse::<i32>() else {
+(B[m[32m+            continue;
+(B[m[32m+        };
+(B[m         let Ok(exe) = std::fs::read_link(format!("/proc/{pid}/exe")) else {
+             continue;
+         };
+Diff in /home/dracon/Dev/dracon-utilities/dracon-system/src/main.rs:3604:
+         if fields.len() < 8 {
+             continue; // unnamed socket (no path)
+         }
+[31m-        let (flags, sock_type, state, sock_path) =
+(B[m[31m-            (fields[3], fields[4], fields[5], fields[7]);
+(B[m[32m+        let (flags, sock_type, state, sock_path) = (fields[3], fields[4], fields[5], fields[7]);
+(B[m         // A listening stream socket: SO_ACCEPTCON in the flags word
+         // (00010000) or the unconnected state (01) on a SOCK_STREAM.
+         let is_listener = flags == "00010000" || (state == "01" && sock_type == "0001");
+Diff in /home/dracon/Dev/dracon-utilities/dracon-system/src/main.rs:3635:
+     // Cargo's own cache dirs never hold service state, and they hold the
+     // bulk of the entries — skipping them keeps this scan cheap on a
+     // multi-gigabyte target dir.
+[31m-    const SKIP_DIRS: [&str; 6] = ["deps", "build", "incremental", "debug", "release", ".fingerprint"];
+(B[m[32m+    const SKIP_DIRS: [&str; 6] = [
+(B[m[32m+        "deps",
+(B[m[32m+        "build",
+(B[m[32m+        "incremental",
+(B[m[32m+        "debug",
+(B[m[32m+        "release",
+(B[m[32m+        ".fingerprint",
+(B[m[32m+    ];
+(B[m     let entries = walkdir::WalkDir::new(root)
+         .max_depth(3)
+         .into_iter()
+Diff in /home/dracon/Dev/dracon-utilities/dracon-system/src/tests.rs:4391:
+ 
+     // The child's exe link resolves to the copy inside the candidate.
+     let detected = live_process_binary_under(&root);
+[31m-    assert!(detected.is_some(), "live binary under the candidate not detected");
+(B[m[32m+    assert!(
+(B[m[32m+        detected.is_some(),
+(B[m[32m+        "live binary under the candidate not detected"
+(B[m[32m+    );
+(B[m     let error = validate_storage_cleanup_activity("rust-build", &root)
+         .await
+         .unwrap_err();
+Diff in /home/dracon/Dev/dracon-utilities/dracon-system/src/tests.rs:4422:
+     let error = validate_storage_cleanup_activity("rust-build", &root)
+         .await
+         .unwrap_err();
+[31m-    assert!(
+(B[m[31m-        error.to_string().contains("live service socket"),
+(B[m[31m-        "{error}"
+(B[m[31m-    );
+(B[m[32m+    assert!(error.to_string().contains("live service socket"), "{error}");
+(B[m     assert!(root.exists());
+     drop(listener);
+ }
+Diff in /home/dracon/Dev/dracon-utilities/dracon-system/src/tests.rs:4470:
+         .unwrap();
+     child.wait().unwrap();
+     let dead_pid = child.id();
+[31m-    fs::write(root.join("dev-stack").join("api.pid"), format!("{dead_pid}\n")).unwrap();
+(B[m[32m+    fs::write(
+(B[m[32m+        root.join("dev-stack").join("api.pid"),
+(B[m[32m+        format!("{dead_pid}\n"),
+(B[m[32m+    )
+(B[m[32m+    .unwrap();
+(B[m     // The path is fresh, so age it past the 60s mtime backstop.
+     let old = SystemTime::now() - Duration::from_secs(120);
+     File::open(&root)
+Diff in /home/dracon/Dev/dracon-utilities/dracon-system/src/tests.rs:4477:
+         .unwrap()
+         .set_times(std::fs::FileTimes::new().set_modified(old))
+         .unwrap();
+[31m-    assert!(live_pidfile_under(&root).is_none(), "stale pidfile must not count");
+(B[m[32m+    assert!(
+(B[m[32m+        live_pidfile_under(&root).is_none(),
+(B[m[32m+        "stale pidfile must not count"
+(B[m[32m+    );
+(B[m     // No live service state and no active build: the candidate stays
+     // eligible for cleanup (no error from the state checks).
+     assert!(validate_storage_cleanup_activity("rust-build", &root)
+exit=1

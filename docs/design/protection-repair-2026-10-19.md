@@ -29,8 +29,10 @@ in the one-shot CLI rather than the real daemon.
   A separate expiry helper resets quota; expiry never stops the workload.
 - Expiry helpers now have manager-level Restart=on-failure, RestartSec=5s,
   StartLimitIntervalSec=0. Lock contention and transient manager failures therefore
-  do not consume the only independent recovery attempt. This still needs live
-  service-context verification and failure-injection coverage before deployment.
+  do not consume the only independent recovery attempt. Successful live
+  service-context verification is recorded below; the subsequent lifecycle
+  failure-injection coverage and scoped redeployment are recorded in
+  `cpu-lease-failure-coverage-2026-10-20.md`.
 - Lease intent, arming, verified application and absolute expiry are distinct.
   A pre-existing file alone no longer counts as a successfully enforced cap.
   Reconciliation distinguishes unmutated intent, unprotected applied quota,
@@ -70,6 +72,16 @@ in the one-shot CLI rather than the real daemon.
   without independent recovery armed. An orphan debt whose boundary vanished
   without a certificate is retired only by an explicit confirmed
   `oom-job-reconcile`, which refuses while the scope, cgroup or sentinel lives.
+
+## Follow-up qualification (2026-10-20)
+
+The latest lifecycle tests, explicit OpenSSL build prerequisites, raw gate
+results, mutation check, scoped artifact provenance and fresh sandbox probes
+are recorded in `cpu-lease-failure-coverage-2026-10-20.md`. That follow-up
+supersedes the deployment identity below while preserving the historical
+observations and limitations. It excludes concurrent unrelated disk-cleanup
+changes from the deployed artifact; the full current workspace gates remain
+required as well.
 
 ## Verification observed so far
 
