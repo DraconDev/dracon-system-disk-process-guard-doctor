@@ -1,0 +1,8 @@
+Scoped release source baseline: 1ce63d3ff395ba89eab029f3c12e7ec51d1fd6c6
+Overlay files: src/cpu_limit.rs src/cpu_lease_tests.rs src/protection_probe.rs src/managed_oom.rs src/oom_job.rs src/managed_probe_tests.rs
+e8ae96aaf0346e5f0900f887cd5bb610dd1f74a7e1cbd3c57bc8173afb214b70  /tmp/dracon-protection-release-rSyH9P/dracon-system/src/cpu_limit.rs
+56b06fd413d42cae9205c75a83e83b388e97b0c25a8ce004d140630cbe768fe5  /tmp/dracon-protection-release-rSyH9P/dracon-system/src/cpu_lease_tests.rs
+44420f4509f4c54769150ea16f26408c919f7055d7fd4ae0326b91117c559a83  /tmp/dracon-protection-release-rSyH9P/dracon-system/src/protection_probe.rs
+343f165133dabe84f441088220189046da9b47b4f4d2c577b52dc8d5affc4fd8  /tmp/dracon-protection-release-rSyH9P/dracon-system/src/managed_oom.rs
+4eb71a9eda754f7068b07fc52026426f60bca75560a1bf27eac089f86f56679d  /tmp/dracon-protection-release-rSyH9P/dracon-system/src/oom_job.rs
+438443a3c34c08ba7d22e6c98fd818b317412b5eabbca3b81c1d11480ad39b2b  /tmp/dracon-protection-release-rSyH9P/dracon-system/src/managed_probe_tests.rs

@@ -1,0 +1,2 @@
+command: timeout 1200 cargo build --release -p dracon-system --locked --manifest-path <scoped-source>/Cargo.toml
+   Compiling dracon-system v0.112.45 (/tmp/dracon-protection-release-rSyH9P/dracon-system)
