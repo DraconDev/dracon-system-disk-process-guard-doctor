@@ -8,3 +8,5 @@ command: timeout 1200 cargo build --release --locked
    Compiling git2 v0.21.0
    Compiling dracon-git v94.7.2
    Compiling dracon-sync v0.113.95 (/home/dracon/Dev/dracon-utilities/dracon-sync)
+    Finished `release` profile [optimized] target(s) in 3m 43s
+exit=0

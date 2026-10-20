@@ -3566,7 +3566,9 @@ fn live_process_binary_under(root: &Path) -> Option<(i32, PathBuf)> {
         if !name.chars().all(|c| c.is_ascii_digit()) {
             continue;
         }
-        let Ok(pid) = name.parse::<i32>() else { continue };
+        let Ok(pid) = name.parse::<i32>() else {
+            continue;
+        };
         let Ok(exe) = std::fs::read_link(format!("/proc/{pid}/exe")) else {
             continue;
         };
@@ -3604,8 +3606,7 @@ fn live_unix_socket_under(root: &Path) -> Option<PathBuf> {
         if fields.len() < 8 {
             continue; // unnamed socket (no path)
         }
-        let (flags, sock_type, state, sock_path) =
-            (fields[3], fields[4], fields[5], fields[7]);
+        let (flags, sock_type, state, sock_path) = (fields[3], fields[4], fields[5], fields[7]);
         // A listening stream socket: SO_ACCEPTCON in the flags word
         // (00010000) or the unconnected state (01) on a SOCK_STREAM.
         let is_listener = flags == "00010000" || (state == "01" && sock_type == "0001");
@@ -3635,7 +3636,14 @@ fn live_pidfile_under(root: &Path) -> Option<PathBuf> {
     // Cargo's own cache dirs never hold service state, and they hold the
     // bulk of the entries — skipping them keeps this scan cheap on a
     // multi-gigabyte target dir.
-    const SKIP_DIRS: [&str; 6] = ["deps", "build", "incremental", "debug", "release", ".fingerprint"];
+    const SKIP_DIRS: [&str; 6] = [
+        "deps",
+        "build",
+        "incremental",
+        "debug",
+        "release",
+        ".fingerprint",
+    ];
     let entries = walkdir::WalkDir::new(root)
         .max_depth(3)
         .into_iter()

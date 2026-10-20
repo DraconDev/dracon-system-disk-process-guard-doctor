@@ -4395,10 +4395,7 @@ async fn storage_cleanup_activity_refuses_live_process_binary() {
     let bin = root.join("live-service").join("sleep");
     fs::create_dir_all(bin.parent().unwrap()).unwrap();
     std::fs::copy(&source, &bin).unwrap();
-    let child = std::process::Command::new(&bin)
-        .arg("300")
-        .spawn()
-        .unwrap();
+    let child = std::process::Command::new(&bin).arg("300").spawn().unwrap();
     struct ChildGuard(std::process::Child);
     impl Drop for ChildGuard {
         fn drop(&mut self) {
@@ -4410,7 +4407,10 @@ async fn storage_cleanup_activity_refuses_live_process_binary() {
 
     // The child's exe link resolves to the copy inside the candidate.
     let detected = live_process_binary_under(&root);
-    assert!(detected.is_some(), "live binary under the candidate not detected");
+    assert!(
+        detected.is_some(),
+        "live binary under the candidate not detected"
+    );
     let error = validate_storage_cleanup_activity("rust-build", &root)
         .await
         .unwrap_err();
@@ -4441,10 +4441,7 @@ async fn storage_cleanup_activity_refuses_live_service_socket() {
     let error = validate_storage_cleanup_activity("rust-build", &root)
         .await
         .unwrap_err();
-    assert!(
-        error.to_string().contains("live service socket"),
-        "{error}"
-    );
+    assert!(error.to_string().contains("live service socket"), "{error}");
     assert!(root.exists());
     drop(listener);
 }
@@ -4489,14 +4486,21 @@ async fn storage_cleanup_activity_allows_stale_pidfile() {
         .unwrap();
     child.wait().unwrap();
     let dead_pid = child.id();
-    fs::write(root.join("dev-stack").join("api.pid"), format!("{dead_pid}\n")).unwrap();
+    fs::write(
+        root.join("dev-stack").join("api.pid"),
+        format!("{dead_pid}\n"),
+    )
+    .unwrap();
     // The path is fresh, so age it past the 60s mtime backstop.
     let old = SystemTime::now() - Duration::from_secs(120);
     File::open(&root)
         .unwrap()
         .set_times(std::fs::FileTimes::new().set_modified(old))
         .unwrap();
-    assert!(live_pidfile_under(&root).is_none(), "stale pidfile must not count");
+    assert!(
+        live_pidfile_under(&root).is_none(),
+        "stale pidfile must not count"
+    );
     // No live service state and no active build: the candidate stays
     // eligible for cleanup (no error from the state checks).
     assert!(validate_storage_cleanup_activity("rust-build", &root)
