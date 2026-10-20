@@ -239,6 +239,37 @@ fn group_members(group: &str) -> Result<Vec<i32>, String> {
         .collect()
 }
 
+// Tests inject manager I/O, not lifecycle decisions or persistence.
+trait LeaseManager {
+    async fn property(&self, unit: &str, name: &str) -> Result<String, String>;
+    async fn set_quota(&self, unit: &str, quota: u64) -> Result<(), String>;
+    async fn arm(&self, timer: &str, seconds: u64, key: &str, generation: &str) -> Result<(), String>;
+    async fn stop_timer(&self, timer: &str);
+}
+struct SystemLeaseManager;
+impl LeaseManager for SystemLeaseManager {
+    async fn property(&self, unit: &str, name: &str) -> Result<String, String> { property(unit, name).await }
+    async fn set_quota(&self, unit: &str, quota: u64) -> Result<(), String> { set_quota(unit, quota).await }
+    async fn arm(&self, timer: &str, seconds: u64, key: &str, generation: &str) -> Result<(), String> {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let run = crate::resolve_bin_strict("systemd-run").map_err(|e| e.to_string())?;
+        output(&run, &expiry_args(timer, seconds, &exe, key, generation)).await?;
+        Ok(())
+    }
+    async fn stop_timer(&self, timer: &str) {
+        if let Ok(bin) = crate::resolve_bin_strict("systemctl") {
+            let _ = output(&bin, &["--user".into(), "stop".into(), format!("{timer}.timer")]).await;
+        }
+    }
+}
+fn expiry_args(timer: &str, seconds: u64, exe: &Path, key: &str, generation: &str) -> Vec<String> {
+    vec!["--user".into(), "--collect".into(), format!("--unit={timer}"),
+        format!("--on-active={seconds}s"), "--timer-property=AccuracySec=1s".into(),
+        "--property=Restart=on-failure".into(), "--property=RestartSec=5s".into(),
+        "--property=StartLimitIntervalSec=0".into(), "--".into(),
+        exe.to_string_lossy().into_owned(), "cpu-lease-release".into(), key.into(), generation.into()]
+}
+
 pub(crate) async fn cap(
     pid: i32,
     percent: u32,
@@ -273,29 +304,48 @@ pub(crate) async fn cap_with_duration(
             return Err(format!("scope contains exempt process {}", name.trim()));
         }
     }
-    let invocation = property(&unit, "InvocationID").await?;
-    if invocation.is_empty() || property(&unit, "ActiveState").await? != "active" {
+    cap_prepared(&SystemLeaseManager, &state_root()?, &boot_id()?, &unit, percent, lease_seconds, || {
+        let members = group_members(&group)?;
+        if !members.contains(&pid) { return Err("workload left sampled scope".into()); }
+        for member in members {
+            let name = std::fs::read_to_string(format!("/proc/{member}/comm")).map_err(|e| e.to_string())?;
+            if member == std::process::id() as i32 || exempt.contains(name.trim()) {
+                return Err("scope now contains guard or exempt process".into());
+            }
+        }
+        if !matches!(crate::process_identity_status(Path::new("/proc"), pid, &identity), crate::ProcessIdentityStatus::Match) {
+            return Err("process identity changed before CPU cap".into());
+        }
+        Ok(())
+    }).await
+}
+
+async fn cap_prepared(
+    manager: &impl LeaseManager, root: &Path, current_boot: &str, unit: &str,
+    percent: u32, lease_seconds: u64, validate_workload: impl Fn() -> Result<(), String>,
+) -> Result<(String, String), String> {
+    let invocation = manager.property(unit, "InvocationID").await?;
+    if invocation.is_empty() || manager.property(unit, "ActiveState").await? != "active" {
         return Err("workload scope not active".into());
     }
-    let root = state_root()?;
-    let key = lease_key(&unit);
+    let key = lease_key(unit);
     let _lock = lock(&root, &key)?;
     if let Some(mut old) = load(&root, &key)? {
-        if old.invocation != invocation || old.boot_id != boot_id()? {
+        if old.invocation != invocation || old.boot_id != current_boot {
             std::fs::remove_file(root.join(format!("{key}.json"))).map_err(|e| e.to_string())?;
             return Err(
                 "stale CPU intent retired without touching replacement unit; retry next pass"
                     .into(),
             );
         }
-        let current = quota_value(&property(&unit, "CPUQuotaPerSecUSec").await?)?;
+        let current = quota_value(&manager.property(unit, "CPUQuotaPerSecUSec").await?)?;
         let armed = old.armed
             && SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_err(|e| e.to_string())?
                 .as_secs()
                 < old.expires_at_unix_secs
-            && property(&format!("{}.timer", old.timer), "ActiveState").await? == "active";
+            && manager.property(&format!("{}.timer", old.timer), "ActiveState").await? == "active";
         match reconcile_intent(&old, current, armed) {
             IntentAction::Reuse => {
                 old.applied_verified = true;
@@ -303,7 +353,7 @@ pub(crate) async fn cap_with_duration(
                 return Ok((key, old.generation));
             }
             IntentAction::RestoreUnprotected => {
-                set_quota(&unit, old.original).await?;
+                manager.set_quota(unit, old.original).await?;
             }
             IntentAction::DropUnapplied => {}
             IntentAction::PreserveExternal => {
@@ -313,7 +363,7 @@ pub(crate) async fn cap_with_duration(
         std::fs::remove_file(root.join(format!("{key}.json"))).map_err(|e| e.to_string())?;
         return Err("incomplete CPU lease recovered; retry next pass".into());
     }
-    let original = quota_value(&property(&unit, "CPUQuotaPerSecUSec").await?)?;
+    let original = quota_value(&manager.property(unit, "CPUQuotaPerSecUSec").await?)?;
     let applied = original.min(u64::from(percent) * 10_000);
     if original <= applied {
         return Err("workload already has an equal or stricter CPU quota".into());
@@ -325,13 +375,13 @@ pub(crate) async fn cap_with_duration(
         .to_string();
     let timer = format!("{key}-{generation}-expiry");
     let mut lease = Lease {
-        unit: unit.clone(),
+        unit: unit.into(),
         invocation,
         original,
         applied,
         generation: generation.clone(),
         timer: timer.clone(),
-        boot_id: boot_id()?,
+        boot_id: current_boot.into(),
         armed: false,
         applied_verified: false,
         expires_at_unix_secs: SystemTime::now()
