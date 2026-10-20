@@ -2300,3 +2300,479 @@ Oct 20 00:59:49 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid
 Oct 20 00:59:49 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=154744 parent=10362 adj -> 200
 Oct 20 00:59:49 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=155145 parent=866088 adj -> 200
 Oct 20 00:59:49 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=149911 parent=2306606 adj -> 200
+Oct 20 01:00:19 nixos dracon-system[2030880]: 🛡️ mem-renice pid=155318 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:00:19 nixos dracon-system[2030880]: 🛡️ oom-bias pid=155318 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 01:00:19 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=4025819 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:00:19 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=155318 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-1194300dc507f16c)
+Oct 20 01:00:19 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=167519 parent=866088 adj -> 200
+Oct 20 01:00:19 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=167411 parent=866088 adj -> 200
+Oct 20 01:00:19 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=167521 parent=866088 adj -> 200
+Oct 20 01:00:19 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=167520 parent=866088 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=4025819 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=174573 parent=155318 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=169301 parent=566191 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=168777 parent=155318 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=172504 parent=428605 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=175751 parent=10362 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=175745 parent=10362 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=172478 parent=428605 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=169299 parent=566191 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=175749 parent=10362 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=172609 parent=2385071 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=169298 parent=566191 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=172452 parent=428605 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=172650 parent=2385071 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=173670 parent=155318 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=175746 parent=10362 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=169297 parent=566191 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=172564 parent=2385071 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=176086 parent=566191 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=169293 parent=566191 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=177915 parent=155318 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=175747 parent=10362 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=175705 parent=10362 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=173657 parent=155318 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=175748 parent=10362 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=175750 parent=10362 adj -> 200
+Oct 20 01:00:50 nixos dracon-system[2030880]: ⚠️ retaining 1 pending descendant OOM restorations
+Oct 20 01:01:20 nixos dracon-system[2030880]: 🛡️ mem-renice pid=192255 cmd=chromium -> nice 5 (pressure critical)
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=192255 cmd=chromium -> CPUQuota=50% (scope dracon-cpu-unit-f9dfb3263648ee49)
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=195825 parent=155318 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=198500 parent=155318 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=198765 parent=155318 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=189132 parent=155318 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=200185 parent=155318 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=180545 parent=866088 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=200408 parent=866088 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=188043 parent=2306606 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=186688 parent=155318 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=188044 parent=2306606 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=180584 parent=866088 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=188024 parent=2306606 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=199375 parent=155318 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=198241 parent=155318 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=199191 parent=155318 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=188045 parent=2306606 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=180583 parent=866088 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=180582 parent=866088 adj -> 200
+Oct 20 01:01:21 nixos dracon-system[2030880]: ⚠️ retaining 1 pending descendant OOM restorations
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ mem-renice pid=201727 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ mem-renice pid=201763 cmd=esbuild -> nice 5 (pressure critical)
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ mem-renice pid=200743 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-bias pid=201727 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-bias pid=201763 cmd=esbuild adj 200 -> 250 (critical pressure)
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-bias pid=200743 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 01:01:51 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:01:51 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201763 cmd=esbuild: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=200743 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-f9dfb3263648ee49)
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=211633 parent=155318 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=211109 parent=866088 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=209925 parent=155318 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=207303 parent=866088 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=207307 parent=866088 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=210132 parent=155318 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=209646 parent=155318 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=205439 parent=155318 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=207085 parent=2306606 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=201651 parent=155318 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=211204 parent=866088 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=211117 parent=866088 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=200877 parent=155318 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=207088 parent=2306606 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=210741 parent=155318 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=211565 parent=155318 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=207081 parent=2306606 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=207087 parent=2306606 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=211702 parent=155318 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=207306 parent=866088 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=210536 parent=155318 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=207086 parent=2306606 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=210634 parent=155318 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=209555 parent=155318 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=211468 parent=155318 adj -> 200
+Oct 20 01:01:51 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=207089 parent=2306606 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ mem-renice pid=203707 cmd=chromium -> nice 5 (pressure critical)
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-bias pid=203707 cmd=chromium adj 200 -> 250 (critical pressure)
+Oct 20 01:02:22 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=203707 cmd=chromium -> CPUQuota=50% (scope dracon-cpu-unit-f9dfb3263648ee49)
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=225999 parent=841139 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=216492 parent=288454 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=215596 parent=201727 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=221885 parent=1576132 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=226000 parent=841139 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=224893 parent=1223981 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=221928 parent=1576132 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=216430 parent=288454 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=224888 parent=1223981 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=225994 parent=841139 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=224891 parent=1223981 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=216441 parent=288454 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=216437 parent=288454 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=224887 parent=1223981 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=216436 parent=288454 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=224890 parent=1223981 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=226011 parent=841139 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=224889 parent=1223981 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=221920 parent=1576132 adj -> 200
+Oct 20 01:02:22 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=225997 parent=841139 adj -> 200
+Oct 20 01:02:52 nixos dracon-system[2030880]: 🛡️ mem-renice pid=224891 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:02:52 nixos dracon-system[2030880]: 🛡️ oom-bias pid=224891 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 01:02:52 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:02:53 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=224891 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-ecd268a516d3a57a)
+Oct 20 01:02:53 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=232829 parent=288454 adj -> 200
+Oct 20 01:02:53 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=232919 parent=288454 adj -> 200
+Oct 20 01:02:53 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=238275 parent=10362 adj -> 200
+Oct 20 01:02:53 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=232852 parent=288454 adj -> 200
+Oct 20 01:02:53 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=238274 parent=10362 adj -> 200
+Oct 20 01:02:53 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=232854 parent=288454 adj -> 200
+Oct 20 01:02:53 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=238273 parent=10362 adj -> 200
+Oct 20 01:02:53 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=232853 parent=288454 adj -> 200
+Oct 20 01:02:53 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=232851 parent=288454 adj -> 200
+Oct 20 01:02:53 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=238276 parent=10362 adj -> 200
+Oct 20 01:02:53 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=238207 parent=10362 adj -> 200
+Oct 20 01:03:23 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:03:23 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=252031 parent=866088 adj -> 200
+Oct 20 01:03:23 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=252028 parent=866088 adj -> 200
+Oct 20 01:03:23 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=252220 parent=866088 adj -> 200
+Oct 20 01:03:23 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=240922 parent=866088 adj -> 200
+Oct 20 01:03:23 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=253673 parent=866088 adj -> 200
+Oct 20 01:03:54 nixos dracon-system[2030880]: 🛡️ mem-renice pid=238576 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:03:54 nixos dracon-system[2030880]: 🛡️ oom-bias pid=238576 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 01:03:54 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:03:54 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=238576 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-1194300dc507f16c)
+Oct 20 01:03:54 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=271194 parent=3190788 adj -> 200
+Oct 20 01:03:54 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=271195 parent=3190788 adj -> 200
+Oct 20 01:04:24 nixos dracon-system[2030880]: 🛡️ mem-renice pid=265179 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:04:24 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:04:24 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=265179 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-f9dfb3263648ee49)
+Oct 20 01:04:24 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=294207 parent=238576 adj -> 200
+Oct 20 01:04:24 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=282471 parent=238576 adj -> 200
+Oct 20 01:04:24 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=286253 parent=238576 adj -> 200
+Oct 20 01:04:24 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=292102 parent=1223981 adj -> 200
+Oct 20 01:04:24 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=294265 parent=238576 adj -> 200
+Oct 20 01:04:24 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=293540 parent=238576 adj -> 200
+Oct 20 01:04:24 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=279790 parent=238576 adj -> 200
+Oct 20 01:04:24 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=293902 parent=238576 adj -> 200
+Oct 20 01:04:24 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=282930 parent=238576 adj -> 200
+Oct 20 01:04:24 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=293753 parent=238576 adj -> 200
+Oct 20 01:04:24 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=292730 parent=238576 adj -> 200
+Oct 20 01:04:24 nixos dracon-system[2030880]: ⚠️ retaining 1 pending descendant OOM restorations
+Oct 20 01:04:55 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:04:55 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=302464 parent=238576 adj -> 200
+Oct 20 01:04:55 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=303942 parent=238576 adj -> 200
+Oct 20 01:04:55 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=313012 parent=1223981 adj -> 200
+Oct 20 01:04:55 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=313011 parent=1223981 adj -> 200
+Oct 20 01:04:55 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=313016 parent=1223981 adj -> 200
+Oct 20 01:04:55 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=313013 parent=1223981 adj -> 200
+Oct 20 01:05:25 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:05:56 nixos dracon-system[2030880]: 🛡️ mem-renice pid=317477 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:05:56 nixos dracon-system[2030880]: 🛡️ oom-bias pid=317477 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 01:05:56 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:05:56 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=317477 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-1194300dc507f16c)
+Oct 20 01:06:26 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:06:26 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=345367 parent=317477 adj -> 200
+Oct 20 01:06:26 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=344945 parent=317477 adj -> 200
+Oct 20 01:06:26 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=345877 parent=317477 adj -> 200
+Oct 20 01:06:26 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=343855 parent=317477 adj -> 200
+Oct 20 01:06:26 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=346015 parent=317477 adj -> 200
+Oct 20 01:06:26 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=345021 parent=317477 adj -> 200
+Oct 20 01:06:26 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=345413 parent=317477 adj -> 200
+Oct 20 01:06:26 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=345514 parent=317477 adj -> 200
+Oct 20 01:06:26 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=344927 parent=317477 adj -> 200
+Oct 20 01:06:26 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=345865 parent=317477 adj -> 200
+Oct 20 01:06:26 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=344671 parent=317477 adj -> 200
+Oct 20 01:06:57 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:06:57 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=356856 parent=317477 adj -> 200
+Oct 20 01:06:57 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=357164 parent=317477 adj -> 200
+Oct 20 01:06:57 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=356536 parent=317477 adj -> 200
+Oct 20 01:06:57 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=357510 parent=317477 adj -> 200
+Oct 20 01:06:57 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=357317 parent=317477 adj -> 200
+Oct 20 01:06:57 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=357336 parent=317477 adj -> 200
+Oct 20 01:06:57 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=358375 parent=317477 adj -> 200
+Oct 20 01:06:57 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=355247 parent=317477 adj -> 200
+Oct 20 01:06:57 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=357131 parent=317477 adj -> 200
+Oct 20 01:06:57 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=357063 parent=317477 adj -> 200
+Oct 20 01:06:57 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=357495 parent=317477 adj -> 200
+Oct 20 01:06:57 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=356799 parent=317477 adj -> 200
+Oct 20 01:07:27 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:07:27 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=361877 parent=10362 adj -> 200
+Oct 20 01:07:27 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=361922 parent=10362 adj -> 200
+Oct 20 01:07:27 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=361924 parent=10362 adj -> 200
+Oct 20 01:07:27 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=361920 parent=10362 adj -> 200
+Oct 20 01:07:27 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=361923 parent=10362 adj -> 200
+Oct 20 01:07:27 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=361884 parent=10362 adj -> 200
+Oct 20 01:07:27 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=365712 parent=10362 adj -> 200
+Oct 20 01:07:27 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=361925 parent=10362 adj -> 200
+Oct 20 01:07:27 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=361921 parent=10362 adj -> 200
+Oct 20 01:07:58 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:08:28 nixos dracon-system[2030880]: 🛡️ mem-renice pid=386427 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:08:28 nixos dracon-system[2030880]: 🛡️ oom-bias pid=386427 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 01:08:28 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:08:28 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=386427 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-1194300dc507f16c)
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ mem-renice pid=391883 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:08:59 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=391883 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-f9dfb3263648ee49)
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=400472 parent=10362 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=420016 parent=288454 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=399895 parent=10362 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=400477 parent=10362 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=400473 parent=10362 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=420029 parent=288454 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=420015 parent=288454 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=412208 parent=3960039 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=400476 parent=10362 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=419974 parent=288454 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=412222 parent=3960039 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=404734 parent=10362 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=420361 parent=288454 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=420017 parent=288454 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=400475 parent=10362 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=420013 parent=288454 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=412138 parent=3960039 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=400471 parent=10362 adj -> 200
+Oct 20 01:08:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=400474 parent=10362 adj -> 200
+Oct 20 01:09:29 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:09:59 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:09:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=454954 parent=10362 adj -> 200
+Oct 20 01:09:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=455887 parent=10362 adj -> 200
+Oct 20 01:09:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=455885 parent=10362 adj -> 200
+Oct 20 01:09:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=455880 parent=10362 adj -> 200
+Oct 20 01:09:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=455884 parent=10362 adj -> 200
+Oct 20 01:09:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=455882 parent=10362 adj -> 200
+Oct 20 01:09:59 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=455888 parent=10362 adj -> 200
+Oct 20 01:10:30 nixos dracon-system[2030880]: 🛡️ mem-renice pid=458885 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:10:30 nixos dracon-system[2030880]: 🛡️ oom-bias pid=458885 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 01:10:30 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=201727 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:10:30 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=458885 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-1194300dc507f16c)
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ trash: keeping 72 flagged entries (71 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/tmp.SXlOE9BGwl/app/.env, /home/dracon/.local/share/Trash/files/tmp.8b1vXeg6nw/app/.env, /home/dracon/.local/share/Trash/files/tmp.wzrNaKSA7U/app/.env; 597 unobservable capped subtrees; 1 unreadable subtrees), purging the rest
+Oct 20 01:11:24 nixos dracon-system[2030880]: [2026-10-20T00:11:24.759613622+00:00] Warn: trash/credential-guard - trash purge skipping 72 flagged entries (71 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/tmp.SXlOE9BGwl/app/.env, /home/dracon/.local/share/Trash/files/tmp.8b1vXeg6nw/app/.env, /home/dracon/.local/share/Trash/files/tmp.wzrNaKSA7U/app/.env; 597 unobservable capped subtrees; 1 unreadable subtrees)
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7ff15ff7b5649df1.2
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.SXlOE9BGwl
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.8b1vXeg6nw
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.wzrNaKSA7U
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7ff15ff7b5649df1.3
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-cdfb7895c72dc07e.4
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/chrome-shot.png
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-cdfb7895c72dc07e.2
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/sb.2
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-d9e2f44fd8d5b995.3
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/freshclone
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.4AkYeTSBaA
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.hEvmIT507Q
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7581a3866282d5c3
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/doomtap-verify-2496184
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/glla-c.2
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.6
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.i3nxk64oLH
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7ff15ff7b5649df1.4
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/finaldata
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/audithome
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/finalclone
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-d9e2f44fd8d5b995
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.2tA2gd6gZq
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-621ac3009971b541
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.uV3dLzWozA
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.2
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.rnJq76Gd6s
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/glla-bidir-3AqQ
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.cS2O7c96kp
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-cdfb7895c72dc07e
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/pkgtest
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.8
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.VJEGdSWo6D
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.2N06QOXQiV
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/m3.1-showcase
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.NqtVRfY6dT
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.DhjpSn9Sss
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/output
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/yff-before
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.82h4iRUiyo
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/audithome2
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-cdfb7895c72dc07e.5
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.OCjhkjEkTt
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/glla-c
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-cdfb7895c72dc07e.3
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/freshdata
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7581a3866282d5c3.2
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-d9e2f44fd8d5b995.2
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.LcbPi3T2Sy
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-d9e2f44fd8d5b995.4
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.9
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/sb
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7ff15ff7b5649df1
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.4
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7581a3866282d5c3.3
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/aff-prefix-check
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.7
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.5
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.10
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848.3
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.hSZVBNztK6
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.wR1pCWHU7M
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/build.2
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7651256fc745e848
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.yM8fb3BcOv
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.WM6MvAKSkX
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.89SOY2DvIc
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.0mE8AHTRlt
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/eve-plugin-wasm-7581a3866282d5c3.4
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/tmp.oLT9dfZjBk
+Oct 20 01:11:24 nixos dracon-system[2030880]: 🚨 disk at 98% (critical) — tmp e2e-litter age gate lifted for this pass
+Oct 20 01:11:28 nixos dracon-system[2030880]: 🧹 Tmp-e2e: 491.6 MiB
+Oct 20 01:11:30 nixos dracon-system[2030880]: ⚠️ failed to remove tmp entry /tmp/eve-install-backup-cleanup-1897637-1792137438351935114: Permission denied (os error 13)
+Oct 20 01:11:30 nixos dracon-system[2030880]: ⚠️ failed to remove tmp entry /tmp/sd-root169: Permission denied (os error 13)
+Oct 20 01:11:30 nixos dracon-system[2030880]: ⚠️ failed to remove tmp entry /tmp/sddm-auth-14ad0f27-5e27-488d-a0be-2c559b916d32: Operation not permitted (os error 1)
+Oct 20 01:11:32 nixos dracon-system[2030880]: ⚠️ failed to remove tmp entry /tmp/.XIM-unix: Operation not permitted (os error 1)
+Oct 20 01:11:32 nixos dracon-system[2030880]: ⚠️ failed to remove tmp entry /tmp/.font-unix: Operation not permitted (os error 1)
+Oct 20 01:11:33 nixos dracon-system[2030880]: ⚠️ failed to remove tmp entry /tmp/audit-sandbox-home: Permission denied (os error 13)
+Oct 20 01:11:33 nixos dracon-system[2030880]: ⚠️ failed to remove tmp entry /tmp/eve10-readonly-replay-3085601-1790790071511169641: Permission denied (os error 13)
+Oct 20 01:11:33 nixos dracon-system[2030880]: ⚠️ failed to remove tmp entry /tmp/.X11-unix: Operation not permitted (os error 1)
+Oct 20 01:11:33 nixos dracon-system[2030880]: ⚠️ failed to remove tmp entry /tmp/nb-probe-logs: Operation not permitted (os error 1)
+Oct 20 01:11:33 nixos dracon-system[2030880]: ⚠️ failed to remove tmp entry /tmp/.ICE-unix: Operation not permitted (os error 1)
+Oct 20 01:11:33 nixos dracon-system[2030880]: ⚠️ failed to remove tmp entry /tmp/fNguO13r: Permission denied (os error 13)
+Oct 20 01:11:33 nixos dracon-system[2030880]: 🧹 Tmp: 153.2 MiB
+Oct 20 01:11:34 nixos dracon-system[2030880]: ⚠️ nix-env system-profile generation prune failed (exit status: 1): error: opening lock file '/nix/var/nix/profiles/default.lock': Read-only file system (needs root; user GC still runs)
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ mem-renice pid=475293 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ mem-renice pid=501690 cmd=chromium -> nice 5 (pressure critical)
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-bias pid=475293 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 01:12:08 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=475293 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:12:08 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=501690 cmd=chromium: incomplete CPU lease recovered; retry next pass
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=500990 parent=566191 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=512433 parent=288454 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=512461 parent=288454 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=509724 parent=2385071 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=483382 parent=10362 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=487859 parent=10362 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=509607 parent=2385071 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=512454 parent=288454 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=500984 parent=566191 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=483515 parent=10362 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=483674 parent=10362 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=512455 parent=288454 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=500982 parent=566191 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=512458 parent=288454 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=512456 parent=288454 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=513538 parent=288454 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=509687 parent=2385071 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=487920 parent=10362 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=510934 parent=566191 adj -> 200
+Oct 20 01:12:08 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=512648 parent=288454 adj -> 200
+Oct 20 01:12:38 nixos dracon-system[2030880]: 🛡️ mem-renice pid=521233 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:12:38 nixos dracon-system[2030880]: 🛡️ mem-renice pid=498600 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:12:39 nixos dracon-system[2030880]: 🛡️ oom-bias pid=521233 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 01:12:39 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=521233 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-1194300dc507f16c)
+Oct 20 01:12:39 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=475293 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:12:39 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=498600 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-f9dfb3263648ee49)
+Oct 20 01:13:09 nixos dracon-system[2030880]: 🛡️ mem-renice pid=513997 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:13:09 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=475293 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:13:09 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=513997 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-f9dfb3263648ee49)
+Oct 20 01:13:09 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=535764 parent=10362 adj -> 200
+Oct 20 01:13:09 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=535885 parent=10362 adj -> 200
+Oct 20 01:13:09 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=532581 parent=288454 adj -> 200
+Oct 20 01:13:09 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=532573 parent=288454 adj -> 200
+Oct 20 01:13:40 nixos dracon-system[2030880]: 🛡️ mem-renice pid=554433 cmd=rustc -> nice 5 (pressure critical)
+Oct 20 01:13:40 nixos dracon-system[2030880]: 🛡️ mem-renice pid=535713 cmd=chromium -> nice 5 (pressure critical)
+Oct 20 01:13:40 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=475293 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:13:40 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=554433 cmd=rustc -> CPUQuota=50% (scope dracon-cpu-unit-c9aa3b86e17a7a7c)
+Oct 20 01:13:40 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=535713 cmd=chromium -> CPUQuota=50% (scope dracon-cpu-unit-8215dc2f12bba5b8)
+Oct 20 01:13:40 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=554581 parent=1576132 adj -> 200
+Oct 20 01:13:40 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=554433 parent=3926367 adj -> 200
+Oct 20 01:13:40 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=554234 parent=3926367 adj -> 200
+Oct 20 01:13:40 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=554233 parent=3926367 adj -> 200
+Oct 20 01:13:40 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=554525 parent=1576132 adj -> 200
+Oct 20 01:13:40 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=554236 parent=3926367 adj -> 200
+Oct 20 01:13:40 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=554610 parent=1576132 adj -> 200
+Oct 20 01:13:40 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=553685 parent=3926367 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=475293 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=559263 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=559372 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=559394 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=566925 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=559229 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=566472 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=559331 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=558110 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=559265 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=559429 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=558449 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=558108 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=558106 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=558100 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=568261 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=558122 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=559231 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=559375 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=558107 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=559414 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=559279 parent=288454 adj -> 200
+Oct 20 01:14:11 nixos dracon-system[2030880]: ⚠️ retaining 1 pending descendant OOM restorations
+Oct 20 01:14:41 nixos dracon-system[2030880]: 🛡️ mem-renice pid=574360 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:14:41 nixos dracon-system[2030880]: 🛡️ mem-renice pid=560933 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:14:41 nixos dracon-system[2030880]: 🛡️ mem-renice pid=582773 cmd=chromium -> nice 5 (pressure critical)
+Oct 20 01:14:41 nixos dracon-system[2030880]: 🛡️ oom-bias pid=574360 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 01:14:41 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=574360 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-1194300dc507f16c)
+Oct 20 01:14:41 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=475293 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:14:41 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=560933 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-f9dfb3263648ee49)
+Oct 20 01:14:41 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=582773 cmd=chromium -> CPUQuota=50% (scope dracon-cpu-unit-8215dc2f12bba5b8)
+Oct 20 01:15:12 nixos dracon-system[2030880]: 🛡️ mem-renice pid=592431 cmd=chromium -> nice 5 (pressure critical)
+Oct 20 01:15:12 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=475293 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:15:12 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=592431 cmd=chromium -> CPUQuota=50% (scope dracon-cpu-unit-8215dc2f12bba5b8)
+Oct 20 01:15:12 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=3190788 cmd=pi: scope contains exempt process chrome
+Oct 20 01:15:42 nixos dracon-system[2030880]: 🛡️ mem-renice pid=619146 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:15:42 nixos dracon-system[2030880]: 🛡️ oom-bias pid=619146 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 01:15:42 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=475293 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:15:42 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=619146 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-8215dc2f12bba5b8)
+Oct 20 01:15:42 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=619974 parent=10362 adj -> 200
+Oct 20 01:15:42 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=618923 parent=288454 adj -> 200
+Oct 20 01:15:42 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=624838 parent=288454 adj -> 200
+Oct 20 01:15:42 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=624837 parent=288454 adj -> 200
+Oct 20 01:15:42 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=625111 parent=288454 adj -> 200
+Oct 20 01:15:42 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=624945 parent=288454 adj -> 200
+Oct 20 01:15:42 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=625546 parent=288454 adj -> 200
+Oct 20 01:15:42 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=624836 parent=288454 adj -> 200
+Oct 20 01:15:42 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=624841 parent=288454 adj -> 200
+Oct 20 01:15:43 nixos dracon-system[2030880]: [2026-10-20T00:15:43.043637240+00:00] Error: memory/pressure - critical: observed=critical, mem available 15%, swap used 22%, PSI full Some(1.86), top rss: MainThread=1010MiB,ffmpeg=828MiB,MainThread=597MiB,pi=406MiB,pi=350MiB
+Oct 20 01:16:13 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=475293 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:16:13 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=3190788 cmd=pi: scope contains exempt process chrome
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=632831 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=632289 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=632291 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=630794 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=634550 parent=10362 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=632296 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=634551 parent=10362 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=634554 parent=10362 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=630818 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=631244 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=632346 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=632615 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=634450 parent=10362 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=632996 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=633471 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=630811 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=642504 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=632337 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=630813 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=632334 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=642869 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=632710 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=630812 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=634492 parent=10362 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=644030 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=634552 parent=10362 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=630815 parent=288454 adj -> 200
+Oct 20 01:16:13 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=633379 parent=288454 adj -> 200
+Oct 20 01:16:43 nixos dracon-system[2030880]: 🛡️ mem-renice pid=642975 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:16:43 nixos dracon-system[2030880]: 🛡️ mem-renice pid=631177 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:16:43 nixos dracon-system[2030880]: 🛡️ oom-bias pid=642975 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 01:16:43 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=475293 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:16:43 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=642975 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-1194300dc507f16c)
+Oct 20 01:16:44 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=631177 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-f9dfb3263648ee49)
+Oct 20 01:17:14 nixos dracon-system[2030880]: 🛡️ mem-renice pid=637174 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 01:17:14 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=475293 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 01:17:14 nixos dracon-system[2030880]: 🛡️ cpu-cap pid=637174 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-f9dfb3263648ee49)
+Oct 20 01:17:14 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=662881 parent=1223981 adj -> 200
+Oct 20 01:17:14 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=668392 parent=1223981 adj -> 200
+Oct 20 01:17:14 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=668391 parent=1223981 adj -> 200
+Oct 20 01:17:14 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=668390 parent=1223981 adj -> 200
