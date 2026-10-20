@@ -1,0 +1,11 @@
+Tue 20 Oct 11:07:43 UTC 2026
+cargo 1.97.1 (c980f4866 2026-06-30)
+rustc 1.97.1 (8bab26f4f 2026-07-14)
+3.6.2
+OPENSSL_DIR=/nix/store/cqkz127l4l98xgp7p6y1j2cqvyx0w3jl-openssl-3.6.2-dev
+OPENSSL_INCLUDE_DIR=/nix/store/cqkz127l4l98xgp7p6y1j2cqvyx0w3jl-openssl-3.6.2-dev/include
+OPENSSL_LIB_DIR=/nix/store/by19gg2pqp2b1gqphdf6bwk2g3hgak79-openssl-3.6.2/lib
+PKG_CONFIG_PATH=/nix/store/cqkz127l4l98xgp7p6y1j2cqvyx0w3jl-openssl-3.6.2-dev/lib/pkgconfig
+CARGO_BUILD_JOBS=2
+CARGO_TARGET_DIR=/home/dracon/.local/state/dracon/protection-repair-2026-10-20/verification-target
+CARGO_INCREMENTAL=0

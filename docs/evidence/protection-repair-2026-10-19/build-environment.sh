@@ -7,6 +7,10 @@ export OPENSSL_LIB_DIR=/nix/store/by19gg2pqp2b1gqphdf6bwk2g3hgak79-openssl-3.6.2
 # Do not depend on the caller's graphical-desktop pkg-config search path.
 export PKG_CONFIG_PATH="$OPENSSL_DIR/lib/pkgconfig"
 export CARGO_BUILD_JOBS=2
+# Keep verification executables out of the concurrently used workspace target.
+# A caller may supply another private target directory explicitly.
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.local/state/dracon/protection-repair-2026-10-20/verification-target}"
+export CARGO_INCREMENTAL=0
 if ! test -f "$OPENSSL_INCLUDE_DIR/openssl/ssl.h" || ! test -f "$OPENSSL_LIB_DIR/libssl.so"; then
     printf '%s\n' 'Recorded OpenSSL store inputs are absent; enter the locked workspace nix develop shell instead.' >&2
     return 1
