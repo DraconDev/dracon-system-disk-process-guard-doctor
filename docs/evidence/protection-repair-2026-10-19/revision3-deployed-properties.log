@@ -1,5 +1,9 @@
+ActiveState=active
+MainPID=2835341
+ExecMainStartTimestamp=Tue 2026-10-20 13:27:04 BST
 CapabilityBoundingSet=cap_sys_nice
 AmbientCapabilities=cap_sys_nice
+PrivateTmp=no
 ProtectControlGroups=yes
 ProtectHome=read-only
 ProtectSystem=strict
