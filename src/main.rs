@@ -3548,6 +3548,44 @@ fn storage_hotspot_apply_is_blocked(kind: &str, apply: bool) -> bool {
     apply && kind == "cache" && package_cache_apply_is_disabled()
 }
 
+/// A live process whose EXECUTABLE lives under `root`.
+///
+/// 2026-10-20 (disk-full recovery): the socket/pidfile probes miss a
+/// service that runs a binary out of the target dir and binds a TCP port
+/// instead of a unix socket (observed: `db-gateway`'s
+/// `.cargo/target/debug/dg serve`). Deleting that target dir unlinks the
+/// running binary's inode — the process keeps serving, but any restart
+/// finds no executable. Read `/proc/<pid>/exe` for every process and
+/// refuse the candidate if one points inside it.
+#[cfg(target_os = "linux")]
+fn live_process_binary_under(root: &Path) -> Option<(i32, PathBuf)> {
+    let entries = std::fs::read_dir("/proc").ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !name.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        let Ok(pid) = name.parse::<i32>() else { continue };
+        let Ok(exe) = std::fs::read_link(format!("/proc/{pid}/exe")) else {
+            continue;
+        };
+        // A deleted binary still resolves, with a " (deleted)" suffix.
+        let exe_str = exe.to_string_lossy();
+        let exe_str = exe_str.strip_suffix(" (deleted)").unwrap_or(&exe_str);
+        let exe_path = Path::new(exe_str);
+        if exe_path.starts_with(root) {
+            return Some((pid, exe_path.to_path_buf()));
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+fn live_process_binary_under(_root: &Path) -> Option<(i32, PathBuf)> {
+    None
+}
+
 /// A live unix-socket listener whose path lives under `root`.
 ///
 /// 2026-10-20 (disk-full recovery): a `target/` dir can hold the runtime
@@ -3641,6 +3679,12 @@ fn live_pidfile_under(root: &Path) -> Option<PathBuf> {
 /// not always disposable build output — see `live_unix_socket_under`.
 async fn validate_storage_cleanup_activity(kind: &str, path: &Path) -> Result<()> {
     if matches!(kind, "rust-build" | "build-output" | "node-deps") {
+        if let Some((pid, exe)) = live_process_binary_under(path) {
+            anyhow::bail!(
+                "live process {pid} runs {} from inside this path (service runtime state, not build output)",
+                exe.display()
+            );
+        }
         if let Some(sock) = live_unix_socket_under(path) {
             anyhow::bail!(
                 "live service socket {} is inside this path (service runtime state, not build output)",

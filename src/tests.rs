@@ -4353,6 +4353,71 @@ async fn storage_cleanup_activity_refuses_live_rust_and_node_processes() {
     }
 }
 
+/// Locate an executable on PATH (real path, not a symlink) for use as a
+/// process fixture whose `/proc/<pid>/exe` must resolve to the copy.
+fn find_on_path(name: &str) -> Option<std::path::PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path).find_map(|dir| {
+        let candidate = dir.join(name);
+        let resolved = std::fs::canonicalize(&candidate).ok()?;
+        // A symlink would resolve to its target; copy the real binary so
+        // `/proc/<pid>/exe` points at the copy.
+        if resolved.is_file() {
+            Some(resolved)
+        } else {
+            None
+        }
+    })
+}
+
+/// A live process whose EXECUTABLE lives under the candidate must also
+/// block cleanup — a service can run its binary out of the target dir
+/// without any socket or pidfile there (observed: `db-gateway`'s
+/// `.cargo/target/debug/dg serve`).
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn storage_cleanup_activity_refuses_live_process_binary() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("target");
+    fs::create_dir_all(&root).unwrap();
+    let old = SystemTime::now() - Duration::from_secs(120);
+    File::open(&root)
+        .unwrap()
+        .set_times(std::fs::FileTimes::new().set_modified(old))
+        .unwrap();
+
+    // Fixture: a child process whose executable is a copy placed INSIDE
+    // the candidate, so `/proc/<pid>/exe` resolves under it. The copy must
+    // be a real binary (a symlink would resolve to its target instead),
+    // and the child must NOT exec-replace itself, so it is started with
+    // an argv that makes the copy run as the sleeping process itself.
+    let source = find_on_path("sleep").expect("sleep on PATH");
+    let bin = root.join("live-service").join("sleep");
+    fs::create_dir_all(bin.parent().unwrap()).unwrap();
+    std::fs::copy(&source, &bin).unwrap();
+    let child = std::process::Command::new(&bin)
+        .arg("300")
+        .spawn()
+        .unwrap();
+    struct ChildGuard(std::process::Child);
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let _guard = ChildGuard(child);
+
+    // The child's exe link resolves to the copy inside the candidate.
+    let detected = live_process_binary_under(&root);
+    assert!(detected.is_some(), "live binary under the candidate not detected");
+    let error = validate_storage_cleanup_activity("rust-build", &root)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("live process"), "{error}");
+    assert!(root.exists());
+}
+
 /// 2026-10-20 (disk-full recovery): a cleanup candidate that holds a LIVE
 /// unix-socket listener is service runtime state, not disposable build
 /// output. The dracon-platform dev stack keeps its sockets under
