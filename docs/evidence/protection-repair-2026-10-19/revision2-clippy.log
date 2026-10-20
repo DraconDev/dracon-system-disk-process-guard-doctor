@@ -1,0 +1,12 @@
+command: timeout 600 cargo clippy --workspace --locked -- -D warnings
+   Compiling libz-sys v1.1.29
+   Compiling libssh2-sys v0.3.3
+   Compiling libgit2-sys v0.18.8+1.9.7
+    Checking ssh2 v0.9.6
+    Checking dracon-system-lib v94.2.7
+    Checking dracon-system v0.112.45 (/home/dracon/Dev/dracon-utilities/dracon-system)
+    Checking git2 v0.21.0
+    Checking dracon-git v94.7.2
+    Checking dracon-sync v0.113.95 (/home/dracon/Dev/dracon-utilities/dracon-sync)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 41.43s
+exit=0
