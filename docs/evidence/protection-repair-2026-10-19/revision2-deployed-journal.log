@@ -1,0 +1,82 @@
+Oct 20 11:36:18 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=4156917 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 11:36:18 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=3974549 cmd=bun: scope contains exempt process chrome
+Oct 20 11:36:18 nixos dracon-system[2030880]: ⚠️ cpu-cap failed for pid=566191 cmd=pi: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=168586 parent=3944189 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=170349 parent=3944189 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=162229 parent=3190788 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=166967 parent=3944189 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=162234 parent=3190788 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=168506 parent=3944189 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=162237 parent=3190788 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=170407 parent=3944189 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=170511 parent=3944189 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=171205 parent=3944189 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=161099 parent=3944189 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=171539 parent=3944189 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=169951 parent=3944189 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=162573 parent=3944189 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=168831 parent=3944189 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=169047 parent=3944189 adj -> 200
+Oct 20 11:36:18 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=168178 parent=3944189 adj -> 200
+Oct 20 11:36:26 nixos systemd[1224]: Stopping Dracon System Guard - Proactive disk space monitoring and cleanup...
+Oct 20 11:36:27 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=174026 parent=3944189 adj -> 200
+Oct 20 11:36:27 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=175062 parent=3944189 adj -> 200
+Oct 20 11:36:27 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=174385 parent=3944189 adj -> 200
+Oct 20 11:36:27 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=174338 parent=3944189 adj -> 200
+Oct 20 11:36:27 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=174995 parent=566191 adj -> 200
+Oct 20 11:36:27 nixos dracon-system[2030880]: 🛡️ oom-descendant-restore pid=175016 parent=566191 adj -> 200
+Oct 20 11:36:27 nixos dracon-system[2030880]: ⚠ SIGHUP retaining 1 pending descendant OOM restorations
+Oct 20 11:36:28 nixos dracon-system[2030880]: ⚠ SIGHUP failed to restore nice value for pid=4027391 comm=bun: renice exited with status exit status: 1: renice: failed to set priority for 4027391 (process ID): Permission denied
+Oct 20 11:36:28 nixos dracon-system[2030880]: ⚠ SIGHUP failed to restore nice value for pid=4156917 comm=MainThread: renice exited with status exit status: 1: renice: failed to set priority for 4156917 (process ID): Permission denied
+Oct 20 11:36:28 nixos dracon-system[2030880]: ⚠ SIGHUP failed to restore nice value for pid=847309 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 847309 (process ID): Permission denied
+Oct 20 11:36:28 nixos dracon-system[2030880]: ⚠ SIGHUP failed to restore nice value for pid=4157094 comm=esbuild: renice exited with status exit status: 1: renice: failed to set priority for 4157094 (process ID): Permission denied
+Oct 20 11:36:28 nixos dracon-system[2030880]: ⚠ SIGHUP failed to restore nice value for pid=832942 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 832942 (process ID): Permission denied
+Oct 20 11:36:28 nixos dracon-system[2030880]: ⚠ shutdown: some process adjustments could not be restored; durable obligations retained
+Oct 20 11:36:28 nixos systemd[1224]: Stopped Dracon System Guard - Proactive disk space monitoring and cleanup.
+Oct 20 11:36:28 nixos systemd[1224]: dracon-system-guard.service: Consumed 5min 53.095s CPU time, 1.1G memory peak, 88.8M memory swap peak.
+Oct 20 11:36:28 nixos systemd[1224]: Started Dracon System Guard - Proactive disk space monitoring and cleanup.
+Oct 20 11:36:29 nixos dracon-system[176101]: 🛡️ adopted 6 mitigation(s) left applied by a previous run — restoring them now
+Oct 20 11:36:30 nixos dracon-system[176101]: ⚠ SIGHUP retaining 3 pending descendant OOM restorations
+Oct 20 11:36:30 nixos dracon-system[176101]: ⚠ SIGHUP failed to restore nice value for pid=4027391 comm=bun: renice exited with status exit status: 1: renice: failed to set priority for 4027391 (process ID): Permission denied
+Oct 20 11:36:30 nixos dracon-system[176101]: ⚠ SIGHUP failed to restore nice value for pid=4157094 comm=esbuild: renice exited with status exit status: 1: renice: failed to set priority for 4157094 (process ID): Permission denied
+Oct 20 11:36:30 nixos dracon-system[176101]: ⚠ SIGHUP failed to restore nice value for pid=832942 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 832942 (process ID): Permission denied
+Oct 20 11:36:30 nixos dracon-system[176101]: ⚠ SIGHUP failed to restore nice value for pid=847309 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 847309 (process ID): Permission denied
+Oct 20 11:36:30 nixos dracon-system[176101]: ⚠ SIGHUP failed to restore nice value for pid=4156917 comm=MainThread: renice exited with status exit status: 1: renice: failed to set priority for 4156917 (process ID): Permission denied
+Oct 20 11:36:53 nixos systemd[1224]: Stopping Dracon System Guard - Proactive disk space monitoring and cleanup...
+Oct 20 11:37:14 nixos dracon-system[176101]: 🛡️ trash: keeping 1 flagged entry (12 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/offhost/owner.key, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/bloom_token_log.rs, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/token_memory_cache.rs; 550 unobservable capped subtrees; 1 unreadable subtrees), purging the rest
+Oct 20 11:37:14 nixos dracon-system[176101]: [2026-10-20T10:37:14.861173498+00:00] Warn: trash/credential-guard - trash purge skipping 1 flagged entries (12 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/offhost/owner.key, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/bloom_token_log.rs, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/token_memory_cache.rs; 550 unobservable capped subtrees; 1 unreadable subtrees)
+Oct 20 11:37:14 nixos dracon-system[176101]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH
+Oct 20 11:37:20 nixos dracon-system[176101]: ⚠️ failed to remove tmp entry /tmp/eve-install-backup-cleanup-1897637-1792137438351935114: Permission denied (os error 13)
+Oct 20 11:37:21 nixos dracon-system[176101]: ⚠️ failed to remove tmp entry /tmp/sd-root169: Permission denied (os error 13)
+Oct 20 11:37:22 nixos dracon-system[176101]: ⚠️ failed to remove tmp entry /tmp/sddm-auth-14ad0f27-5e27-488d-a0be-2c559b916d32: Operation not permitted (os error 1)
+Oct 20 11:37:26 nixos dracon-system[176101]: ⚠️ failed to remove tmp entry /tmp/tabmon-sfx-src: Permission denied (os error 13)
+Oct 20 11:37:28 nixos dracon-system[176101]: ⚠️ failed to remove tmp entry /tmp/.XIM-unix: Operation not permitted (os error 1)
+Oct 20 11:37:28 nixos dracon-system[176101]: ⚠️ failed to remove tmp entry /tmp/.font-unix: Operation not permitted (os error 1)
+Oct 20 11:37:29 nixos dracon-system[176101]: ⚠️ failed to remove tmp entry /tmp/audit-sandbox-home: Permission denied (os error 13)
+Oct 20 11:37:29 nixos dracon-system[176101]: ⚠️ failed to remove tmp entry /tmp/eve10-readonly-replay-3085601-1790790071511169641: Permission denied (os error 13)
+Oct 20 11:37:30 nixos dracon-system[176101]: ⚠️ failed to remove tmp entry /tmp/.X11-unix: Operation not permitted (os error 1)
+Oct 20 11:37:30 nixos dracon-system[176101]: ⚠️ failed to remove tmp entry /tmp/nb-probe-logs: Operation not permitted (os error 1)
+Oct 20 11:37:30 nixos dracon-system[176101]: ⚠️ failed to remove tmp entry /tmp/.ICE-unix: Operation not permitted (os error 1)
+Oct 20 11:37:30 nixos dracon-system[176101]: ⚠️ failed to remove tmp entry /tmp/fNguO13r: Permission denied (os error 13)
+Oct 20 11:37:30 nixos dracon-system[176101]: 🧹 Tmp: 3.4 MiB
+Oct 20 11:37:31 nixos dracon-system[176101]: ⚠️ nix-env system-profile generation prune failed (exit status: 1): error: opening lock file '/nix/var/nix/profiles/default.lock': Read-only file system (needs root; user GC still runs)
+Oct 20 11:38:23 nixos systemd[1224]: dracon-system-guard.service: State 'stop-sigterm' timed out. Killing.
+Oct 20 11:38:23 nixos systemd[1224]: dracon-system-guard.service: Killing process 176101 (dracon-system) with signal SIGKILL.
+Oct 20 11:38:23 nixos systemd[1224]: dracon-system-guard.service: Main process exited, code=killed, status=9/KILL
+Oct 20 11:38:23 nixos systemd[1224]: dracon-system-guard.service: Failed with result 'timeout'.
+Oct 20 11:38:23 nixos systemd[1224]: Stopped Dracon System Guard - Proactive disk space monitoring and cleanup.
+Oct 20 11:38:23 nixos systemd[1224]: dracon-system-guard.service: Consumed 11.316s CPU time, 432.6M memory peak, 47.3M memory swap peak.
+Oct 20 11:38:23 nixos systemd[1224]: Started Dracon System Guard - Proactive disk space monitoring and cleanup.
+Oct 20 11:38:24 nixos dracon-system[224736]: 🛡️ adopted 5 mitigation(s) left applied by a previous run — restoring them now
+Oct 20 11:38:24 nixos dracon-system[224736]: ⚠ SIGHUP failed to restore nice value for pid=4156917 comm=MainThread: renice exited with status exit status: 1: renice: failed to set priority for 4156917 (process ID): Permission denied
+Oct 20 11:38:24 nixos dracon-system[224736]: ⚠ SIGHUP failed to restore nice value for pid=4157094 comm=esbuild: renice exited with status exit status: 1: renice: failed to set priority for 4157094 (process ID): Permission denied
+Oct 20 11:38:24 nixos dracon-system[224736]: ⚠ SIGHUP failed to restore nice value for pid=847309 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 847309 (process ID): Permission denied
+Oct 20 11:38:24 nixos dracon-system[224736]: ⚠ SIGHUP failed to restore nice value for pid=4027391 comm=bun: renice exited with status exit status: 1: renice: failed to set priority for 4027391 (process ID): Permission denied
+Oct 20 11:38:24 nixos dracon-system[224736]: ⚠ SIGHUP failed to restore nice value for pid=832942 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 832942 (process ID): Permission denied
+Oct 20 11:38:58 nixos dracon-system[224736]: 🛡️ trash: keeping 1 flagged entry (12 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/offhost/owner.key, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/bloom_token_log.rs, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/token_memory_cache.rs; 550 unobservable capped subtrees; 1 unreadable subtrees), purging the rest
+Oct 20 11:38:58 nixos dracon-system[224736]: [2026-10-20T10:38:58.514322295+00:00] Warn: trash/credential-guard - trash purge skipping 1 flagged entries (12 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/offhost/owner.key, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/bloom_token_log.rs, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/token_memory_cache.rs; 550 unobservable capped subtrees; 1 unreadable subtrees)
+Oct 20 11:38:58 nixos dracon-system[224736]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH
+Oct 20 11:39:05 nixos dracon-system[224736]: ⚠️ failed to remove tmp entry /tmp/eve-install-backup-cleanup-1897637-1792137438351935114: Permission denied (os error 13)
+Oct 20 11:39:05 nixos dracon-system[224736]: ⚠️ failed to remove tmp entry /tmp/sd-root169: Permission denied (os error 13)
+Oct 20 11:39:07 nixos dracon-system[224736]: ⚠️ failed to remove tmp entry /tmp/sddm-auth-14ad0f27-5e27-488d-a0be-2c559b916d32: Operation not permitted (os error 1)
+Oct 20 11:39:15 nixos dracon-system[224736]: ⚠️ failed to remove tmp entry /tmp/.XIM-unix: Operation not permitted (os error 1)
