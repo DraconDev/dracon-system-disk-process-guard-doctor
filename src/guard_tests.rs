@@ -1531,3 +1531,30 @@ fn a_legacy_ledger_without_the_cgroup_still_hydrates_and_never_guesses_a_path() 
 
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }
+
+#[test]
+fn disk_fill_rate_recovers_after_large_reclamation() {
+    let now = Instant::now();
+    let gib = 1024 * 1024 * 1024;
+    let history = [
+        (now - Duration::from_secs(120), 800 * gib),
+        (now - Duration::from_secs(90), 801 * gib),
+        (now - Duration::from_secs(60), 600 * gib),
+        (now - Duration::from_secs(30), 601 * gib),
+        (now, 602 * gib),
+    ];
+    let rate = crate::disk_fill_rate_gbph(&history).unwrap();
+    assert!((rate - 120.0).abs() < 0.01);
+    // Cleanup alone must not manufacture a positive growth observation.
+    assert!(crate::disk_fill_rate_gbph(&history[..3]).is_none());
+    assert!(crate::disk_fill_rate_gbph(&history[..4]).is_none());
+}
+
+#[test]
+fn rapid_fill_warning_reports_user_available_runway() {
+    let message = crate::rapid_disk_fill_message(40.0, 90, 20 * 1024 * 1024 * 1024);
+    assert!(message.contains("20.0 GiB available"));
+    assert!(message.contains("0.5 hours until full if growth continues"));
+    let full = crate::rapid_disk_fill_message(40.0, 100, 0);
+    assert!(full.contains("0.0 hours"));
+}

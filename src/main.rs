@@ -1342,6 +1342,16 @@ pub(crate) fn disk_fill_rate_gbph(history: &[(Instant, u64)]) -> Option<f64> {
         return None;
     }
     let recent = &history[history.len() - n..];
+    // Reclamation starts a new growth window. Otherwise a large cleanup can
+    // hide fresh rapid writes behind a negative slope for up to 30 samples.
+    let start = recent
+        .windows(2)
+        .rposition(|pair| pair[1].1 < pair[0].1)
+        .map_or(0, |index| index + 1);
+    let recent = &recent[start..];
+    if recent.len() < 3 {
+        return None;
+    }
     let t0 = recent[0].0;
     let b0 = recent[0].1 as f64;
     let span = recent.last()?.0.duration_since(t0).as_secs_f64();
@@ -4787,6 +4797,16 @@ async fn check_disk_early_warning(guard: &GuardPolicy, state: &mut GuardRuntimeS
     }
 }
 
+/// Use space available to this user, excluding filesystem reserved blocks.
+fn rapid_disk_fill_message(rate: f64, used_pct: u8, avail_bytes: u64) -> String {
+    let available_gib = avail_bytes as f64 / 1024_f64.powi(3);
+    let hours = available_gib / rate;
+    format!(
+        "Disk growing at {rate:.1} GiB/h ({used_pct}% used); {available_gib:.1} GiB available, \
+         estimated {hours:.1} hours until full if growth continues — inspect recent writes with dracon-system disk"
+    )
+}
+
 /// Byte-precise rapid disk-fill detection (ADDED 2026-08-10,
 /// v0.112.35). The percent-based trend check is too coarse on large
 /// disks — 1% of a 907 GiB disk is ~9 GiB — so this tracks df used
@@ -4796,6 +4816,7 @@ async fn check_rapid_disk_fill(
     state: &mut GuardRuntimeState,
     used_bytes: u64,
     used_pct: u8,
+    avail_bytes: u64,
 ) -> Option<f64> {
     let now = Instant::now();
     state.disk_bytes_history.push((now, used_bytes));
@@ -4812,25 +4833,18 @@ async fn check_rapid_disk_fill(
         guard.report_repeat_secs,
     );
     if rapid {
+        let detail = rapid_disk_fill_message(rate, used_pct, avail_bytes);
         // One notification on entry; unchanged rapid growth is retained in
         // structured telemetry and summarized only at the repeat interval.
         if previous.as_deref() != Some("rapid") {
-            send_notification(
-                guard,
-                "Dracon System Guard - Disk Filling Rapidly",
-                &format!(
-                    "Disk growing at {:.1} GiB/h (currently {}% used) — check recent writes",
-                    rate, used_pct
-                ),
-            )
-            .await;
+            send_notification(guard, "Dracon System Guard - Disk Filling Rapidly", &detail).await;
         }
         if event_due {
             emit_event(&DraconEvent::new(
                 "system",
                 EventSeverity::Warn,
                 "disk/rapid-fill",
-                format!("growing at {:.1} GiB/h ({}% used)", rate, used_pct),
+                detail,
             ));
         }
     }
@@ -7669,7 +7683,8 @@ pub(crate) async fn run_guard_once(
 
     check_disk_trends(guard, state, used).await;
     check_disk_early_warning(guard, state, used).await;
-    let fill_gbph = check_rapid_disk_fill(guard, state, details.used_bytes, used).await;
+    let fill_gbph =
+        check_rapid_disk_fill(guard, state, details.used_bytes, used, details.avail_bytes).await;
     manage_sync_freeze(guard, used, &dstate, &mut sync_frozen);
 
     let mut relocate_candidates: Vec<ColdCandidate> = Vec::new();
