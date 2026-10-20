@@ -4803,7 +4803,7 @@ fn rapid_disk_fill_message(rate: f64, used_pct: u8, avail_bytes: u64) -> String 
     let hours = available_gib / rate;
     format!(
         "Disk growing at {rate:.1} GiB/h ({used_pct}% used); {available_gib:.1} GiB available, \
-         estimated {hours:.1} hours until full if growth continues — inspect recent writes with dracon-system disk"
+         estimated {hours:.1} hours until full if growth continues — inspect recent writes with dracon-system storage"
     )
 }
 
