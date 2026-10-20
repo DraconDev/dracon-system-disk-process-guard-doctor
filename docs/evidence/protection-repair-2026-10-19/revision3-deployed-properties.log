@@ -1,0 +1,6 @@
+CapabilityBoundingSet=cap_sys_nice
+AmbientCapabilities=cap_sys_nice
+ProtectControlGroups=yes
+ProtectHome=read-only
+ProtectSystem=strict
+NoNewPrivileges=yes

@@ -1,0 +1,34 @@
+=== cleanup:
+unrelated job scope:
+LoadState=not-found
+ActiveState=inactive
+unrelated job record retained (owned by the guard, not deleted by the probe):
+/home/dracon/.dracon/oom-jobs/616a6609-bc8d-42ff-a19d-128885c6f081.json
+synthetic test debt removed:
+(absent)
+probe-created units:
+dracon-managed-job-12353612-53c7-48fc-9ed8-97d4acddff95.scope loaded active running [systemd-run] /tmp/dracon-protection-release-rSyH9P/previous-installed-dracon-system managed-job-enter 12353612-53c7-48fc-9ed8-97d4acddff95 -- /tmp/dracon-protection-release-rSyH9P/previous-installed-dracon-system protection-worker /tmp/dracon-r3-probe-old-nhJL7T
+dracon-managed-job-3cdc5a59-1c81-4eda-bf9a-655a7020dbcb.scope loaded active running [systemd-run] /home/dracon/.local/bin/dracon-system managed-job-enter 3cdc5a59-1c81-4eda-bf9a-655a7020dbcb -- /home/dracon/.local/bin/dracon-system protection-worker /tmp/dracon-unrelated-job-X3jKNd
+dracon-protection-test-2819044.scope                          loaded active running dracon-protection-test-2819044.scope
+probe worker processes:
+2769255 /home/dracon/.local/bin/dracon-system managed-job -- /home/dracon/.local/bin/dracon-system protection-worker /tmp/dracon-unrelated-job-X3jKNd
+2769297 /home/dracon/.local/bin/dracon-system managed-job-enter 3cdc5a59-1c81-4eda-bf9a-655a7020dbcb -- /home/dracon/.local/bin/dracon-system protection-worker /tmp/dracon-unrelated-job-X3jKNd
+2769375 /home/dracon/.local/bin/dracon-system protection-worker /tmp/dracon-unrelated-job-X3jKNd
+2797446 /tmp/dracon-protection-release-rSyH9P/previous-installed-dracon-system managed-job-enter 12353612-53c7-48fc-9ed8-97d4acddff95 -- /tmp/dracon-protection-release-rSyH9P/previous-installed-dracon-system protection-worker /tmp/dracon-r3-probe-old-nhJL7T
+2797521 /tmp/dracon-protection-release-rSyH9P/previous-installed-dracon-system protection-worker /tmp/dracon-r3-probe-old-nhJL7T
+=== after stop markers:
+2819044 /home/dracon/.local/bin/dracon-system protection-worker /tmp/dracon-r3-exercise2-TNUEel
+2822706 /home/dracon/.local/bin/dracon-system protection-worker /tmp/dracon-r3-exercise2-TNUEel --child
+--- remaining disposable scopes:
+dracon-protection-test-2819044.scope loaded active running dracon-protection-test-2819044.scope
+=== workers now:
+--- disposable scopes:
+--- outstanding debts:
+696bbf65-9e8a-480b-a2b6-7ce02deab6ce.debt.json
+--- outstanding debts after cleanup:
+(none)
+--- deployed guard:
+ActiveState=active
+MainPID=2835341
+ExecMainStartTimestamp=Tue 2026-10-20 13:27:04 BST
+66152f7f924c50b98a144e88a534de8558467fb304db4a900fbebcf91251a6cb  /proc/2835341/exe
