@@ -64,7 +64,7 @@ async fn scoped_probe_restoration_and_retirement_leave_other_jobs_and_debts_byte
     // An unreadable/invalid unrelated debt must not even be parsed by this API.
     let corrupt = "44444444-4444-4444-4444-444444444444.debt.json";
     fs::write(root.join(corrupt), b"unrelated corrupt debt").unwrap();
-    assert!(!drain_job_in(root, &own, &HashSet::new()).await.unwrap());
+    assert!(!drain_job(root, &own, &HashSet::new()).await.unwrap());
     assert!(job_retired(root, &own).unwrap());
     for (name, original) in names.iter().zip(before.iter()) {
         assert_eq!(
@@ -82,7 +82,7 @@ async fn scoped_probe_restoration_and_retirement_leave_other_jobs_and_debts_byte
         .join(format!("{}.retired.json", other_terminal.id))
         .exists());
     // Retry is idempotent and still cannot range over another generation.
-    assert!(!drain_job_in(root, &own, &HashSet::new()).await.unwrap());
+    assert!(!drain_job(root, &own, &HashSet::new()).await.unwrap());
     for (name, original) in names.iter().zip(before.iter()) {
         assert_eq!(&bytes(root, name), original);
     }
@@ -98,7 +98,7 @@ async fn replaced_probe_admission_or_debt_is_rejected_before_mutation() {
     oom_job::save(dir.path(), &replaced, false).unwrap();
     let record = bytes(dir.path(), &format!("{}.json", original.id));
     let debt = bytes(dir.path(), &format!("{}.debt.json", original.id));
-    assert!(drain_job_in(dir.path(), &original, &HashSet::new())
+    assert!(drain_job(dir.path(), &original, &HashSet::new())
         .await
         .is_err());
     assert!(job_retired(dir.path(), &original).is_err());
@@ -113,7 +113,7 @@ async fn replaced_probe_admission_or_debt_is_rejected_before_mutation() {
     replacement_debt.admission = replaced;
     save_debt(dir.path(), &replacement_debt).unwrap();
     let before = bytes(dir.path(), &format!("{}.debt.json", original.id));
-    assert!(drain_job_in(dir.path(), &original, &HashSet::new())
+    assert!(drain_job(dir.path(), &original, &HashSet::new())
         .await
         .is_err());
     assert_eq!(

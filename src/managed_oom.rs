@@ -429,11 +429,8 @@ async fn bias_inner(
 }
 
 /// Restore only this captured generation; never enumerate other job debts.
-pub(crate) async fn drain_job(expected: &Job, exempt: &HashSet<String>) -> Result<bool> {
-    drain_job_in(&oom_job::root()?, expected, exempt).await
-}
-
-async fn drain_job_in(root: &Path, expected: &Job, exempt: &HashSet<String>) -> Result<bool> {
+/// The registry root is explicit so callers and tests share one entry point.
+pub(crate) async fn drain_job(root: &Path, expected: &Job, exempt: &HashSet<String>) -> Result<bool> {
     drain_one(root, &expected.id, true, exempt, Some(expected)).await
 }
 

@@ -206,7 +206,7 @@ async fn exercise_managed(root: &Path) -> Result<()> {
             restored = true;
             break;
         }
-        if let Err(error) = managed_oom::drain_job(&job, &exempt).await {
+        if let Err(error) = managed_oom::drain_job(&registry, &job, &exempt).await {
             drain_error = Some(format!("{error:#}"));
         }
         sleep(Duration::from_millis(100)).await;
@@ -222,7 +222,7 @@ async fn exercise_managed(root: &Path) -> Result<()> {
     let status = tokio::time::timeout(Duration::from_secs(120), child.wait()).await;
     let mut retired = false;
     for _ in 0..200 {
-        if let Err(error) = managed_oom::drain_job(&job, &exempt).await {
+        if let Err(error) = managed_oom::drain_job(&registry, &job, &exempt).await {
             drain_error = Some(format!("{error:#}"));
         }
         match managed_oom::job_retired(&registry, &job) {
