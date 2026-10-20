@@ -4353,6 +4353,85 @@ async fn storage_cleanup_activity_refuses_live_rust_and_node_processes() {
     }
 }
 
+/// 2026-10-20 (disk-full recovery): a cleanup candidate that holds a LIVE
+/// unix-socket listener is service runtime state, not disposable build
+/// output. The dracon-platform dev stack keeps its sockets under
+/// `target/dev-stack/sockets/`; wiping `target/` unlinked them and broke
+/// Caddy's upstream connections while the workers kept answering on
+/// pooled connections.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn storage_cleanup_activity_refuses_live_service_socket() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("target");
+    fs::create_dir_all(root.join("sockets")).unwrap();
+    let sock_path = root.join("sockets").join("api.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&sock_path).unwrap();
+    // Keep the listener alive for the whole assertion window.
+    assert_eq!(
+        live_unix_socket_under(&root),
+        Some(sock_path.clone()),
+        "live listener under the candidate must be detected"
+    );
+    let error = validate_storage_cleanup_activity("rust-build", &root)
+        .await
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("live service socket"),
+        "{error}"
+    );
+    assert!(root.exists());
+    drop(listener);
+}
+
+/// Same guard for a candidate that holds a live PID file (a service that
+/// keeps only a pidfile, no socket).
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn storage_cleanup_activity_refuses_live_pidfile() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("target");
+    fs::create_dir_all(root.join("dev-stack")).unwrap();
+    let pidfile = root.join("dev-stack").join("api.pid");
+    fs::write(&pidfile, format!("{}\n", std::process::id())).unwrap();
+    let error = validate_storage_cleanup_activity("rust-build", &root)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("live pidfile"), "{error}");
+    assert!(root.exists());
+}
+
+/// A STALE pidfile (its PID is gone) must NOT block cleanup — otherwise
+/// the guard could never reclaim a target dir whose services have stopped.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn storage_cleanup_activity_allows_stale_pidfile() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("target");
+    fs::create_dir_all(root.join("dev-stack")).unwrap();
+    // PID 1 exists, so use a PID that is guaranteed absent: spawn a
+    // short-lived child, wait for it, then reuse its (reaped) PID.
+    let mut child = std::process::Command::new("/bin/sh")
+        .args(["-c", "exit 0"])
+        .spawn()
+        .unwrap();
+    child.wait().unwrap();
+    let dead_pid = child.id();
+    fs::write(root.join("dev-stack").join("api.pid"), format!("{dead_pid}\n")).unwrap();
+    // The path is fresh, so age it past the 60s mtime backstop.
+    let old = SystemTime::now() - Duration::from_secs(120);
+    File::open(&root)
+        .unwrap()
+        .set_times(std::fs::FileTimes::new().set_modified(old))
+        .unwrap();
+    assert!(live_pidfile_under(&root).is_none(), "stale pidfile must not count");
+    // No live service state and no active build: the candidate stays
+    // eligible for cleanup (no error from the state checks).
+    assert!(validate_storage_cleanup_activity("rust-build", &root)
+        .await
+        .is_ok());
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn rust_build_listing_failure_or_malformed_output_is_an_error() {

@@ -3548,10 +3548,107 @@ fn storage_hotspot_apply_is_blocked(kind: &str, apply: bool) -> bool {
     apply && kind == "cache" && package_cache_apply_is_disabled()
 }
 
+/// A live unix-socket listener whose path lives under `root`.
+///
+/// 2026-10-20 (disk-full recovery): a `target/` dir can hold the runtime
+/// state of a RUNNING service, not just build output. The dracon-platform
+/// dev stack keeps its sockets under `target/dev-stack/sockets/`; wiping
+/// `target/` unlinked the socket paths of five live API workers, so Caddy
+/// could not open new connections even though the processes kept answering
+/// on already-pooled ones. The build-activity check alone did not catch it
+/// (no cargo/rustc was running), so the candidate needs its own probe.
+#[cfg(target_os = "linux")]
+fn live_unix_socket_under(root: &Path) -> Option<PathBuf> {
+    let net_unix = std::fs::read_to_string("/proc/net/unix").ok()?;
+    for line in net_unix.lines().skip(1) {
+        // Num RefCount Protocol Flags Type St Inode Path
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 8 {
+            continue; // unnamed socket (no path)
+        }
+        let (flags, sock_type, state, sock_path) =
+            (fields[3], fields[4], fields[5], fields[7]);
+        // A listening stream socket: SO_ACCEPTCON in the flags word
+        // (00010000) or the unconnected state (01) on a SOCK_STREAM.
+        let is_listener = flags == "00010000" || (state == "01" && sock_type == "0001");
+        if !is_listener {
+            continue;
+        }
+        let sock = Path::new(sock_path);
+        if sock.starts_with(root) {
+            return Some(sock.to_path_buf());
+        }
+    }
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+fn live_unix_socket_under(_root: &Path) -> Option<PathBuf> {
+    None
+}
+
+/// A pidfile under `root` that names a live process.
+///
+/// Complements the socket probe: a service may keep only a pidfile (no
+/// socket), and the pidfile is what `make down`/status use to find it.
+/// A stale pidfile whose PID is gone (or was reused by an unrelated
+/// process) is NOT a reason to refuse the cleanup.
+fn live_pidfile_under(root: &Path) -> Option<PathBuf> {
+    // Cargo's own cache dirs never hold service state, and they hold the
+    // bulk of the entries — skipping them keeps this scan cheap on a
+    // multi-gigabyte target dir.
+    const SKIP_DIRS: [&str; 6] = ["deps", "build", "incremental", "debug", "release", ".fingerprint"];
+    let entries = walkdir::WalkDir::new(root)
+        .max_depth(3)
+        .into_iter()
+        .filter_entry(|e| {
+            e.depth() == 0
+                || e.file_type().is_dir() && !SKIP_DIRS.contains(&e.file_name().to_string_lossy().as_ref())
+        })
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_file())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .and_then(|s| s.to_str())
+                .is_some_and(|ext| ext == "pid")
+        });
+    for entry in entries {
+        let Some(pid) = std::fs::read_to_string(entry.path())
+            .ok()
+            .and_then(|s| s.trim().parse::<i32>().ok())
+        else {
+            continue;
+        };
+        if pid > 0 && Path::new(&format!("/proc/{pid}")).exists() {
+            return Some(entry.path().to_path_buf());
+        }
+    }
+    None
+}
+
 /// Recheck activity at the deletion boundary, not only when sizing hotspots.
 /// Process inspection errors retain the candidate. The mtime backstop covers
 /// builds whose current directory differs from their selected manifest.
+///
+/// 2026-10-20: also refuse a candidate that holds the runtime state of a
+/// LIVE service (unix socket listener or live pidfile). A `target/` dir is
+/// not always disposable build output — see `live_unix_socket_under`.
 async fn validate_storage_cleanup_activity(kind: &str, path: &Path) -> Result<()> {
+    if matches!(kind, "rust-build" | "build-output" | "node-deps") {
+        if let Some(sock) = live_unix_socket_under(path) {
+            anyhow::bail!(
+                "live service socket {} is inside this path (service runtime state, not build output)",
+                sock.display()
+            );
+        }
+        if let Some(pidfile) = live_pidfile_under(path) {
+            anyhow::bail!(
+                "live pidfile {} is inside this path (service runtime state, not build output)",
+                pidfile.display()
+            );
+        }
+    }
     if matches!(kind, "rust-build" | "build-output") {
         let project = path
             .parent()
