@@ -53,3 +53,12 @@ and warning text at both positive and zero available space.
   totals; preserve credential guards and active-build checks.
 - Give the second disk its own rapid-fill history. Extra mounts currently
   provide visibility while primary-mount pressure controls cleanup.
+
+## Dependency validation
+
+The required `cargo deny check` found RUSTSEC-2026-0382 in
+`rustls-webpki 0.103.15` and RUSTSEC-2026-0381 in `webpki-roots 1.0.9`.
+The parent workspace lockfile now selects the advisory's patch fixes,
+0.103.16 and 1.0.10 respectively. No dependency manifest constraints or
+other locked versions were changed. Validation and deployment use this
+updated lockfile.
