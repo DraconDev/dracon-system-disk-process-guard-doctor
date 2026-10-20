@@ -1,0 +1,367 @@
+Oct 20 13:20:16 nixos dracon-system[224736]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:20:46 nixos dracon-system[224736]: 🛡️ mem-renice pid=2661919 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 13:20:46 nixos dracon-system[224736]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:20:46 nixos dracon-system[224736]: 🛡️ cpu-cap pid=2661919 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-ecd268a516d3a57a)
+Oct 20 13:20:46 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2663820 parent=1068302 adj -> 200
+Oct 20 13:20:46 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2663809 parent=1068302 adj -> 200
+Oct 20 13:20:46 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2661918 parent=2558502 adj -> 200
+Oct 20 13:20:46 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2661919 parent=2558502 adj -> 200
+Oct 20 13:20:46 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2661891 parent=2558502 adj -> 200
+Oct 20 13:20:46 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2663817 parent=1068302 adj -> 200
+Oct 20 13:20:46 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2663816 parent=1068302 adj -> 200
+Oct 20 13:21:17 nixos dracon-system[224736]: 🛡️ mem-renice pid=2676645 cmd=rustc -> nice 5 (pressure critical)
+Oct 20 13:21:17 nixos dracon-system[224736]: 🛡️ mem-renice pid=2678192 cmd=rustc -> nice 5 (pressure critical)
+Oct 20 13:21:17 nixos dracon-system[224736]: ⚠️ cpu-cap failed for pid=2676645 cmd=rustc: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:21:17 nixos dracon-system[224736]: ⚠️ cpu-cap failed for pid=2678192 cmd=rustc: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:21:17 nixos dracon-system[224736]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:21:17 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2684362 parent=832942 adj -> 200
+Oct 20 13:21:17 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2678192 parent=566191 adj -> 200
+Oct 20 13:21:17 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2684528 parent=832942 adj -> 200
+Oct 20 13:21:17 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2675106 parent=566191 adj -> 200
+Oct 20 13:21:17 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2676645 parent=566191 adj -> 200
+Oct 20 13:21:17 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2675179 parent=566191 adj -> 200
+Oct 20 13:21:17 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2675177 parent=566191 adj -> 200
+Oct 20 13:21:48 nixos dracon-system[224736]: 🛡️ mem-renice pid=2700698 cmd=MainThread -> nice 19 (pressure critical)
+Oct 20 13:21:48 nixos dracon-system[224736]: 🛡️ mem-renice pid=1189576 cmd=chromium -> nice 5 (pressure critical)
+Oct 20 13:21:48 nixos dracon-system[224736]: 🛡️ oom-bias pid=2700698 cmd=MainThread adj 0 -> 250 (critical pressure)
+Oct 20 13:21:48 nixos dracon-system[224736]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:21:48 nixos dracon-system[224736]: ⚠️ cpu-cap failed for pid=2700698 cmd=MainThread: process is outside the supported user workload slice
+Oct 20 13:21:48 nixos dracon-system[224736]: ⚠️ cpu-cap failed for pid=1189576 cmd=chromium: scope contains exempt process chrome
+Oct 20 13:21:48 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2708668 parent=2558502 adj -> 200
+Oct 20 13:22:18 nixos dracon-system[224736]: 🛡️ mem-renice pid=2710049 cmd=rustc -> nice 5 (pressure critical)
+Oct 20 13:22:18 nixos dracon-system[224736]: 🛡️ oom-bias pid=2710049 cmd=rustc adj 200 -> 250 (critical pressure)
+Oct 20 13:22:18 nixos dracon-system[224736]: ⚠️ cpu-cap failed for pid=2710049 cmd=rustc: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:22:18 nixos dracon-system[224736]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:22:19 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2711829 parent=2558502 adj -> 200
+Oct 20 13:22:19 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2711925 parent=2558502 adj -> 200
+Oct 20 13:22:49 nixos dracon-system[224736]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:22:49 nixos dracon-system[224736]: ⚠️ cpu-cap failed for pid=1189576 cmd=chromium: scope contains exempt process chrome
+Oct 20 13:22:49 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2735184 parent=2558502 adj -> 200
+Oct 20 13:22:49 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2735147 parent=2558502 adj -> 200
+Oct 20 13:22:49 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2735183 parent=2558502 adj -> 200
+Oct 20 13:23:20 nixos dracon-system[224736]: 🛡️ mem-renice pid=2735183 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 13:23:20 nixos dracon-system[224736]: 🛡️ mem-renice pid=2741960 cmd=MainThread -> nice 19 (pressure critical)
+Oct 20 13:23:20 nixos dracon-system[224736]: 🛡️ oom-bias pid=2735183 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 13:23:20 nixos dracon-system[224736]: 🛡️ oom-bias pid=2741960 cmd=MainThread adj 0 -> 250 (critical pressure)
+Oct 20 13:23:20 nixos dracon-system[224736]: 🛡️ cpu-cap pid=2735183 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-ecd268a516d3a57a)
+Oct 20 13:23:20 nixos dracon-system[224736]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:23:20 nixos dracon-system[224736]: ⚠️ cpu-cap failed for pid=2741960 cmd=MainThread: process is outside the supported user workload slice
+Oct 20 13:23:51 nixos dracon-system[224736]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:24:06 nixos systemd[1224]: Stopping Dracon System Guard - Proactive disk space monitoring and cleanup...
+Oct 20 13:24:08 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2764133 parent=566191 adj -> 200
+Oct 20 13:24:08 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2760729 parent=1068302 adj -> 200
+Oct 20 13:24:08 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2760699 parent=1068302 adj -> 200
+Oct 20 13:24:08 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2764310 parent=566191 adj -> 200
+Oct 20 13:24:08 nixos dracon-system[224736]: 🛡️ oom-descendant-restore pid=2760730 parent=1068302 adj -> 200
+Oct 20 13:24:08 nixos dracon-system[224736]: ⚠ SIGHUP failed to restore nice value for pid=2605454 comm=esbuild: renice exited with status exit status: 1: renice: failed to set priority for 2605454 (process ID): Permission denied
+Oct 20 13:24:08 nixos dracon-system[224736]: ⚠ SIGHUP failed to restore nice value for pid=847309 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 847309 (process ID): Permission denied
+Oct 20 13:24:08 nixos dracon-system[224736]: ⚠ SIGHUP failed to restore nice value for pid=2605173 comm=MainThread: renice exited with status exit status: 1: renice: failed to set priority for 2605173 (process ID): Permission denied
+Oct 20 13:24:08 nixos dracon-system[224736]: ⚠ SIGHUP failed to restore nice value for pid=1810637 comm=bun: renice exited with status exit status: 1: renice: failed to set priority for 1810637 (process ID): Permission denied
+Oct 20 13:24:08 nixos dracon-system[224736]: ⚠ SIGHUP failed to restore nice value for pid=832942 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 832942 (process ID): Permission denied
+Oct 20 13:24:08 nixos dracon-system[224736]: ⚠ SIGHUP failed to restore nice value for pid=759339 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 759339 (process ID): Permission denied
+Oct 20 13:24:08 nixos dracon-system[224736]: ⚠ shutdown: some process adjustments could not be restored; durable obligations retained
+Oct 20 13:24:08 nixos systemd[1224]: Stopped Dracon System Guard - Proactive disk space monitoring and cleanup.
+Oct 20 13:24:08 nixos systemd[1224]: dracon-system-guard.service: Consumed 1min 19.255s CPU time, 575.3M memory peak, 80M memory swap peak.
+Oct 20 13:24:08 nixos systemd[1224]: Started Dracon System Guard - Proactive disk space monitoring and cleanup.
+Oct 20 13:24:10 nixos dracon-system[2765134]: 🛡️ adopted 6 mitigation(s) left applied by a previous run — restoring them now
+Oct 20 13:24:11 nixos dracon-system[2765134]: ⚠ SIGHUP failed to restore nice value for pid=759339 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 759339 (process ID): Permission denied
+Oct 20 13:24:11 nixos dracon-system[2765134]: ⚠ SIGHUP failed to restore nice value for pid=1810637 comm=bun: renice exited with status exit status: 1: renice: failed to set priority for 1810637 (process ID): Permission denied
+Oct 20 13:24:11 nixos dracon-system[2765134]: ⚠ SIGHUP failed to restore nice value for pid=832942 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 832942 (process ID): Permission denied
+Oct 20 13:24:11 nixos dracon-system[2765134]: ⚠ SIGHUP failed to restore nice value for pid=847309 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 847309 (process ID): Permission denied
+Oct 20 13:24:11 nixos dracon-system[2765134]: ⚠ SIGHUP failed to restore nice value for pid=2605454 comm=esbuild: renice exited with status exit status: 1: renice: failed to set priority for 2605454 (process ID): Permission denied
+Oct 20 13:24:11 nixos dracon-system[2765134]: ⚠ SIGHUP failed to restore nice value for pid=2605173 comm=MainThread: renice exited with status exit status: 1: renice: failed to set priority for 2605173 (process ID): Permission denied
+Oct 20 13:24:50 nixos dracon-system[2765134]: 🛡️ trash: keeping 1 flagged entry (12 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/offhost/owner.key, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/bloom_token_log.rs, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/token_memory_cache.rs; 550 unobservable capped subtrees; 1 unreadable subtrees), purging the rest
+Oct 20 13:24:50 nixos dracon-system[2765134]: [2026-10-20T12:24:50.534298627+00:00] Warn: trash/credential-guard - trash purge skipping 1 flagged entries (12 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/offhost/owner.key, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/bloom_token_log.rs, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/token_memory_cache.rs; 550 unobservable capped subtrees; 1 unreadable subtrees)
+Oct 20 13:24:50 nixos dracon-system[2765134]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH
+Oct 20 13:24:50 nixos dracon-system[2765134]: 🚨 disk at 95% (critical) — tmp e2e-litter age gate lifted for this pass
+Oct 20 13:24:57 nixos dracon-system[2765134]: 🧹 Tmp-e2e: 241.2 MiB
+Oct 20 13:25:01 nixos dracon-system[2765134]: ⚠️ failed to remove tmp entry /tmp/eve-install-backup-cleanup-1897637-1792137438351935114: Permission denied (os error 13)
+Oct 20 13:25:01 nixos dracon-system[2765134]: ⚠️ failed to remove tmp entry /tmp/sd-root169: Permission denied (os error 13)
+Oct 20 13:25:02 nixos dracon-system[2765134]: ⚠️ failed to remove tmp entry /tmp/sddm-auth-14ad0f27-5e27-488d-a0be-2c559b916d32: Operation not permitted (os error 1)
+Oct 20 13:25:07 nixos dracon-system[2765134]: ⚠️ failed to remove tmp entry /tmp/.XIM-unix: Operation not permitted (os error 1)
+Oct 20 13:25:07 nixos dracon-system[2765134]: ⚠️ failed to remove tmp entry /tmp/.font-unix: Operation not permitted (os error 1)
+Oct 20 13:25:09 nixos dracon-system[2765134]: ⚠️ failed to remove tmp entry /tmp/audit-sandbox-home: Permission denied (os error 13)
+Oct 20 13:25:10 nixos dracon-system[2765134]: ⚠️ failed to remove tmp entry /tmp/eve10-readonly-replay-3085601-1790790071511169641: Permission denied (os error 13)
+Oct 20 13:25:10 nixos dracon-system[2765134]: ⚠️ failed to remove tmp entry /tmp/.X11-unix: Operation not permitted (os error 1)
+Oct 20 13:25:11 nixos dracon-system[2765134]: ⚠️ failed to remove tmp entry /tmp/nb-probe-logs: Operation not permitted (os error 1)
+Oct 20 13:25:11 nixos dracon-system[2765134]: ⚠️ failed to remove tmp entry /tmp/.ICE-unix: Operation not permitted (os error 1)
+Oct 20 13:25:12 nixos dracon-system[2765134]: ⚠️ failed to remove tmp entry /tmp/fNguO13r: Permission denied (os error 13)
+Oct 20 13:25:12 nixos dracon-system[2765134]: 🧹 Tmp: 23.8 MiB
+Oct 20 13:25:13 nixos dracon-system[2765134]: ⚠️ nix-env system-profile generation prune failed (exit status: 1): error: opening lock file '/nix/var/nix/profiles/default.lock': Read-only file system (needs root; user GC still runs)
+Oct 20 13:26:36 nixos dracon-system[2765134]: managed OOM recovery: 3 registered job debt(s) outstanding
+Oct 20 13:27:03 nixos systemd[1224]: Stopping Dracon System Guard - Proactive disk space monitoring and cleanup...
+Oct 20 13:27:04 nixos dracon-system[2765134]: ⚠ SIGHUP failed to restore nice value for pid=2605454 comm=esbuild: renice exited with status exit status: 1: renice: failed to set priority for 2605454 (process ID): Permission denied
+Oct 20 13:27:04 nixos dracon-system[2765134]: ⚠ SIGHUP failed to restore nice value for pid=832942 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 832942 (process ID): Permission denied
+Oct 20 13:27:04 nixos dracon-system[2765134]: ⚠ SIGHUP failed to restore nice value for pid=1810637 comm=bun: renice exited with status exit status: 1: renice: failed to set priority for 1810637 (process ID): Permission denied
+Oct 20 13:27:04 nixos dracon-system[2765134]: ⚠ SIGHUP failed to restore nice value for pid=759339 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 759339 (process ID): Permission denied
+Oct 20 13:27:04 nixos dracon-system[2765134]: ⚠ SIGHUP failed to restore nice value for pid=2605173 comm=MainThread: renice exited with status exit status: 1: renice: failed to set priority for 2605173 (process ID): Permission denied
+Oct 20 13:27:04 nixos dracon-system[2765134]: ⚠ SIGHUP failed to restore nice value for pid=847309 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 847309 (process ID): Permission denied
+Oct 20 13:27:04 nixos dracon-system[2765134]: ⚠ shutdown: some process adjustments could not be restored; durable obligations retained
+Oct 20 13:27:04 nixos systemd[1224]: Stopped Dracon System Guard - Proactive disk space monitoring and cleanup.
+Oct 20 13:27:04 nixos systemd[1224]: dracon-system-guard.service: Consumed 18.449s CPU time, 275.7M memory peak, 40.5M memory swap peak.
+Oct 20 13:27:04 nixos systemd[1224]: Started Dracon System Guard - Proactive disk space monitoring and cleanup.
+Oct 20 13:27:04 nixos dracon-system[2835341]: 🛡️ adopted 6 mitigation(s) left applied by a previous run — restoring them now
+Oct 20 13:27:05 nixos dracon-system[2835341]: ⚠ SIGHUP failed to restore nice value for pid=2605454 comm=esbuild: renice exited with status exit status: 1: renice: failed to set priority for 2605454 (process ID): Permission denied
+Oct 20 13:27:05 nixos dracon-system[2835341]: ⚠ SIGHUP failed to restore nice value for pid=759339 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 759339 (process ID): Permission denied
+Oct 20 13:27:05 nixos dracon-system[2835341]: ⚠ SIGHUP failed to restore nice value for pid=832942 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 832942 (process ID): Permission denied
+Oct 20 13:27:05 nixos dracon-system[2835341]: ⚠ SIGHUP failed to restore nice value for pid=2605173 comm=MainThread: renice exited with status exit status: 1: renice: failed to set priority for 2605173 (process ID): Permission denied
+Oct 20 13:27:05 nixos dracon-system[2835341]: ⚠ SIGHUP failed to restore nice value for pid=1810637 comm=bun: renice exited with status exit status: 1: renice: failed to set priority for 1810637 (process ID): Permission denied
+Oct 20 13:27:05 nixos dracon-system[2835341]: ⚠ SIGHUP failed to restore nice value for pid=847309 comm=pi: renice exited with status exit status: 1: renice: failed to set priority for 847309 (process ID): Permission denied
+Oct 20 13:27:45 nixos dracon-system[2835341]: 🛡️ trash: keeping 1 flagged entry (12 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/offhost/owner.key, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/bloom_token_log.rs, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/token_memory_cache.rs; 550 unobservable capped subtrees; 1 unreadable subtrees), purging the rest
+Oct 20 13:27:45 nixos dracon-system[2835341]: [2026-10-20T12:27:45.762690466+00:00] Warn: trash/credential-guard - trash purge skipping 1 flagged entries (12 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/offhost/owner.key, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/bloom_token_log.rs, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/quinn-proto-0.11.19/src/token_memory_cache.rs; 550 unobservable capped subtrees; 1 unreadable subtrees)
+Oct 20 13:27:45 nixos dracon-system[2835341]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH
+Oct 20 13:27:45 nixos dracon-system[2835341]: 🚨 disk at 95% (critical) — tmp e2e-litter age gate lifted for this pass
+Oct 20 13:27:59 nixos dracon-system[2835341]: ⚠️ failed to remove tmp entry /tmp/eve-install-backup-cleanup-1897637-1792137438351935114: Permission denied (os error 13)
+Oct 20 13:27:59 nixos dracon-system[2835341]: ⚠️ failed to remove tmp entry /tmp/sd-root169: Permission denied (os error 13)
+Oct 20 13:28:01 nixos dracon-system[2835341]: ⚠️ failed to remove tmp entry /tmp/sddm-auth-14ad0f27-5e27-488d-a0be-2c559b916d32: Operation not permitted (os error 1)
+Oct 20 13:28:09 nixos dracon-system[2835341]: ⚠️ failed to remove tmp entry /tmp/.XIM-unix: Operation not permitted (os error 1)
+Oct 20 13:28:10 nixos dracon-system[2835341]: ⚠️ failed to remove tmp entry /tmp/.font-unix: Operation not permitted (os error 1)
+Oct 20 13:28:11 nixos dracon-system[2835341]: ⚠️ failed to remove tmp entry /tmp/audit-sandbox-home: Permission denied (os error 13)
+Oct 20 13:28:12 nixos dracon-system[2835341]: ⚠️ failed to remove tmp entry /tmp/eve10-readonly-replay-3085601-1790790071511169641: Permission denied (os error 13)
+Oct 20 13:28:12 nixos dracon-system[2835341]: ⚠️ failed to remove tmp entry /tmp/.X11-unix: Operation not permitted (os error 1)
+Oct 20 13:28:13 nixos dracon-system[2835341]: ⚠️ failed to remove tmp entry /tmp/nb-probe-logs: Operation not permitted (os error 1)
+Oct 20 13:28:14 nixos dracon-system[2835341]: ⚠️ failed to remove tmp entry /tmp/.ICE-unix: Operation not permitted (os error 1)
+Oct 20 13:28:14 nixos dracon-system[2835341]: ⚠️ failed to remove tmp entry /tmp/fNguO13r: Permission denied (os error 13)
+Oct 20 13:28:14 nixos dracon-system[2835341]: 🧹 Tmp: 311.3 KiB
+Oct 20 13:28:15 nixos dracon-system[2835341]: ⚠️ nix-env system-profile generation prune failed (exit status: 1): error: opening lock file '/nix/var/nix/profiles/default.lock': Read-only file system (needs root; user GC still runs)
+Oct 20 13:30:55 nixos dracon-system[2835341]: [2026-10-20T12:30:55.688939909+00:00] Warn: disk/rapid-fill - growing at 67.4 GiB/h (95% used)
+Oct 20 13:31:58 nixos dracon-system[2835341]: 🛡️ mem-renice pid=2913874 cmd=bun -> nice 5 (pressure critical)
+Oct 20 13:31:58 nixos dracon-system[2835341]: 🛡️ mem-renice pid=1688625 cmd=ffmpeg -> nice 5 (pressure critical)
+Oct 20 13:31:58 nixos dracon-system[2835341]: 🛡️ mem-renice pid=2889916 cmd=bun -> nice 5 (pressure critical)
+Oct 20 13:31:58 nixos dracon-system[2835341]: 🛡️ mem-renice pid=2938641 cmd=chromium -> nice 5 (pressure critical)
+Oct 20 13:31:58 nixos dracon-system[2835341]: 🛡️ oom-bias pid=2913874 cmd=bun adj 200 -> 250 (critical pressure)
+Oct 20 13:31:58 nixos dracon-system[2835341]: 🛡️ oom-bias pid=1810637 cmd=bun adj 200 -> 250 (critical pressure)
+Oct 20 13:31:58 nixos dracon-system[2835341]: 🛡️ oom-bias pid=2889916 cmd=bun adj 200 -> 250 (critical pressure)
+Oct 20 13:31:58 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=2913874 cmd=bun -> CPUQuota=50% (scope dracon-cpu-unit-72fd3600ebbf3b1b)
+Oct 20 13:31:59 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=1688625 cmd=ffmpeg -> CPUQuota=50% (scope dracon-cpu-unit-0ad300bfd9e9ffda)
+Oct 20 13:31:59 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=1810637 cmd=bun -> CPUQuota=50% (scope dracon-cpu-unit-91e495e1b78ec87d)
+Oct 20 13:32:00 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=2889916 cmd=bun -> CPUQuota=50% (scope dracon-cpu-unit-ecd268a516d3a57a)
+Oct 20 13:32:00 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=2938641 cmd=chromium -> CPUQuota=50% (scope dracon-cpu-unit-b08a82e5b2687bb6)
+Oct 20 13:32:00 nixos dracon-system[2835341]: [2026-10-20T12:32:00.539935253+00:00] Error: memory/pressure - critical: observed=critical, mem available 4%, swap used 34%, PSI full Some(11.73), top rss: bun=1084MiB,ffmpeg=801MiB,bun=549MiB,bun=425MiB,chromium=369MiB
+Oct 20 13:32:31 nixos dracon-system[2835341]: 🛡️ mem-renice pid=1189576 cmd=chromium -> nice 5 (pressure critical)
+Oct 20 13:32:31 nixos dracon-system[2835341]: 🛡️ oom-bias pid=2605173 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 13:32:31 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=1189576 cmd=chromium: scope contains exempt process chrome
+Oct 20 13:32:31 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:32:31 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=2964187 parent=2889916 adj -> 200
+Oct 20 13:33:01 nixos dracon-system[2835341]: 🛡️ mem-renice pid=2969808 cmd=bun -> nice 5 (pressure critical)
+Oct 20 13:33:01 nixos dracon-system[2835341]: 🛡️ oom-bias pid=2969808 cmd=bun adj 200 -> 250 (critical pressure)
+Oct 20 13:33:02 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=2969808 cmd=bun -> CPUQuota=50% (scope dracon-cpu-unit-8215dc2f12bba5b8)
+Oct 20 13:33:02 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:33:02 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=2969217 parent=2889916 adj -> 200
+Oct 20 13:33:02 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=2969211 parent=2889916 adj -> 200
+Oct 20 13:33:32 nixos dracon-system[2835341]: 🛡️ mem-renice pid=2942689 cmd=rustc -> nice 5 (pressure critical)
+Oct 20 13:33:33 nixos dracon-system[2835341]: 🛡️ oom-bias pid=2942689 cmd=rustc adj 200 -> 250 (critical pressure)
+Oct 20 13:33:33 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=1189576 cmd=chromium: scope contains exempt process chrome
+Oct 20 13:33:33 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:33:33 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=2942689 cmd=rustc -> CPUQuota=50% (scope dracon-cpu-unit-72fd3600ebbf3b1b)
+Oct 20 13:33:34 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=2986956 parent=2913874 adj -> 200
+Oct 20 13:33:34 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=2986780 parent=1810637 adj -> 200
+Oct 20 13:33:34 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=2987149 parent=2889916 adj -> 200
+Oct 20 13:33:34 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=2987148 parent=1810637 adj -> 200
+Oct 20 13:33:34 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=2987150 parent=2889916 adj -> 200
+Oct 20 13:33:34 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=2986853 parent=1810637 adj -> 200
+Oct 20 13:34:04 nixos dracon-system[2835341]: 🛡️ mem-renice pid=1223981 cmd=pi -> nice 5 (pressure critical)
+Oct 20 13:34:04 nixos dracon-system[2835341]: 🛡️ oom-bias pid=1223981 cmd=pi adj 200 -> 250 (critical pressure)
+Oct 20 13:34:04 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:34:04 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=1189576 cmd=chromium: scope contains exempt process chrome
+Oct 20 13:34:05 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=1223981 cmd=pi -> CPUQuota=50% (scope dracon-cpu-unit-ecd268a516d3a57a)
+Oct 20 13:34:05 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3009858 parent=2889916 adj -> 200
+Oct 20 13:34:05 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3009867 parent=2889916 adj -> 200
+Oct 20 13:34:05 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3007856 parent=2913874 adj -> 200
+Oct 20 13:34:05 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3009881 parent=2889916 adj -> 200
+Oct 20 13:34:35 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3013263 cmd=cc1 -> nice 5 (pressure critical)
+Oct 20 13:34:35 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3009867 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 13:34:35 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3013263 cmd=cc1 adj 200 -> 250 (critical pressure)
+Oct 20 13:34:35 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3009867 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 13:34:35 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:34:35 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3013263 cmd=cc1: nested cgroups are unsupported; refusing inherited quota on uninspected workloads
+Oct 20 13:34:35 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3009867 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-ecd268a516d3a57a)
+Oct 20 13:34:35 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3025796 parent=1810637 adj -> 200
+Oct 20 13:34:36 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3025207 parent=1810637 adj -> 200
+Oct 20 13:34:36 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3024312 parent=1810637 adj -> 200
+Oct 20 13:34:36 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3025577 parent=2913874 adj -> 200
+Oct 20 13:35:06 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3029188 cmd=git -> nice 5 (pressure critical)
+Oct 20 13:35:06 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3029188 cmd=git adj 200 -> 250 (critical pressure)
+Oct 20 13:35:06 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3029188 cmd=git: scope contains exempt process chrome
+Oct 20 13:35:06 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:35:06 nixos dracon-system[2835341]: ⚠️ retaining 3 pending descendant OOM restorations
+Oct 20 13:35:37 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3044003 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 13:35:37 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3029188 cmd=git: scope contains exempt process chrome
+Oct 20 13:35:37 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:35:37 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3044003 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-ecd268a516d3a57a)
+Oct 20 13:35:37 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3049637 parent=3029188 adj -> 200
+Oct 20 13:35:37 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3043995 parent=2889916 adj -> 200
+Oct 20 13:35:37 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3043935 parent=2889916 adj -> 200
+Oct 20 13:35:37 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3044003 parent=2889916 adj -> 200
+Oct 20 13:35:37 nixos dracon-system[2835341]: ⚠️ retaining 4 pending descendant OOM restorations
+Oct 20 13:36:08 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3043995 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 13:36:08 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3027646 cmd=bun -> nice 5 (pressure critical)
+Oct 20 13:36:08 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3043995 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 13:36:08 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3027646 cmd=bun adj 200 -> 250 (critical pressure)
+Oct 20 13:36:08 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3043995 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-ecd268a516d3a57a)
+Oct 20 13:36:08 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:36:08 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3027646 cmd=bun -> CPUQuota=50% (scope dracon-cpu-unit-8215dc2f12bba5b8)
+Oct 20 13:36:09 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3070396 parent=1810637 adj -> 200
+Oct 20 13:36:09 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3070357 parent=1810637 adj -> 200
+Oct 20 13:36:09 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3070470 parent=1810637 adj -> 200
+Oct 20 13:36:09 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3070424 parent=1810637 adj -> 200
+Oct 20 13:36:39 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3074277 cmd=pi -> nice 5 (pressure critical)
+Oct 20 13:36:39 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3074277 cmd=pi adj 200 -> 250 (critical pressure)
+Oct 20 13:36:39 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=1189576 cmd=chromium: scope contains exempt process chrome
+Oct 20 13:36:40 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3074277 cmd=pi -> CPUQuota=50% (scope dracon-cpu-unit-b81ecf45389d1b71)
+Oct 20 13:37:10 nixos dracon-system[2835341]: 🛡️ mem-renice pid=2910975 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 13:37:10 nixos dracon-system[2835341]: 🛡️ oom-bias pid=2910975 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 13:37:10 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=2910975 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-b08a82e5b2687bb6)
+Oct 20 13:37:10 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=2605173 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:37:10 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3102100 parent=3074277 adj -> 200
+Oct 20 13:37:10 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3099267 parent=1810637 adj -> 200
+Oct 20 13:37:10 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3102096 parent=3074277 adj -> 200
+Oct 20 13:37:10 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3096363 parent=1810637 adj -> 200
+Oct 20 13:37:10 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3102097 parent=3074277 adj -> 200
+Oct 20 13:37:10 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3101894 parent=3074277 adj -> 200
+Oct 20 13:37:10 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3095506 parent=1810637 adj -> 200
+Oct 20 13:37:10 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3095704 parent=1810637 adj -> 200
+Oct 20 13:37:10 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3096364 parent=1810637 adj -> 200
+Oct 20 13:37:10 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3097119 parent=1810637 adj -> 200
+Oct 20 13:37:10 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3097597 parent=1810637 adj -> 200
+Oct 20 13:37:41 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3114527 cmd=bun -> nice 5 (pressure critical)
+Oct 20 13:37:41 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3114527 cmd=bun adj 200 -> 250 (critical pressure)
+Oct 20 13:37:41 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3114527 cmd=bun: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:38:12 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3116663 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 13:38:12 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3116885 cmd=esbuild -> nice 5 (pressure critical)
+Oct 20 13:38:12 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3277426 cmd=bun -> nice 5 (pressure critical)
+Oct 20 13:38:12 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3116663 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 13:38:12 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3116885 cmd=esbuild adj 200 -> 250 (critical pressure)
+Oct 20 13:38:12 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3277426 cmd=bun adj 200 -> 250 (critical pressure)
+Oct 20 13:38:12 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3116663 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:38:12 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3116885 cmd=esbuild: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:38:12 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3277426 cmd=bun: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:38:43 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3092577 cmd=bun -> nice 5 (pressure critical)
+Oct 20 13:38:43 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3092577 cmd=bun adj 200 -> 250 (critical pressure)
+Oct 20 13:38:43 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3116663 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:38:43 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=1189576 cmd=chromium: scope contains exempt process chrome
+Oct 20 13:38:43 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3092577 cmd=bun -> CPUQuota=50% (scope dracon-cpu-unit-8215dc2f12bba5b8)
+Oct 20 13:38:43 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3126936 parent=3116663 adj -> 200
+Oct 20 13:38:43 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3133001 parent=3116663 adj -> 200
+Oct 20 13:39:14 nixos dracon-system[2835341]: 🛡️ mem-renice pid=566191 cmd=pi -> nice 5 (pressure critical)
+Oct 20 13:39:14 nixos dracon-system[2835341]: 🛡️ oom-bias pid=566191 cmd=pi adj 200 -> 250 (critical pressure)
+Oct 20 13:39:14 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3116663 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:39:14 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=566191 cmd=pi: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:39:14 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3148140 parent=2889916 adj -> 200
+Oct 20 13:39:14 nixos dracon-system[2835341]: ⚠️ retaining 1 pending descendant OOM restorations
+Oct 20 13:39:44 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3161310 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 13:39:44 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3161310 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 13:39:45 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3161310 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-1194300dc507f16c)
+Oct 20 13:39:45 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3116663 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:39:45 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=1189576 cmd=chromium: scope contains exempt process chrome
+Oct 20 13:39:45 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3161103 parent=566191 adj -> 200
+Oct 20 13:39:45 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3161117 parent=566191 adj -> 200
+Oct 20 13:39:45 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3161118 parent=566191 adj -> 200
+Oct 20 13:40:16 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3116663 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:40:16 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3186559 parent=1810637 adj -> 200
+Oct 20 13:40:16 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3185445 parent=2889916 adj -> 200
+Oct 20 13:40:46 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3207407 cmd=rustc -> nice 5 (pressure critical)
+Oct 20 13:40:46 nixos dracon-system[2835341]: 🛡️ mem-renice pid=1601844 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 13:40:46 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3207407 cmd=rustc adj 200 -> 250 (critical pressure)
+Oct 20 13:40:46 nixos dracon-system[2835341]: 🛡️ oom-bias pid=1601844 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 13:40:46 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3116663 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:40:47 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3207407 cmd=rustc -> CPUQuota=50% (scope dracon-cpu-unit-c9aa3b86e17a7a7c)
+Oct 20 13:40:47 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=1601844 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-8215dc2f12bba5b8)
+Oct 20 13:41:17 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3143183 cmd=rust-lld -> nice 5 (pressure critical)
+Oct 20 13:41:17 nixos dracon-system[2835341]: 🛡️ mem-renice pid=841139 cmd=pi -> nice 5 (pressure critical)
+Oct 20 13:41:17 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3143183 cmd=rust-lld adj 200 -> 250 (critical pressure)
+Oct 20 13:41:18 nixos dracon-system[2835341]: 🛡️ oom-bias pid=841139 cmd=pi adj 200 -> 250 (critical pressure)
+Oct 20 13:41:18 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3143183 cmd=rust-lld -> CPUQuota=50% (scope dracon-cpu-unit-72fd3600ebbf3b1b)
+Oct 20 13:41:18 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=1189576 cmd=chromium: scope contains exempt process chrome
+Oct 20 13:41:18 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=841139 cmd=pi -> CPUQuota=50% (scope dracon-cpu-unit-0ad300bfd9e9ffda)
+Oct 20 13:41:18 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3221852 parent=1810637 adj -> 200
+Oct 20 13:41:49 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3223445 cmd=rust-lld -> nice 5 (pressure critical)
+Oct 20 13:41:49 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3223528 cmd=rust-lld -> nice 5 (pressure critical)
+Oct 20 13:41:49 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3223384 cmd=rust-lld -> nice 5 (pressure critical)
+Oct 20 13:41:49 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3223445 cmd=rust-lld adj 200 -> 250 (critical pressure)
+Oct 20 13:41:49 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3223528 cmd=rust-lld adj 200 -> 250 (critical pressure)
+Oct 20 13:41:49 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3223384 cmd=rust-lld adj 200 -> 250 (critical pressure)
+Oct 20 13:41:49 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3223445 cmd=rust-lld -> CPUQuota=50% (scope dracon-cpu-unit-c9aa3b86e17a7a7c)
+Oct 20 13:41:49 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3223528 cmd=rust-lld -> CPUQuota=50% (scope dracon-cpu-unit-c9aa3b86e17a7a7c)
+Oct 20 13:41:49 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3223384 cmd=rust-lld -> CPUQuota=50% (scope dracon-cpu-unit-c9aa3b86e17a7a7c)
+Oct 20 13:41:49 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3228291 parent=1223981 adj -> 200
+Oct 20 13:41:49 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3228322 parent=1223981 adj -> 200
+Oct 20 13:41:49 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3228290 parent=1223981 adj -> 200
+Oct 20 13:41:49 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3228269 parent=1223981 adj -> 200
+Oct 20 13:42:20 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3232218 cmd=rust-lld -> nice 5 (pressure critical)
+Oct 20 13:42:20 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3223498 cmd=rust-lld -> nice 5 (pressure critical)
+Oct 20 13:42:20 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3228920 cmd=rust-lld -> nice 5 (pressure critical)
+Oct 20 13:42:20 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3232218 cmd=rust-lld adj 200 -> 250 (critical pressure)
+Oct 20 13:42:20 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3223498 cmd=rust-lld adj 200 -> 250 (critical pressure)
+Oct 20 13:42:20 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3228920 cmd=rust-lld adj 200 -> 250 (critical pressure)
+Oct 20 13:42:20 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3232218 cmd=rust-lld -> CPUQuota=50% (scope dracon-cpu-unit-72fd3600ebbf3b1b)
+Oct 20 13:42:21 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3223498 cmd=rust-lld -> CPUQuota=50% (scope dracon-cpu-unit-72fd3600ebbf3b1b)
+Oct 20 13:42:21 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3228920 cmd=rust-lld -> CPUQuota=50% (scope dracon-cpu-unit-72fd3600ebbf3b1b)
+Oct 20 13:42:21 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3241941 parent=841139 adj -> 200
+Oct 20 13:42:21 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3241942 parent=841139 adj -> 200
+Oct 20 13:42:21 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3241943 parent=841139 adj -> 200
+Oct 20 13:42:21 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3241948 parent=841139 adj -> 200
+Oct 20 13:42:52 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3184390 cmd=rust-lld -> nice 5 (pressure critical)
+Oct 20 13:42:52 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3184390 cmd=rust-lld adj 200 -> 250 (critical pressure)
+Oct 20 13:42:52 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3184390 cmd=rust-lld -> CPUQuota=50% (scope dracon-cpu-unit-72fd3600ebbf3b1b)
+Oct 20 13:42:52 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3248129 parent=3074277 adj -> 200
+Oct 20 13:42:52 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3248121 parent=3074277 adj -> 200
+Oct 20 13:43:23 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3223599 cmd=rust-lld -> nice 5 (pressure critical)
+Oct 20 13:43:23 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3241628 cmd=rust-lld -> nice 5 (pressure critical)
+Oct 20 13:43:23 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3223599 cmd=rust-lld adj 200 -> 250 (critical pressure)
+Oct 20 13:43:23 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3241628 cmd=rust-lld adj 200 -> 250 (critical pressure)
+Oct 20 13:43:23 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3223599 cmd=rust-lld -> CPUQuota=50% (scope dracon-cpu-unit-72fd3600ebbf3b1b)
+Oct 20 13:43:23 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3241628 cmd=rust-lld -> CPUQuota=50% (scope dracon-cpu-unit-72fd3600ebbf3b1b)
+Oct 20 13:43:54 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3254347 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 13:43:54 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3242079 cmd=rust-lld -> nice 5 (pressure critical)
+Oct 20 13:43:54 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3254347 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 13:43:54 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3242079 cmd=rust-lld adj 200 -> 250 (critical pressure)
+Oct 20 13:43:54 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3254347 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-ecd268a516d3a57a)
+Oct 20 13:43:54 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3116663 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:43:54 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3242079 cmd=rust-lld -> CPUQuota=50% (scope dracon-cpu-unit-72fd3600ebbf3b1b)
+Oct 20 13:44:25 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3271345 cmd=rustc -> nice 5 (pressure critical)
+Oct 20 13:44:25 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3228322 cmd=bun -> nice 5 (pressure critical)
+Oct 20 13:44:25 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3277196 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 13:44:25 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3271345 cmd=rustc adj 200 -> 250 (critical pressure)
+Oct 20 13:44:25 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3228322 cmd=bun adj 200 -> 250 (critical pressure)
+Oct 20 13:44:25 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3277196 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 13:44:25 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3271345 cmd=rustc: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:44:25 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3228322 cmd=bun -> CPUQuota=50% (scope dracon-cpu-unit-ecd268a516d3a57a)
+Oct 20 13:44:26 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3277196 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-f9dfb3263648ee49)
+Oct 20 13:44:56 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=1189576 cmd=chromium: scope contains exempt process chrome
+Oct 20 13:44:56 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3271345 cmd=rustc: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:44:56 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3116663 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:44:56 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3291518 parent=1810637 adj -> 200
+Oct 20 13:44:56 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3292999 parent=1810637 adj -> 200
+Oct 20 13:45:27 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3300597 cmd=rustc -> nice 5 (pressure critical)
+Oct 20 13:45:28 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3300597 cmd=rustc adj 200 -> 250 (critical pressure)
+Oct 20 13:45:28 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3300597 cmd=rustc: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:45:59 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=1189576 cmd=chromium: scope contains exempt process chrome
+Oct 20 13:45:59 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3300597 cmd=rustc: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:45:59 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3116663 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:45:59 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3305260 parent=3228322 adj -> 200
+Oct 20 13:45:59 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3305161 parent=3228322 adj -> 200
+Oct 20 13:46:31 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3305260 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 13:46:31 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3278756 cmd=rust-lld -> nice 5 (pressure critical)
+Oct 20 13:46:31 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3305260 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 13:46:31 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3278756 cmd=rust-lld adj 200 -> 250 (critical pressure)
+Oct 20 13:46:31 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3300597 cmd=rustc: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:46:31 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3305260 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-ecd268a516d3a57a)
+Oct 20 13:46:31 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3278756 cmd=rust-lld -> CPUQuota=50% (scope dracon-cpu-unit-72fd3600ebbf3b1b)
+Oct 20 13:47:02 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3335333 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 13:47:02 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3335333 cmd=MainThread adj 200 -> 250 (critical pressure)
+Oct 20 13:47:02 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3116663 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:47:02 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3300597 cmd=rustc: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:47:02 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3335333 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-f9dfb3263648ee49)
+Oct 20 13:47:02 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3323275 parent=3228322 adj -> 200
+Oct 20 13:47:02 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3338351 parent=3074277 adj -> 200
+Oct 20 13:47:02 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3323377 parent=3228322 adj -> 200
+Oct 20 13:47:33 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3270715 cmd=rust-lld -> nice 5 (pressure critical)
+Oct 20 13:47:33 nixos dracon-system[2835341]: 🛡️ mem-renice pid=3346877 cmd=MainThread -> nice 5 (pressure critical)
+Oct 20 13:47:33 nixos dracon-system[2835341]: 🛡️ oom-bias pid=3270715 cmd=rust-lld adj 200 -> 250 (critical pressure)
+Oct 20 13:47:33 nixos dracon-system[2835341]: ⚠️ cpu-cap failed for pid=3116663 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+Oct 20 13:47:33 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3270715 cmd=rust-lld -> CPUQuota=50% (scope dracon-cpu-unit-72fd3600ebbf3b1b)
+Oct 20 13:47:34 nixos dracon-system[2835341]: 🛡️ cpu-cap pid=3346877 cmd=MainThread -> CPUQuota=50% (scope dracon-cpu-unit-ecd268a516d3a57a)
+Oct 20 13:47:34 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3346868 parent=3228322 adj -> 200
+Oct 20 13:47:34 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3346872 parent=3228322 adj -> 200
+Oct 20 13:47:34 nixos dracon-system[2835341]: 🛡️ oom-descendant-restore pid=3346877 parent=3228322 adj -> 200
