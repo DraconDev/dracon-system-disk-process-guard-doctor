@@ -2262,9 +2262,10 @@ async fn clean_tmp_paths_keeps_old_process_cwd_directory() {
         "process cwd must be included in open-path protection"
     );
 
-    let (reclaimed, cleaned) = clean_tmp_paths_with_proc(true, &roots, 24, &[], &proc_root)
-        .await
-        .expect("tmp cleanup");
+    let (reclaimed, cleaned) =
+        clean_tmp_paths_with_proc(true, &roots, 24, &[], &proc_root, &HashSet::new())
+            .await
+            .expect("tmp cleanup");
     assert_eq!(reclaimed, unheld_bytes);
     assert_eq!(cleaned.len(), 1, "only the unheld old entry is removed");
     assert!(cwd_dir.exists(), "an old process cwd must remain protected");
@@ -2275,6 +2276,110 @@ async fn clean_tmp_paths_keeps_old_process_cwd_directory() {
 
     let _ = fs::remove_dir_all(&root);
     let _ = fs::remove_dir_all(&proc_root);
+}
+
+// --- 2026-10-21 (codex app-server incident): live unix sockets in /tmp ---
+
+/// The codex app-server daemon keeps its control socket in
+/// `/tmp/codex-daemon-<uid>/<hash>`. The guard's /tmp cleaner deleted that
+/// directory once it aged past `tmp_min_age_hours` (24h) — the daemon kept
+/// the socket BOUND, so every client got ENOENT and codex refused to start
+/// with "app server did not become ready".
+///
+/// The open-fd scan could not protect it: a bound unix socket is an
+/// anonymous inode in `/proc/<pid>/fd` (`socket:[N]`), never a path, so no
+/// fd link ever pointed at the socket FILE. The socket path in
+/// `/proc/net/unix` is the only handle there is.
+#[cfg(unix)]
+#[tokio::test]
+async fn clean_tmp_paths_keeps_directory_holding_live_unix_socket() {
+    let root = unique_test_tmp_root("tmp_live_socket");
+    let proc_root = unique_test_home("proc_live_socket");
+    let socket_dir = root.join("codex-daemon-1000");
+    let socket_file = socket_dir.join("e9dc3aabaf3134c404fb3a4a409b3c796054f0a4e0dd1ba1bfe700b19e2a2361");
+    let unheld_file = root.join("stale-unheld-file");
+    fs::create_dir_all(&socket_dir).expect("create socket dir fixture");
+    write_file_with_mtime(&unheld_file, b"unheld", 2 * 86_400);
+    let unheld_bytes = unheld_file.metadata().expect("unheld metadata").len();
+
+    // A real listener, so the probe is exercised against the kernel's own
+    // view of the socket rather than a hand-written path.
+    let listener = std::os::unix::net::UnixListener::bind(&socket_file).expect("bind fixture socket");
+
+    // The socket file is the live listener, but the DIRECTORY is what the
+    // tmp cleaner removes (top-level entries). Backdate it past the gate.
+    let dir_handle = File::open(&socket_dir).expect("open socket dir for mtime set");
+    dir_handle
+        .set_modified(SystemTime::now() - Duration::from_secs(2 * 86_400))
+        .expect("set socket dir mtime");
+    drop(dir_handle);
+
+    let live_sockets = live_unix_socket_paths();
+    assert!(
+        path_holds_live_unix_socket(&socket_dir, &live_sockets),
+        "the live listener path must be detected under its directory"
+    );
+
+    let roots = vec![root.display().to_string()];
+    let (reclaimed, cleaned) =
+        clean_tmp_paths_with_proc(true, &roots, 24, &[], &proc_root, &live_sockets)
+            .await
+            .expect("tmp cleanup");
+
+    assert!(
+        socket_dir.exists(),
+        "a live unix socket must keep its directory out of the tmp cleanup"
+    );
+    assert!(
+        socket_file.exists(),
+        "the live socket file itself must survive"
+    );
+    assert!(
+        !unheld_file.exists(),
+        "an old unheld entry remains removable"
+    );
+    assert_eq!(
+        cleaned.len(),
+        1,
+        "only the unheld old entry is removed: {cleaned:?}"
+    );
+    assert_eq!(reclaimed, unheld_bytes);
+
+    drop(listener);
+    let _ = fs::remove_dir_all(&root);
+    let _ = fs::remove_dir_all(&proc_root);
+}
+
+/// A sibling directory that only shares a textual prefix with a live socket
+/// path must stay eligible for removal: the match is component-wise, so
+/// `codex-daemon-1000x` is not inside `codex-daemon-1000`.
+#[test]
+fn live_unix_socket_match_is_component_wise() {
+    let mut sockets = HashSet::new();
+    sockets.insert(PathBuf::from("/tmp/codex-daemon-1000/e9dc3aabaf3134c404fb3a4a409b3c796054f0a4e0dd1ba1bfe700b19e2a2361"));
+    assert!(
+        path_holds_live_unix_socket(Path::new("/tmp/codex-daemon-1000"), &sockets),
+        "the socket's own directory is protected"
+    );
+    assert!(
+        path_holds_live_unix_socket(
+            Path::new("/tmp/codex-daemon-1000/e9dc3aabaf3134c404fb3a4a409b3c796054f0a4e0dd1ba1bfe700b19e2a2361"),
+            &sockets
+        ),
+        "the socket file itself is protected"
+    );
+    assert!(
+        !path_holds_live_unix_socket(Path::new("/tmp/codex-daemon-1000x"), &sockets),
+        "a textual-prefix sibling is NOT protected"
+    );
+    assert!(
+        path_holds_live_unix_socket(Path::new("/tmp"), &sockets),
+        "an ancestor of the socket is protected (the socket lives under it)"
+    );
+    assert!(
+        !path_holds_live_unix_socket(Path::new("/tmp/other"), &sockets),
+        "an unrelated directory is not protected"
+    );
 }
 
 // --- 2026-10-12 (obvious-fat fast path): e2e-litter tmp window + quarantine budget ---
@@ -2406,6 +2511,7 @@ async fn tmp_e2e_fast_path_owns_only_the_general_skipped_window() {
         false,
         &[],
         Path::new("/proc"),
+        &HashSet::new(),
     )
     .await
     .expect("dry run");
@@ -2427,6 +2533,7 @@ async fn tmp_e2e_fast_path_owns_only_the_general_skipped_window() {
         false,
         &[],
         Path::new("/proc"),
+        &HashSet::new(),
     )
     .await
     .expect("apply");
@@ -2468,6 +2575,7 @@ async fn tmp_e2e_fast_path_zero_age_disables() {
         false,
         &[],
         Path::new("/proc"),
+        &HashSet::new(),
     )
     .await
     .expect("apply with 0 age");
@@ -2499,6 +2607,7 @@ async fn tmp_e2e_fast_path_bypass_takes_fresh_unheld() {
         false,
         &[],
         Path::new("/proc"),
+        &HashSet::new(),
     )
     .await
     .expect("gated dry run");
@@ -2515,6 +2624,7 @@ async fn tmp_e2e_fast_path_bypass_takes_fresh_unheld() {
         true,
         &[],
         Path::new("/proc"),
+        &HashSet::new(),
     )
     .await
     .expect("bypass dry run");
@@ -2553,6 +2663,7 @@ async fn tmp_e2e_fast_path_keeps_open_held_tree() {
         true,
         &[],
         Path::new("/proc"),
+        &HashSet::new(),
     )
     .await
     .expect("bypass apply");
@@ -2651,7 +2762,7 @@ async fn clean_tmp_paths_refuses_blind_cleanup_when_proc_unreadable() {
     let missing_proc = root.join("no-such-proc");
 
     for apply in [false, true] {
-        let err = clean_tmp_paths_with_proc(apply, &roots, 24, &[], &missing_proc)
+        let err = clean_tmp_paths_with_proc(apply, &roots, 24, &[], &missing_proc, &HashSet::new())
             .await
             .expect_err("unreadable proc must fail the pass");
         assert!(

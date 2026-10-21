@@ -6238,6 +6238,7 @@ async fn clean_tmp_e2e_fast_path(
     bypass_age_gate: bool,
     protected_paths: &[String],
 ) -> Result<(u64, Vec<String>, Vec<String>)> {
+    let live_sockets = live_unix_socket_paths();
     clean_tmp_e2e_fast_path_with_proc(
         apply,
         roots,
@@ -6247,6 +6248,7 @@ async fn clean_tmp_e2e_fast_path(
         bypass_age_gate,
         protected_paths,
         Path::new("/proc"),
+        &live_sockets,
     )
     .await
 }
@@ -6260,6 +6262,7 @@ async fn clean_tmp_e2e_fast_path_with_proc(
     bypass_age_gate: bool,
     protected_paths: &[String],
     proc_root: &Path,
+    live_sockets: &HashSet<PathBuf>,
 ) -> Result<(u64, Vec<String>, Vec<String>)> {
     let mut reclaimed = 0u64;
     let mut cleaned = Vec::new();
@@ -6338,6 +6341,17 @@ async fn clean_tmp_e2e_fast_path_with_proc(
             if path_has_open_ancestor(&path, &open_paths) {
                 continue;
             }
+            // A bound unix socket is an anonymous inode in /proc/<pid>/fd, so
+            // the open-path scan above cannot see it. The socket PATH is the
+            // only handle there is — deleting it strands a live daemon
+            // (codex app-server, 2026-10-21).
+            if path_holds_live_unix_socket(&path, live_sockets) {
+                eprintln!(
+                    "🛡️ keeping tmp entry {}: holds a live unix socket",
+                    path.display()
+                );
+                continue;
+            }
             if let Err(e) = check_safe_to_delete_tmp_entry(&path, root, protected_paths) {
                 eprintln!("🛡️ keeping protected tmp entry {}: {}", path.display(), e);
                 continue;
@@ -6388,12 +6402,14 @@ async fn clean_tmp_paths(
     min_age_hours: u64,
     protected_paths: &[String],
 ) -> Result<(u64, Vec<String>)> {
+    let live_sockets = live_unix_socket_paths();
     clean_tmp_paths_with_proc(
         apply,
         roots,
         min_age_hours,
         protected_paths,
         Path::new("/proc"),
+        &live_sockets,
     )
     .await
 }
@@ -6404,6 +6420,7 @@ async fn clean_tmp_paths_with_proc(
     min_age_hours: u64,
     protected_paths: &[String],
     proc_root: &Path,
+    live_sockets: &HashSet<PathBuf>,
 ) -> Result<(u64, Vec<String>)> {
     let mut reclaimed = 0u64;
     let mut cleaned = Vec::new();
@@ -6478,6 +6495,17 @@ async fn clean_tmp_paths_with_proc(
             }
             if path_has_open_ancestor(&path, &open_paths) {
                 continue; // held open by a live process
+            }
+            // A bound unix socket is an anonymous inode in /proc/<pid>/fd, so
+            // the open-path scan above cannot see it. The socket PATH is the
+            // only handle there is — deleting it strands a live daemon
+            // (codex app-server, 2026-10-21).
+            if path_holds_live_unix_socket(&path, live_sockets) {
+                eprintln!(
+                    "🛡️ keeping tmp entry {}: holds a live unix socket",
+                    path.display()
+                );
+                continue;
             }
             if let Err(e) = check_safe_to_delete_tmp_entry(&path, root, protected_paths) {
                 eprintln!("🛡️ keeping protected tmp entry {}: {}", path.display(), e);
