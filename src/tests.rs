@@ -2304,6 +2304,10 @@ async fn clean_tmp_paths_keeps_directory_holding_live_unix_socket() {
     write_file_with_mtime(&unheld_file, b"unheld", 2 * 86_400);
     let unheld_bytes = unheld_file.metadata().expect("unheld metadata").len();
 
+    // A readable proc fixture: the cleanup refuses to run blind, so the
+    // scan root must exist and expose at least one pid directory.
+    fs::create_dir_all(proc_root.join("4242").join("fd")).expect("create proc fixture");
+
     // A real listener, so the probe is exercised against the kernel's own
     // view of the socket rather than a hand-written path.
     let listener = std::os::unix::net::UnixListener::bind(&socket_file).expect("bind fixture socket");
