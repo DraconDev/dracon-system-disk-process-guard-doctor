@@ -724,7 +724,7 @@ pub(crate) struct ReportState {
 #[derive(Default, Debug)]
 pub(crate) struct GuardRuntimeState {
     /// CHANGED 2026-07-21 (v0.112.33, audit M34/F4.8): value is now
-    /// `(first_seen, proc_starttime)` — the /proc/<pid>/stat
+    /// `(first_seen, proc_starttime)` — the `/proc/<pid>/stat`
     /// starttime is recorded at first sight and re-verified before
     /// any renice, closing the PID-reuse window (a PID recycled
     /// during the sustain window gets a DIFFERENT starttime and is
@@ -1288,7 +1288,7 @@ fn record_swap_counters(state: &mut GuardRuntimeState, pswpin: u64, pswpout: u64
     state.prev_swap_counters = Some((Instant::now(), pswpin, pswpout));
 }
 
-/// Parse one /proc/<pid>/stat line for zombie detection.
+/// Parse one `/proc/<pid>/stat` line for zombie detection.
 /// Returns (pid, comm, ppid, starttime) when state == 'Z'.
 pub(crate) fn parse_proc_stat_zombie(line: &str) -> Option<(i32, String, i32, u64)> {
     let open = line.find('(')?;
