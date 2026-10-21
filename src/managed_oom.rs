@@ -793,9 +793,11 @@ mod tests {
 
     #[test]
     fn unregistered_workloads_are_not_treated_as_managed_jobs() {
-        assert!(!id_for("/user.slice/app-foo.scope").is_ok());
-        assert!(!id_for("/user.slice/dracon-managed-job-nope.scope").is_ok());
-        assert!(!id_for("/user.slice/dracon-managed-job-.scope").is_ok());
+        // `is_err()` rather than `!is_ok()`: clippy's `nonminimal_bool`
+        // rejects the negation on the MSRV toolchain.
+        assert!(id_for("/user.slice/app-foo.scope").is_err());
+        assert!(id_for("/user.slice/dracon-managed-job-nope.scope").is_err());
+        assert!(id_for("/user.slice/dracon-managed-job-.scope").is_err());
         assert_eq!(
             id_for("/user.slice/dracon-managed-job-12345678-1234-1234-1234-123456789abc.scope")
                 .unwrap(),
