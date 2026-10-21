@@ -2296,7 +2296,9 @@ async fn clean_tmp_paths_keeps_directory_holding_live_unix_socket() {
     let root = unique_test_tmp_root("tmp_live_socket");
     let proc_root = unique_test_home("proc_live_socket");
     let socket_dir = root.join("codex-daemon-1000");
-    let socket_file = socket_dir.join("e9dc3aabaf3134c404fb3a4a409b3c796054f0a4e0dd1ba1bfe700b19e2a2361");
+    // A unix socket path must fit in SUN_LEN (~108 bytes), so the fixture
+    // uses a short name; the codex daemon's real hash is far longer.
+    let socket_file = socket_dir.join("s");
     let unheld_file = root.join("stale-unheld-file");
     fs::create_dir_all(&socket_dir).expect("create socket dir fixture");
     write_file_with_mtime(&unheld_file, b"unheld", 2 * 86_400);
