@@ -3683,9 +3683,7 @@ fn live_unix_socket_under(_root: &Path) -> Option<PathBuf> {
 /// that merely shares a textual prefix — `codex-daemon-1000x` — eligible for
 /// removal.
 fn path_holds_live_unix_socket(candidate: &Path, live_sockets: &HashSet<PathBuf>) -> bool {
-    live_sockets
-        .iter()
-        .any(|sock| sock.starts_with(candidate))
+    live_sockets.iter().any(|sock| sock.starts_with(candidate))
 }
 
 /// A pidfile under `root` that names a live process.

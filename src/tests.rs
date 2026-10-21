@@ -2310,7 +2310,8 @@ async fn clean_tmp_paths_keeps_directory_holding_live_unix_socket() {
 
     // A real listener, so the probe is exercised against the kernel's own
     // view of the socket rather than a hand-written path.
-    let listener = std::os::unix::net::UnixListener::bind(&socket_file).expect("bind fixture socket");
+    let listener =
+        std::os::unix::net::UnixListener::bind(&socket_file).expect("bind fixture socket");
 
     // The socket file is the live listener, but the DIRECTORY is what the
     // tmp cleaner removes (top-level entries). Backdate it past the gate.
@@ -2362,7 +2363,9 @@ async fn clean_tmp_paths_keeps_directory_holding_live_unix_socket() {
 #[test]
 fn live_unix_socket_match_is_component_wise() {
     let mut sockets = HashSet::new();
-    sockets.insert(PathBuf::from("/tmp/codex-daemon-1000/e9dc3aabaf3134c404fb3a4a409b3c796054f0a4e0dd1ba1bfe700b19e2a2361"));
+    sockets.insert(PathBuf::from(
+        "/tmp/codex-daemon-1000/e9dc3aabaf3134c404fb3a4a409b3c796054f0a4e0dd1ba1bfe700b19e2a2361",
+    ));
     assert!(
         path_holds_live_unix_socket(Path::new("/tmp/codex-daemon-1000"), &sockets),
         "the socket's own directory is protected"
