@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Rapid disk-fill detection starts a fresh sample window after reclaimed space, so a large cleanup cannot mask subsequent growth. Recovery also re-arms the rapid-fill notification. Warnings now report user-available GiB and conditional hours until full.
+- `recover_loop` moved above the test modules in `managed_oom.rs` (clippy's `items_after_test_module`), the CPU-quota round-trip assertion no longer folds a literal into `min` (`unnecessary_min_or_max`), and the managed-job test asserts `is_err()` instead of `!is_ok()` (`nonminimal_bool`). The last one is only reported by the 1.89 MSRV toolchain; the newer clippy no longer flags it.
 
 ## [0.112.45] - 2026-10-12
 
