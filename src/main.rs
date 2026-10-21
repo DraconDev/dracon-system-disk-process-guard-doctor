@@ -3598,18 +3598,27 @@ fn live_process_binary_under(_root: &Path) -> Option<(i32, PathBuf)> {
     None
 }
 
-/// A live unix-socket listener whose path lives under `root`.
+/// Every live unix-socket LISTENER path, parsed from `/proc/net/unix`.
 ///
-/// 2026-10-20 (disk-full recovery): a `target/` dir can hold the runtime
-/// state of a RUNNING service, not just build output. The dracon-platform
-/// dev stack keeps its sockets under `target/dev-stack/sockets/`; wiping
-/// `target/` unlinked the socket paths of five live API workers, so Caddy
-/// could not open new connections even though the processes kept answering
-/// on already-pooled ones. The build-activity check alone did not catch it
-/// (no cargo/rustc was running), so the candidate needs its own probe.
+/// 2026-10-21 (codex app-server incident): the /tmp cleaner deleted
+/// `/tmp/codex-daemon-1000/<hash>` — the control socket of the RUNNING codex
+/// app-server daemon — because the directory was older than
+/// `tmp_min_age_hours`. The daemon kept its socket BOUND, so every client
+/// got ENOENT and codex refused to start ("app server did not become ready").
+///
+/// The open-fd scan could not save it: a bound unix socket is an ANONYMOUS
+/// inode in `/proc/<pid>/fd` (`socket:[N]`), never a path, so no fd link ever
+/// points at the socket FILE. The socket path in `/proc/net/unix` is the only
+/// handle that exists, and it is exactly what the cleanup removes.
+///
+/// Collect the set ONCE per cleanup pass and keep any candidate that contains
+/// one of these paths — see `path_holds_live_unix_socket`.
 #[cfg(target_os = "linux")]
-fn live_unix_socket_under(root: &Path) -> Option<PathBuf> {
-    let net_unix = std::fs::read_to_string("/proc/net/unix").ok()?;
+fn live_unix_socket_paths() -> HashSet<PathBuf> {
+    let mut out = HashSet::new();
+    let Ok(net_unix) = std::fs::read_to_string("/proc/net/unix") else {
+        return out;
+    };
     for line in net_unix.lines().skip(1) {
         // Num RefCount Protocol Flags Type St Inode Path
         let fields: Vec<&str> = line.split_whitespace().collect();
@@ -3623,17 +3632,60 @@ fn live_unix_socket_under(root: &Path) -> Option<PathBuf> {
         if !is_listener {
             continue;
         }
-        let sock = Path::new(sock_path);
-        if sock.starts_with(root) {
-            return Some(sock.to_path_buf());
-        }
+        out.insert(PathBuf::from(sock_path));
     }
-    None
+    out
+}
+
+#[cfg(not(target_os = "linux"))]
+fn live_unix_socket_paths() -> HashSet<PathBuf> {
+    HashSet::new()
+}
+
+/// A live unix-socket LISTENER whose path lives under `root`.
+///
+/// 2026-10-20 (disk-full recovery): a `target/` dir can hold the runtime
+/// state of a RUNNING service, not just build output. The dracon-platform
+/// dev stack keeps its sockets under `target/dev-stack/sockets/`; wiping
+/// `target/` unlinked the socket paths of five live API workers, so Caddy
+/// could not open new connections even though the processes kept answering
+/// on already-pooled ones. The build-activity check alone did not catch it
+/// (no cargo/rustc was running), so the candidate needs its own probe.
+#[cfg(target_os = "linux")]
+fn live_unix_socket_under(root: &Path) -> Option<PathBuf> {
+    live_unix_socket_paths()
+        .into_iter()
+        .find(|sock| sock.starts_with(root))
 }
 
 #[cfg(not(target_os = "linux"))]
 fn live_unix_socket_under(_root: &Path) -> Option<PathBuf> {
     None
+}
+
+/// True when `candidate` CONTAINS the path of a live unix-socket listener.
+///
+/// 2026-10-21 (codex app-server incident): the /tmp cleaner deleted
+/// `/tmp/codex-daemon-1000/<hash>` — the control socket of the RUNNING codex
+/// app-server daemon — because the directory was older than
+/// `tmp_min_age_hours` (24h) and the socket file's mtime never moves. The
+/// daemon kept the socket BOUND, so every client got ENOENT and codex
+/// refused to start ("app server did not become ready ... No such file or
+/// directory").
+///
+/// The open-fd scan could not save it, and this is the reason it must be a
+/// separate probe: a bound unix socket is an ANONYMOUS inode in
+/// `/proc/<pid>/fd` (`socket:[N]`), never a path, so no fd link ever points
+/// at the socket FILE. The socket path in `/proc/net/unix` is the only handle
+/// that exists, and it is exactly what the cleanup removes.
+///
+/// Component-wise matching (`Path::starts_with`) keeps a sibling directory
+/// that merely shares a textual prefix — `codex-daemon-1000x` — eligible for
+/// removal.
+fn path_holds_live_unix_socket(candidate: &Path, live_sockets: &HashSet<PathBuf>) -> bool {
+    live_sockets
+        .iter()
+        .any(|sock| sock.starts_with(candidate))
 }
 
 /// A pidfile under `root` that names a live process.
