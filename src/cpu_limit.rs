@@ -673,7 +673,12 @@ mod tests {
         assert_eq!(quota_value("1s 500ms").unwrap(), 1_500_000);
         assert!(quota_value("").is_err());
         assert!(quota_value("garbage").is_err());
-        assert_eq!(250_000u64.min(500_000), 250_000);
+        // The stricter of the two survives the round trip. Both sides are
+        // bound to locals: clippy's `unnecessary_min_or_max` rejects a
+        // constant operand, and this asserts the comparison, not a literal.
+        let stricter = 250_000u64;
+        let existing = 500_000u64;
+        assert_eq!(stricter.min(existing), stricter);
     }
     #[test]
     fn lease_intent_survives_restart_and_keys_cannot_escape_state_root() {

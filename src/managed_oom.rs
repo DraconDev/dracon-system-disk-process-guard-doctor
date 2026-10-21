@@ -609,6 +609,26 @@ pub(crate) async fn drain(force: bool, exempt: &HashSet<String>) -> Result<usize
     }
     Ok(pending)
 }
+pub(crate) async fn recover_loop() -> Result<()> {
+    loop {
+        // Read the same configured exemptions on every pass; no privilege or
+        // global same-score sweep substitutes for admitted membership.
+        let (_, policy) = load_system_policy()?;
+        let exempt = parse_kinds(&policy.guard.process_exempt_names);
+        match drain(false, &exempt).await {
+            Ok(0) => return Ok(()),
+            Ok(_) => {}
+            Err(error) => {
+                let _ = writeln!(
+                    std::io::stderr().lock(),
+                    "managed OOM recovery pending: {error:#}"
+                );
+            }
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
 #[cfg(test)]
 #[path = "managed_probe_tests.rs"]
 mod probe_isolation_tests;
@@ -781,25 +801,5 @@ mod tests {
                 .unwrap(),
             "12345678-1234-1234-1234-123456789abc"
         );
-    }
-}
-
-pub(crate) async fn recover_loop() -> Result<()> {
-    loop {
-        // Read the same configured exemptions on every pass; no privilege or
-        // global same-score sweep substitutes for admitted membership.
-        let (_, policy) = load_system_policy()?;
-        let exempt = parse_kinds(&policy.guard.process_exempt_names);
-        match drain(false, &exempt).await {
-            Ok(0) => return Ok(()),
-            Ok(_) => {}
-            Err(error) => {
-                let _ = writeln!(
-                    std::io::stderr().lock(),
-                    "managed OOM recovery pending: {error:#}"
-                );
-            }
-        }
-        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 }
