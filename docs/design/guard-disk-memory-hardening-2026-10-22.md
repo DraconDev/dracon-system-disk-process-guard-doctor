@@ -67,6 +67,7 @@ every one of those gates.
 | `tmp_large_min_age_hours` | 2 | the short floor; 0 disables the size-aware floor |
 | `tmp_scratch_warn_gib` | 20 | warn when the age floor holds back this much scratch; 0 never warns |
 | `cleanup_command_timeout_secs` | 300 | the hard bound on an external cleanup command; 0 means the default |
+| `forgotten_orphan_footprint_mb` | 2048 | the resident-plus-swapped weight floor for a forgotten orphan (section 3) |
 
 The live policy on this host also lowers the general floor from 24 h to
 6 h, which is what bounds the LONG tail: 20,530 entries of under 20 MiB
@@ -75,35 +76,57 @@ documents the code default (24 h) — the live value is the operator's
 choice, and the two are not supposed to match.
 
 `scripts/check-guard-knob-parity.sh` asserts that every knob this work
-added carries the same value in the crate's defaults, the crate's example
-policy and the live policy, and that the daemon's task budget still
-matches between the shipped unit and the NixOS module. It fails on a
-drifted source (verified by drifting one and watching it fail).
+added carries the same value in the crate's defaults, the NixOS operator
+module, the crate's example policy and the live policy, and that the
+daemon's task budget still matches between the shipped unit and the NixOS
+module. It fails on a drifted source (verified by drifting one and
+watching it fail — in the module as well as in the crate).
 
 ### The NixOS module's role
 
 The goal names the NixOS operator module (the parent's `flake.nix`) as one
 of the places this work ships through, and the parity check reads the
-module. The module's role is **the guard's SERVICE, not its policy**, and
-the distinction is deliberate:
+module. The module does two things, and the distinction between them
+matters:
 
-- the module ships `dracon-system-guard.service` (and its watchdog), and
+- it ships `dracon-system-guard.service` (and its watchdog), and
   `scripts/check-flake.sh` asserts that unit against the shipped unit
   property-for-property, so a NixOS deployment runs exactly the unit this
   repository ships;
-- the module does NOT generate the guard's policy file, because that file
-  is the OPERATOR's. The live policy is deliberately not a copy of the
-  example: the general tmp floor is 6 h on this host against the example's
-  24 h, because the operator chose it.
+- it **declares the guard's policy knobs** in
+  `services.dracon.system.policy`, with the crate's own defaults:
 
-So the module is a **negative** source for these knobs — it must not define
-one. It cannot define one safely either: the guard has no CLI or
-environment override for them, so a module value would either override
-the operator's tuning or sit unread while looking authoritative — the
-silent drift the parity script exists to catch. The parity script
-therefore asserts that ABSENCE as well, which keeps the module a checked
-participant in the comparison instead of an unchecked one, and fails
-loudly if a future change turns it into a value source.
+  ```nix
+  services.dracon.system.policy = {
+    tmp_large_entry_bytes = 1073741824;
+    tmp_large_min_age_hours = 2;
+    tmp_scratch_warn_gib = 20;
+    cleanup_command_timeout_secs = 300;
+    forgotten_orphan_footprint_mb = 2048;
+  };
+  ```
+
+  The key names are the TOML knob names verbatim, so a grep-based parity
+  check compares this source with the crate's defaults and the live policy
+  without a translation table. A NixOS install with no policy file runs the
+  crate's DEFAULTS, so the declared values are what such an install
+  actually gets — the declaration is not a claim about a file that nobody
+  reads.
+
+The module does **not** write the operator's policy file by default. That
+file is the OPERATOR's: the live policy is deliberately not a copy of the
+example, because the general tmp floor is 6 h on this host against the
+example's 24 h. `services.dracon.system.managePolicy` (default `false`)
+turns the module into the file's owner — the pinned example policy plus
+the declared knobs, rendered into `~/.dracon/utilities/system/
+dracon-system.toml` with the knobs placed inside the `[guard]` table — and
+the parity script asserts that the switch is OFF by default, so a module
+can never quietly overwrite the operator's tuning.
+
+`scripts/check-flake.sh` renders that policy during the check and asserts
+that every declared knob appears exactly once, with the declared value,
+inside the `[guard]` table — a duplicate key is invalid TOML, and the
+guard refuses to start on a malformed policy (EX_CONFIG).
 
 ## 2. The memory pass
 
