@@ -20,9 +20,11 @@
 #
 # The NixOS module (the parent's flake.nix) ships the guard's SERVICE, not
 # its policy: the guard's policy file is the operator's own, and the module
-# deliberately does not generate it. The daemon-side knob the goal's
-# sibling work added (the task budget) IS carried by that module, so it is
-# checked here too — against the shipped unit and the module.
+# deliberately does not generate it. So the module is a NEGATIVE source for
+# these knobs — it must not define one — and the check below asserts that
+# absence. The daemon-side knob the goal's sibling work added (the task
+# budget) IS carried by that module, so it is checked here too — against the
+# shipped unit and the module.
 #
 # Exit codes:
 #   0 = every knob agrees across the sources that define it
@@ -126,6 +128,37 @@ for knob in "${GUARD_KNOBS[@]}"; do
   fi
   echo "  $knob = $crate_val (crate default, example, live)"
 done
+
+# The NixOS module is the FOURTH source, and it is a NEGATIVE one: it ships
+# the guard's SERVICE, not its policy, so it must not define a guard policy
+# knob at all.
+#
+# WHY (2026-10-22): the live policy is the OPERATOR's file and is
+# deliberately not a copy of the example — the general tmp floor is 6 h on
+# this host against the example's 24 h. If the module defined a knob value
+# it would either override that tuning (the guard has no CLI or env
+# override for these knobs, and the module does not generate the policy
+# file) or become a silent drift source: the value that looks authoritative
+# would be one the daemon never reads. Asserting the ABSENCE keeps the
+# module a checked participant in this comparison instead of an unchecked
+# one, and fails loudly if a future change makes it a value source.
+echo "• the NixOS module: it must not define the guard's policy knobs"
+if [ -f "$PARENT_FLAKE" ]; then
+  module_fail=0
+  for knob in "${GUARD_KNOBS[@]}"; do
+    if grep -qE "^[[:space:]]*\"?${knob}\"?[[:space:]]*=" "$PARENT_FLAKE"; then
+      echo "✗ $knob is defined in the NixOS module — the guard's policy is the operator's file; a module value would override the operator's tuning (drift source)" >&2
+      module_fail=1
+    fi
+  done
+  if [ "$module_fail" -ne 0 ]; then
+    fail=1
+  else
+    echo "  the module defines none of them (it ships the guard's service; the policy file is the operator's)"
+  fi
+else
+  note "the NixOS module is not present here — skipped"
+fi
 
 # The sibling knob from the task-budget work: the daemon's task budget is
 # carried by the shipped unit AND the parent's NixOS module, and they must
