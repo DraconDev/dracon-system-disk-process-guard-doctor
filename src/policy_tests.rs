@@ -380,6 +380,10 @@ fn sentinel_zero_knob_list_matches_the_policy_fields() {
         "node_modules_max_age_days",
         "tmp_min_age_hours",
         "tmp_e2e_min_age_hours",
+        // ADDED 2026-10-22: the size-aware tmp floor (0 = off) and the
+        // scratch-at-risk warning threshold (0 = never warn).
+        "tmp_large_min_age_hours",
+        "tmp_scratch_warn_gib",
         "relocate_min_age_days",
         "trash_min_age_days",
         "rust_target_action_min_age_days",

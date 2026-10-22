@@ -6397,21 +6397,93 @@ async fn clean_tmp_e2e_fast_path_with_proc(
     Ok((reclaimed, cleaned, denied))
 }
 
+/// The age a floor expresses, saturating instead of overflowing.
+///
+/// CHANGED 2026-10-22: shared by the general tmp floor and the size-aware
+/// one, so both saturate the same way (audit F41's underflow hardening:
+/// an absurd floor must mean "delete nothing", never a panic).
+fn age_of(hours: u64) -> Duration {
+    Duration::from_secs(hours.saturating_mul(3_600))
+}
+
+/// What one tmp cleanup pass found.
+#[derive(Debug, Default)]
+pub(crate) struct TmpCleanupOutcome {
+    /// Bytes removed — or that would be removed, in dry-run.
+    pub(crate) reclaimed: u64,
+    /// Per-entry notes for the report.
+    pub(crate) cleaned: Vec<String>,
+    /// Entries that could not be removed: they belong to another user.
+    /// ADDED 2026-10-22: aggregated. The per-entry failure line fired once
+    /// per root-owned entry per cycle (a dozen lines a cycle on this host),
+    /// which buried the lines that matter.
+    pub(crate) denied: Vec<String>,
+    /// Bytes held back ONLY by the age floor: stale by content, unheld and
+    /// unprotected, but too young for the floor that applies to them.
+    /// ADDED 2026-10-22: the disk alarms are percent-used and rapid fill;
+    /// neither of them sees the scratch that is sitting there waiting for
+    /// its floor to expire.
+    pub(crate) age_blocked_bytes: u64,
+    /// How many entries make up `age_blocked_bytes`.
+    pub(crate) age_blocked_entries: usize,
+}
+
 /// Age-based top-level /tmp cleanup (ADDED 2026-08-25, v0.112.39).
 /// Removes TOP-LEVEL entries of each root whose mtime is older than
 /// `min_age_hours`, skipping symlinks, protected paths, and anything
 /// currently held open by a process. Dry-run only measures.
+///
+/// ADDED 2026-10-22: a size-aware floor. An entry of at least
+/// `large_entry_bytes` is judged against `large_min_age_hours` instead of the
+/// general floor, so a bulk scratch clone does not have to wait the general
+/// floor out. It is only consulted when `use_large_floor` is set (the
+/// proactive/action tier), because deciding it costs a size measurement per
+/// entry and that walk is only worth paying when the disk is filling.
+/// Whether the scratch the age floor is holding back is worth a warning.
+///
+/// ADDED 2026-10-22: the disk alarms are percent-used and rapid fill;
+/// neither of them sees the scratch that is sitting there waiting for its
+/// floor. 0 disables the warning.
+pub(crate) fn scratch_warning_threshold_exceeded(age_blocked_bytes: u64, warn_gib: u64) -> bool {
+    warn_gib > 0 && age_blocked_bytes >= warn_gib.saturating_mul(1024 * 1024 * 1024)
+}
+
+/// The general-floor form: no size-aware floor.
+///
+/// Kept as the short form for the callers that want exactly the
+/// pre-2026-10-22 behaviour (and for the tests, which exercise the general
+/// floor on its own).
 async fn clean_tmp_paths(
     apply: bool,
     roots: &[String],
     min_age_hours: u64,
     protected_paths: &[String],
-) -> Result<(u64, Vec<String>)> {
+) -> Result<TmpCleanupOutcome> {
+    clean_tmp_paths_with_floor(apply, roots, min_age_hours, 0, 0, false, protected_paths).await
+}
+
+/// The full form, with the size-aware floor.
+///
+/// ADDED 2026-10-22: see `clean_tmp_paths` for the size-aware floor's
+/// rationale — a bulk scratch clone is judged against a short floor instead
+/// of the general one, but only when the caller says the disk is filling.
+async fn clean_tmp_paths_with_floor(
+    apply: bool,
+    roots: &[String],
+    min_age_hours: u64,
+    large_entry_bytes: u64,
+    large_min_age_hours: u64,
+    use_large_floor: bool,
+    protected_paths: &[String],
+) -> Result<TmpCleanupOutcome> {
     let live_sockets = live_unix_socket_paths();
     clean_tmp_paths_with_proc(
         apply,
         roots,
         min_age_hours,
+        large_entry_bytes,
+        large_min_age_hours,
+        use_large_floor,
         protected_paths,
         Path::new("/proc"),
         &live_sockets,
@@ -6423,18 +6495,20 @@ async fn clean_tmp_paths_with_proc(
     apply: bool,
     roots: &[String],
     min_age_hours: u64,
+    large_entry_bytes: u64,
+    large_min_age_hours: u64,
+    use_large_floor: bool,
     protected_paths: &[String],
     proc_root: &Path,
     live_sockets: &HashSet<PathBuf>,
-) -> Result<(u64, Vec<String>)> {
-    let mut reclaimed = 0u64;
-    let mut cleaned = Vec::new();
+) -> Result<TmpCleanupOutcome> {
+    let mut out = TmpCleanupOutcome::default();
     if roots.is_empty() || min_age_hours == 0 {
-        return Ok((0, cleaned));
+        return Ok(out);
     }
     let root_paths = resolve_safe_tmp_roots(roots)?;
     if root_paths.is_empty() {
-        return Ok((0, cleaned));
+        return Ok(out);
     }
     let open_paths = match collect_open_paths_under_from(proc_root, &root_paths).await {
         Some(set) => set,
@@ -6451,8 +6525,17 @@ async fn clean_tmp_paths_with_proc(
     // trash cutoff above — absurd min_age_hours saturates to "delete
     // nothing" instead of panicking.
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
-    let age = Duration::from_secs(min_age_hours.saturating_mul(3_600));
-    let cutoff = UNIX_EPOCH + now.checked_sub(age).unwrap_or(Duration::ZERO);
+    let cutoff = UNIX_EPOCH + now.checked_sub(age_of(min_age_hours)).unwrap_or(Duration::ZERO);
+    // The size-aware floor. A SHORTER age means a LATER cutoff, and a later
+    // cutoff judges MORE content old enough to delete — so the short floor
+    // is the permissive one for deletion, and its freshness check is also
+    // the cheaper walk (it stops at the first recent entry).
+    let large_cutoff =
+        UNIX_EPOCH + now.checked_sub(age_of(large_min_age_hours)).unwrap_or(Duration::ZERO);
+    let large_floor_active = use_large_floor
+        && large_min_age_hours > 0
+        && large_entry_bytes > 0
+        && large_cutoff > cutoff;
     for root in &root_paths {
         let mut rd = match tokio::fs::read_dir(root).await {
             Ok(rd) => rd,
@@ -6491,12 +6574,35 @@ async fn clean_tmp_paths_with_proc(
             // mtime only bumps on direct-child changes, so a stale-looking
             // top dir can hide freshly written nested files. Judge the
             // tree by its newest entry instead.
-            if meta.is_dir() {
-                if tree_has_fresh_content(&path, cutoff).await {
-                    continue; // fresh content at or under this dir
+            let fresh = if meta.is_dir() {
+                tree_has_fresh_content(&path, cutoff).await
+            } else {
+                modified > cutoff
+            };
+            if fresh {
+                // Fresh content against the GENERAL floor. When the
+                // size-aware floor is active, a large entry may still be
+                // reclaimable: measure it and re-check against the short
+                // floor. Measuring costs a walk, which is why this only
+                // happens in the proactive/action tier.
+                if large_floor_active {
+                    let size = tmp_entry_size(&path, &meta).await;
+                    if size >= large_entry_bytes {
+                        let fresh_short = if meta.is_dir() {
+                            tree_has_fresh_content(&path, large_cutoff).await
+                        } else {
+                            modified > large_cutoff
+                        };
+                        if !fresh_short {
+                            remove_tmp_entry(&path, &meta, size, apply, &mut out)
+                                .await;
+                            continue;
+                        }
+                        out.age_blocked_bytes += size;
+                        out.age_blocked_entries += 1;
+                    }
                 }
-            } else if modified > cutoff {
-                continue; // too young
+                continue; // fresh content
             }
             if path_has_open_ancestor(&path, &open_paths) {
                 continue; // held open by a live process
@@ -6516,35 +6622,69 @@ async fn clean_tmp_paths_with_proc(
                 eprintln!("🛡️ keeping protected tmp entry {}: {}", path.display(), e);
                 continue;
             }
-            let entry_size = if meta.is_dir() {
-                get_dir_size(&path).await.unwrap_or(0)
-            } else {
-                meta.len()
-            };
+            let entry_size = tmp_entry_size(&path, &meta).await;
             if !apply {
-                reclaimed += entry_size;
-                cleaned.push(format!(
+                out.reclaimed += entry_size;
+                out.cleaned.push(format!(
                     "{} ({}, dry-run)",
                     path.display(),
                     human_bytes(entry_size)
                 ));
                 continue;
             }
-            let removed = if meta.is_dir() {
-                tokio::fs::remove_dir_all(&path).await
-            } else {
-                tokio::fs::remove_file(&path).await
-            };
-            match removed {
-                Ok(()) => {
-                    reclaimed += entry_size;
-                    cleaned.push(format!("{} ({})", path.display(), human_bytes(entry_size)));
-                }
-                Err(e) => eprintln!("⚠️ failed to remove tmp entry {}: {}", path.display(), e),
-            }
+            remove_tmp_entry(&path, &meta, entry_size, apply, &mut out).await;
         }
     }
-    Ok((reclaimed, cleaned))
+    Ok(out)
+}
+
+/// The size of a tmp entry: a directory is measured by its tree, a file by
+/// its own length.
+async fn tmp_entry_size(path: &Path, meta: &std::fs::Metadata) -> u64 {
+    if meta.is_dir() {
+        get_dir_size(path).await.unwrap_or(0)
+    } else {
+        meta.len()
+    }
+}
+
+/// Remove one tmp entry, recording the outcome.
+///
+/// ADDED 2026-10-22: a removal that fails because the entry belongs to
+/// another user is aggregated instead of logged per entry per cycle, and an
+/// entry that is held back only by the age floor is counted so the guard can
+/// report the scratch it is not reclaiming yet.
+async fn remove_tmp_entry(
+    path: &Path,
+    meta: &std::fs::Metadata,
+    entry_size: u64,
+    apply: bool,
+    out: &mut TmpCleanupOutcome,
+) {
+    if !apply {
+        out.reclaimed += entry_size;
+        out.cleaned.push(format!(
+            "{} ({}, dry-run)",
+            path.display(),
+            human_bytes(entry_size)
+        ));
+        return;
+    }
+    let removed = if meta.is_dir() {
+        tokio::fs::remove_dir_all(path).await
+    } else {
+        tokio::fs::remove_file(path).await
+    };
+    match removed {
+        Ok(()) => {
+            out.reclaimed += entry_size;
+            out.cleaned
+                .push(format!("{} ({})", path.display(), human_bytes(entry_size)));
+        }
+        Err(e) => {
+            out.denied.push(format!("{}: {}", path.display(), e));
+        }
+    }
 }
 
 async fn run_auto_cleanup(
@@ -6666,19 +6806,61 @@ async fn run_auto_cleanup(
                 Err(e) => eprintln!("⚠️ Tmp e2e fast-path failed: {}", e),
             }
         }
-        match clean_tmp_paths(
+        // ADDED 2026-10-22: the size-aware floor is a proactive/action-tier
+        // behaviour. Deciding it costs a size measurement per entry, and
+        // that walk is only worth paying when the disk is actually filling
+        // — the general floor (and the e2e fast path) keep the cheap
+        // normal cadence.
+        let use_large_floor = used >= guard.proactive_cleanup_percent
+            && guard.tmp_large_min_age_hours > 0
+            && guard.tmp_large_entry_bytes > 0;
+        match clean_tmp_paths_with_floor(
             apply,
             &roots,
             guard.tmp_min_age_hours,
+            guard.tmp_large_entry_bytes,
+            guard.tmp_large_min_age_hours,
+            use_large_floor,
             &guard.protected_paths,
         )
         .await
         {
-            Ok((bytes, cleaned)) => {
-                total_reclaimed += bytes;
-                all_cleaned.extend(cleaned.iter().map(|s| format!("Tmp: {}", s)));
-                if apply && bytes > 0 {
-                    eprintln!("🧹 Tmp: {}", human_bytes(bytes));
+            Ok(outcome) => {
+                total_reclaimed += outcome.reclaimed;
+                all_cleaned.extend(outcome.cleaned.iter().map(|s| format!("Tmp: {}", s)));
+                if apply && outcome.reclaimed > 0 {
+                    eprintln!("🧹 Tmp: {}", human_bytes(outcome.reclaimed));
+                }
+                // ADDED 2026-10-22: one line per cycle, not one per entry.
+                // On this host a dozen root-owned tmp entries failed every
+                // cycle, and the per-entry lines buried the rest.
+                if !outcome.denied.is_empty() {
+                    let sample: Vec<&str> =
+                        outcome.denied.iter().take(3).map(|s| s.as_str()).collect();
+                    eprintln!(
+                        "🛡️ Tmp: {} entries need another user to remove (e.g. {})",
+                        outcome.denied.len(),
+                        sample.join(", ")
+                    );
+                }
+                // ADDED 2026-10-22: report the scratch the age floor is
+                // holding back. The disk alarms are percent-used and rapid
+                // fill; neither of them sees 144 GiB of deletable litter
+                // waiting for its floor.
+                if outcome.age_blocked_bytes > 0 {
+                    eprintln!(
+                        "🧹 Tmp: {} held by the age floor across {} entries",
+                        human_bytes(outcome.age_blocked_bytes),
+                        outcome.age_blocked_entries
+                    );
+                    let warn_gib = guard.tmp_scratch_warn_gib;
+                    if scratch_warning_threshold_exceeded(outcome.age_blocked_bytes, warn_gib) {
+                        eprintln!(
+                            "⚠️ Tmp: {} of scratch is held by the age floor (warn threshold {} GiB) — lower tmp_min_age_hours or enable tmp_large_min_age_hours",
+                            human_bytes(outcome.age_blocked_bytes),
+                            warn_gib
+                        );
+                    }
                 }
             }
             Err(e) => eprintln!("⚠️ Tmp cleanup failed: {}", e),
