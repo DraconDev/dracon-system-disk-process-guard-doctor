@@ -2309,12 +2309,18 @@ fn scratch_warning_threshold_is_exact_and_can_be_disabled() {
 async fn a_hanging_external_command_is_killed_at_its_bound() {
     let root = unique_test_tmp_root("run_bounded");
     fs::create_dir_all(&root).expect("create fixture root");
-    let pidfile = root.join("child.pid");
+    let heartbeat = root.join("heartbeat.log");
 
-    // The child reports its own pid, then sleeps far past the bound.
+    // The child appends to a file forever. If it is still alive after the
+    // bound, that file keeps growing — which is how the child is proven
+    // dead WITHOUT trusting its pid: a pid can be recycled by an unrelated
+    // process between the kill and the read, and the recycled pid says
+    // nothing about the child.
     let mut cmd = Command::new("/bin/sh");
-    cmd.arg("-c")
-        .arg(format!("echo $$ > {}; exec sleep 30", pidfile.display()));
+    cmd.arg("-c").arg(format!(
+        "while :; do echo x >> {}; sleep 0.1; done",
+        heartbeat.display()
+    ));
 
     let started = Instant::now();
     let out = run_bounded(&mut cmd, 1)
@@ -2331,20 +2337,20 @@ async fn a_hanging_external_command_is_killed_at_its_bound() {
         "the guard must not wait for a command past its bound (waited {elapsed:?})"
     );
 
-    // The child must be DEAD — not still running in the background. A
-    // zombie (state Z) is dead: it has been killed and only awaits reaping.
-    if let Ok(text) = fs::read_to_string(&pidfile) {
-        if let Ok(pid) = text.trim().parse::<i32>() {
-            let stat = fs::read_to_string(format!("/proc/{pid}/stat"));
-            let state: Option<String> = stat
-                .ok()
-                .and_then(|s| s.split_whitespace().nth(2).map(|f| f.to_string()));
-            assert!(
-                state.as_deref().is_none() || state.as_deref() == Some("Z"),
-                "the child process must be killed at the bound (state {state:?})"
-            );
-        }
-    }
+    // Let any in-flight kill land, then prove the child is DEAD: the
+    // heartbeat must stop growing.
+    sleep(Duration::from_millis(1500)).await;
+    let size_a = fs::metadata(&heartbeat).map(|m| m.len()).unwrap_or(0);
+    sleep(Duration::from_millis(1500)).await;
+    let size_b = fs::metadata(&heartbeat).map(|m| m.len()).unwrap_or(0);
+    assert!(
+        size_a > 0,
+        "the child must have been running before the bound"
+    );
+    assert_eq!(
+        size_a, size_b,
+        "the child must be killed at the bound, not left running (heartbeat grew from {size_a} to {size_b})"
+    );
 
     let _ = fs::remove_dir_all(&root);
 }
