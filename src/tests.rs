@@ -2293,6 +2293,96 @@ fn scratch_warning_threshold_is_exact_and_can_be_disabled() {
     );
 }
 
+/// ADDED 2026-10-22: an external cleanup command that hangs must not block
+/// the guard's loop.
+///
+/// WHY THIS MATTERS: `nix-collect-garbage` and `docker prune` ran INLINE in
+/// the guard's loop. A GC that runs for minutes held the whole loop, so the
+/// memory monitoring that must notice a swap spike never ran in the
+/// meantime — the bound is the only thing standing between a slow command
+/// and a blind guard.
+///
+/// The bound must KILL the child, not merely abandon it: an abandoned
+/// `nix-collect-garbage` would keep holding the store lock and would still
+/// be running after the guard moved on.
+#[tokio::test]
+async fn a_hanging_external_command_is_killed_at_its_bound() {
+    let root = unique_test_tmp_root("run_bounded");
+    fs::create_dir_all(&root).expect("create fixture root");
+    let pidfile = root.join("child.pid");
+
+    // The child reports its own pid, then sleeps far past the bound.
+    let mut cmd = Command::new("/bin/sh");
+    cmd.arg("-c")
+        .arg(format!("echo $$ > {}; exec sleep 30", pidfile.display()));
+
+    let started = Instant::now();
+    let out = run_bounded(&mut cmd, 1).await.expect("run_bounded must not error");
+    let elapsed = started.elapsed();
+
+    assert!(
+        out.is_none(),
+        "a command past its bound must be abandoned, not awaited"
+    );
+    assert!(
+        elapsed < Duration::from_secs(15),
+        "the guard must not wait for a command past its bound (waited {elapsed:?})"
+    );
+
+    // The child must be DEAD — not still running in the background. A
+    // zombie (state Z) is dead: it has been killed and only awaits reaping.
+    if let Ok(text) = fs::read_to_string(&pidfile) {
+        if let Ok(pid) = text.trim().parse::<i32>() {
+            let stat = fs::read_to_string(format!("/proc/{pid}/stat"));
+            let state = stat.as_deref().and_then(|s| s.split_whitespace().nth(2));
+            assert!(
+                state.is_none() || state == Some("Z"),
+                "the child process must be killed at the bound (state {state:?})"
+            );
+        }
+    }
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ADDED 2026-10-22: the mitigation ranking counts SWAPPED footprint
+/// beside resident.
+///
+/// WHY THIS MATTERS: the kernel evicts pages under pressure, so the process
+/// holding the most memory is often the one with the LEAST resident. A
+/// ranking by RSS alone therefore throttles the wrong processes and misses
+/// the swap hogs entirely — exactly when memory is short.
+#[test]
+fn the_pressure_ranking_counts_swapped_footprint_beside_resident() {
+    let sample = |rss_mb, swap_mb| ProcSample {
+        pid: 1,
+        ppid: 0,
+        cpu_percent: 0.0,
+        rss_mb,
+        swap_mb,
+        nice: 0,
+        command: "x".to_string(),
+        args: "x".to_string(),
+        starttime: 0,
+    };
+
+    assert_eq!(
+        memory_pressure_footprint_mb(&sample(100, 0)),
+        100,
+        "a resident-only process weighs its resident size"
+    );
+    assert_eq!(
+        memory_pressure_footprint_mb(&sample(100, 900)),
+        1000,
+        "a swapped-out process weighs resident PLUS swapped"
+    );
+    // The case that motivates the change: barely resident, enormous in swap.
+    assert!(
+        memory_pressure_footprint_mb(&sample(8, 8192)) > memory_pressure_footprint_mb(&sample(4096, 0)),
+        "a process with 8 MiB resident and 8 GiB swapped must outrank a 4 GiB resident one"
+    );
+}
+
 #[tokio::test]
 async fn clean_tmp_paths_respects_age_dry_run_and_open_fds() {
     let root = unique_test_tmp_root("tmp_clean");
