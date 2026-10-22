@@ -14,8 +14,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Forgotten heavy orphans are detected and reported. A process that is orphaned (its owner is provably dead), detached from any terminal, sleeping, idle by measurement, and heavy — resident PLUS swapped footprint at or above `forgotten_orphan_footprint_mb` (2048 MiB) — is reported on every pass with its evidence, but only when its command line shows it is a TEST job (headless, or a temporary/test profile). A browser that is neither is the operator's own session: it is VETOED, whatever its weight, and the veto is reported too. Ending one happens only under warn/critical memory pressure, through the existing pressure-orphan path, and only after every gate is re-verified live at kill time (including the starttime nonce, so a recycled PID is never signalled, and including the desktop veto).
+- A size-aware floor for the `/tmp` sweep: an entry of at least `tmp_large_entry_bytes` (1 GiB) is judged against `tmp_large_min_age_hours` (2 h) instead of the general floor, so a bulk scratch clone does not have to wait the general floor out. It is consulted only when the disk is filling, because deciding it costs a size measurement per entry.
+- The sweep reports the scratch the age floor is holding back — the bytes, the number of entries, and how many hours of disk that is at the sustained fill rate — and warns when it passes `tmp_scratch_warn_gib` (20 GiB). The disk alarms are percent-used and rapid fill; neither of them saw the deletable litter waiting for its floor.
+- `scripts/check-guard-knob-parity.sh` asserts that every knob this work added carries the same value in the crate's defaults, the crate's example policy and the live policy, and that the daemon's task budget still agrees between the shipped unit and the NixOS module. It fails on a drifted source.
+- `scripts/prune-nix-system-profile.sh` is the apply-ready privileged path for the root-owned Nix system profile, which a user-session guard can never prune.
+
 ### Fixed
 
+- External cleanup commands (`nix-collect-garbage`, `docker prune`) are bounded. They ran INLINE in the guard's loop, so a GC that runs for minutes blocked the loop entirely — and the memory monitoring that would notice a swap spike never ran in the meantime. The child is killed when its bound expires.
+- The memory-pressure ranking uses resident PLUS swapped footprint, and the report carries both. RSS alone misses the largest processes once the kernel has evicted their pages: a process can be down to a few MiB resident while holding tens of GiB in swap.
+- The root-owned Nix system profile is only pruned when it has generations to prune, so the expected "needs root" failure is no longer a line on every cycle of the guard's life; when the prune IS needed it names the apply-ready privileged script.
+- Entries the guard cannot remove (they belong to another user) are aggregated into one counted line per cycle instead of one failure line per entry per cycle, which buried the lines that matter.
+- `doctor` and `status` ask about the daemon's real units. They checked `dracon-sync.service` and `dracon-sync-watchdog.timer` — the fleet moved the daemon to the operator units and masked the old ones, so two REQUIRED checks could never pass and their remediation told the operator to enable a masked unit.
+- The "legacy config absent" check asks whether a legacy DAEMON CONFIG FILE is present, not whether the shared `~/.config/dracon` directory exists. That directory holds other tools' state and status tokens; failing a REQUIRED check because they exist, and telling the operator to move credentials, was worse than the stale-config risk the check was written for.
 - Rapid disk-fill detection starts a fresh sample window after reclaimed space, so a large cleanup cannot mask subsequent growth. Recovery also re-arms the rapid-fill notification. Warnings now report user-available GiB and conditional hours until full.
 - `recover_loop` moved above the test modules in `managed_oom.rs` (clippy's `items_after_test_module`), the CPU-quota round-trip assertion no longer folds a literal into `min` (`unnecessary_min_or_max`), and the managed-job test asserts `is_err()` instead of `!is_ok()` (`nonminimal_bool`). The last one is only reported by the 1.89 MSRV toolchain; the newer clippy no longer flags it.
 
