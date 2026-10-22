@@ -301,6 +301,31 @@ pub(crate) struct GuardPolicy {
     pub(crate) tmp_e2e_patterns: String,
     #[serde(default = "default_tmp_e2e_min_age_hours")]
     pub(crate) tmp_e2e_min_age_hours: u64,
+    // ADDED 2026-10-22: a size-aware floor for tmp cleanup. An entry of at
+    // least `tmp_large_entry_bytes` is judged against
+    // `tmp_large_min_age_hours` instead of the general `tmp_min_age_hours`.
+    //
+    // Why: the general floor is a name-agnostic guard against deleting
+    // something still wanted, and the e2e fast path only helps entries whose
+    // NAME matches a pattern. On 2026-10-21 that left 144 GiB of scratch
+    // (62.7 GiB of it in 20,530 entries of under 20 MiB) untouched while the
+    // disk reached 100%. A bulk clone is scratch by any measure, and "large"
+    // is a better discriminator than "matches a name".
+    //
+    // 0 disables the size-aware floor (the general floor applies to
+    // everything) — the default here, because it changes what gets DELETED
+    // and therefore ships as an explicit opt-in in the live config, exactly
+    // like the e2e fast path.
+    #[serde(default = "default_tmp_large_entry_bytes")]
+    pub(crate) tmp_large_entry_bytes: u64,
+    #[serde(default = "default_tmp_large_min_age_hours")]
+    pub(crate) tmp_large_min_age_hours: u64,
+    // ADDED 2026-10-22: warn when the scratch the age floor is holding back
+    // reaches this size. The disk alarms are percent-used and rapid-fill;
+    // neither of them sees 144 GiB of deletable litter. 0 disables the
+    // warning.
+    #[serde(default = "default_tmp_scratch_warn_gib")]
+    pub(crate) tmp_scratch_warn_gib: u64,
     // ADDED 2026-08-25 (v0.112.39): only purge trash entries older than
     // this many days, so clean_trash keeps a recovery window instead of
     // emptying everything at once at the next action-level event.
@@ -461,6 +486,9 @@ impl Default for GuardPolicy {
             tmp_min_age_hours: default_tmp_min_age_hours(),
             tmp_e2e_patterns: default_tmp_e2e_patterns(),
             tmp_e2e_min_age_hours: default_tmp_e2e_min_age_hours(),
+            tmp_large_entry_bytes: default_tmp_large_entry_bytes(),
+            tmp_large_min_age_hours: default_tmp_large_min_age_hours(),
+            tmp_scratch_warn_gib: default_tmp_scratch_warn_gib(),
             trash_min_age_days: default_trash_min_age_days(),
             protected_paths: Vec::new(),
             proactive_cleanup_percent: default_proactive_cleanup_percent(),
@@ -514,6 +542,25 @@ pub(crate) fn default_tmp_e2e_patterns() -> String {
 
 pub(crate) fn default_tmp_e2e_min_age_hours() -> u64 {
     6
+}
+
+/// ADDED 2026-10-22: 1 GiB. An entry at least this large is a bulk scratch
+/// clone rather than a user's file, and is judged against the short floor.
+pub(crate) fn default_tmp_large_entry_bytes() -> u64 {
+    1024 * 1024 * 1024
+}
+
+/// ADDED 2026-10-22: 0 — the size-aware floor is OFF by default and enabled
+/// in the live config, because it changes what gets deleted.
+pub(crate) fn default_tmp_large_min_age_hours() -> u64 {
+    0
+}
+
+/// ADDED 2026-10-22: 20 GiB of scratch held back by the age floor is worth a
+/// warning: on a 907 GiB disk that is the difference between a warning and a
+/// full disk.
+pub(crate) fn default_tmp_scratch_warn_gib() -> u64 {
+    20
 }
 
 pub(crate) fn default_quarantine_max_bytes_per_pass_mb() -> u64 {
@@ -1047,6 +1094,10 @@ pub(crate) const SENTINEL_ZERO_KNOBS: &[&str] = &[
     "tmp_min_age_hours",
     // 0 = disable the e2e-litter fast path (general tmp gate unaffected).
     "tmp_e2e_min_age_hours",
+    // 0 = disable the size-aware tmp floor (general tmp gate unaffected).
+    "tmp_large_min_age_hours",
+    // 0 = never warn about scratch held back by the age floor.
+    "tmp_scratch_warn_gib",
     // 0 = treat fresh directories as relocation candidates.
     "relocate_min_age_days",
     // 0 = purge trash immediately (no recovery window).

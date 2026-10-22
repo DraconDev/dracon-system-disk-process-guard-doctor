@@ -2059,14 +2059,16 @@ async fn clean_tmp_paths_zero_min_age_disables() {
     write_file_with_mtime(&stale, b"old log data", 2 * 86_400);
     let roots = vec![root.display().to_string()];
 
-    let (dry_bytes, dry_lines) = clean_tmp_paths(false, &roots, 0, &[])
+    let outcome = clean_tmp_paths(false, &roots, 0, &[])
         .await
         .expect("dry run");
+    let (dry_bytes, dry_lines) = (outcome.reclaimed, outcome.cleaned);
     assert_eq!(dry_bytes, 0, "0 must report nothing reclaimable");
     assert!(dry_lines.is_empty(), "0 must list no candidates");
     assert!(stale.exists(), "dry run must not delete");
 
-    let (bytes, lines) = clean_tmp_paths(true, &roots, 0, &[]).await.expect("apply");
+    let outcome = clean_tmp_paths(true, &roots, 0, &[]).await.expect("apply");
+    let (bytes, lines) = (outcome.reclaimed, outcome.cleaned);
     assert_eq!(bytes, 0, "0 must reclaim nothing");
     assert!(lines.is_empty(), "0 must clean nothing");
     assert!(stale.exists(), "0 must leave even stale entries alone");
@@ -2088,9 +2090,10 @@ async fn clean_tmp_paths_skips_unreadable_root() {
     let roots = vec![root.display().to_string()];
 
     for apply in [false, true] {
-        let (bytes, lines) = clean_tmp_paths(apply, &roots, 24, &[])
+        let outcome = clean_tmp_paths(apply, &roots, 24, &[])
             .await
             .expect("unreadable root must skip, not fail the pass");
+    let (bytes, lines) = (outcome.reclaimed, outcome.cleaned);
         assert_eq!(bytes, 0, "skipped root reclaims nothing");
         assert!(lines.is_empty(), "skipped root cleans nothing");
     }
@@ -2101,6 +2104,121 @@ async fn clean_tmp_paths_skips_unreadable_root() {
         "skipped root must leave entries alone"
     );
     let _ = fs::remove_dir_all(&root);
+}
+
+/// ADDED 2026-10-22: the size-aware floor.
+///
+/// A bulk scratch clone that no process holds is reclaimable well before
+/// the general floor expires — the 2026-10-21 disk incident left 144 GiB
+/// of exactly that behind a 24-hour gate. Everything smaller still waits
+/// for the general floor: "large" is the discriminator, and it must not
+/// become "anything young".
+#[tokio::test]
+async fn clean_tmp_paths_large_unheld_entry_beats_the_general_floor() {
+    let root = unique_test_tmp_root("tmp_large_floor");
+    fs::create_dir_all(&root).expect("create tmp root");
+
+    // A bulk clone: 4 KiB, three hours old — younger than the general
+    // 24-hour floor, older than the two-hour size-aware one.
+    let big = root.join("bulk-clone");
+    fs::create_dir_all(&big).expect("create bulk entry");
+    write_file_with_mtime(&big.join("payload.bin"), &vec![0u8; 4096], 3 * 3_600);
+    set_mtime_old(&big, 3 * 3_600);
+
+    // A small entry of the same age: the general floor still protects it.
+    let small = root.join("small-note");
+    write_file_with_mtime(&small, b"note", 3 * 3_600);
+    set_mtime_old(&small, 3 * 3_600);
+
+    let roots = vec![root.display().to_string()];
+    // 24h general floor, 1 KiB threshold, 2h size-aware floor, enabled.
+    let outcome = clean_tmp_paths_with_floor(true, &roots, 24, 1024, 2, true, &[])
+        .await
+        .expect("cleanup");
+    assert!(
+        !big.exists(),
+        "a large unheld entry must be reclaimed below the general age floor"
+    );
+    assert!(
+        small.exists(),
+        "a small entry must still wait for the general age floor"
+    );
+    assert!(outcome.reclaimed > 0, "the reclaimed bytes must be reported");
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ADDED 2026-10-22: the size-aware floor is off unless the caller says the
+/// disk is filling. Without the flag the general floor governs everything,
+/// so a bulk clone waits like any other entry.
+#[tokio::test]
+async fn clean_tmp_paths_size_aware_floor_stays_off_outside_the_filling_tier() {
+    let root = unique_test_tmp_root("tmp_large_floor_off");
+    fs::create_dir_all(&root).expect("create tmp root");
+    let big = root.join("bulk-clone");
+    fs::create_dir_all(&big).expect("create bulk entry");
+    write_file_with_mtime(&big.join("payload.bin"), &vec![0u8; 4096], 3 * 3_600);
+    set_mtime_old(&big, 3 * 3_600);
+
+    let roots = vec![root.display().to_string()];
+    let outcome = clean_tmp_paths_with_floor(true, &roots, 24, 1024, 2, false, &[])
+        .await
+        .expect("cleanup");
+    assert!(
+        big.exists(),
+        "outside the filling tier the general floor governs every entry"
+    );
+    assert_eq!(outcome.reclaimed, 0, "nothing may be reclaimed yet");
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ADDED 2026-10-22: the scratch the age floor holds back is reported, so
+/// the guard can say what it is NOT reclaiming and why.
+#[tokio::test]
+async fn clean_tmp_paths_reports_scratch_held_by_the_age_floor() {
+    let root = unique_test_tmp_root("tmp_scratch_accounting");
+    fs::create_dir_all(&root).expect("create tmp root");
+    // Fresh content: kept, and counted as held by the floor.
+    let young = root.join("young-entry");
+    fs::create_dir_all(&young).expect("create young entry");
+    write_file_with_mtime(&young.join("payload.bin"), &vec![0u8; 2048], 60);
+    set_mtime_old(&young, 60);
+
+    let roots = vec![root.display().to_string()];
+    let outcome = clean_tmp_paths_with_floor(true, &roots, 24, 1024, 2, true, &[])
+        .await
+        .expect("cleanup");
+    assert!(young.exists(), "a young entry must be kept");
+    assert_eq!(
+        outcome.age_blocked_entries, 1,
+        "the entry held by the floor must be counted"
+    );
+    assert!(
+        outcome.age_blocked_bytes > 0,
+        "the held-back bytes must be reported"
+    );
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ADDED 2026-10-22: the scratch warning threshold. 0 disables it, and the
+/// comparison is on the held-back bytes.
+#[test]
+fn scratch_warning_threshold_is_exact_and_can_be_disabled() {
+    let gib = 1024u64 * 1024 * 1024;
+    assert!(
+        scratch_warning_threshold_exceeded(20 * gib, 20),
+        "reaching the threshold must warn"
+    );
+    assert!(
+        !scratch_warning_threshold_exceeded(19 * gib, 20),
+        "below the threshold must not warn"
+    );
+    assert!(
+        !scratch_warning_threshold_exceeded(20 * gib, 0),
+        "0 must disable the warning entirely"
+    );
 }
 
 #[tokio::test]
@@ -2120,9 +2238,10 @@ async fn clean_tmp_paths_respects_age_dry_run_and_open_fds() {
     let roots = vec![root.display().to_string()];
 
     // Dry-run measures but deletes nothing.
-    let (dry_bytes, dry_lines) = clean_tmp_paths(false, &roots, 24, &[])
+    let outcome = clean_tmp_paths(false, &roots, 24, &[])
         .await
         .expect("dry run");
+    let (dry_bytes, dry_lines) = (outcome.reclaimed, outcome.cleaned);
     assert!(dry_bytes > 0, "dry run should report reclaimable bytes");
     assert!(old_file.exists(), "dry run must not delete");
     assert!(
@@ -2135,7 +2254,8 @@ async fn clean_tmp_paths_respects_age_dry_run_and_open_fds() {
     );
 
     // Apply removes only aged, unheld entries.
-    let (bytes, lines) = clean_tmp_paths(true, &roots, 24, &[]).await.expect("apply");
+    let outcome = clean_tmp_paths(true, &roots, 24, &[]).await.expect("apply");
+    let (bytes, lines) = (outcome.reclaimed, outcome.cleaned);
     assert_eq!(
         bytes, dry_bytes,
         "apply should reclaim exactly what dry-run measured"
@@ -2186,7 +2306,8 @@ async fn clean_tmp_keeps_tree_with_fresh_nested_content() {
         .expect("backdate dir");
 
     let roots = vec![root.display().to_string()];
-    let (bytes, lines) = clean_tmp_paths(true, &roots, 24, &[]).await.expect("apply");
+    let outcome = clean_tmp_paths(true, &roots, 24, &[]).await.expect("apply");
+    let (bytes, lines) = (outcome.reclaimed, outcome.cleaned);
     assert!(bytes > 0, "the dead tree must be reclaimed");
     assert!(!dead_dir.exists(), "fully stale tree must be removed");
     assert!(
@@ -2262,10 +2383,11 @@ async fn clean_tmp_paths_keeps_old_process_cwd_directory() {
         "process cwd must be included in open-path protection"
     );
 
-    let (reclaimed, cleaned) =
-        clean_tmp_paths_with_proc(true, &roots, 24, &[], &proc_root, &HashSet::new())
+    let outcome =
+        clean_tmp_paths_with_proc(true, &roots, 24, 0, 0, false, &[], &proc_root, &HashSet::new())
             .await
             .expect("tmp cleanup");
+    let (reclaimed, cleaned) = (outcome.reclaimed, outcome.cleaned);
     assert_eq!(reclaimed, unheld_bytes);
     assert_eq!(cleaned.len(), 1, "only the unheld old entry is removed");
     assert!(cwd_dir.exists(), "an old process cwd must remain protected");
@@ -2328,10 +2450,11 @@ async fn clean_tmp_paths_keeps_directory_holding_live_unix_socket() {
     );
 
     let roots = vec![root.display().to_string()];
-    let (reclaimed, cleaned) =
-        clean_tmp_paths_with_proc(true, &roots, 24, &[], &proc_root, &live_sockets)
+    let outcome =
+        clean_tmp_paths_with_proc(true, &roots, 24, 0, 0, false, &[], &proc_root, &live_sockets)
             .await
             .expect("tmp cleanup");
+    let (reclaimed, cleaned) = (outcome.reclaimed, outcome.cleaned);
 
     assert!(
         socket_dir.exists(),
@@ -2771,7 +2894,7 @@ async fn clean_tmp_paths_refuses_blind_cleanup_when_proc_unreadable() {
     let missing_proc = root.join("no-such-proc");
 
     for apply in [false, true] {
-        let err = clean_tmp_paths_with_proc(apply, &roots, 24, &[], &missing_proc, &HashSet::new())
+        let err = clean_tmp_paths_with_proc(apply, &roots, 24, 0, 0, false, &[], &missing_proc, &HashSet::new())
             .await
             .expect_err("unreadable proc must fail the pass");
         assert!(
