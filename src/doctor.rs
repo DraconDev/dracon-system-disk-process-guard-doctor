@@ -11,9 +11,16 @@ use crate::{
 /// The service this repo ships, and the one a `dracon-system` installation
 /// actually depends on.
 const GUARD_SERVICE: &str = "dracon-system-guard.service";
-const SYNC_SERVICE: &str = "dracon-sync.service";
+// FIXED 2026-10-22: the daemon's own unit was checked under its
+// pre-migration name, `dracon-sync.service`. The fleet moved the daemon
+// to the operator unit (a SYSTEM unit) and masked the old one, so this
+// check could only ever report "inactive" and its remediation told the
+// operator to enable a unit that is deliberately disabled — two permanent
+// REQUIRED failures that train the operator to ignore the diagnostics.
+const SYNC_SERVICE: &str = "dracon-sync-operator.service";
 // ADDED 2026-10-03 (audit R3-L26): the M8 watchdog backstops.
-const SYNC_WATCHDOG_TIMER: &str = "dracon-sync-watchdog.timer";
+// FIXED 2026-10-22: same rename — the watchdog follows the daemon's unit.
+const SYNC_WATCHDOG_TIMER: &str = "dracon-sync-operator-watchdog.timer";
 const FREEZE_WATCHDOG_TIMER: &str = "dracon-freeze-watchdog.timer";
 const GUARD_WATCHDOG_TIMER: &str = "dracon-system-guard-watchdog.timer";
 
@@ -56,10 +63,10 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
         canonical_utils_exists: utils.exists(),
         sync_policy_exists: policy.exists(),
         legacy_config_dracon_exists: legacy_cfg.exists(),
-        sync_service_active: is_user_service_active(SYNC_SERVICE).await,
+        sync_service_active: is_system_service_active(SYNC_SERVICE).await,
         system_policy_exists: system_policy.exists(),
         guard_service_active: is_user_service_active(GUARD_SERVICE).await,
-        sync_watchdog_timer_active: is_user_service_active(SYNC_WATCHDOG_TIMER).await,
+        sync_watchdog_timer_active: is_system_service_active(SYNC_WATCHDOG_TIMER).await,
         freeze_watchdog_timer_active: is_user_service_active(FREEZE_WATCHDOG_TIMER).await,
         guard_watchdog_timer_active: is_user_service_active(GUARD_WATCHDOG_TIMER).await,
         service_probe_available,
@@ -173,7 +180,7 @@ fn doctor_checks(report: &crate::DoctorReport) -> Vec<DoctorCheck> {
             label: "sync service",
             state: service_state(report.sync_service_active),
             required: true,
-            hint: "systemctl --user enable --now dracon-sync.service",
+            hint: "systemctl enable --now dracon-sync-operator.service",
         },
         // ADDED 2026-10-03 (audit R3-L26): the M8 backstops. A missing
         // timer fails --strict (install.sh and the flake module both
@@ -182,7 +189,7 @@ fn doctor_checks(report: &crate::DoctorReport) -> Vec<DoctorCheck> {
             label: "sync watchdog timer",
             state: service_state(report.sync_watchdog_timer_active),
             required: true,
-            hint: "systemctl --user enable --now dracon-sync-watchdog.timer",
+            hint: "systemctl enable --now dracon-sync-operator-watchdog.timer",
         },
         DoctorCheck {
             label: "freeze watchdog timer",

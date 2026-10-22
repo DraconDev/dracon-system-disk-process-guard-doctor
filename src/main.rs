@@ -8073,6 +8073,24 @@ async fn is_user_service_active(service: &str) -> bool {
     }
 }
 
+/// Probe a unit in the SYSTEM manager (no `--user`).
+///
+/// ADDED 2026-10-22: the daemon runs as a root-owned SYSTEM unit
+/// (`dracon-sync-operator.service`), not as a user unit. The doctor's
+/// user-scoped probe reported the daemon as inactive on a correctly
+/// deployed host.
+async fn is_system_service_active(service: &str) -> bool {
+    let bin = match resolve_bin_for_readonly_probe("systemctl") {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
+    let output = Command::new(bin).args(["is-active", service]).output().await;
+    match output {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).trim() == "active",
+        _ => false,
+    }
+}
+
 async fn build_status_report() -> Result<StatusReport> {
     let root = canonical_system_root();
     let system_policy_path = effective_system_policy_path()?;
