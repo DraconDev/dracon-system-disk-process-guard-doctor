@@ -6861,9 +6861,12 @@ async fn clean_tmp_paths_with_proc(
                             remove_tmp_entry(&path, &meta, size, apply, &mut out).await;
                             continue;
                         }
-                        out.age_blocked_bytes += size;
-                        out.age_blocked_entries += 1;
                     }
+                    // Held back by the age rule: its content is fresh.
+                    // Counted whatever its size — the long tail of SMALL
+                    // entries is where the incident's 62.7 GiB actually sat.
+                    out.age_blocked_bytes += size;
+                    out.age_blocked_entries += 1;
                 }
                 continue; // fresh content
             }
@@ -7113,18 +7116,24 @@ async fn run_auto_cleanup(
                 // from the same sustained fill rate the rapid-fill alarm
                 // uses, so the two lines agree.
                 if outcome.age_blocked_bytes > 0 {
-                    let rate = disk_fill_rate_gbph(&state.disk_bytes_history);
-                    let eta = match rate {
+                    // The hours-until-full figure comes from the same
+                    // sustained fill rate the rapid-fill alarm uses, so the
+                    // two lines agree. A disk that is not filling has no
+                    // such figure — that is said plainly rather than
+                    // omitted, because "the scratch is N GiB" without it
+                    // reads like the disk is in trouble when it is not.
+                    let eta = match disk_fill_rate_gbph(&state.disk_bytes_history) {
                         Some(gbph) if gbph > 0.0 => {
                             let hours = outcome.age_blocked_bytes as f64 / 1_073_741_824.0 / gbph;
-                            format!(" — at {gbph:.1} GiB/h that is {hours:.1} hours of disk")
+                            format!("{hours:.1}")
                         }
-                        _ => String::new(),
+                        _ => "never (the disk is not filling)".to_string(),
                     };
                     eprintln!(
-                        "🧹 Tmp: {} held by the age floor across {} entries{eta}",
+                        "🧹 Tmp: {} held by the age floor across {} entries — hours until full: {}",
                         human_bytes(outcome.age_blocked_bytes),
-                        outcome.age_blocked_entries
+                        outcome.age_blocked_entries,
+                        eta
                     );
                     let warn_gib = guard.tmp_scratch_warn_gib;
                     if scratch_warning_threshold_exceeded(outcome.age_blocked_bytes, warn_gib) {
