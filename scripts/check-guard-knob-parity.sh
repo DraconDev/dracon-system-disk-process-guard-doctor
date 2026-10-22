@@ -13,17 +13,24 @@
 # The sources per knob:
 #   * the crate's policy DEFAULTS (dracon-system/src/policy.rs) — the
 #     behaviour when nothing overrides them,
+#   * the NixOS OPERATOR MODULE (the parent's flake.nix, the
+#     `services.dracon.system.policy` option) — the values a Nix install is
+#     guaranteed to get, because a Nix install with no policy file runs the
+#     crate's defaults and the module declares exactly those,
 #   * the crate's EXAMPLE policy (dracon-system/dracon-system.example.toml)
 #     — what an operator is shown,
 #   * the LIVE policy (~/.dracon/utilities/system/dracon-system.toml) —
 #     what this host actually runs.
 #
-# The NixOS module (the parent's flake.nix) ships the guard's SERVICE, not
-# its policy: the guard's policy file is the operator's own, and the module
-# deliberately does not generate it. So the module is a NEGATIVE source for
-# these knobs — it must not define one — and the check below asserts that
-# absence. The daemon-side knob the goal's sibling work added (the task
-# budget) IS carried by that module, so it is checked here too — against the
+# The module DECLARES the knob values but does not write the operator's
+# policy FILE unless `services.dracon.system.managePolicy` is enabled: that
+# file is the operator's own, and a module that overwrote it silently would
+# be the same drift class this check exists to catch. The check below
+# asserts both halves — the declared values agree, and the file is not
+# written by default.
+#
+# The daemon-side knob the goal's sibling work added (the task budget) IS
+# carried by the module too, so it is checked here as well — against the
 # shipped unit and the module.
 #
 # Exit codes:
