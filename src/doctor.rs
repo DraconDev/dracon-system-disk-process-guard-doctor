@@ -1,11 +1,11 @@
 //! System diagnostics — deterministic health checks for canonical dracon setup.
 
 use anyhow::Result;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::{
-    canonical_system_root, effective_system_policy_path, is_user_service_active,
-    resolve_bin_for_readonly_probe,
+    canonical_system_root, effective_system_policy_path, is_system_service_active,
+    is_user_service_active, resolve_bin_for_readonly_probe,
 };
 
 /// The service this repo ships, and the one a `dracon-system` installation
@@ -17,10 +17,16 @@ const GUARD_SERVICE: &str = "dracon-system-guard.service";
 // check could only ever report "inactive" and its remediation told the
 // operator to enable a unit that is deliberately disabled — two permanent
 // REQUIRED failures that train the operator to ignore the diagnostics.
-const SYNC_SERVICE: &str = "dracon-sync-operator.service";
+// FIXED 2026-10-22: the daemon's own unit was checked under its
+// pre-migration name, `dracon-sync.service`. The fleet moved the daemon
+// to the operator unit (a SYSTEM unit) and masked the old one, so this
+// check could only ever report "inactive" and its remediation told the
+// operator to enable a unit that is deliberately disabled — two permanent
+// REQUIRED failures that train the operator to ignore the diagnostics.
+pub(crate) const SYNC_SERVICE: &str = "dracon-sync-operator.service";
 // ADDED 2026-10-03 (audit R3-L26): the M8 watchdog backstops.
 // FIXED 2026-10-22: same rename — the watchdog follows the daemon's unit.
-const SYNC_WATCHDOG_TIMER: &str = "dracon-sync-operator-watchdog.timer";
+pub(crate) const SYNC_WATCHDOG_TIMER: &str = "dracon-sync-operator-watchdog.timer";
 const FREEZE_WATCHDOG_TIMER: &str = "dracon-freeze-watchdog.timer";
 const GUARD_WATCHDOG_TIMER: &str = "dracon-system-guard-watchdog.timer";
 
@@ -62,7 +68,7 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
         canonical_libs_exists: libs.exists(),
         canonical_utils_exists: utils.exists(),
         sync_policy_exists: policy.exists(),
-        legacy_config_dracon_exists: legacy_cfg.exists(),
+        legacy_daemon_config_present: legacy_daemon_config_present(&legacy_cfg),
         sync_service_active: is_system_service_active(SYNC_SERVICE).await,
         system_policy_exists: system_policy.exists(),
         guard_service_active: is_user_service_active(GUARD_SERVICE).await,
@@ -71,6 +77,29 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
         guard_watchdog_timer_active: is_user_service_active(GUARD_WATCHDOG_TIMER).await,
         service_probe_available,
     }
+}
+
+/// The legacy daemon/guard config file names that must not survive the
+/// migration to `~/.dracon`.
+///
+/// The legacy directory itself is shared with other tools: on this host it
+/// holds another tool's app state and two status tokens. Failing a REQUIRED
+/// check because those exist — and telling the operator to move credentials —
+/// is worse than the stale-config risk the check was written for, so the
+/// check asks about the FILES the daemon and guard would have read.
+pub(crate) const LEGACY_DAEMON_CONFIG_FILES: &[&str] = &[
+    "dracon-sync.toml",
+    "dracon-system.toml",
+    "system.toml",
+    "config.toml",
+];
+
+/// True when a legacy daemon/guard config file is still present directly
+/// under `legacy_dir`.
+pub(crate) fn legacy_daemon_config_present(legacy_dir: &Path) -> bool {
+    LEGACY_DAEMON_CONFIG_FILES
+        .iter()
+        .any(|name| legacy_dir.join(name).exists())
 }
 
 /// Outcome of one check. `Skipped` is "this host cannot answer the question" —
@@ -165,7 +194,7 @@ fn doctor_checks(report: &crate::DoctorReport) -> Vec<DoctorCheck> {
         },
         DoctorCheck {
             label: "legacy config absent",
-            state: if report.legacy_config_dracon_exists {
+            state: if report.legacy_daemon_config_present {
                 no
             } else {
                 yes
@@ -174,7 +203,10 @@ fn doctor_checks(report: &crate::DoctorReport) -> Vec<DoctorCheck> {
             // FIXED 2026-10-03 (audit R4-SYS-07): the check tests
             // `~/.config/dracon` but the hint named `~/dracon` (a path
             // that was never checked, since introduction in 06a2021).
-            hint: "Move or remove the legacy ~/.config/dracon directory",
+            // FIXED 2026-10-22: the check now names the legacy CONFIG
+            // FILES it looks for, and says plainly that unrelated content
+            // in that directory is not the daemon's to move.
+            hint: "Remove the legacy daemon config files under ~/.config/dracon (unrelated files there are not the daemon's)",
         },
         DoctorCheck {
             label: "sync service",
@@ -337,7 +369,7 @@ mod tests {
             canonical_libs_exists: true,
             canonical_utils_exists: true,
             sync_policy_exists: true,
-            legacy_config_dracon_exists: false,
+            legacy_daemon_config_present: false,
             sync_service_active: true,
             system_policy_exists: true,
             guard_service_active: true,
