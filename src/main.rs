@@ -38,6 +38,10 @@ mod protection_tests;
 pub(crate) use doctor::*;
 mod events;
 pub(crate) use events::*;
+mod forgotten;
+pub(crate) use forgotten::*;
+#[cfg(test)]
+mod forgotten_tests;
 mod links;
 pub(crate) use links::*;
 mod policy;
@@ -605,6 +609,17 @@ pub(crate) struct MemoryReport {
     /// `reap_orphans_on_pressure` is set and pressure is warn/critical):
     /// kills AND skipped re-verifies, same record shape as `reaped`.
     pub(crate) pressure_reaped: Vec<ReapedProcess>,
+    /// ADDED 2026-10-22: heavy, idle, orphaned processes that are provably
+    /// TEST jobs. Reported on every pass; ended only under memory pressure
+    /// (see `forgotten_reaped`). Details in forgotten.rs.
+    pub(crate) forgotten_orphans: Vec<ForgottenOrphan>,
+    /// ADDED 2026-10-22: heavy processes that were CONSIDERED and vetoed
+    /// because they look like a live desktop session. Reported so the
+    /// operator can see that a heavy Chrome was weighed and left alone.
+    pub(crate) vetoed_orphans: Vec<VetoedOrphan>,
+    /// ADDED 2026-10-22: what the pressure-gated forgotten-orphan pass
+    /// ended this cycle (empty unless pressure is warn/critical).
+    pub(crate) forgotten_reaped: Vec<ReapedProcess>,
 }
 
 /// A zombie (defunct) process with context useful for diagnosis.
@@ -638,12 +653,47 @@ pub(crate) struct ProcSample {
     pub(crate) ppid: i32,
     pub(crate) cpu_percent: f32,
     pub(crate) rss_mb: u64,
+    /// Swapped-out footprint in MiB.
+    ///
+    /// ADDED 2026-10-22: RSS alone misses the largest processes once the
+    /// kernel has evicted most of their pages — a process can be down to a
+    /// few MiB resident while holding tens of GiB in swap. The mitigation
+    /// ranking uses RSS + swap (see `memory_pressure_footprint_mb`), and
+    /// this is the swapped half of that figure.
+    pub(crate) swap_mb: u64,
     /// Current Unix nice value from `ps ni`, captured before any limiter
     /// changes it so memory-pressure release can restore the original value.
     pub(crate) nice: i32,
     pub(crate) command: String,
     pub(crate) args: String,
     pub(crate) starttime: u64,
+}
+
+/// The footprint that decides who is an offender: resident PLUS swapped.
+///
+/// ADDED 2026-10-22: the kernel evicts pages under pressure, so the process
+/// holding the most memory is often the one with the LEAST resident. Ranking
+/// by RSS alone therefore throttles the wrong processes (and misses the
+/// swap hogs entirely) exactly when memory is short.
+pub(crate) fn memory_pressure_footprint_mb(sample: &ProcSample) -> u64 {
+    sample.rss_mb.saturating_add(sample.swap_mb)
+}
+
+/// The swapped-out footprint of a process, in MiB.
+///
+/// ADDED 2026-10-22: `VmSwap` from `/proc/<pid>/status`. None when the
+/// process is gone or the field is unreadable — the caller then treats the
+/// swap as unknown rather than as zero, so a missing reading never makes a
+/// heavy process look small.
+pub(crate) fn read_proc_swap_mb(pid: i32) -> Option<u64> {
+    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+    for line in status.lines() {
+        if let Some(rest) = line.strip_prefix("VmSwap:") {
+            let kb: u64 = rest.split_whitespace().next()?.parse().ok()?;
+            return Some(kb / 1024);
+        }
+    }
+    Some(0)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1114,6 +1164,7 @@ pub(crate) fn parse_ps_output(output: &str) -> Vec<ProcSample> {
             let command = parts.next()?.to_string();
             let args = parts.collect::<Vec<_>>().join(" ");
             Some(ProcSample {
+                swap_mb: 0,
                 pid,
                 ppid,
                 cpu_percent,
@@ -3486,7 +3537,12 @@ async fn get_inode_info(path: &str) -> Result<(u64, u64, u64)> {
 }
 
 /// Clean Docker resources
-async fn docker_prune(apply: bool, all: bool, volumes: bool) -> Result<u64> {
+async fn docker_prune(
+    apply: bool,
+    all: bool,
+    volumes: bool,
+    command_timeout_secs: u64,
+) -> Result<u64> {
     if !apply {
         // Dry-run: do not execute destructive docker commands
         return Ok(0);
@@ -3499,7 +3555,14 @@ async fn docker_prune(apply: bool, all: bool, volumes: bool) -> Result<u64> {
         args.push("--volumes");
     }
 
-    let out = Command::new("docker").args(&args).output().await?;
+    // ADDED 2026-10-22: bounded, for the same reason as the Nix GC — a
+    // prune that hangs must not hold the guard's loop.
+    let mut prune = Command::new("docker");
+    prune.args(&args);
+    let out = match run_bounded(&mut prune, command_timeout_secs).await? {
+        Some(out) => out,
+        None => return Ok(0),
+    };
 
     if !out.status.success() {
         return Err(anyhow::anyhow!("docker prune failed"));
@@ -4365,6 +4428,54 @@ fn nix_delete_generations_arg(keep_generations: u32) -> Option<String> {
     (keep_generations > 0).then(|| format!("+{keep_generations}"))
 }
 
+/// How many generations a Nix profile has.
+///
+/// ADDED 2026-10-22: the guard only attempts the root-owned system-profile
+/// prune when there is genuinely something to prune, so the expected
+/// permission failure stops being a line on every cycle. `None` when the
+/// profile cannot be read — the caller then leaves the profile alone
+/// rather than guessing.
+fn nix_env_generation_count(nix_env: &Path, profile: &str) -> Option<usize> {
+    let output = std::process::Command::new(nix_env)
+        .args(["--list-generations", "-p", profile])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    Some(text.lines().filter(|line| !line.trim().is_empty()).count())
+}
+
+/// Run an external cleanup command with a hard bound.
+///
+/// ADDED 2026-10-22: the guard's loop calls the cleanup kinds inline, so a
+/// slow `nix-collect-garbage` (minutes) or a docker prune blocks the whole
+/// loop — and the memory monitoring that would notice a swap spike never
+/// runs in the meantime. The tracked design note (the parent repository's
+/// `docs/design/performance-swap-thrash-2026-10-21.md`) listed this as open
+/// work: bound the external cleanup commands and keep memory monitoring
+/// independent of slow storage maintenance.
+///
+/// The child is killed when the bound expires (`kill_on_drop`), so a wedged
+/// cleanup cannot outlive its budget.
+pub(crate) async fn run_bounded(
+    command: &mut Command,
+    timeout_secs: u64,
+) -> Result<Option<std::process::Output>> {
+    command.kill_on_drop(true);
+    let bound = Duration::from_secs(timeout_secs.max(1));
+    match tokio::time::timeout(bound, command.output()).await {
+        Ok(result) => Ok(Some(result?)),
+        Err(_) => {
+            eprintln!(
+                "⚠️ external cleanup command exceeded its {timeout_secs}s bound — skipped this pass"
+            );
+            Ok(None)
+        }
+    }
+}
+
 /// Run Nix profile and store cleanup with explicit binary paths.
 ///
 /// The binary parameters keep the command construction testable without
@@ -4376,6 +4487,7 @@ async fn clean_nix_garbage_with_bins(
     apply: bool,
     nix_env: &Path,
     nix_gc: &Path,
+    command_timeout_secs: u64,
 ) -> Result<(u64, Vec<String>)> {
     let reclaimed = 0u64;
     let mut cleaned = Vec::new();
@@ -4403,23 +4515,40 @@ async fn clean_nix_garbage_with_bins(
             Err(e) => eprintln!("⚠️ nix-env user-profile generation prune failed: {}", e),
         }
 
-        match Command::new(nix_env)
-            .args(["--delete-generations", &gen_arg])
-            .arg("-p")
-            .arg("/nix/var/nix/profiles/default")
-            .output()
-            .await
-        {
-            Ok(output) if output.status.success() => {}
-            Ok(output) => eprintln!(
-                "⚠️ nix-env system-profile generation prune failed ({}): {} (needs root; user GC still runs)",
-                output.status,
-                String::from_utf8_lossy(&output.stderr).trim()
-            ),
-            Err(e) => eprintln!(
-                "⚠️ nix-env system-profile generation prune failed: {} (needs root; user GC still runs)",
-                e
-            ),
+        // The SYSTEM profile is root-owned: a user-session guard can never
+        // prune it, and nix-env answers "Read-only file system (needs
+        // root; user GC still runs)" every cycle. Attempt the prune only
+        // when it would actually remove something — the generation count
+        // is above the retention — so the expected permission failure is
+        // not a line on every cycle, and name the documented privileged
+        // path when it is genuinely needed.
+        //
+        // ADDED 2026-10-22: the 2026-10-21 disk incident left the guard
+        // logging that failure every cycle while 144 GiB of scratch
+        // accumulated; the noise belonged in the report, not on every pass.
+        let system_profile = "/nix/var/nix/profiles/default";
+        let system_profile_needs_prune = nix_env_generation_count(nix_env, system_profile)
+            .map(|count| count > keep_generations as usize)
+            .unwrap_or(false);
+        if system_profile_needs_prune {
+            match Command::new(nix_env)
+                .args(["--delete-generations", &gen_arg])
+                .arg("-p")
+                .arg(system_profile)
+                .output()
+                .await
+            {
+                Ok(output) if output.status.success() => {}
+                Ok(output) => eprintln!(
+                    "⚠️ nix-env system-profile generation prune failed ({}): {} (needs root — run scripts/prune-nix-system-profile.sh with sudo; user GC still runs)",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ),
+                Err(e) => eprintln!(
+                    "⚠️ nix-env system-profile generation prune failed: {} (needs root — run scripts/prune-nix-system-profile.sh with sudo; user GC still runs)",
+                    e
+                ),
+            }
         }
     }
 
@@ -4429,11 +4558,16 @@ async fn clean_nix_garbage_with_bins(
     // garbage collection then removes store paths no longer rooted by the
     // retained generations.
     let args: &[&str] = if apply { &[] } else { &["--dry-run"] };
-    let out = Command::new(nix_gc)
-        .args(args)
-        .output()
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to run nix-collect-garbage: {}", e))?;
+    // ADDED 2026-10-22: bounded. `nix-collect-garbage` can run for
+    // minutes, and it ran INLINE in the guard's loop — so during a GC the
+    // guard sampled no memory at all, which is exactly when a swap spike
+    // must not go unnoticed.
+    let mut gc = Command::new(nix_gc);
+    gc.args(args);
+    let out = match run_bounded(&mut gc, command_timeout_secs).await? {
+        Some(out) => out,
+        None => return Ok((reclaimed, cleaned)),
+    };
 
     if !out.status.success() {
         return Err(anyhow::anyhow!(
@@ -4456,7 +4590,11 @@ async fn clean_nix_garbage_with_bins(
 
 /// Run nix-collect-garbage and retain the configured number of profile
 /// generations.
-async fn clean_nix_garbage(keep_generations: u32, apply: bool) -> Result<(u64, Vec<String>)> {
+async fn clean_nix_garbage(
+    keep_generations: u32,
+    apply: bool,
+    command_timeout_secs: u64,
+) -> Result<(u64, Vec<String>)> {
     let nix_env = resolve_bin("nix-env");
     let nix_gc = resolve_bin("nix-collect-garbage");
     clean_nix_garbage_with_bins(
@@ -4464,6 +4602,7 @@ async fn clean_nix_garbage(keep_generations: u32, apply: bool) -> Result<(u64, V
         apply,
         Path::new(&nix_env),
         Path::new(&nix_gc),
+        command_timeout_secs,
     )
     .await
 }
@@ -4977,16 +5116,27 @@ async fn check_memory_pressure(
         true
     };
 
-    // Top RSS offenders (skipping kernel threads and exempt names).
+    // Top offenders (skipping kernel threads and exempt names).
+    //
+    // ADDED 2026-10-22: ranked by resident PLUS swapped, and the swapped
+    // half is read for the candidates only (five `/proc/<pid>/status`
+    // reads, not one per process). RSS alone misses the largest processes
+    // once the kernel has evicted their pages.
     let exempt = parse_kinds(&guard.process_exempt_names);
-    let top_rss: Vec<ProcSample> = all_processes
+    let mut top_rss: Vec<ProcSample> = all_processes
         .iter()
         .filter(|p| !exempt.contains(&p.command) && !is_kernel_process(&p.command))
         .cloned()
         .fold(Vec::new(), |mut acc, p| {
-            if acc.len() < 5 || p.rss_mb > acc.last().map(|x: &ProcSample| x.rss_mb).unwrap_or(0) {
+            if acc.len() < 5
+                || memory_pressure_footprint_mb(&p)
+                    > acc
+                        .last()
+                        .map(|x: &ProcSample| memory_pressure_footprint_mb(x))
+                        .unwrap_or(0)
+            {
                 acc.push(p);
-                acc.sort_by_key(|b| std::cmp::Reverse(b.rss_mb));
+                acc.sort_by_key(|b| std::cmp::Reverse(memory_pressure_footprint_mb(b)));
                 acc.truncate(5);
             }
             acc
@@ -4994,6 +5144,12 @@ async fn check_memory_pressure(
         .into_iter()
         .map(load_process_cmdline)
         .collect();
+    // Fill in the swapped half for the candidates, then re-rank: a process
+    // that is mostly swapped can overtake a bigger resident one.
+    for sample in &mut top_rss {
+        sample.swap_mb = read_proc_swap_mb(sample.pid).unwrap_or(0);
+    }
+    top_rss.sort_by_key(|b| std::cmp::Reverse(memory_pressure_footprint_mb(b)));
 
     // ── Limiting (ADDED 2026-08-10, v0.112.36) ──────────────────
     // Deprioritize (never kill) the offenders while pressure lasts;
@@ -5160,6 +5316,69 @@ async fn check_memory_pressure(
         for r in &pressure_reaped {
             limited.push(format!(
                 "pressure-reap {}={} ({})",
+                r.comm,
+                r.pid,
+                r.outcome
+                    .as_ref()
+                    .map(|o| format!("{o:?}"))
+                    .unwrap_or_else(|| "skipped".to_string())
+            ));
+        }
+    }
+
+    // ── Forgotten heavy orphans (ADDED 2026-10-22) ──────────────────
+    // The operator's shape: heavy, idle, and left behind by a test — "not
+    // long running and working but truly heavy and forgotten, like some
+    // chrome instances left behind during tests".
+    //
+    // The SCAN is unconditional: every qualifying process is reported on
+    // every pass, with its evidence, and so is every process that was
+    // considered and VETOED because it looks like a live desktop session.
+    // ENDING one is pressure-gated, like the other orphan path, and
+    // re-verifies every gate live before the signal.
+    let forgotten = forgotten_scan(guard);
+    for c in &forgotten.candidates {
+        eprintln!(
+            "🧹 forgotten orphan: {} pid={} {}MiB ({}MiB rss + {}MiB swap) age={}s cpu={}s — {}",
+            c.comm, c.pid, c.footprint_mb, c.rss_mb, c.swap_mb, c.age_secs, c.cpu_seconds, c.why
+        );
+    }
+    for v in &forgotten.vetoed {
+        eprintln!(
+            "🛡️ heavy process vetoed: {} pid={} {}MiB — {}",
+            v.comm, v.pid, v.footprint_mb, v.reason
+        );
+    }
+    let mut forgotten_reaped: Vec<ReapedProcess> = Vec::new();
+    if pressure == "warn" || pressure == "critical" {
+        let policy = reap_policy_from_guard(guard);
+        let candidates: Vec<ReapCandidate> = forgotten
+            .candidates
+            .iter()
+            .map(|c| ReapCandidate {
+                pid: c.pid,
+                comm: c.comm.clone(),
+                args: c.args.clone(),
+                idle_hours: c.age_secs / 3600,
+                cpu_seconds: c.cpu_seconds,
+                rss_mb: c.rss_mb,
+                signature: c.why.clone(),
+                starttime: c.starttime,
+            })
+            .collect();
+        forgotten_reaped = tokio::task::spawn_blocking(move || {
+            reap_forgotten_heavy_orphans(
+                Path::new("/proc"),
+                &policy,
+                &candidates,
+                PROC_TICKS_PER_SEC,
+            )
+        })
+        .await
+        .unwrap_or_default();
+        for r in &forgotten_reaped {
+            limited.push(format!(
+                "forgotten-reap {}={} ({})",
                 r.comm,
                 r.pid,
                 r.outcome
@@ -5476,7 +5695,16 @@ async fn check_memory_pressure(
     if pressure_changed && pressure != "ok" {
         let offenders: String = top_rss
             .iter()
-            .map(|p| format!("{} pid={} {}MiB", p.command, p.pid, p.rss_mb))
+            .map(|p| {
+                if p.swap_mb > 0 {
+                    format!(
+                        "{} pid={} {}MiB+{}MiB swap",
+                        p.command, p.pid, p.rss_mb, p.swap_mb
+                    )
+                } else {
+                    format!("{} pid={} {}MiB", p.command, p.pid, p.rss_mb)
+                }
+            })
             .collect::<Vec<_>>()
             .join(", ");
         send_notification(
@@ -5543,6 +5771,9 @@ async fn check_memory_pressure(
         top_rss,
         limited,
         pressure_reaped,
+        forgotten_orphans: forgotten.candidates,
+        vetoed_orphans: forgotten.vetoed,
+        forgotten_reaped,
     })
 }
 
@@ -5873,7 +6104,34 @@ fn reap_policy_from_guard(guard: &GuardPolicy) -> ReapPolicy {
         max_cpu_seconds: guard.reap_report_max_cpu_seconds,
         signatures: sorted_signatures(&guard.reap_report_signatures),
         exempt_names: sorted_signatures(&guard.process_exempt_names),
+        forgotten_footprint_mb: guard.forgotten_orphan_footprint_mb,
     }
+}
+
+/// Scan for forgotten heavy orphans: heavy, idle, orphaned, and provably a
+/// test job.
+///
+/// ADDED 2026-10-22. Never signals anything: this is the report half. The
+/// ending half is `reap_forgotten_heavy_orphans`, and it runs only under
+/// memory pressure.
+fn forgotten_scan(guard: &GuardPolicy) -> ForgottenScan {
+    let proc_root = Path::new("/proc");
+    let Some(boot_time) = read_boot_time(proc_root) else {
+        return ForgottenScan::default();
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(boot_time);
+    let policy = reap_policy_from_guard(guard);
+    scan_forgotten_heavy_orphans(
+        proc_root,
+        &policy,
+        boot_time,
+        now,
+        PROC_TICKS_PER_SEC,
+        guard.forgotten_orphan_footprint_mb,
+    )
 }
 
 /// Report abandoned dev/test processes. Never signals, kills, or stops
@@ -6452,7 +6710,8 @@ pub(crate) fn scratch_warning_threshold_exceeded(age_blocked_bytes: u64, warn_gi
 ///
 /// Kept as the short form for the callers that want exactly the
 /// pre-2026-10-22 behaviour (and for the tests, which exercise the general
-/// floor on its own).
+/// floor on its own). The production path uses the full form below.
+#[cfg(test)]
 async fn clean_tmp_paths(
     apply: bool,
     roots: &[String],
@@ -6525,13 +6784,18 @@ async fn clean_tmp_paths_with_proc(
     // trash cutoff above — absurd min_age_hours saturates to "delete
     // nothing" instead of panicking.
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
-    let cutoff = UNIX_EPOCH + now.checked_sub(age_of(min_age_hours)).unwrap_or(Duration::ZERO);
+    let cutoff = UNIX_EPOCH
+        + now
+            .checked_sub(age_of(min_age_hours))
+            .unwrap_or(Duration::ZERO);
     // The size-aware floor. A SHORTER age means a LATER cutoff, and a later
     // cutoff judges MORE content old enough to delete — so the short floor
     // is the permissive one for deletion, and its freshness check is also
     // the cheaper walk (it stops at the first recent entry).
-    let large_cutoff =
-        UNIX_EPOCH + now.checked_sub(age_of(large_min_age_hours)).unwrap_or(Duration::ZERO);
+    let large_cutoff = UNIX_EPOCH
+        + now
+            .checked_sub(age_of(large_min_age_hours))
+            .unwrap_or(Duration::ZERO);
     let large_floor_active = use_large_floor
         && large_min_age_hours > 0
         && large_entry_bytes > 0
@@ -6594,8 +6858,7 @@ async fn clean_tmp_paths_with_proc(
                             modified > large_cutoff
                         };
                         if !fresh_short {
-                            remove_tmp_entry(&path, &meta, size, apply, &mut out)
-                                .await;
+                            remove_tmp_entry(&path, &meta, size, apply, &mut out).await;
                             continue;
                         }
                         out.age_blocked_bytes += size;
@@ -6846,10 +7109,20 @@ async fn run_auto_cleanup(
                 // ADDED 2026-10-22: report the scratch the age floor is
                 // holding back. The disk alarms are percent-used and rapid
                 // fill; neither of them sees 144 GiB of deletable litter
-                // waiting for its floor.
+                // waiting for its floor. The hours-until-full figure comes
+                // from the same sustained fill rate the rapid-fill alarm
+                // uses, so the two lines agree.
                 if outcome.age_blocked_bytes > 0 {
+                    let rate = disk_fill_rate_gbph(&state.disk_bytes_history);
+                    let eta = match rate {
+                        Some(gbph) if gbph > 0.0 => {
+                            let hours = outcome.age_blocked_bytes as f64 / 1_073_741_824.0 / gbph;
+                            format!(" — at {gbph:.1} GiB/h that is {hours:.1} hours of disk")
+                        }
+                        _ => String::new(),
+                    };
                     eprintln!(
-                        "🧹 Tmp: {} held by the age floor across {} entries",
+                        "🧹 Tmp: {} held by the age floor across {} entries{eta}",
                         human_bytes(outcome.age_blocked_bytes),
                         outcome.age_blocked_entries
                     );
@@ -6868,7 +7141,13 @@ async fn run_auto_cleanup(
     }
 
     if guard.clean_nix_garbage {
-        match clean_nix_garbage(guard.nix_keep_generations, apply).await {
+        match clean_nix_garbage(
+            guard.nix_keep_generations,
+            apply,
+            guard.cleanup_command_timeout_secs,
+        )
+        .await
+        {
             Ok((bytes, cleaned)) => {
                 total_reclaimed += bytes;
                 all_cleaned.extend(cleaned.iter().map(|s| format!("Nix: {}", s)));
@@ -6953,6 +7232,7 @@ async fn run_auto_cleanup(
             guard.auto_cleanup_apply,
             guard.docker_prune_all,
             guard.docker_prune_volumes,
+            guard.cleanup_command_timeout_secs,
         )
         .await
         {
@@ -8273,7 +8553,10 @@ async fn is_system_service_active(service: &str) -> bool {
         Ok(b) => b,
         Err(_) => return false,
     };
-    let output = Command::new(bin).args(["is-active", service]).output().await;
+    let output = Command::new(bin)
+        .args(["is-active", service])
+        .output()
+        .await;
     match output {
         Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).trim() == "active",
         _ => false,
@@ -9490,7 +9773,14 @@ async fn cmd_guard_prune(
 
     if docker || docker_volumes {
         if apply {
-            match docker_prune(apply, docker, docker_volumes).await {
+            match docker_prune(
+                apply,
+                docker,
+                docker_volumes,
+                guard.cleanup_command_timeout_secs,
+            )
+            .await
+            {
                 Ok(bytes) => {
                     actions.push(format!("Docker prune: {}", human_bytes(bytes)));
                     reclaimed_total += bytes;
@@ -9690,7 +9980,13 @@ async fn cmd_guard_clean(
     }
 
     if do_nix {
-        match clean_nix_garbage(guard_clone.nix_keep_generations, apply).await {
+        match clean_nix_garbage(
+            guard_clone.nix_keep_generations,
+            apply,
+            guard_clone.cleanup_command_timeout_secs,
+        )
+        .await
+        {
             Ok((bytes, cleaned)) => {
                 total_reclaimed += bytes;
                 for c in cleaned {
@@ -9758,7 +10054,14 @@ async fn cmd_guard_clean(
         // `--all` to its own flag. Tie docker `--all` to clean's `--all`
         // targets flag instead: `clean --all --apply` prunes aggressively,
         // `clean --docker --apply` prunes dangling-only.
-        match docker_prune(apply, all, guard_clone.docker_prune_volumes).await {
+        match docker_prune(
+            apply,
+            all,
+            guard_clone.docker_prune_volumes,
+            guard_clone.cleanup_command_timeout_secs,
+        )
+        .await
+        {
             Ok(bytes) => {
                 total_reclaimed += bytes;
                 if bytes > 0 {

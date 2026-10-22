@@ -326,6 +326,21 @@ pub(crate) struct GuardPolicy {
     // warning.
     #[serde(default = "default_tmp_scratch_warn_gib")]
     pub(crate) tmp_scratch_warn_gib: u64,
+    // ADDED 2026-10-22: the hard bound on an EXTERNAL cleanup command
+    // (nix-collect-garbage, docker prune). The guard's loop calls the
+    // cleanup kinds inline, so an unbounded command (a GC can run for
+    // minutes) blocked the whole loop — and the memory monitoring that
+    // would notice a swap spike never ran in the meantime. The tracked
+    // design note listed this as open work. 0 means the default bound.
+    #[serde(default = "default_cleanup_command_timeout_secs")]
+    pub(crate) cleanup_command_timeout_secs: u64,
+    // ADDED 2026-10-22: the weight floor for a FORGOTTEN heavy orphan, in
+    // MiB of resident PLUS swapped footprint. A process is only considered
+    // when it is this heavy, idle, orphaned, and provably a test job — the
+    // weight is what makes ending it worth the risk, and the test-job proof
+    // is what makes it safe.
+    #[serde(default = "default_forgotten_orphan_footprint_mb")]
+    pub(crate) forgotten_orphan_footprint_mb: u64,
     // ADDED 2026-08-25 (v0.112.39): only purge trash entries older than
     // this many days, so clean_trash keeps a recovery window instead of
     // emptying everything at once at the next action-level event.
@@ -489,6 +504,8 @@ impl Default for GuardPolicy {
             tmp_large_entry_bytes: default_tmp_large_entry_bytes(),
             tmp_large_min_age_hours: default_tmp_large_min_age_hours(),
             tmp_scratch_warn_gib: default_tmp_scratch_warn_gib(),
+            cleanup_command_timeout_secs: default_cleanup_command_timeout_secs(),
+            forgotten_orphan_footprint_mb: default_forgotten_orphan_footprint_mb(),
             trash_min_age_days: default_trash_min_age_days(),
             protected_paths: Vec::new(),
             proactive_cleanup_percent: default_proactive_cleanup_percent(),
@@ -550,10 +567,12 @@ pub(crate) fn default_tmp_large_entry_bytes() -> u64 {
     1024 * 1024 * 1024
 }
 
-/// ADDED 2026-10-22: 0 — the size-aware floor is OFF by default and enabled
-/// in the live config, because it changes what gets deleted.
+/// ADDED 2026-10-22: two hours. The size-aware floor is ON by default, like
+/// the e2e fast path next to it: it only ever applies to a LARGE entry that
+/// no process holds and whose content is stale, and only when the disk is
+/// filling. 0 disables it.
 pub(crate) fn default_tmp_large_min_age_hours() -> u64 {
-    0
+    2
 }
 
 /// ADDED 2026-10-22: 20 GiB of scratch held back by the age floor is worth a
@@ -561,6 +580,20 @@ pub(crate) fn default_tmp_large_min_age_hours() -> u64 {
 /// full disk.
 pub(crate) fn default_tmp_scratch_warn_gib() -> u64 {
     20
+}
+
+/// ADDED 2026-10-22: five minutes. Long enough for an ordinary GC, short
+/// enough that the guard's loop regains control and samples memory again
+/// before a swap spike goes unnoticed.
+pub(crate) fn default_cleanup_command_timeout_secs() -> u64 {
+    300
+}
+
+/// ADDED 2026-10-22: 2 GiB of resident-plus-swapped footprint. A forgotten
+/// test browser has to be genuinely heavy to be worth ending; below this
+/// the reclaim is not worth the risk of a wrong classification.
+pub(crate) fn default_forgotten_orphan_footprint_mb() -> u64 {
+    2048
 }
 
 pub(crate) fn default_quarantine_max_bytes_per_pass_mb() -> u64 {

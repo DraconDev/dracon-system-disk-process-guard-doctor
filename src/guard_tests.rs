@@ -21,6 +21,7 @@ fn guard_runtime_state_default_is_empty() {
 #[test]
 fn oom_descendant_candidates_only_select_new_untracked_user_processes() {
     let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
+        swap_mb: 0,
         pid,
         ppid,
         cpu_percent: 0.0,
@@ -1294,6 +1295,7 @@ fn remembered_oom_descendants_are_pruned_past_the_cap() {
         .insert(200, HashSet::from([(1, 1)]));
 
     let all_processes = vec![crate::ProcSample {
+        swap_mb: 0,
         pid: live.0,
         ppid: 1,
         cpu_percent: 0.0,

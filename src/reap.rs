@@ -58,6 +58,10 @@ pub(crate) struct ReapPolicy {
     pub(crate) max_cpu_seconds: u64,
     pub(crate) signatures: Vec<String>,
     pub(crate) exempt_names: Vec<String>,
+    /// ADDED 2026-10-22: the resident-plus-swapped footprint floor for the
+    /// forgotten-orphan pass. The other passes do not weigh a process; this
+    /// one is about the heavy ones, and the floor is what decides which.
+    pub(crate) forgotten_footprint_mb: u64,
 }
 
 /// Split a comma-separated list into a deterministic, sorted Vec.
@@ -78,6 +82,7 @@ impl Default for ReapPolicy {
             max_cpu_seconds: DEFAULT_REAP_REPORT_MAX_CPU_SECONDS,
             signatures: sorted_signatures(DEFAULT_REAP_REPORT_SIGNATURES),
             exempt_names: Vec::new(),
+            forgotten_footprint_mb: crate::default_forgotten_orphan_footprint_mb(),
         }
     }
 }
@@ -168,7 +173,7 @@ fn matches_signature(args: &str, signatures: &[String]) -> Option<String> {
         .cloned()
 }
 
-fn rss_mb_from_status(pid_dir: &Path) -> u64 {
+pub(crate) fn rss_mb_from_status(pid_dir: &Path) -> u64 {
     let Ok(status) = std::fs::read_to_string(pid_dir.join("status")) else {
         return 0;
     };
@@ -598,6 +603,83 @@ pub(crate) fn reap_pressure_orphans(
         ticks_per_sec,
         verify_orphan_for_reap,
         "pressure-reap",
+        REAP_PASS_BUDGET,
+    )
+}
+
+/// Re-verify a FORGOTTEN heavy orphan, live, immediately before the signal.
+///
+/// ADDED 2026-10-22: every gate is checked AGAIN at kill time, exactly as
+/// the other passes do — the owner must still be dead, the process must
+/// still have no terminal, the starttime must still match (so a recycled
+/// PID is never signalled), the process must still be classified as a TEST
+/// job (a desktop session is vetoed at the last moment too), and it must
+/// still be heavy.
+pub(crate) fn verify_forgotten_heavy_for_reap(
+    proc_root: &Path,
+    candidate: &ReapCandidate,
+    policy: &ReapPolicy,
+    ticks_per_sec: u64,
+) -> bool {
+    let _ = ticks_per_sec;
+    if candidate.pid <= 1 || candidate.pid == std::process::id() as i32 {
+        return false;
+    }
+    let pid_dir = proc_root.join(candidate.pid.to_string());
+    let Ok(raw) = std::fs::read_to_string(pid_dir.join("stat")) else {
+        return false;
+    };
+    let Some(fields) = parse_stat(&raw) else {
+        return false;
+    };
+    if fields.starttime != candidate.starttime {
+        return false;
+    }
+    if !parent_comm_is_systemd(proc_root, fields.ppid) {
+        return false;
+    }
+    if fields.tty_nr != 0 || fields.state != 'S' {
+        return false;
+    }
+    let Ok(cmdline_raw) = std::fs::read_to_string(pid_dir.join("cmdline")) else {
+        return false;
+    };
+    let args = cmdline_raw.replace('\0', " ").trim().to_string();
+    if args.is_empty() {
+        return false;
+    }
+    if policy
+        .exempt_names
+        .iter()
+        .any(|exempt| args.contains(exempt.as_str()))
+    {
+        return false;
+    }
+    // The desktop-session veto applies at kill time as well: a process that
+    // no longer looks like a test job is not ours to end.
+    match crate::forgotten::classify_desktop_session(&args) {
+        crate::forgotten::DesktopVerdict::Test { .. } => {}
+        _ => return false,
+    }
+    let rss_mb = rss_mb_from_status(&pid_dir);
+    let swap_mb = crate::read_proc_swap_mb(candidate.pid).unwrap_or(0);
+    rss_mb.saturating_add(swap_mb) >= policy.forgotten_footprint_mb
+}
+
+/// End the forgotten heavy orphans, under pressure only.
+pub(crate) fn reap_forgotten_heavy_orphans(
+    proc_root: &Path,
+    policy: &ReapPolicy,
+    candidates: &[ReapCandidate],
+    ticks_per_sec: u64,
+) -> Vec<ReapedProcess> {
+    reap_verified_candidates(
+        proc_root,
+        policy,
+        candidates,
+        ticks_per_sec,
+        verify_forgotten_heavy_for_reap,
+        "forgotten-reap",
         REAP_PASS_BUDGET,
     )
 }

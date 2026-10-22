@@ -140,12 +140,15 @@ fn nix_delete_generations_arg_means_keep_last_n() {
 }
 
 #[cfg(unix)]
+fn test_shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+#[cfg(unix)]
 #[tokio::test]
 async fn nix_cleanup_apply_preserves_configured_profile_generations() {
     let _fixture_exec = fixture_exec_guard();
-    fn shell_quote(value: &str) -> String {
-        format!("'{}'", value.replace('\'', "'\\''"))
-    }
+    let shell_quote = test_shell_quote;
 
     let root = std::env::temp_dir().join(format!(
         "dracon_system_nix_cleanup_test_{}_{}",
@@ -162,7 +165,15 @@ async fn nix_cleanup_apply_preserves_configured_profile_generations() {
     let nix_gc = root.join("nix-collect-garbage");
     write_test_script(
         &nix_env,
-        &format!("echo \"nix-env:$*\" >> {quoted_log}\nexit 0"),
+        &format!(
+            r#"echo "nix-env:$*" >> {quoted_log}
+if [ "$1" = "--list-generations" ]; then
+    # Seven generations: above the retention of five, so the system-profile
+    # prune is genuinely needed.
+    for i in 1 2 3 4 5 6 7; do echo "  $i 2026-10-01"; done
+fi
+exit 0"#
+        ),
     );
     write_test_script(
         &nix_gc,
@@ -176,7 +187,7 @@ exit 0"#
         ),
     );
 
-    let result = clean_nix_garbage_with_bins(5, true, &nix_env, &nix_gc)
+    let result = clean_nix_garbage_with_bins(5, true, &nix_env, &nix_gc, 300)
         .await
         .expect("Nix cleanup should succeed without destructive garbage mode");
     assert_eq!(result, (0, Vec::new()));
@@ -185,18 +196,74 @@ exit 0"#
     let lines: Vec<&str> = calls.lines().collect();
     assert_eq!(
         lines.len(),
-        3,
-        "two profile prunes and one store GC expected"
+        4,
+        "the generation count, two profile prunes and one store GC expected"
     );
     assert_eq!(lines[0], "nix-env:--delete-generations +5");
     assert_eq!(
-        lines[1],
+        lines[1], "nix-env:--list-generations -p /nix/var/nix/profiles/default",
+        "the system profile is counted before it is pruned"
+    );
+    assert_eq!(
+        lines[2],
         "nix-env:--delete-generations +5 -p /nix/var/nix/profiles/default"
     );
-    assert_eq!(lines[2], "nix-gc:");
+    assert_eq!(lines[3], "nix-gc:");
     assert!(
-        !lines[2].contains("-d"),
+        !lines[3].contains("-d"),
         "apply must not use nix-collect-garbage -d, which discards retained generations"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ADDED 2026-10-22: the root-owned system profile is only pruned when it
+/// has something to prune.
+///
+/// The guard runs in the user session and can never prune
+/// /nix/var/nix/profiles/default — nix-env answers "Read-only file system
+/// (needs root)". Attempting it every cycle produced a failure line on
+/// every cycle of the guard's life; attempting it only when the generation
+/// count is above the retention makes the expected permission failure rare
+/// and meaningful.
+#[tokio::test]
+async fn nix_system_profile_is_not_pruned_when_nothing_to_prune() {
+    let _fixture_exec = fixture_exec_guard();
+    let root = std::env::temp_dir().join(format!(
+        "dracon_system_nix_noprune_test_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&root).expect("create temp dir");
+    let log = root.join("calls.log");
+    let quoted_log = test_shell_quote(log.to_str().expect("log path"));
+    let nix_env = root.join("nix-env");
+    let nix_gc = root.join("nix-collect-garbage");
+    write_test_script(
+        &nix_env,
+        &format!(
+            r#"echo "nix-env:$*" >> {quoted_log}
+if [ "$1" = "--list-generations" ]; then
+    for i in 1 2 3; do echo "  $i 2026-10-01"; done
+fi
+exit 0"#
+        ),
+    );
+    write_test_script(
+        &nix_gc,
+        &format!("echo \"nix-gc:$*\" >> {quoted_log}\nexit 0"),
+    );
+
+    clean_nix_garbage_with_bins(5, true, &nix_env, &nix_gc, 300)
+        .await
+        .expect("Nix cleanup should succeed");
+
+    let calls = fs::read_to_string(&log).expect("read command log");
+    assert!(
+        !calls.contains("--delete-generations +5 -p /nix/var/nix/profiles/default"),
+        "a profile within its retention must not be pruned at all: {calls}"
     );
     let _ = fs::remove_dir_all(&root);
 }
@@ -1005,6 +1072,7 @@ fn sweep_stranded_oom_descendants_restores_only_post_bias_children() {
     fs::create_dir(tmp.join("105/oom_score_adj")).expect("create failing child oom fixture");
 
     let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
+        swap_mb: 0,
         pid,
         ppid,
         cpu_percent: 0.0,
@@ -1101,6 +1169,7 @@ fn sweep_stranded_oom_descendants_uses_nearest_biased_ancestor() {
     write_process_fixture(&tmp, 202, "inner", 92, Some(250), None);
     write_process_fixture(&tmp, 203, "nested-child", 93, Some(250), None);
     let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
+        swap_mb: 0,
         pid,
         ppid,
         cpu_percent: 0.0,
@@ -1682,7 +1751,7 @@ fn predict_fill_time_estimates_for_filling_disk() {
 async fn docker_prune_returns_zero_on_dry_run() {
     // When apply=false, docker_prune should return immediately without
     // invoking docker, yielding 0 bytes reclaimed.
-    let result = docker_prune(false, true, true).await;
+    let result = docker_prune(false, true, true, 300).await;
     assert!(result.is_ok(), "dry-run docker_prune should not error");
     assert_eq!(result.unwrap(), 0, "dry-run should reclaim 0 bytes");
 }
@@ -1999,7 +2068,7 @@ async fn nix_cleanup_gen_prune_failure_still_runs_gc() {
     write_test_script(&nix_env, "echo 'cannot lock profile' >&2\nexit 1");
     write_test_script(&nix_gc, "echo 'deleting /nix/store/abc'\nexit 0");
 
-    let (_bytes, cleaned) = clean_nix_garbage_with_bins(5, true, &nix_env, &nix_gc)
+    let (_bytes, cleaned) = clean_nix_garbage_with_bins(5, true, &nix_env, &nix_gc, 300)
         .await
         .expect("GC success must win over prune failure");
     assert_eq!(cleaned.len(), 1, "GC results must survive prune failure");
@@ -2093,7 +2162,7 @@ async fn clean_tmp_paths_skips_unreadable_root() {
         let outcome = clean_tmp_paths(apply, &roots, 24, &[])
             .await
             .expect("unreadable root must skip, not fail the pass");
-    let (bytes, lines) = (outcome.reclaimed, outcome.cleaned);
+        let (bytes, lines) = (outcome.reclaimed, outcome.cleaned);
         assert_eq!(bytes, 0, "skipped root reclaims nothing");
         assert!(lines.is_empty(), "skipped root cleans nothing");
     }
@@ -2143,7 +2212,10 @@ async fn clean_tmp_paths_large_unheld_entry_beats_the_general_floor() {
         small.exists(),
         "a small entry must still wait for the general age floor"
     );
-    assert!(outcome.reclaimed > 0, "the reclaimed bytes must be reported");
+    assert!(
+        outcome.reclaimed > 0,
+        "the reclaimed bytes must be reported"
+    );
 
     let _ = fs::remove_dir_all(&root);
 }
@@ -2383,10 +2455,19 @@ async fn clean_tmp_paths_keeps_old_process_cwd_directory() {
         "process cwd must be included in open-path protection"
     );
 
-    let outcome =
-        clean_tmp_paths_with_proc(true, &roots, 24, 0, 0, false, &[], &proc_root, &HashSet::new())
-            .await
-            .expect("tmp cleanup");
+    let outcome = clean_tmp_paths_with_proc(
+        true,
+        &roots,
+        24,
+        0,
+        0,
+        false,
+        &[],
+        &proc_root,
+        &HashSet::new(),
+    )
+    .await
+    .expect("tmp cleanup");
     let (reclaimed, cleaned) = (outcome.reclaimed, outcome.cleaned);
     assert_eq!(reclaimed, unheld_bytes);
     assert_eq!(cleaned.len(), 1, "only the unheld old entry is removed");
@@ -2450,10 +2531,19 @@ async fn clean_tmp_paths_keeps_directory_holding_live_unix_socket() {
     );
 
     let roots = vec![root.display().to_string()];
-    let outcome =
-        clean_tmp_paths_with_proc(true, &roots, 24, 0, 0, false, &[], &proc_root, &live_sockets)
-            .await
-            .expect("tmp cleanup");
+    let outcome = clean_tmp_paths_with_proc(
+        true,
+        &roots,
+        24,
+        0,
+        0,
+        false,
+        &[],
+        &proc_root,
+        &live_sockets,
+    )
+    .await
+    .expect("tmp cleanup");
     let (reclaimed, cleaned) = (outcome.reclaimed, outcome.cleaned);
 
     assert!(
@@ -2894,9 +2984,19 @@ async fn clean_tmp_paths_refuses_blind_cleanup_when_proc_unreadable() {
     let missing_proc = root.join("no-such-proc");
 
     for apply in [false, true] {
-        let err = clean_tmp_paths_with_proc(apply, &roots, 24, 0, 0, false, &[], &missing_proc, &HashSet::new())
-            .await
-            .expect_err("unreadable proc must fail the pass");
+        let err = clean_tmp_paths_with_proc(
+            apply,
+            &roots,
+            24,
+            0,
+            0,
+            false,
+            &[],
+            &missing_proc,
+            &HashSet::new(),
+        )
+        .await
+        .expect_err("unreadable proc must fail the pass");
         assert!(
             err.to_string().contains("refusing tmp cleanup blind"),
             "failure must name the blind-cleanup refusal, got: {err:#}"
