@@ -107,7 +107,24 @@ toml_value() {
   ' "$file"
 }
 
-echo "• guard knobs: crate defaults vs the example policy vs the live policy"
+# A knob's value in the NixOS operator module: the Nix attribute
+# `services.dracon.system.policy` assigns it, e.g.
+# `tmp_large_entry_bytes = 1073741824;`.
+#
+# EVERY match is printed: a knob assigned in two places in the module would
+# make "the module's value" ambiguous, and the caller rejects that.
+flake_values() {
+  local knob="$1"
+  [ -f "$PARENT_FLAKE" ] || return 1
+  awk -v knob="$knob" '
+    $0 ~ "^[[:space:]]*" knob "[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*;" {
+      line = $0; sub(/^[^=]*=[[:space:]]*/, "", line); gsub(/[[:space:];].*$/, "", line);
+      print line
+    }
+  ' "$PARENT_FLAKE"
+}
+
+echo "• guard knobs: crate defaults vs the NixOS module vs the example policy vs the live policy"
 for knob in "${GUARD_KNOBS[@]}"; do
   fn="$(crate_default "$knob")"
   if [ -z "$fn" ]; then
@@ -118,6 +135,9 @@ for knob in "${GUARD_KNOBS[@]}"; do
   crate_val="$(default_value "$fn")"
   example_val="$(toml_value "$EXAMPLE_TOML" "$knob" || true)"
   live_val="$(toml_value "$LIVE_TOML" "$knob" || true)"
+  flake_vals="$(flake_values "$knob" || true)"
+  flake_count="$(printf '%s' "$flake_vals" | grep -c . || true)"
+  flake_val="$(printf '%s' "$flake_vals" | head -n1)"
   if [ -z "$example_val" ]; then
     echo "✗ $knob: absent from the example policy" >&2
     fail=1
@@ -128,40 +148,41 @@ for knob in "${GUARD_KNOBS[@]}"; do
     fail=1
     continue
   fi
-  if [ "$crate_val" != "$example_val" ] || [ "$crate_val" != "$live_val" ]; then
-    echo "✗ $knob: crate default $crate_val, example $example_val, live $live_val" >&2
+  if [ "$flake_count" -eq 0 ]; then
+    echo "✗ $knob: not declared by the NixOS operator module ($PARENT_FLAKE)" >&2
     fail=1
     continue
   fi
-  echo "  $knob = $crate_val (crate default, example, live)"
+  if [ "$flake_count" -gt 1 ]; then
+    echo "✗ $knob: declared $flake_count times in the NixOS operator module — the module's value would be ambiguous" >&2
+    fail=1
+    continue
+  fi
+  if [ "$crate_val" != "$example_val" ] || [ "$crate_val" != "$live_val" ] || [ "$crate_val" != "$flake_val" ]; then
+    echo "✗ $knob: crate default $crate_val, NixOS module $flake_val, example $example_val, live $live_val" >&2
+    fail=1
+    continue
+  fi
+  echo "  $knob = $crate_val (crate default, NixOS module, example, live)"
 done
 
-# The NixOS module is the FOURTH source, and it is a NEGATIVE one: it ships
-# the guard's SERVICE, not its policy, so it must not define a guard policy
-# knob at all.
-#
-# WHY (2026-10-22): the live policy is the OPERATOR's file and is
-# deliberately not a copy of the example — the general tmp floor is 6 h on
-# this host against the example's 24 h. If the module defined a knob value
-# it would either override that tuning (the guard has no CLI or env
-# override for these knobs, and the module does not generate the policy
-# file) or become a silent drift source: the value that looks authoritative
-# would be one the daemon never reads. Asserting the ABSENCE keeps the
-# module a checked participant in this comparison instead of an unchecked
-# one, and fails loudly if a future change makes it a value source.
-echo "• the NixOS module: it must not define the guard's policy knobs"
+# The module DECLARES the knobs but must not WRITE the operator's policy
+# file by default: that file is the operator's own, and a module that
+# overwrote it silently would be exactly the drift this check exists to
+# catch. An operator who wants Nix to own the file opts in explicitly.
+echo "• the NixOS module: it declares the knobs but does not take the operator's policy file by default"
 if [ -f "$PARENT_FLAKE" ]; then
-  module_fail=0
-  for knob in "${GUARD_KNOBS[@]}"; do
-    if grep -qE "^[[:space:]]*\"?${knob}\"?[[:space:]]*=" "$PARENT_FLAKE"; then
-      echo "✗ $knob is defined in the NixOS module — the guard's policy is the operator's file; a module value would override the operator's tuning (drift source)" >&2
-      module_fail=1
+  if grep -qE "^[[:space:]]*system\.managePolicy = mkOption" "$PARENT_FLAKE"; then
+    manage_default="$(awk '/^[[:space:]]*system\.managePolicy = mkOption/ { inside = 1; next } inside && /default = / { gsub(/.*default = /, ""); gsub(/;.*/, ""); print; exit }' "$PARENT_FLAKE")"
+    if [ "$manage_default" = "false" ]; then
+      echo "  services.dracon.system.managePolicy defaults to false (the operator's policy file is not overwritten)"
+    else
+      echo "✗ services.dracon.system.managePolicy must default to false (the operator's policy file must not be overwritten silently)" >&2
+      fail=1
     fi
-  done
-  if [ "$module_fail" -ne 0 ]; then
-    fail=1
   else
-    echo "  the module defines none of them (it ships the guard's service; the policy file is the operator's)"
+    echo "✗ the NixOS module does not declare services.dracon.system.managePolicy — the operator's policy file could be overwritten without a visible switch" >&2
+    fail=1
   fi
 else
   note "the NixOS module is not present here — skipped"
