@@ -287,6 +287,31 @@ clean_tmp = false
 # pile is obviously dead long before the general 24h gate fires.
 # tmp_e2e_patterns = "reconcile-*,reconcile-batch*,deathrun-shield-*,dr-audit-*,cw-browser-test-*,hh-base,jr-audit,nb-run,nb-fresh,.tmp*,pi-subagents-uid-*,puppeteer_dev_chrome_profile-*,playwright_chromiumdev_profile-*"
 # tmp_e2e_min_age_hours = 6            # fast-path age gate (0 disables the fast path)
+# Size-aware floor (ADDED 2026-10-22). An entry of at least
+# tmp_large_entry_bytes is judged against tmp_large_min_age_hours instead
+# of the general floor, so a bulk scratch clone does not have to wait the
+# general floor out. The 2026-10-21 incident left 144 GiB of exactly that
+# behind the 24h gate while the disk reached 100%. It is consulted only
+# when the disk is filling (the proactive/action tier), because deciding it
+# costs a size measurement per entry. 0 disables it — the default here,
+# because it changes what gets DELETED.
+# tmp_large_entry_bytes = 1073741824   # 1 GiB
+# tmp_large_min_age_hours = 2           # short floor for large entries (0 = off)
+# Warn when the scratch the age floor holds back reaches this size (GiB);
+# 0 never warns. The disk alarms are percent-used and rapid fill — neither
+# of them sees the deletable litter waiting for its floor.
+# tmp_scratch_warn_gib = 20
+# Hard bound on an EXTERNAL cleanup command (nix-collect-garbage, docker
+# prune). The guard's loop calls the cleanup kinds inline, so an unbounded
+# command blocked the whole loop — and the memory monitoring that would
+# notice a swap spike never ran in the meantime. 0 = the default bound.
+# cleanup_command_timeout_secs = 300
+# The weight floor for a FORGOTTEN heavy orphan (ADDED 2026-10-22): a
+# heavy, idle, orphaned process is only considered when it is provably a
+# TEST job (headless, or a temporary/test profile). A browser that is
+# neither is the operator's own session and is vetoed. Resident PLUS
+# swapped footprint, in MiB.
+# forgotten_orphan_footprint_mb = 2048
 # Per-pass cap on cross-device quarantine-move bytes (default 10240 = 10 GiB;
 # 0 = unlimited). Over-budget candidates defer with an explicit note instead
 # of stalling the desktop mid-pass — the 2026-10-04 incident that disabled
