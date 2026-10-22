@@ -170,6 +170,13 @@ kill time — including the starttime nonce, so a recycled PID is never
 signalled, and including the desktop veto, so a process that no longer
 looks like a test job is not ours to end.
 
+The pressure gate itself is `forgotten::forgotten_reap_allowed_under_pressure`
+— a named function, not an inline string comparison in the middle of the
+pass — and it fails CLOSED: an unrecognised pressure level is not
+permission to end a process. `the_forgotten_reap_is_skipped_without_memory_pressure`
+pins the closed side of that gate by name, so it cannot be edited into an
+unconditional kill without a test failing.
+
 The new knob:
 
 | knob | default | meaning |
