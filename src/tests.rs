@@ -2334,9 +2334,11 @@ async fn a_hanging_external_command_is_killed_at_its_bound() {
     if let Ok(text) = fs::read_to_string(&pidfile) {
         if let Ok(pid) = text.trim().parse::<i32>() {
             let stat = fs::read_to_string(format!("/proc/{pid}/stat"));
-            let state = stat.as_deref().and_then(|s| s.split_whitespace().nth(2));
+            let state: Option<String> = stat
+                .ok()
+                .and_then(|s| s.split_whitespace().nth(2).map(|f| f.to_string()));
             assert!(
-                state.is_none() || state == Some("Z"),
+                state.as_deref().is_none() || state.as_deref() == Some("Z"),
                 "the child process must be killed at the bound (state {state:?})"
             );
         }
