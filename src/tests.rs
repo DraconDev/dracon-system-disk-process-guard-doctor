@@ -2317,7 +2317,9 @@ async fn a_hanging_external_command_is_killed_at_its_bound() {
         .arg(format!("echo $$ > {}; exec sleep 30", pidfile.display()));
 
     let started = Instant::now();
-    let out = run_bounded(&mut cmd, 1).await.expect("run_bounded must not error");
+    let out = run_bounded(&mut cmd, 1)
+        .await
+        .expect("run_bounded must not error");
     let elapsed = started.elapsed();
 
     assert!(
@@ -2380,7 +2382,8 @@ fn the_pressure_ranking_counts_swapped_footprint_beside_resident() {
     );
     // The case that motivates the change: barely resident, enormous in swap.
     assert!(
-        memory_pressure_footprint_mb(&sample(8, 8192)) > memory_pressure_footprint_mb(&sample(4096, 0)),
+        memory_pressure_footprint_mb(&sample(8, 8192))
+            > memory_pressure_footprint_mb(&sample(4096, 0)),
         "a process with 8 MiB resident and 8 GiB swapped must outrank a 4 GiB resident one"
     );
 }
