@@ -80,6 +80,31 @@ policy and the live policy, and that the daemon's task budget still
 matches between the shipped unit and the NixOS module. It fails on a
 drifted source (verified by drifting one and watching it fail).
 
+### The NixOS module's role
+
+The goal names the NixOS operator module (the parent's `flake.nix`) as one
+of the places this work ships through, and the parity check reads the
+module. The module's role is **the guard's SERVICE, not its policy**, and
+the distinction is deliberate:
+
+- the module ships `dracon-system-guard.service` (and its watchdog), and
+  `scripts/check-flake.sh` asserts that unit against the shipped unit
+  property-for-property, so a NixOS deployment runs exactly the unit this
+  repository ships;
+- the module does NOT generate the guard's policy file, because that file
+  is the OPERATOR's. The live policy is deliberately not a copy of the
+  example: the general tmp floor is 6 h on this host against the example's
+  24 h, because the operator chose it.
+
+So the module is a **negative** source for these knobs — it must not define
+one. It cannot define one safely either: the guard has no CLI or
+environment override for them, so a module value would either override
+the operator's tuning or sit unread while looking authoritative — the
+silent drift the parity script exists to catch. The parity script
+therefore asserts that ABSENCE as well, which keeps the module a checked
+participant in the comparison instead of an unchecked one, and fails
+loudly if a future change turns it into a value source.
+
 ## 2. The memory pass
 
 - **External cleanup commands are bounded.** `nix-collect-garbage` and
