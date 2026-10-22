@@ -139,6 +139,21 @@ pub(crate) struct ForgottenScan {
     pub(crate) vetoed: Vec<VetoedOrphan>,
 }
 
+/// Whether the memory pressure level permits ENDING a forgotten orphan.
+///
+/// Reporting is unconditional; ending is pressure-gated. This is the gate
+/// itself, extracted from the pass so it can be pinned by name: an inline
+/// string comparison in the middle of a long async function reads correctly
+/// today and can be edited into an unconditional kill tomorrow without any
+/// test noticing.
+///
+/// The level strings are the guard's own (`"ok"`, `"warn"`, `"critical"`).
+/// Anything that is not warn/critical — including an unknown level, which
+/// must never be treated as permission to kill — leaves the gate closed.
+pub(crate) fn forgotten_reap_allowed_under_pressure(pressure: &str) -> bool {
+    pressure == "warn" || pressure == "critical"
+}
+
 /// Find the heavy, idle, orphaned test jobs.
 ///
 /// Every criterion below is a precondition, and each one exists to rule
