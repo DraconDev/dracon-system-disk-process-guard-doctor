@@ -5350,7 +5350,10 @@ async fn check_memory_pressure(
         );
     }
     let mut forgotten_reaped: Vec<ReapedProcess> = Vec::new();
-    if pressure == "warn" || pressure == "critical" {
+    // ADDED 2026-10-22: the pressure gate is `forgotten::forgotten_reap_allowed_under_pressure`
+    // (named and tested), not an inline comparison: reporting is unconditional,
+    // ending is not.
+    if forgotten::forgotten_reap_allowed_under_pressure(&pressure) {
         let policy = reap_policy_from_guard(guard);
         let candidates: Vec<ReapCandidate> = forgotten
             .candidates
