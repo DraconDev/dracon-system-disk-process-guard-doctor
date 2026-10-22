@@ -379,3 +379,37 @@ fn the_kill_time_gate_refuses_a_light_or_recycled_process() {
         "a process that is no longer heavy must not be signalled"
     );
 }
+
+/// ADDED 2026-10-22: the kill is skipped WITHOUT memory pressure.
+///
+/// Reporting a forgotten orphan is unconditional — the operator wants to
+/// see it on every pass. ENDING one is not: it happens only under warn or
+/// critical memory pressure. This pins the closed side of that gate by
+/// name, so it cannot be edited into an unconditional kill without a test
+/// failing.
+///
+/// The unknown level matters as much as "ok": the gate fails CLOSED. A
+/// level the guard does not recognise is not permission to end a process.
+#[test]
+fn the_forgotten_reap_is_skipped_without_memory_pressure() {
+    assert!(
+        !forgotten_reap_allowed_under_pressure("ok"),
+        "without memory pressure the forgotten reap must not run"
+    );
+    assert!(
+        !forgotten_reap_allowed_under_pressure(""),
+        "an empty pressure level must not be treated as permission to kill"
+    );
+    assert!(
+        !forgotten_reap_allowed_under_pressure("critical-ish"),
+        "an unknown pressure level must fail closed"
+    );
+    assert!(
+        forgotten_reap_allowed_under_pressure("warn"),
+        "under warn pressure the forgotten reap may run"
+    );
+    assert!(
+        forgotten_reap_allowed_under_pressure("critical"),
+        "under critical pressure the forgotten reap may run"
+    );
+}
