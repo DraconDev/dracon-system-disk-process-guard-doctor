@@ -491,7 +491,14 @@ pub(crate) struct DoctorReport {
     pub(crate) canonical_libs_exists: bool,
     pub(crate) canonical_utils_exists: bool,
     pub(crate) sync_policy_exists: bool,
-    pub(crate) legacy_config_dracon_exists: bool,
+    // FIXED 2026-10-22: the field used to be "the legacy ~/.config/dracon
+    // DIRECTORY exists". The directory is shared with other tools — on this
+    // host it holds another tool's app state and two status tokens — so its
+    // mere presence failed a REQUIRED check on a correctly deployed fleet,
+    // and the remediation told the operator to move credentials. The check
+    // now asks the question that matters: is a LEGACY DAEMON/GUARD CONFIG
+    // FILE still there?
+    pub(crate) legacy_daemon_config_present: bool,
     pub(crate) sync_service_active: bool,
     // ADDED 2026-10-01 (audit): the guard's OWN policy and service. This is the
     // guard utility — `doctor` used to audit only dracon-sync, so it said
@@ -8103,7 +8110,10 @@ async fn build_status_report() -> Result<StatusReport> {
             .to_string(),
         system_policy: system_policy_path.display().to_string(),
         system_policy_exists: system_policy_path.exists(),
-        sync_service_active: is_user_service_active("dracon-sync.service").await,
+        // FIXED 2026-10-22: the daemon runs as the root-owned SYSTEM unit
+        // `dracon-sync-operator.service`; the old name was masked, so this
+        // reported "inactive" on a correctly deployed host.
+        sync_service_active: is_system_service_active(crate::doctor::SYNC_SERVICE).await,
     })
 }
 
