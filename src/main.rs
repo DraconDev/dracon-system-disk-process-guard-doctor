@@ -1231,6 +1231,71 @@ fn nice_restore_capability_available(state: &mut GuardRuntimeState) -> bool {
     available
 }
 
+/// The inode number of the user namespace a process lives in.
+///
+/// ADDED 2026-10-24. `CAP_SYS_NICE` is NAMESPACED: a process that holds it
+/// in a nested user namespace has it in that namespace and in its
+/// DESCENDANTS, never in an ancestor. The guard's unit runs in a nested
+/// user namespace while most of the host's processes live in the initial
+/// one, so a capability check on the guard's own `/proc/self/status` says
+/// "yes, I can restore priority" for a process the guard provably cannot
+/// touch.
+pub(crate) fn user_namespace_inode(proc_root: &Path, pid: i32) -> Option<u64> {
+    let link = fs::read_link(proc_root.join(pid.to_string()).join("ns/user")).ok()?;
+    parse_namespace_inode(&link)
+}
+
+/// `user:[4026531837]` -> `4026531837`.
+pub(crate) fn parse_namespace_inode(link: &Path) -> Option<u64> {
+    let text = link.to_string_lossy();
+    let inner = text
+        .strip_prefix("user:[")
+        .and_then(|rest| rest.strip_suffix(']'))?;
+    inner.parse().ok()
+}
+
+/// Whether the guard can put this process's priority back the way it found
+/// it.
+///
+/// ADDED 2026-10-24. Two conditions, both required:
+///
+/// - the guard must hold `CAP_SYS_NICE`, and
+/// - that capability must apply IN THE TARGET'S USER NAMESPACE.
+///
+/// The second condition is the one that was missing. The guard could
+/// always LOWER a process's priority (lowering priority needs no
+/// capability at all when you own the process) and could never RAISE it
+/// again. The renice mitigation was a one-way ratchet, and because the
+/// undo always failed with `Permission denied`, EVERY SIGHUP policy
+/// reload was deferred forever — the guard became impossible to
+/// reconfigure on this host.
+///
+/// Fails closed: a target whose namespace cannot be read is treated as
+/// unrestorable, because the cost of being wrong in that direction is a
+/// process left at a degraded priority, while the cost of being wrong in
+/// the other direction is a mitigation that cannot be undone.
+pub(crate) fn can_restore_nice_for(proc_root: &Path, pid: i32) -> bool {
+    let own = user_namespace_inode(proc_root, std::process::id() as i32);
+    let target = user_namespace_inode(proc_root, pid);
+    match (own, target) {
+        (Some(own_ns), Some(target_ns)) if own_ns == target_ns => has_nice_restore_privilege(),
+        _ => false,
+    }
+}
+
+/// Whether a failed `renice` is a PERMANENT authority failure: the guard
+/// is not permitted to set this process's priority at all, so retrying
+/// will never succeed.
+///
+/// ADDED 2026-10-24. A restore that failed for a permanent reason must
+/// not hold the policy reload hostage forever — the old behaviour kept
+/// the previous policy live and deferred every subsequent reload, which
+/// is how a single un-restorable renice made the whole guard
+/// unreconfigurable.
+pub(crate) fn nice_restore_failure_is_permanent(message: &str) -> bool {
+    message.contains("Permission denied") || message.contains("Operation not permitted")
+}
+
 /// Parsed /proc/meminfo values (all in kB).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct MemorySample {
@@ -2566,12 +2631,42 @@ async fn restore_runtime_adjustments_with_samples(
                 scope,
             } => match process_identity_status(proc_root, pid, &identity) {
                 ProcessIdentityStatus::Match => {
+                    // ADDED 2026-10-24: a priority the guard provably CANNOT
+                    // restore is a PERMANENT failure, not a transient one.
+                    // Retrying it forever kept the previous policy live and
+                    // deferred every later reload — one unrestorable renice
+                    // made the whole guard impossible to reconfigure.
+                    //
+                    // Dropping the entry does NOT undo the priority change:
+                    // the process stays at its degraded nice until it exits.
+                    // It stops being TRACKED as pending, so the reload can
+                    // proceed and the mitigation ledger shrinks instead of
+                    // carrying a debt that can never be paid.
+                    if !can_restore_nice_for(proc_root, pid) {
+                        eprintln!(
+                            "⚠ SIGHUP dropping unrestorable nice adjustment pid={} comm={} — the guard cannot raise priority back in that process's user namespace, so it keeps its current nice until it exits",
+                            pid, identity.comm
+                        );
+                        remove_nice_scope(state, pid, scope);
+                        continue;
+                    }
                     match renice_process_with_bin(renice_bin, pid, original_nice).await {
                         Ok(()) => remove_nice_scope(state, pid, scope),
-                        Err(e) => eprintln!(
-                            "⚠ SIGHUP failed to restore nice value for pid={} comm={}: {}",
-                            pid, identity.comm, e
-                        ),
+                        Err(e) => {
+                            let message = e.to_string();
+                            if nice_restore_failure_is_permanent(&message) {
+                                eprintln!(
+                                    "⚠ SIGHUP dropping unrestorable nice adjustment pid={} comm={} — {message}",
+                                    pid, identity.comm
+                                );
+                                remove_nice_scope(state, pid, scope);
+                            } else {
+                                eprintln!(
+                                    "⚠ SIGHUP failed to restore nice value for pid={} comm={}: {}",
+                                    pid, identity.comm, e
+                                );
+                            }
+                        }
                     }
                 }
                 ProcessIdentityStatus::Gone => remove_nice_scope(state, pid, scope),
