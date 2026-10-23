@@ -250,3 +250,17 @@ above is the sum of both, not the RSS alone.
 - **The leak's other 17 files.** The audit found 17 browser-launching files
   across the fleet with a launch/close imbalance. The doomtap one is
   fixed; the rest are still leaking, more slowly.
+- **The crashpad residue.** The crashpad handler is pulled back into its
+  tree by `--crashpad-handler-pid`, but ONLY while the browser that owns it
+  is still alive. A handler whose browser is already gone has nothing left
+  to tie it to: it is a lone orphan of about 2 MiB, it classifies as a
+  desktop session (it carries no `--user-data-dir`), and it is too small
+  to ever cross a floor. This host has eight of them, about 16 MiB in
+  total. It is residue, not a leak, and it is not worth a mechanism.
+- **A browser farm's detached browsers.** A browser that was launched days
+  ago, detached on purpose, and is still driven over CDP by a client in
+  another process tree passes every gate: orphaned, headless, idle,
+  heavy, old. The age floor does not catch this one — the browser is old,
+  it was only just detached. This is a theoretical false positive and it
+  is inherent to the shape, not to this implementation; the operator's
+  lever is the exempt list or a higher footprint floor.
