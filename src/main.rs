@@ -781,6 +781,18 @@ pub(crate) struct ReportState {
     pub(crate) last_emitted: Option<Instant>,
 }
 
+/// What a background disk-cleanup pass produced, handed back to the guard
+/// pass so the report can still show it.
+///
+/// ADDED 2026-10-24: the cleanup runs in its own task, so its result
+/// arrives on a LATER pass than the one that started it.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct CleanupSummary {
+    pub(crate) relocated_count: usize,
+    pub(crate) relocated_bytes: u64,
+    pub(crate) relocate_candidates: Vec<ColdCandidate>,
+}
+
 #[derive(Default, Debug)]
 pub(crate) struct GuardRuntimeState {
     /// CHANGED 2026-07-21 (v0.112.33, audit M34/F4.8): value is now
@@ -826,6 +838,10 @@ pub(crate) struct GuardRuntimeState {
     /// Reported once per pid, so the operator can see WHY a mitigation that
     /// used to apply has stopped applying.
     pub(crate) nice_restore_skipped_pids: std::collections::HashSet<i32>,
+    /// ADDED 2026-10-24: the slot a background disk-cleanup task writes its
+    /// summary into. The pass never waits for the cleanup, so the summary
+    /// arrives on a later pass.
+    pub(crate) cleanup_slot: Option<Arc<tokio::sync::Mutex<CleanupSummary>>>,
     /// ADDED 2026-08-10 (v0.112.36): pids whose oom_score_adj was
     /// raised under critical pressure (original adjustment, stable
     /// process identity), and their restore timers.
