@@ -5339,38 +5339,35 @@ async fn check_memory_pressure(
     let forgotten = forgotten_scan(guard);
     for c in &forgotten.candidates {
         eprintln!(
-            "🧹 forgotten orphan: {} pid={} {}MiB ({}MiB rss + {}MiB swap) age={}s cpu={}s — {}",
-            c.comm, c.pid, c.footprint_mb, c.rss_mb, c.swap_mb, c.age_secs, c.cpu_seconds, c.why
+            "🧹 forgotten orphan tree: {} pid={} {} processes {}MiB (root {}MiB) age={}s cpu={}s — {}",
+            c.root_comm,
+            c.root_pid,
+            c.member_count,
+            c.aggregate_footprint_mb,
+            c.root_footprint_mb,
+            c.age_secs,
+            c.cpu_seconds,
+            c.why
         );
     }
     for v in &forgotten.vetoed {
         eprintln!(
-            "🛡️ heavy process vetoed: {} pid={} {}MiB — {}",
-            v.comm, v.pid, v.footprint_mb, v.reason
+            "🛡️ heavy process tree vetoed: {} pid={} {} processes {}MiB — {}",
+            v.root_comm, v.root_pid, v.member_count, v.aggregate_footprint_mb, v.reason
         );
     }
-    let mut forgotten_reaped: Vec<ReapedProcess> = Vec::new();
-    if pressure == "warn" || pressure == "critical" {
+    let mut forgotten_reaped: Vec<ReapedTree> = Vec::new();
+    // The gate is a NAMED function, not an inline string comparison, and it
+    // fails CLOSED: an unrecognised pressure level is not permission to
+    // end a process. `forgotten::forgotten_reap_allowed_under_pressure`.
+    if forgotten_reap_allowed_under_pressure(&pressure) {
         let policy = reap_policy_from_guard(guard);
-        let candidates: Vec<ReapCandidate> = forgotten
-            .candidates
-            .iter()
-            .map(|c| ReapCandidate {
-                pid: c.pid,
-                comm: c.comm.clone(),
-                args: c.args.clone(),
-                idle_hours: c.age_secs / 3600,
-                cpu_seconds: c.cpu_seconds,
-                rss_mb: c.rss_mb,
-                signature: c.why.clone(),
-                starttime: c.starttime,
-            })
-            .collect();
+        let trees = forgotten.candidates.clone();
         forgotten_reaped = tokio::task::spawn_blocking(move || {
-            reap_forgotten_heavy_orphans(
+            reap_forgotten_orphan_trees(
                 Path::new("/proc"),
                 &policy,
-                &candidates,
+                &trees,
                 PROC_TICKS_PER_SEC,
             )
         })
@@ -5378,13 +5375,12 @@ async fn check_memory_pressure(
         .unwrap_or_default();
         for r in &forgotten_reaped {
             limited.push(format!(
-                "forgotten-reap {}={} ({})",
-                r.comm,
-                r.pid,
-                r.outcome
-                    .as_ref()
-                    .map(|o| format!("{o:?}"))
-                    .unwrap_or_else(|| "skipped".to_string())
+                "forgotten-reap tree {}={} ({} processes, {}MiB, {} ended)",
+                r.root_comm,
+                r.root_pid,
+                r.member_count,
+                r.aggregate_footprint_mb,
+                r.members_ended
             ));
         }
     }
