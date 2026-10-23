@@ -33,6 +33,7 @@
 //! because its command line matches a signature they configured.
 
 use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 /// Defaults for the reporting thresholds. `min_idle_hours` is the floor
@@ -184,6 +185,164 @@ pub(crate) fn rss_mb_from_status(pid_dir: &Path) -> u64 {
         .and_then(|kb| kb.parse::<u64>().ok())
         .map(|kb| kb / 1024)
         .unwrap_or(0)
+}
+
+/// The executable a raw `/proc/<pid>/cmdline` names: the basename of
+/// argv[0].
+///
+/// ADDED 2026-10-23: the exempt list used to be matched as a substring of
+/// the WHOLE command line, so the token `chrome` matched
+/// `--user-data-dir=/tmp/puppeteer_dev_chrome_profile-*` and every
+/// Puppeteer test browser was exempt. That is the browser family that
+/// leaked 8.6 GB of orphaned processes on 2026-10-23, and the guard could
+/// not see a single one of them: the exemption swallowed them before any
+/// other gate ran. The exempt list is a list of PROCESS NAMES (the renice
+/// path has always matched the name), so the reaper now matches the name
+/// too.
+pub(crate) fn cmdline_executable(raw_cmdline: &str) -> String {
+    let argv0 = raw_cmdline.split('\0').next().unwrap_or("").trim();
+    if argv0.is_empty() {
+        return String::new();
+    }
+    Path::new(argv0)
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// True when the exempt list covers this executable.
+///
+/// The match is on the executable NAME, exactly as the renice path has
+/// always done it. Audit F119 recorded the reaper's whole-command-line
+/// substring as the odd one out; this closes that gap, so the two paths
+/// that share `process_exempt_names` now protect the same processes.
+///
+/// A token also covers a name that extends it with a `-` (`wezterm` covers
+/// `wezterm-gui`), because that is what an operator listing a launcher
+/// means. It deliberately does NOT extend with `_`: `chrome` protects the
+/// operator's own browser, but a `chrome_crashpad_handler` is a browser
+/// helper, not the session, and must stay visible to the forgotten pass.
+pub(crate) fn matches_exempt(exe: &str, exempt_names: &[String]) -> bool {
+    exempt_names.iter().any(|exempt| {
+        if exempt.is_empty() {
+            return false;
+        }
+        exe == exempt.as_str()
+            || (exe.len() > exempt.len()
+                && exe.starts_with(exempt.as_str())
+                && exe.as_bytes()[exempt.len()] == b'-')
+    })
+}
+
+/// One process, read once per pass.
+#[derive(Debug, Clone)]
+pub(crate) struct ProcEntry {
+    pub(crate) pid: i32,
+    pub(crate) ppid: i32,
+    pub(crate) state: char,
+    pub(crate) tty_nr: i32,
+    pub(crate) cpu_ticks: u64,
+    pub(crate) starttime: u64,
+    pub(crate) comm: String,
+    /// The full command line, NULs replaced by spaces.
+    pub(crate) args: String,
+    /// The executable NAME (basename of argv[0]) — what the exempt list
+    /// matches.
+    pub(crate) exe: String,
+}
+
+/// The processes of one pass, plus the parent/child edges between them.
+///
+/// ADDED 2026-10-23: the forgotten-orphan pass needs to weigh a whole
+/// PROCESS TREE, and a tree is a parent/child relation, not a list of
+/// unrelated PIDs. Reading the tree once per pass also means the footprint
+/// of every member is read exactly once, instead of once per candidate.
+#[derive(Debug, Default)]
+pub(crate) struct ProcTable {
+    pub(crate) entries: HashMap<i32, ProcEntry>,
+    /// Parent PID -> the PIDs whose parent it is.
+    pub(crate) children: HashMap<i32, Vec<i32>>,
+}
+
+impl ProcTable {
+    pub(crate) fn get(&self, pid: i32) -> Option<&ProcEntry> {
+        self.entries.get(&pid)
+    }
+
+    /// Every descendant of `root`, breadth-first, excluding `root` itself.
+    ///
+    /// A cycle cannot happen in a parent/child forest, but a PID can be
+    /// reparented mid-walk, so the visited set is kept: a reparented
+    /// subtree is simply not descended into.
+    pub(crate) fn descendants(&self, root: i32) -> Vec<i32> {
+        let mut out = Vec::new();
+        let mut seen: HashSet<i32> = HashSet::new();
+        seen.insert(root);
+        let mut queue: Vec<i32> = vec![root];
+        while let Some(pid) = queue.pop() {
+            for child in self.children.get(&pid).into_iter().flatten() {
+                if !seen.insert(*child) {
+                    continue;
+                }
+                out.push(*child);
+                queue.push(*child);
+            }
+        }
+        out
+    }
+}
+
+/// Read every process in `proc_root` once.
+///
+/// The footprint of a process is NOT read here: `status` is expensive and
+/// the table covers the whole box, so weight is read only for the members
+/// of a tree that has already earned the right to be weighed.
+pub(crate) fn read_proc_table(proc_root: &Path) -> ProcTable {
+    let mut table = ProcTable::default();
+    let Ok(entries) = std::fs::read_dir(proc_root) else {
+        return table;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        let Ok(pid) = name.parse::<i32>() else {
+            continue;
+        };
+        let pid_dir = entry.path();
+        let Ok(raw) = std::fs::read_to_string(pid_dir.join("stat")) else {
+            continue;
+        };
+        let Some(fields) = parse_stat(&raw) else {
+            continue;
+        };
+        let Ok(cmdline_raw) = std::fs::read_to_string(pid_dir.join("cmdline")) else {
+            continue;
+        };
+        let args = cmdline_raw.replace('\0', " ").trim().to_string();
+        if args.is_empty() {
+            continue;
+        }
+        let exe = cmdline_executable(&cmdline_raw);
+        let comm = std::fs::read_to_string(pid_dir.join("comm"))
+            .map(|c| c.trim().to_string())
+            .unwrap_or_default();
+        table.children.entry(fields.ppid).or_default().push(pid);
+        table.entries.insert(
+            pid,
+            ProcEntry {
+                pid,
+                ppid: fields.ppid,
+                state: fields.state,
+                tty_nr: fields.tty_nr,
+                cpu_ticks: fields.cpu_ticks,
+                starttime: fields.starttime,
+                comm,
+                args,
+                exe,
+            },
+        );
+    }
+    table
 }
 
 /// Scan `proc_root` and return every process that looks abandoned.
