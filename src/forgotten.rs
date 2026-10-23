@@ -274,7 +274,7 @@ fn build_tree(
     // The detached crashpad handler, if the tree names one and the handler
     // is itself an orphan. Never reach outside the tree: a handler that
     // still has a live parent belongs to a LIVE browser.
-    for handler_pid in handler_links {
+    for (handler_pid, depth) in handler_links {
         if seen.contains(&handler_pid) {
             continue;
         }
@@ -295,7 +295,7 @@ fn build_tree(
             rss_mb,
             swap_mb,
             footprint_mb: rss_mb.saturating_add(swap_mb),
-            depth: 1,
+            depth,
             role: "crashpad handler".to_string(),
             starttime: handler.starttime,
         });
