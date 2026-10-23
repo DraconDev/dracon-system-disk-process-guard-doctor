@@ -158,7 +158,29 @@ exempt is **left out of the kill set** rather than ending the whole tree:
 the rest of the tree is still reclaimable. The root's gates are
 all-or-nothing.
 
-### 3.6 The pressure gate is a named function
+### 3.6 A tree must be old enough
+
+Measured on this host on 2026-10-23, while verifying the change: an
+orphaned headless Chromium root had burned only **four seconds** of
+lifetime CPU.
+
+So the lifetime-CPU gate does **not** separate "forgotten" from "just
+detached and still in use". A browser that a harness deliberately
+detaches (`setsid`, double-fork) and still drives over CDP is orphaned by
+design, headless by design, and idle-looking by design. The only thing
+that tells the two apart is TIME.
+
+`FORGOTTEN_MIN_TREE_AGE_SECS = 300` therefore gates the pass: a tree must
+have been running for five minutes before the guard will touch it. A leak
+lives for hours or days and is reaped on the first pass after it ages
+past the floor; a browser detached a moment ago is left alone.
+
+This is a constant, not a knob: it is a safety floor, and a safety floor
+an operator can casually tune is not a floor. The escape hatch for "do
+not touch these trees at all" is the footprint floor and the exempt list,
+both of which are knobs.
+
+### 3.7 The pressure gate is a named function
 
 ```rust
 pub(crate) fn forgotten_reap_allowed_under_pressure(pressure: &str) -> bool {
@@ -199,11 +221,22 @@ covers `wezterm-gui`. It deliberately does **not** extend with a `_`, so
 | knob | default | meaning |
 |---|---|---|
 | `forgotten_orphan_footprint_mb` | 2048 MiB | the ROOT's own resident-plus-swapped weight floor |
-| `forgotten_orphan_tree_footprint_mb` | 1024 MiB | the tree's AGGREGATE resident-plus-swapped weight floor; 0 disables the aggregate trigger |
+| `forgotten_orphan_tree_footprint_mb` | 512 MiB | the tree's AGGREGATE resident-plus-swapped weight floor; 0 disables the aggregate trigger |
 
 Both are carried by the crate's defaults, the NixOS operator module, the
 example policy and the live policy, and `scripts/check-guard-knob-parity.sh`
 asserts that they agree.
+
+The aggregate floor was measured, not guessed. A single orphaned headless
+Chromium tree on this host (root + 8 renderers) held **807 MiB** when it
+was fresh, and fell to **329 MiB** once the kernel had swapped most of it
+out and discarded the dirty pages. A floor of 1 GiB therefore MISSES a
+single leaked browser tree — the natural unit of leakage — and only
+catches it once a second one has piled up.
+
+Note that the weight is measured as resident PLUS swapped, so a tree that
+the kernel has swapped out is not mistaken for a small one: the 329 MiB
+above is the sum of both, not the RSS alone.
 
 ## 6. What is still open
 
