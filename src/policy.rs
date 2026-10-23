@@ -518,6 +518,7 @@ impl Default for GuardPolicy {
             tmp_scratch_warn_gib: default_tmp_scratch_warn_gib(),
             cleanup_command_timeout_secs: default_cleanup_command_timeout_secs(),
             forgotten_orphan_footprint_mb: default_forgotten_orphan_footprint_mb(),
+            forgotten_orphan_tree_footprint_mb: default_forgotten_orphan_tree_footprint_mb(),
             trash_min_age_days: default_trash_min_age_days(),
             protected_paths: Vec::new(),
             proactive_cleanup_percent: default_proactive_cleanup_percent(),
