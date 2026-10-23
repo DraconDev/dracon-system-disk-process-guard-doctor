@@ -8396,33 +8396,36 @@ pub(crate) async fn run_guard_once(
     let mut relocate_candidates: Vec<ColdCandidate> = Vec::new();
     let mut relocated_count = 0usize;
     let mut relocated_bytes = 0u64;
+    // ── The disk cleanup runs in the BACKGROUND (ADDED 2026-10-24) ────
+    //
+    // The cleanup is HOUSEKEEPING, and on a busy filesystem it can take
+    // MINUTES: a /tmp with thousands of entries, a Trash with a
+    // self-feeding .trashinfo loop, a ~/Dev-wide rust-target scan. It
+    // used to run INLINE, ahead of the memory checks, so one slow pass
+    // stalled the ENTIRE protection loop.
+    //
+    // Measured on 2026-10-24: a single pass held the loop for eight
+    // minutes while the host sat in critical memory pressure. A
+    // forgotten orphan tree had been eligible to be reaped for the whole
+    // of that time and was only reaped when the cleanup finished and the
+    // NEXT pass ran. The guard was doing housekeeping while the memory
+    // it exists to protect drained away.
+    //
+    // The cleanup now runs in its own task. The pass never waits for it,
+    // so the protection loop keeps its `interval_secs` cadence whatever
+    // the filesystem is doing, and the cleanup's summary comes back
+    // through a shared slot for the report.
+    let cleanup_slot = state
+        .cleanup_slot
+        .get_or_insert_with(|| Arc::new(tokio::sync::Mutex::new(CleanupSummary::default())))
+        .clone();
     if dstate == "action" || dstate == "critical" {
         let now = Instant::now();
         if auto_cleanup_due_at(state, guard.auto_cleanup_interval_secs, now) {
             // Set the timestamp before the scan so a persistent filesystem
             // error cannot turn into a 30-second retry loop.
             state.last_auto_cleanup = Some(now);
-            // ADDED 2026-09-27 (space tiers Phase 2): relocate-first —
-            // move cold bulk before deleting anything rebuildable.
-            if guard.auto_relocate {
-                match run_auto_relocate(guard).await {
-                    Ok((moves, moved_bytes, candidates)) => {
-                        relocated_count = moves;
-                        relocated_bytes = moved_bytes;
-                        relocate_candidates = candidates;
-                    }
-                    Err(e) => eprintln!("⚠️ auto-relocate failed: {e:#}"),
-                }
-            }
-            // Re-read pressure after moves so delete-based cleanup (and the
-            // critical age-gate bypass) acts on post-move reality.
-            if relocated_count > 0 {
-                if let Ok(d) = disk_details_for(&guard.disk_mount_path).await {
-                    used = d.use_percent;
-                    dstate = disk_state(used, guard).to_string();
-                }
-            }
-            run_auto_cleanup(guard, state, used, true).await?;
+            spawn_background_cleanup(guard, state, used, true, cleanup_slot.clone());
         }
     } else if used >= guard.proactive_cleanup_percent {
         state.guard_cycle += 1;
@@ -8437,11 +8440,21 @@ pub(crate) async fn run_guard_once(
             // all waited for action level (85%) — too late on a disk that
             // fills 20–60 GiB/h. The cheap non-rust kinds now run here too
             // (include_rust=false keeps the heavy ~/Dev scan on its own path).
-            if guard.auto_cleanup_rust {
-                run_proactive_cleanup(guard, state).await?;
-            }
-            run_auto_cleanup(guard, state, used, false).await?;
             state.last_proactive_cleanup = Some(Instant::now());
+            spawn_background_cleanup(guard, state, used, false, cleanup_slot.clone());
+        }
+    }
+
+    // Pick up whatever the last background cleanup produced. Taking the
+    // summary (rather than copying it) reports each cleanup once, on the
+    // first pass after it finished.
+    {
+        let mut slot = cleanup_slot.lock().await;
+        let summary = std::mem::take(&mut *slot);
+        if summary.relocated_count > 0 || !summary.relocate_candidates.is_empty() {
+            relocated_count = summary.relocated_count;
+            relocated_bytes = summary.relocated_bytes;
+            relocate_candidates = summary.relocate_candidates;
         }
     }
 
