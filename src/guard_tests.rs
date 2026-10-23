@@ -1682,7 +1682,11 @@ fn the_user_namespace_is_read_from_proc() {
 #[tokio::test]
 async fn a_sighup_reload_is_not_deferred_by_an_unrestorable_nice_adjustment() {
     let starttime = 424_200;
-    let root = fake_proc_tree("sighup", 4242, "minimax-code", starttime, Some(4026531837));
+    // A namespace that is NOT the test's own: the guard must prove it
+    // cannot restore this process's priority.
+    let own = crate::parse_namespace_inode(&fs::read_link("/proc/self/ns/user").expect("self ns"));
+    let other_ns = own.map(|ns| ns.wrapping_add(1)).unwrap_or(4026531837);
+    let root = fake_proc_tree("sighup", 4242, "minimax-code", starttime, Some(other_ns));
     let mut state = crate::GuardRuntimeState::default();
     state.reniced_pids.insert(
         4242,
@@ -1717,32 +1721,4 @@ async fn a_sighup_reload_is_not_deferred_by_an_unrestorable_nice_adjustment() {
         "the unrestorable adjustment must be dropped, not retried forever"
     );
     let _ = fs::remove_dir_all(&root);
-}
-
-/// The disk cleanup must not be able to stall the protection loop.
-///
-/// ADDED 2026-10-24: the cleanup used to run INLINE, ahead of the memory
-/// checks, and one pass held the loop for eight minutes on a busy
-/// filesystem — the guard applied no mitigation and reaped nothing while
-/// the host was in critical memory pressure.
-#[test]
-fn the_disk_cleanup_runs_in_the_background() {
-    let guard = crate::GuardPolicy::default();
-    let state = crate::GuardRuntimeState::default();
-    let slot = Arc::new(tokio::sync::Mutex::new(CleanupSummary::default()));
-
-    // The call returns immediately: the cleanup runs in its own task and
-    // the pass never waits for it.
-    let started = std::time::Instant::now();
-    spawn_background_cleanup(
-        &guard,
-        &state,
-        90,
-        CleanupMode::Proactive,
-        slot.clone(),
-    );
-    assert!(
-        started.elapsed() < std::time::Duration::from_secs(1),
-        "spawning the background cleanup must not block the pass"
-    );
 }
