@@ -214,7 +214,15 @@ fn member_weight(proc_root: &Path, entry: &ProcEntry) -> (u64, u64) {
 
 /// Build the tree rooted at `root_pid`: the root, its descendants, and the
 /// detached crashpad handler its members name.
-fn build_tree(proc_root: &Path, table: &ProcTable, root_pid: i32, policy: &ReapPolicy) -> ForgottenTree {
+fn build_tree(
+    proc_root: &Path,
+    table: &ProcTable,
+    root_pid: i32,
+    policy: &ReapPolicy,
+    boot_time: u64,
+    now: u64,
+    ticks_per_sec: u64,
+) -> ForgottenTree {
     let Some(root) = table.get(root_pid) else {
         unreachable!("build_tree is only called for a root that is in the table");
     };
@@ -301,21 +309,22 @@ fn build_tree(proc_root: &Path, table: &ProcTable, root_pid: i32, policy: &ReapP
     let aggregate_footprint_mb = members
         .iter()
         .fold(0u64, |acc, m| acc.saturating_add(m.footprint_mb));
-    let root_footprint_mb = members
-        .first()
-        .map(|m| m.footprint_mb)
-        .unwrap_or(0);
-    let cpu_seconds = root.cpu_ticks / 100;
-    let age_secs = crate::reap::elapsed_secs(
-        root.starttime,
-        crate::reap::PROC_TICKS_PER_SEC,
-        0,
-        0,
-    );
-    // `elapsed_secs` needs the boot clock; the caller supplies it through
-    // the scan, so the tree builder is handed the two numbers it needs.
-    let _ = (age_secs, cpu_seconds);
-    unreachable!()
+    let root_footprint_mb = members.first().map(|m| m.footprint_mb).unwrap_or(0);
+    let cpu_seconds = root.cpu_ticks / ticks_per_sec.max(1);
+    let age_secs = crate::reap::elapsed_secs(root.starttime, ticks_per_sec, boot_time, now);
+    ForgottenTree {
+        root_pid: root.pid,
+        root_comm: root.comm.clone(),
+        root_args: root.args.clone(),
+        aggregate_footprint_mb,
+        root_footprint_mb,
+        member_count: members.len(),
+        age_secs,
+        cpu_seconds,
+        why: String::new(),
+        members,
+        root_starttime: root.starttime,
+    }
 }
 
 /// The live weight of a tree, measured now: the root's own footprint and
