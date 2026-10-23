@@ -8456,8 +8456,8 @@ pub(crate) async fn run_guard_once(
     state: &mut GuardRuntimeState,
 ) -> Result<GuardReport> {
     let details = disk_details_for(&guard.disk_mount_path).await?;
-    let mut used = details.use_percent;
-    let mut dstate = disk_state(used, guard).to_string();
+    let used = details.use_percent;
+    let dstate = disk_state(used, guard).to_string();
     let marker = sync_freeze_marker_path(guard);
     let mut sync_frozen = marker.exists();
 
