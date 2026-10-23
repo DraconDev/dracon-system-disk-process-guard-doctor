@@ -1582,3 +1582,167 @@ async fn disk_reclamation_rearms_the_rapid_fill_notification() {
     assert_ne!(previous.as_deref(), Some("rapid"));
     assert!(due);
 }
+
+// ---------------------------------------------------------------------------
+// User-namespace aware priority restore (ADDED 2026-10-24)
+// ---------------------------------------------------------------------------
+//
+// `CAP_SYS_NICE` is NAMESPACED: a process holding it in a nested user
+// namespace has it in that namespace and in its DESCENDANTS, never in an
+// ancestor. The guard's unit runs in a nested user namespace while most
+// of the host's processes live in the initial one, so the guard could
+// always LOWER a process's priority and could never RAISE it again.
+//
+// The renice mitigation was therefore a one-way ratchet, and because the
+// undo always failed with "Permission denied", every SIGHUP policy reload
+// was deferred forever: one unrestorable renice made the whole guard
+// impossible to reconfigure.
+
+#[test]
+fn the_namespace_link_parses_to_an_inode_number() {
+    assert_eq!(
+        parse_namespace_inode(Path::new("user:[4026531837]")),
+        Some(4026531837)
+    );
+    assert_eq!(
+        parse_namespace_inode(Path::new("user:[4026532749]")),
+        Some(4026532749)
+    );
+    assert_eq!(parse_namespace_inode(Path::new("user:[not-a-number]")), None);
+    assert_eq!(parse_namespace_inode(Path::new("pid:[4026531837]")), None);
+    assert_eq!(parse_namespace_inode(Path::new("4026531837")), None);
+}
+
+#[test]
+fn a_capability_in_one_namespace_does_not_reach_another() {
+    // The same namespace: the guard's CAP_SYS_NICE reaches the target.
+    assert!(nice_restore_namespace_ok(Some(4026531837), Some(4026531837)));
+    // A different namespace: it does not. This is the case that made the
+    // mitigation one-way on this host.
+    assert!(!nice_restore_namespace_ok(Some(4026532749), Some(4026531837)));
+    assert!(!nice_restore_namespace_ok(Some(4026531837), Some(4026532749)));
+    // Unreadable on either side fails closed.
+    assert!(!nice_restore_namespace_ok(None, Some(4026531837)));
+    assert!(!nice_restore_namespace_ok(Some(4026531837), None));
+    assert!(!nice_restore_namespace_ok(None, None));
+}
+
+#[test]
+fn a_permission_failure_is_permanent_but_a_transient_one_is_not() {
+    assert!(nice_restore_failure_is_permanent(
+        "renice exited with status exit status: 1: renice: failed to set priority for 42 (process ID): Permission denied"
+    ));
+    assert!(nice_restore_failure_is_permanent("Operation not permitted"));
+    // A transient failure must keep the OLD policy live so the mitigation
+    // is retried on the next pass instead of being forgotten.
+    assert!(!nice_restore_failure_is_permanent(
+        "renice exited with status exit status: 1"
+    ));
+    assert!(!nice_restore_failure_is_permanent(
+        "failed to invoke /usr/bin/renice"
+    ));
+}
+
+/// A fake proc tree holding one process, optionally in a user namespace.
+fn fake_proc_tree(name: &str, pid: i32, comm: &str, starttime: u64, ns: Option<u64>) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("dracon-ns-{}-{name}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("self")).expect("self entry");
+    let dir = root.join(pid.to_string());
+    fs::create_dir_all(&dir).expect("pid dir");
+    fs::write(dir.join("comm"), format!("{comm}\n")).expect("comm");
+    let stat = format!(
+        "{pid} ({comm}) S 1 {pid} {pid} 0 0 -1 4194304 0 0 0 0 0 0 0 20 0 1 0 {starttime} 0 0 0 0 0 0 0 0 0 0 0 0 17 2 0 0 0 0 0"
+    );
+    fs::write(dir.join("stat"), stat).expect("stat");
+    if let Some(ns) = ns {
+        let ns_dir = dir.join("ns");
+        fs::create_dir_all(&ns_dir).expect("ns dir");
+        symlink(format!("user:[{ns}]"), ns_dir.join("user")).expect("ns symlink");
+    }
+    root
+}
+
+#[test]
+fn the_user_namespace_is_read_from_proc() {
+    let root = fake_proc_tree("read", 4242, "minimax-code", 424_200, Some(4026531837));
+    assert_eq!(user_namespace_inode(&root, 4242), Some(4026531837));
+    // A pid with no namespace link is UNREADABLE, not "the same namespace".
+    assert_eq!(user_namespace_inode(&root, 9999), None);
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// THE REGRESSION TEST for 2026-10-24: a nice adjustment the guard cannot
+/// restore must not hold the policy reload hostage forever.
+///
+/// Before the fix this restore failed with "Permission denied", the entry
+/// stayed tracked, and `apply_policy_reload` kept the OLD policy live and
+/// deferred every later reload — the guard could not be reconfigured at
+/// all.
+#[tokio::test]
+async fn a_sighup_reload_is_not_deferred_by_an_unrestorable_nice_adjustment() {
+    let starttime = 424_200;
+    let root = fake_proc_tree("sighup", 4242, "minimax-code", starttime, Some(4026531837));
+    let mut state = crate::GuardRuntimeState::default();
+    state.reniced_pids.insert(
+        4242,
+        LegacyReniceState {
+            original_nice: 0,
+            applied_nice: 5,
+            identity: ProcessIdentity {
+                comm: "minimax-code".to_string(),
+                starttime,
+            },
+        },
+    );
+
+    // The renice binary is never reached: the guard can prove it cannot
+    // restore this process, so the adjustment is dropped rather than
+    // retried forever. A path that does not exist makes that visible.
+    let restored = crate::restore_runtime_adjustments_with_samples(
+        &mut state,
+        Path::new("/nonexistent/renice"),
+        Path::new("/nonexistent/systemctl"),
+        &root,
+        &[],
+    )
+    .await;
+
+    assert!(
+        restored,
+        "an unrestorable adjustment must not defer the policy reload"
+    );
+    assert!(
+        state.reniced_pids.is_empty(),
+        "the unrestorable adjustment must be dropped, not retried forever"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// The disk cleanup must not be able to stall the protection loop.
+///
+/// ADDED 2026-10-24: the cleanup used to run INLINE, ahead of the memory
+/// checks, and one pass held the loop for eight minutes on a busy
+/// filesystem — the guard applied no mitigation and reaped nothing while
+/// the host was in critical memory pressure.
+#[test]
+fn the_disk_cleanup_runs_in_the_background() {
+    let guard = crate::GuardPolicy::default();
+    let state = crate::GuardRuntimeState::default();
+    let slot = Arc::new(tokio::sync::Mutex::new(CleanupSummary::default()));
+
+    // The call returns immediately: the cleanup runs in its own task and
+    // the pass never waits for it.
+    let started = std::time::Instant::now();
+    spawn_background_cleanup(
+        &guard,
+        &state,
+        90,
+        CleanupMode::Proactive,
+        slot.clone(),
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(1),
+        "spawning the background cleanup must not block the pass"
+    );
+}
