@@ -609,8 +609,8 @@ pub(crate) fn default_forgotten_orphan_footprint_mb() -> u64 {
     2048
 }
 
-/// ADDED 2026-10-23: 512 MiB of resident-plus-swapped footprint, measured
-/// over a whole orphaned browser TREE rather than one process.
+/// ADDED 2026-10-23: the resident-plus-swapped footprint of a whole orphaned
+/// browser TREE, measured over the tree rather than one process.
 ///
 /// The 2026-10-23 leak held 8.6 GB across 792 orphaned browser processes
 /// whose median single-process weight was 3 MiB, so the 2 GiB per-process
@@ -618,12 +618,28 @@ pub(crate) fn default_forgotten_orphan_footprint_mb() -> u64 {
 /// leaked tree holding 1 GiB is unambiguously worth reclaiming, and this
 /// floor is an order of magnitude below what actually cost that day.
 ///
-/// MEASURED 2026-10-23: a single orphaned headless Chromium tree on this
-/// host (root + 8 renderers) holds ~807 MiB. A floor of 1 GiB therefore
-/// MISSES a single leaked browser tree — the natural unit of leakage — and
-/// only catches it once a second one has piled up. 512 MiB catches one.
+/// MEASURED 2026-10-23, then MEASURED AGAIN 2026-10-24 by the live proof
+/// that reaped one: a single orphaned headless Chromium tree on this host
+/// (root, two zygotes, the GPU process, the network and storage services,
+/// two renderers and the detached crashpad handler — nine processes) holds
+/// ~807 MiB when it is FRESH, and settles at **293 MiB** once the kernel
+/// has swapped most of it out. The weight is measured as resident PLUS
+/// swapped, so that 293 MiB is the whole tree, not just its resident half.
+///
+/// That second number is the one that matters. A 1 GiB floor misses a
+/// single leaked tree entirely, and a 512 MiB floor catches one only
+/// while it is young: a tree that has been leaking for hours is not
+/// fresh, it is swapped out, and it sits at 293 MiB — under a 512 MiB
+/// floor, which would therefore miss exactly the leak this pass exists
+/// to catch. 256 MiB catches one tree in the state a real leak spends
+/// most of its life in.
+///
+/// Everything else still has to be true before a tree is touched: it must
+/// be orphaned, detached from any terminal, sleeping, idle, a provable
+/// TEST job, and older than five minutes. The per-process floor
+/// (`forgotten_orphan_footprint_mb`, 2 GiB) is unchanged.
 pub(crate) fn default_forgotten_orphan_tree_footprint_mb() -> u64 {
-    512
+    256
 }
 
 pub(crate) fn default_quarantine_max_bytes_per_pass_mb() -> u64 {
