@@ -431,7 +431,15 @@ pub(crate) fn scan_forgotten_orphan_trees(
         if entry.state != 'S' {
             continue;
         }
-        if matches_exempt(&entry.exe, &policy.exempt_names) {
+        // The exempt list names APPLICATIONS. For a browser the name
+        // exemption is the wrong instrument — it would protect the
+        // operator's live session AND every headless test browser, and
+        // the headless test browsers are the leak. The desktop veto
+        // tells them apart exactly, so for a browser root the veto
+        // decides and the name exemption does not apply.
+        if !browser_decides_by_veto(&entry.args)
+            && matches_exempt(&entry.exe, &policy.exempt_names)
+        {
             continue;
         }
         if entry.cpu_ticks / ticks_per_sec.max(1) > policy.max_cpu_seconds {
