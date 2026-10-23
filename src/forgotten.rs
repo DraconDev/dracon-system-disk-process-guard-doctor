@@ -243,16 +243,11 @@ fn build_tree(
     });
 
     // The descendants, breadth-first, so each one knows how deep it sits.
-    let mut handler_links: Vec<i32> = Vec::new();
-    for (depth, pid) in table
-        .descendants(root_pid)
-        .into_iter()
-        .enumerate()
-        .map(|(i, pid)| (i as u32 + 1, pid))
-    {
+    let mut handler_links: Vec<(i32, u32)> = Vec::new();
+    for (pid, depth) in table.descendants(root_pid) {
         let Some(entry) = table.get(pid) else { continue };
         if let Some(handler) = crashpad_handler_pid(&entry.args) {
-            handler_links.push(handler);
+            handler_links.push((handler, depth + 1));
         }
         // An exempt member is left alone AND left out of the weight: the
         // exemption means "this is the operator's", so the guard neither
