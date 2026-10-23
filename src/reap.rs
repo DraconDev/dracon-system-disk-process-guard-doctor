@@ -226,15 +226,51 @@ pub(crate) fn swap_mb_from_status(pid_dir: &Path) -> u64 {
 /// other gate ran. The exempt list is a list of PROCESS NAMES (the renice
 /// path has always matched the name), so the reaper now matches the name
 /// too.
+///
+/// CHROMIUM REWRITES ITS OWN ARGV. Chromium reuses the memory after its
+/// argv for its own purposes, so `/proc/<pid>/cmdline` comes back for a
+/// Chrome process as ONE NUL-FREE blob rather than as NUL-separated
+/// fields. A naive "split on NUL, take the first field" therefore yields
+/// the WHOLE blob, and the basename of that is whatever followed the last
+/// slash in the blob — not the executable's name. That silently un-exempted
+/// the operator's own Chrome, which is the exact protection the exempt
+/// list exists to provide. The first whitespace-delimited token of the
+/// blob IS the executable path, so that is what is used.
 pub(crate) fn cmdline_executable(raw_cmdline: &str) -> String {
-    let argv0 = raw_cmdline.split('\0').next().unwrap_or("").trim();
-    if argv0.is_empty() {
+    let first = raw_cmdline.split('\0').next().unwrap_or("").trim();
+    if first.is_empty() {
         return String::new();
     }
-    Path::new(argv0)
+    let first = first.split_whitespace().next().unwrap_or(first);
+    Path::new(first)
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default()
+}
+
+/// The executable NAME of a process: the basename of the binary it is
+/// running, read from the `/proc/<pid>/exe` symlink.
+///
+/// ADDED 2026-10-23: this is the authoritative answer and it is not
+/// affected by Chromium rewriting its own argv. The command line is only
+/// the fallback, for the processes whose `/proc/<pid>/exe` cannot be read
+/// (another user's process).
+pub(crate) fn proc_exe_name(pid_dir: &Path) -> Option<String> {
+    let target = std::fs::read_link(pid_dir.join("exe")).ok()?;
+    let name = target
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())?;
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
+}
+
+/// The executable NAME of a process, from `/proc/<pid>/exe` when it can be
+/// read and from the command line otherwise.
+pub(crate) fn process_executable_name(pid_dir: &Path, raw_cmdline: &str) -> String {
+    proc_exe_name(pid_dir).unwrap_or_else(|| cmdline_executable(raw_cmdline))
 }
 
 /// True when the exempt list covers this executable.
@@ -356,7 +392,7 @@ pub(crate) fn read_proc_table(proc_root: &Path) -> ProcTable {
         if args.is_empty() {
             continue;
         }
-        let exe = cmdline_executable(&cmdline_raw);
+        let exe = process_executable_name(&pid_dir, &cmdline_raw);
         let comm = std::fs::read_to_string(pid_dir.join("comm"))
             .map(|c| c.trim().to_string())
             .unwrap_or_default();
@@ -434,7 +470,7 @@ pub(crate) fn scan_reap_candidates(
         if args.is_empty() {
             continue;
         }
-        if matches_exempt(&cmdline_executable(&cmdline_raw), &policy.exempt_names) {
+        if matches_exempt(&process_executable_name(&pid_dir, &cmdline_raw), &policy.exempt_names) {
             continue;
         }
         let Some(signature) = matches_signature(&args, &policy.signatures) else {
@@ -544,7 +580,7 @@ pub(crate) fn verify_candidate_for_reap(
     if args.is_empty() {
         return false;
     }
-    if matches_exempt(&cmdline_executable(&cmdline_raw), &policy.exempt_names) {
+    if matches_exempt(&process_executable_name(&pid_dir, &cmdline_raw), &policy.exempt_names) {
         return false;
     }
     matches_signature(&args, &policy.signatures).is_some()
@@ -763,7 +799,7 @@ pub(crate) fn verify_orphan_for_reap(
     if args.is_empty() {
         return false;
     }
-    if matches_exempt(&cmdline_executable(&cmdline_raw), &policy.exempt_names) {
+    if matches_exempt(&process_executable_name(&pid_dir, &cmdline_raw), &policy.exempt_names) {
         return false;
     }
     matches_signature(&args, &policy.signatures).is_some()
@@ -843,7 +879,7 @@ pub(crate) fn verify_forgotten_tree_for_reap(
     if args.is_empty() {
         return None;
     }
-    if matches_exempt(&cmdline_executable(&cmdline_raw), &policy.exempt_names) {
+    if matches_exempt(&process_executable_name(&pid_dir, &cmdline_raw), &policy.exempt_names) {
         return None;
     }
     // The desktop-session veto applies at kill time as well: a tree that no
@@ -881,7 +917,7 @@ pub(crate) fn verify_forgotten_tree_for_reap(
             skipped += 1;
             continue;
         };
-        if matches_exempt(&cmdline_executable(&cmdline_raw), &policy.exempt_names) {
+        if matches_exempt(&process_executable_name(&pid_dir, &cmdline_raw), &policy.exempt_names) {
             skipped += 1;
             continue;
         }
@@ -1271,7 +1307,7 @@ pub(crate) fn scan_pressure_orphans(
         if args.is_empty() {
             continue;
         }
-        if matches_exempt(&cmdline_executable(&cmdline_raw), &policy.exempt_names) {
+        if matches_exempt(&process_executable_name(&pid_dir, &cmdline_raw), &policy.exempt_names) {
             continue;
         }
         let Some(signature) = matches_signature(&args, &policy.signatures) else {
