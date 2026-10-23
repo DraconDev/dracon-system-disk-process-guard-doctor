@@ -312,6 +312,17 @@ clean_tmp = false
 # neither is the operator's own session and is vetoed. Resident PLUS
 # swapped footprint, in MiB.
 # forgotten_orphan_footprint_mb = 2048
+# The weight floor for a FORGOTTEN heavy orphan TREE (ADDED 2026-10-23):
+# the SAME proof as above, but the weight is the AGGREGATE over the tree's
+# root and every member, not the weight of one process. A browser is a
+# tree — a root, a zygote, renderers, GPU and network helpers, a detached
+# crashpad handler — and on 2026-10-23 that tree leaked 8.6 GB across 792
+# processes whose median single-process weight was 3 MiB: no member ever
+# crossed the floor above, so the guard logged critical memory pressure
+# and reaped nothing. A tree qualifies when EITHER its aggregate crosses
+# this floor OR its root crosses the per-process floor above; 0 disables
+# the aggregate trigger, leaving the per-process one.
+# forgotten_orphan_tree_footprint_mb = 1024
 # Per-pass cap on cross-device quarantine-move bytes (default 10240 = 10 GiB;
 # 0 = unlimited). Over-budget candidates defer with an explicit note instead
 # of stalling the desktop mid-pass — the 2026-10-04 incident that disabled
