@@ -61,13 +61,19 @@ every one of those gates.
 
 ### The new knobs
 
+The `default` column is the LITERAL value in its own unit, so a reader
+never has to reconstruct the unit from the knob's name — `_hours`,
+`_secs`, `_gib` and `_mb` in the name are how the knob is spelled in
+code, not how its default should be read. The numeral is still the
+value: `2 h` is two hours, `300 s` is three hundred seconds.
+
 | knob | default | meaning |
 |---|---|---|
-| `tmp_large_entry_bytes` | 1073741824 (1 GiB) | the size at which the short floor applies |
-| `tmp_large_min_age_hours` | 2 | the short floor; 0 disables the size-aware floor |
-| `tmp_scratch_warn_gib` | 20 | warn when the age floor holds back this much scratch; 0 never warns |
-| `cleanup_command_timeout_secs` | 300 | the hard bound on an external cleanup command; 0 means the default |
-| `forgotten_orphan_footprint_mb` | 2048 | the resident-plus-swapped weight floor for a forgotten orphan (section 3) |
+| `tmp_large_entry_bytes` | 1073741824 B (1 GiB) | the size at which the short floor applies |
+| `tmp_large_min_age_hours` | 2 h | the short floor; 0 disables the size-aware floor |
+| `tmp_scratch_warn_gib` | 20 GiB | warn when the age floor holds back this much scratch; 0 never warns |
+| `cleanup_command_timeout_secs` | 300 s | the hard bound on an external cleanup command; 0 means the default |
+| `forgotten_orphan_footprint_mb` | 2048 MiB | the resident-plus-swapped weight floor for a forgotten orphan (section 3) |
 
 The live policy on this host also lowers the general floor from 24 h to
 6 h, which is what bounds the LONG tail: 20,530 entries of under 20 MiB
