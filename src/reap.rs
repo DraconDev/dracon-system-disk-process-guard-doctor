@@ -773,77 +773,320 @@ pub(crate) fn reap_pressure_orphans(
     )
 }
 
-/// Re-verify a FORGOTTEN heavy orphan, live, immediately before the signal.
+/// Re-verify a FORGOTTEN tree, live, immediately before the signal.
 ///
-/// ADDED 2026-10-22: every gate is checked AGAIN at kill time, exactly as
-/// the other passes do — the owner must still be dead, the process must
-/// still have no terminal, the starttime must still match (so a recycled
-/// PID is never signalled), the process must still be classified as a TEST
-/// job (a desktop session is vetoed at the last moment too), and it must
+/// ADDED 2026-10-23: every gate is checked AGAIN at kill time, exactly as
+/// the other passes do — the owner must still be dead, the root must still
+/// have no terminal, the starttime must still match (so a recycled PID is
+/// never signalled), the root must still be classified as a TEST job (a
+/// desktop session is vetoed at the last moment too), and the tree must
 /// still be heavy.
-pub(crate) fn verify_forgotten_heavy_for_reap(
+///
+/// The return value is the set of members that are still OURS to signal.
+/// `None` means the tree as a whole is off limits. A member that has
+/// exited, or whose PID was recycled, or that has become exempt, is left
+/// out of that set rather than ending the whole tree — the rest of the
+/// tree is still reclaimable.
+pub(crate) fn verify_forgotten_tree_for_reap(
     proc_root: &Path,
-    candidate: &ReapCandidate,
+    tree: &crate::forgotten::ForgottenTree,
     policy: &ReapPolicy,
     ticks_per_sec: u64,
-) -> bool {
-    let _ = ticks_per_sec;
-    if candidate.pid <= 1 || candidate.pid == std::process::id() as i32 {
-        return false;
-    }
-    let pid_dir = proc_root.join(candidate.pid.to_string());
+) -> Option<VerifiedTree> {
+    let pid_dir = proc_root.join(tree.root_pid.to_string());
     let Ok(raw) = std::fs::read_to_string(pid_dir.join("stat")) else {
-        return false;
+        return None;
     };
     let Some(fields) = parse_stat(&raw) else {
-        return false;
+        return None;
     };
-    if fields.starttime != candidate.starttime {
-        return false;
+    // PID reuse: same number, different process. Never signal it.
+    if fields.starttime != tree.root_starttime {
+        return None;
     }
+    // Owner must STILL be dead.
     if !parent_comm_is_systemd(proc_root, fields.ppid) {
-        return false;
+        return None;
     }
     if fields.tty_nr != 0 || fields.state != 'S' {
-        return false;
+        return None;
+    }
+    if fields.cpu_ticks / ticks_per_sec.max(1) > policy.max_cpu_seconds {
+        return None;
     }
     let Ok(cmdline_raw) = std::fs::read_to_string(pid_dir.join("cmdline")) else {
-        return false;
+        return None;
     };
     let args = cmdline_raw.replace('\0', " ").trim().to_string();
     if args.is_empty() {
-        return false;
+        return None;
     }
     if matches_exempt(&cmdline_executable(&cmdline_raw), &policy.exempt_names) {
-        return false;
+        return None;
     }
-    // The desktop-session veto applies at kill time as well: a process that
-    // no longer looks like a test job is not ours to end.
+    // The desktop-session veto applies at kill time as well: a tree that no
+    // longer looks like a test job is not ours to end.
     match crate::forgotten::classify_desktop_session(&args) {
         crate::forgotten::DesktopVerdict::Test { .. } => {}
-        _ => return false,
+        _ => return None,
     }
-    let rss_mb = rss_mb_from_status(&pid_dir);
-    let swap_mb = crate::read_proc_swap_mb(candidate.pid).unwrap_or(0);
-    rss_mb.saturating_add(swap_mb) >= policy.forgotten_footprint_mb
+
+    let mut members: Vec<crate::forgotten::TreeMember> = Vec::new();
+    let mut skipped = 0usize;
+    for member in &tree.members {
+        let member_dir = proc_root.join(member.pid.to_string());
+        let Ok(raw) = std::fs::read_to_string(member_dir.join("stat")) else {
+            // Already gone: there is nothing left to signal.
+            skipped += 1;
+            continue;
+        };
+        let Some(fields) = parse_stat(&raw) else {
+            skipped += 1;
+            continue;
+        };
+        if fields.starttime != member.starttime {
+            // The PID was recycled: this is a stranger wearing the
+            // member's number. Never signal it.
+            skipped += 1;
+            continue;
+        }
+        if fields.state == 'Z' || fields.state == 'X' {
+            // Already dead; the parent just has not reaped it.
+            skipped += 1;
+            continue;
+        }
+        let Ok(cmdline_raw) = std::fs::read_to_string(member_dir.join("cmdline")) else {
+            skipped += 1;
+            continue;
+        };
+        if matches_exempt(&cmdline_executable(&cmdline_raw), &policy.exempt_names) {
+            skipped += 1;
+            continue;
+        }
+        members.push(member.clone());
+    }
+    if members.is_empty() {
+        return None;
+    }
+
+    // The tree must still be heavy: if the weight has already gone (the
+    // members exited on their own), there is nothing to reclaim.
+    let (root_footprint, aggregate) =
+        crate::forgotten::measure_tree_footprint(proc_root, tree.root_pid, &members);
+    if aggregate < policy.forgotten_tree_footprint_mb && root_footprint < policy.forgotten_footprint_mb
+    {
+        return None;
+    }
+
+    Some(VerifiedTree { members, skipped })
 }
 
-/// End the forgotten heavy orphans, under pressure only.
-pub(crate) fn reap_forgotten_heavy_orphans(
+/// The members of a tree that are still ours to signal.
+#[derive(Debug, Clone)]
+pub(crate) struct VerifiedTree {
+    /// Signal these, deepest-first.
+    pub(crate) members: Vec<crate::forgotten::TreeMember>,
+    /// How many members were left alone (gone, recycled, or exempt).
+    pub(crate) skipped: usize,
+}
+
+/// What happened when the guard tried to end one tree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TreeTermination {
+    /// Members that were signalled and are gone.
+    pub(crate) members_ended: usize,
+    /// Members that survived the SIGKILL escalation.
+    pub(crate) members_left: usize,
+    /// Members that were already gone when the tree was signalled.
+    pub(crate) already_gone: usize,
+    /// Members the guard refused to signal (reserved pid, permission).
+    pub(crate) refused: usize,
+    /// Whether the SIGKILL escalation was needed.
+    pub(crate) escalated_to_sigkill: bool,
+}
+
+/// End a whole tree: SIGTERM every member at once, then SIGKILL whatever
+/// is still alive.
+///
+/// A tree is NOT ended one process at a time. The single-process path
+/// waits up to ~7s for each kill before moving on, so a 792-process tree
+/// would hold the blocking thread for over an hour. Signalling every
+/// member in one round and then waiting once costs about as much as a
+/// single kill.
+///
+/// The members are ended DEEPEST FIRST: a parent that outlives its
+/// children can respawn them, and a root that dies first leaves its
+/// children reparented to init — which is the exact shape this pass
+/// exists to clean up.
+pub(crate) fn terminate_tree(members: &[crate::forgotten::TreeMember]) -> TreeTermination {
+    let mut signalled: Vec<i32> = Vec::new();
+    let mut already_gone = 0usize;
+    let mut refused = 0usize;
+    for member in members {
+        let pid = member.pid;
+        if pid <= 1 || pid == std::process::id() as i32 {
+            refused += 1;
+            continue;
+        }
+        if !pid_is_alive(pid) {
+            already_gone += 1;
+            continue;
+        }
+        // SAFETY: pid is a positive, non-self PID that was verified live
+        // against the live proc tree immediately before this call.
+        let rc = unsafe { libc::kill(pid, libc::SIGTERM) };
+        if rc == 0 {
+            signalled.push(pid);
+            continue;
+        }
+        // SAFETY: errno read immediately after the failed call.
+        let errno = unsafe { *libc::__errno_location() };
+        if errno == libc::ESRCH {
+            already_gone += 1;
+        } else {
+            refused += 1;
+        }
+    }
+
+    let mut pending = signalled.clone();
+    for _ in 0..TERM_GRACE_POLLS {
+        if pending.is_empty() {
+            break;
+        }
+        pending.retain(|pid| pid_is_alive(*pid));
+        if pending.is_empty() {
+            break;
+        }
+        std::thread::sleep(GRACE_POLL_INTERVAL);
+    }
+
+    let mut escalated = false;
+    for pid in &pending {
+        // SAFETY: same PIDs as above; SIGKILL cannot be caught or ignored.
+        let rc = unsafe { libc::kill(*pid, libc::SIGKILL) };
+        if rc == 0 {
+            escalated = true;
+        }
+    }
+    let mut survivors = pending.clone();
+    for _ in 0..KILL_GRACE_POLLS {
+        if survivors.is_empty() {
+            break;
+        }
+        survivors.retain(|pid| pid_is_alive(*pid));
+        if survivors.is_empty() {
+            break;
+        }
+        std::thread::sleep(GRACE_POLL_INTERVAL);
+    }
+
+    TreeTermination {
+        members_ended: signalled.len() - survivors.len(),
+        members_left: survivors.len(),
+        already_gone,
+        refused,
+        escalated_to_sigkill: escalated,
+    }
+}
+
+/// One tree the forgotten-orphan pass considered, with what it did about it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct ReapedTree {
+    pub(crate) root_pid: i32,
+    pub(crate) root_comm: String,
+    /// How many processes the tree held at scan time.
+    pub(crate) member_count: usize,
+    /// The tree's aggregate resident-plus-swapped footprint at scan time.
+    pub(crate) aggregate_footprint_mb: u64,
+    pub(crate) verified: bool,
+    pub(crate) members_ended: usize,
+    pub(crate) members_left: usize,
+    pub(crate) members_skipped: usize,
+    pub(crate) escalated_to_sigkill: bool,
+    pub(crate) disposition: ReapDisposition,
+}
+
+/// End the forgotten orphan trees, under pressure only.
+pub(crate) fn reap_forgotten_orphan_trees(
     proc_root: &Path,
     policy: &ReapPolicy,
-    candidates: &[ReapCandidate],
+    trees: &[crate::forgotten::ForgottenTree],
     ticks_per_sec: u64,
-) -> Vec<ReapedProcess> {
-    reap_verified_candidates(
-        proc_root,
-        policy,
-        candidates,
-        ticks_per_sec,
-        verify_forgotten_heavy_for_reap,
-        "forgotten-reap",
-        REAP_PASS_BUDGET,
-    )
+) -> Vec<ReapedTree> {
+    let mut out = Vec::with_capacity(trees.len());
+    let pass_started = std::time::Instant::now();
+    for tree in trees {
+        if pass_started.elapsed() >= REAP_PASS_BUDGET {
+            eprintln!(
+                "🛡️ forgotten-reap: tree {} deferred -- pass budget reached, next pass re-scans it",
+                tree.root_pid,
+            );
+            out.push(ReapedTree {
+                root_pid: tree.root_pid,
+                root_comm: tree.root_comm.clone(),
+                member_count: tree.member_count,
+                aggregate_footprint_mb: tree.aggregate_footprint_mb,
+                verified: false,
+                members_ended: 0,
+                members_left: 0,
+                members_skipped: 0,
+                escalated_to_sigkill: false,
+                disposition: ReapDisposition::Deferred,
+            });
+            continue;
+        }
+        let Some(verified) = verify_forgotten_tree_for_reap(proc_root, tree, policy, ticks_per_sec)
+        else {
+            eprintln!(
+                "🛡️ forgotten-reap: tree {} no longer verifies -- skipped, nothing signalled",
+                tree.root_pid,
+            );
+            out.push(ReapedTree {
+                root_pid: tree.root_pid,
+                root_comm: tree.root_comm.clone(),
+                member_count: tree.member_count,
+                aggregate_footprint_mb: tree.aggregate_footprint_mb,
+                verified: false,
+                members_ended: 0,
+                members_left: 0,
+                members_skipped: 0,
+                escalated_to_sigkill: false,
+                disposition: ReapDisposition::NotVerified,
+            });
+            continue;
+        };
+        // Deepest first, so a parent cannot outlive its children.
+        let mut members = verified.members;
+        members.sort_by(|a, b| b.depth.cmp(&a.depth));
+        let outcome = terminate_tree(&members);
+        eprintln!(
+            "🛡️ forgotten-reap: tree {} ({} processes, {}MiB) -> {} ended, {} left, {} skipped{}",
+            tree.root_pid,
+            tree.member_count,
+            tree.aggregate_footprint_mb,
+            outcome.members_ended,
+            outcome.members_left,
+            verified.skipped,
+            if outcome.escalated_to_sigkill {
+                " (escalated to SIGKILL)"
+            } else {
+                ""
+            },
+        );
+        out.push(ReapedTree {
+            root_pid: tree.root_pid,
+            root_comm: tree.root_comm.clone(),
+            member_count: tree.member_count,
+            aggregate_footprint_mb: tree.aggregate_footprint_mb,
+            verified: true,
+            members_ended: outcome.members_ended,
+            members_left: outcome.members_left,
+            members_skipped: verified.skipped,
+            escalated_to_sigkill: outcome.escalated_to_sigkill,
+            disposition: ReapDisposition::Signalled,
+        });
+    }
+    out
 }
 
 pub(crate) fn reap_verified_candidates(
