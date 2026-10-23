@@ -609,7 +609,7 @@ pub(crate) fn default_forgotten_orphan_footprint_mb() -> u64 {
     2048
 }
 
-/// ADDED 2026-10-23: 1 GiB of resident-plus-swapped footprint, measured
+/// ADDED 2026-10-23: 512 MiB of resident-plus-swapped footprint, measured
 /// over a whole orphaned browser TREE rather than one process.
 ///
 /// The 2026-10-23 leak held 8.6 GB across 792 orphaned browser processes
@@ -617,8 +617,13 @@ pub(crate) fn default_forgotten_orphan_footprint_mb() -> u64 {
 /// floor was never crossed by any of them and the guard saw nothing. A
 /// leaked tree holding 1 GiB is unambiguously worth reclaiming, and this
 /// floor is an order of magnitude below what actually cost that day.
+///
+/// MEASURED 2026-10-23: a single orphaned headless Chromium tree on this
+/// host (root + 8 renderers) holds ~807 MiB. A floor of 1 GiB therefore
+/// MISSES a single leaked browser tree — the natural unit of leakage — and
+/// only catches it once a second one has piled up. 512 MiB catches one.
 pub(crate) fn default_forgotten_orphan_tree_footprint_mb() -> u64 {
-    1024
+    512
 }
 
 pub(crate) fn default_quarantine_max_bytes_per_pass_mb() -> u64 {

@@ -322,7 +322,7 @@ clean_tmp = false
 # and reaped nothing. A tree qualifies when EITHER its aggregate crosses
 # this floor OR its root crosses the per-process floor above; 0 disables
 # the aggregate trigger, leaving the per-process one.
-# forgotten_orphan_tree_footprint_mb = 1024
+# forgotten_orphan_tree_footprint_mb = 512
 # Per-pass cap on cross-device quarantine-move bytes (default 10240 = 10 GiB;
 # 0 = unlimited). Over-budget candidates defer with an explicit note instead
 # of stalling the desktop mid-pass — the 2026-10-04 incident that disabled
