@@ -285,18 +285,27 @@ the same executable name — was left untouched.
 | knob | default | meaning |
 |---|---|---|
 | `forgotten_orphan_footprint_mb` | 2048 MiB | the ROOT's own resident-plus-swapped weight floor |
-| `forgotten_orphan_tree_footprint_mb` | 512 MiB | the tree's AGGREGATE resident-plus-swapped weight floor; 0 disables the aggregate trigger |
+| `forgotten_orphan_tree_footprint_mb` | 256 MiB | the tree's AGGREGATE resident-plus-swapped weight floor; 0 disables the aggregate trigger |
 
 Both are carried by the crate's defaults, the NixOS operator module, the
 example policy and the live policy, and `scripts/check-guard-knob-parity.sh`
 asserts that they agree.
 
-The aggregate floor was measured, not guessed. A single orphaned headless
-Chromium tree on this host (root + 8 renderers) held **807 MiB** when it
-was fresh, and fell to **329 MiB** once the kernel had swapped most of it
-out and discarded the dirty pages. A floor of 1 GiB therefore MISSES a
-single leaked browser tree — the natural unit of leakage — and only
-catches it once a second one has piled up.
+The aggregate floor was measured, not guessed, and then measured AGAIN by
+the live proof. A single orphaned headless Chromium tree on this host (root
++ 8 renderers) held **807 MiB** when it was fresh, and fell to **329 MiB**
+once the kernel had swapped most of it out and discarded the dirty pages.
+A floor of 1 GiB therefore MISSES a single leaked browser tree — the natural
+unit of leakage — and only catches it once a second one has piled up.
+
+The live proof sharpened that. The tree it reaped (nine processes: root,
+two zygotes, the GPU process, the network and storage services, two
+renderers and the detached crashpad handler) was **293 MiB** at the moment
+it was reaped — not fresh, but in the state a real leak spends most of its
+life in, because the kernel has swapped it out. So a 512 MiB floor catches
+one only while it is young, and MISSES the very thing this pass exists to
+catch: a tree that has been leaking for hours. **256 MiB** catches one tree
+in its steady state, with headroom.
 
 Note that the weight is measured as resident PLUS swapped, so a tree that
 the kernel has swapped out is not mistaken for a small one: the 329 MiB
