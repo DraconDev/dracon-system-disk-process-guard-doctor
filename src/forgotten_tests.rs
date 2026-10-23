@@ -413,7 +413,7 @@ fn a_heavy_desktop_tree_is_vetoed_even_though_its_root_is_light() {
             0,
             1,
             10 * 3600,
-            10,
+            100,
         );
     }
     let scan = fx.scan_with_floors(&policy(), 2048, 64);
@@ -422,6 +422,14 @@ fn a_heavy_desktop_tree_is_vetoed_even_though_its_root_is_light() {
         "a desktop tree must never be a candidate: {:?}",
         scan.candidates
     );
+    assert_eq!(
+        scan.vetoed.len(),
+        1,
+        "the heavy desktop tree must be reported as vetoed: {:?}",
+        scan.vetoed
+    );
+    assert_eq!(scan.vetoed[0].member_count, 41);
+    assert_eq!(scan.vetoed[0].aggregate_footprint_mb, 4010);
 }
 
 /// The detached crashpad handler belongs to the tree: Chromium's handler
