@@ -503,17 +503,26 @@ fn the_detached_crashpad_handler_is_part_of_the_tree() {
 /// other gate ran.
 #[test]
 fn a_test_profile_path_does_not_exempt_a_test_browser() {
-    let args = "/usr/bin/chromium --headless=new --user-data-dir=/tmp/puppeteer_dev_chrome_profile-abc";
+    // The RAW cmdline, NUL-separated as /proc gives it: argv[0] is the
+    // executable, the rest are its arguments.
+    let test_browser = "/usr/bin/chromium\0--headless=new\0--no-sandbox\0--user-data-dir=/tmp/puppeteer_dev_chrome_profile-abc\0";
     let exempt = vec!["chrome".to_string()];
     assert!(
-        !matches_exempt(&cmdline_executable(args), &exempt),
+        !matches_exempt(&cmdline_executable(test_browser), &exempt),
         "a puppeteer test browser must NOT be exempt just because its profile path contains 'chrome'"
     );
     // The operator's own browser IS protected: its executable is `chrome`.
-    let own = "/nix/store/x/google-chrome-149.0.7827.200/share/google/chrome/chrome --ozone-platform=x11";
+    let own = "/nix/store/x/google-chrome-149.0.7827.200/share/google/chrome/chrome\0--ozone-platform=x11\0";
     assert!(
         matches_exempt(&cmdline_executable(own), &exempt),
         "the operator's own chrome must stay exempt"
+    );
+    // The playwright family was never caught by the substring either, and
+    // must stay visible now.
+    let playwright = "/nix/store/x/chromium/chromium\0--headless=new\0--user-data-dir=/tmp/playwright_chromiumdev_profile-Zz\0";
+    assert!(
+        !matches_exempt(&cmdline_executable(playwright), &exempt),
+        "a playwright test browser must not be exempt"
     );
 }
 
