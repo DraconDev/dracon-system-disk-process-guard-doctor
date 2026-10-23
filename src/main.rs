@@ -9468,6 +9468,45 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
                 Cell::new(summarize_reaped(&memory.pressure_reaped)),
             ]);
         }
+        if !memory.forgotten_trees.is_empty() {
+            let mut parts: Vec<String> = memory
+                .forgotten_trees
+                .iter()
+                .map(|t| {
+                    format!(
+                        "pid={} {} proc {}MiB",
+                        t.root_pid, t.member_count, t.aggregate_footprint_mb
+                    )
+                })
+                .collect();
+            parts.sort();
+            table.add_row(vec![
+                Cell::new("🧹"),
+                Cell::new("Forgotten orphan trees"),
+                Cell::new(format!("{} — {}", memory.forgotten_trees.len(), parts.join(", "))),
+            ]);
+        }
+        if !memory.forgotten_reaped.is_empty() {
+            let ended: usize = memory.forgotten_reaped.iter().map(|r| r.members_ended).sum();
+            table.add_row(vec![
+                Cell::new("🪓"),
+                Cell::new("Reaped (forgotten trees)"),
+                Cell::new(format!(
+                    "{} tree(s), {ended} process(es) ended",
+                    memory.forgotten_reaped.len()
+                )),
+            ]);
+        }
+        if !memory.vetoed_trees.is_empty() {
+            table.add_row(vec![
+                Cell::new("🛡️"),
+                Cell::new("Heavy trees vetoed"),
+                Cell::new(format!(
+                    "{} (left alone — a live desktop session)",
+                    memory.vetoed_trees.len()
+                )),
+            ]);
+        }
     }
 
     println!("{table}");
