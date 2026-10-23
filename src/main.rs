@@ -6105,32 +6105,37 @@ fn reap_policy_from_guard(guard: &GuardPolicy) -> ReapPolicy {
         signatures: sorted_signatures(&guard.reap_report_signatures),
         exempt_names: sorted_signatures(&guard.process_exempt_names),
         forgotten_footprint_mb: guard.forgotten_orphan_footprint_mb,
+        forgotten_tree_footprint_mb: guard.forgotten_orphan_tree_footprint_mb,
     }
 }
 
-/// Scan for forgotten heavy orphans: heavy, idle, orphaned, and provably a
-/// test job.
+/// Scan for forgotten heavy orphan TREES: heavy, idle, orphaned, and
+/// provably a test job.
 ///
-/// ADDED 2026-10-22. Never signals anything: this is the report half. The
-/// ending half is `reap_forgotten_heavy_orphans`, and it runs only under
-/// memory pressure.
-fn forgotten_scan(guard: &GuardPolicy) -> ForgottenScan {
+/// ADDED 2026-10-22 as a per-process scan; CHANGED 2026-10-23 to weigh a
+/// whole tree, because the leak that cost 8.6 GB was 792 processes of
+/// ~3 MiB each and no single one of them ever crossed a per-process
+/// floor. Never signals anything: this is the report half. The ending
+/// half is `reap_forgotten_orphan_trees`, and it runs only under memory
+/// pressure.
+fn forgotten_scan(guard: &GuardPolicy) -> ForgottenTreeScan {
     let proc_root = Path::new("/proc");
     let Some(boot_time) = read_boot_time(proc_root) else {
-        return ForgottenScan::default();
+        return ForgottenTreeScan::default();
     };
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(boot_time);
     let policy = reap_policy_from_guard(guard);
-    scan_forgotten_heavy_orphans(
+    scan_forgotten_orphan_trees(
         proc_root,
         &policy,
         boot_time,
         now,
         PROC_TICKS_PER_SEC,
         guard.forgotten_orphan_footprint_mb,
+        guard.forgotten_orphan_tree_footprint_mb,
     )
 }
 
