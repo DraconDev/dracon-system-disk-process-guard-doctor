@@ -821,6 +821,11 @@ pub(crate) struct GuardRuntimeState {
     /// guard disables reversible renice actions instead of leaving processes
     /// permanently deprioritized and retrying noisy restorations forever.
     pub(crate) nice_restore_capability_warned: bool,
+    /// ADDED 2026-10-24: pids the guard refused to renice because it could
+    /// not restore their priority afterwards (a different user namespace).
+    /// Reported once per pid, so the operator can see WHY a mitigation that
+    /// used to apply has stopped applying.
+    pub(crate) nice_restore_skipped_pids: std::collections::HashSet<i32>,
     /// ADDED 2026-08-10 (v0.112.36): pids whose oom_score_adj was
     /// raised under critical pressure (original adjustment, stable
     /// process identity), and their restore timers.
@@ -5290,6 +5295,21 @@ async fn check_memory_pressure(
                             .map(|entry| entry.original_nice)
                     })
                     .unwrap_or(p.nice);
+                // ADDED 2026-10-24: never apply a priority the guard could
+                // not take back. The old code checked the capability in the
+                // guard's OWN user namespace only, and that check said yes
+                // for processes the guard provably cannot restore — so the
+                // mitigation was a one-way ratchet that left the operator's
+                // long-lived processes stuck at a degraded priority.
+                if !can_restore_nice_for(Path::new("/proc"), p.pid) {
+                    if state.nice_restore_skipped_pids.insert(p.pid) {
+                        eprintln!(
+                            "⚠️ renice mitigation skipped for pid={} cmd={} — the guard cannot restore its priority in that process's user namespace, so it will not lower it",
+                            p.pid, p.command
+                        );
+                    }
+                    continue;
+                }
                 match renice_process(p.pid, nice_val).await {
                     Ok(()) => {
                         state.memory_reniced_pids.insert(
