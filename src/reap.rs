@@ -187,6 +187,25 @@ pub(crate) fn rss_mb_from_status(pid_dir: &Path) -> u64 {
         .unwrap_or(0)
 }
 
+/// The swapped-out footprint of a process, in MiB, read from a `status` file.
+///
+/// ADDED 2026-10-23: `read_proc_swap_mb` in main.rs reads the LIVE
+/// `/proc/<pid>/status` by absolute path, which cannot be pointed at a
+/// fixture tree. The tree pass needs the same number measured against a
+/// fixture root, so the read is split from the path choice.
+pub(crate) fn swap_mb_from_status(pid_dir: &Path) -> u64 {
+    let Ok(status) = std::fs::read_to_string(pid_dir.join("status")) else {
+        return 0;
+    };
+    status
+        .lines()
+        .find_map(|line| line.strip_prefix("VmSwap:"))
+        .and_then(|rest| rest.split_whitespace().next())
+        .and_then(|kb| kb.parse::<u64>().ok())
+        .map(|kb| kb / 1024)
+        .unwrap_or(0)
+}
+
 /// The executable a raw `/proc/<pid>/cmdline` names: the basename of
 /// argv[0].
 ///
