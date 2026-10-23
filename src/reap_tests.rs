@@ -133,6 +133,14 @@ impl Fixture {
         fs::write(dir.join("comm"), format!("{comm}\n")).expect("parent comm");
     }
 
+    /// The `/proc/<pid>/exe` symlink: the authoritative executable name.
+    fn exe_symlink(&self, pid: i32, target: &str) {
+        let dir = self.root.join(pid.to_string());
+        fs::create_dir_all(&dir).expect("pid dir");
+        let _ = std::os::unix::fs::remove_file(dir.join("exe"));
+        std::os::unix::fs::symlink(target, dir.join("exe")).expect("exe symlink");
+    }
+
     fn orphan_scan(&self, policy: &ReapPolicy) -> Vec<ReapCandidate> {
         scan_pressure_orphans(&self.root, policy, self.boot_time, self.now, TICKS)
     }
