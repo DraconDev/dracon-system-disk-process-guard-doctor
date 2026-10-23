@@ -339,11 +339,18 @@ clean_tmp = false
 # see reap.rs). A process is listed only when ALL hold: sleeping, no
 # controlling terminal, lifetime CPU under the ceiling, older than the
 # idle floor, command line matches a signature, not in
-# process_exempt_names above. NOTE (audit F119, 2026-10-08): in the REAPER
-# an exempt entry matches as a COMMAND-LINE SUBSTRING (`sleep 5 --flag
-# plasmashell` is exempt), while the same list in the renice path matches
-# the exact process name. Use bare process names here, not argument
-# fragments, unless the substring breadth is deliberate.
+# process_exempt_names above. NOTE (audit F119, 2026-10-08): the REAPER
+# used to match an exempt entry as a COMMAND-LINE SUBSTRING, so the token
+# `chrome` matched `--user-data-dir=/tmp/puppeteer_dev_chrome_profile-*`
+# and every Puppeteer test browser was exempt — the browser family that
+# leaked 8.6 GB of orphaned processes on 2026-10-23, invisible to the
+# guard. CHANGED 2026-10-23: the reaper now matches an exempt entry
+# against the executable NAME, exactly as the renice path always did, so
+# the two paths that share this list protect the same processes. A token
+# also covers a name that extends it with a `-` (so `wezterm` covers
+# `wezterm-gui`); it deliberately does NOT extend with `_`, so `chrome`
+# protects the operator's own browser but not a `chrome_crashpad_handler`.
+# Use bare process names here.
 # reap_report_min_idle_hours = 24   # hours old before listing (0 lists everything idle; when reap_stale_dev_servers is ON the destructive path floors this at 1, so a kill always has an age floor)
 # reap_report_max_cpu_seconds = 60  # lifetime CPU ceiling for "idle" (0 lists only never-ran)
 # reap_report_signatures = "eve web,vite,playwright,chromium,bun run,bun test,npm run test,.mjs,litestream,stub-auth-api"
