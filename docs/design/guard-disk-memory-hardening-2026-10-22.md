@@ -263,6 +263,28 @@ registry would admit them up front.
 
 ## Left open (observed, not fixed)
 
+- **The workspace test figure is a point measurement, not an invariant.**
+  `cargo test --workspace --locked --no-fail-fast` was measured green on
+  2026-10-23 — **exit 0, 2573 passed / 0 failed** — but the same command
+  exited **101** in an earlier run that day, on
+  `sync::publication_actor_tests::blocked_publication_does_not_stall_cross_repo_or_same_repo_commits`
+  (`dracon-sync/src/sync/publication_actor_tests.rs:159`): "sync did not settle
+  within its bounded budget: Elapsed(())". That test holds a **60 s
+  wall-clock budget** (`join(60)`), so a contended host can blow it without a
+  behavioural change. Measured in isolation: **2 failures at 61.5 s and 6
+  passes at 1.2–2.6 s**, and both failures were the runs that overlapped a
+  concurrent workspace build. It is in `dracon-sync`, a crate this work never
+  touched, whose publication actor was being changed by the concurrent
+  `independent-publication-2026-10-23` work stream while these runs happened
+  (its test count moved from 1392 to 1394 mid-measurement) — so the flake is
+  **not attributable to the guard work**, but the *total* is a moving figure
+  for the same reason (the earlier 2546 is stale).
+  The test this work DID touch, `tests::storage_cleanup_activity_allows_stale_pidfile`
+  (`src/tests.rs:4820`), is the one the earlier red also named, and it is
+  clean on its own: **30/30 isolated runs pass** (each `test result: ok.
+  1 passed; 0 failed; … 550 filtered out`), re-confirmed 2026-10-23. Read
+  any workspace pass/fail count as *that run's* result, not as a property of
+  the tree.
 - **A mitigation the guard cannot reverse.** The guard can LOWER a
   process's priority (raising its nice value) without any privilege, but
   raising it back needs CAP_SYS_NICE, and the restore failed with
