@@ -125,6 +125,28 @@ pub(crate) fn forgotten_reap_allowed_under_pressure(pressure: &str) -> bool {
     matches!(pressure, "warn" | "critical")
 }
 
+/// How long a tree must have been running before the guard may end it.
+///
+/// ADDED 2026-10-23, after a live measurement: an orphaned headless
+/// Chromium root had burned only FOUR SECONDS of CPU, so the
+/// lifetime-CPU gate does not distinguish "forgotten" from "just
+/// detached and still in use". A browser that a harness deliberately
+/// detached (setsid, double-fork) and still drives over CDP is orphaned
+/// by design, headless by design, and idle-looking by design — the only
+/// thing that separates it from a leak is TIME.
+///
+/// A leak lives for hours or days; a browser that was detached a moment
+/// ago may still have a client attached. Five minutes of running time
+/// separates the two shapes without delaying a real leak meaningfully:
+/// the guard reaps it on the next pass after the tree ages past this.
+///
+/// This is a CONSTANT, not a knob: it is a safety floor, and a safety
+/// floor that an operator can casually tune is not a floor. The
+/// operator's escape hatch for "do not touch these trees at all" is the
+/// footprint floor (`forgotten_orphan_tree_footprint_mb`) and the exempt
+/// list, both of which are knobs.
+pub(crate) const FORGOTTEN_MIN_TREE_AGE_SECS: u64 = 300;
+
 /// One member of an orphaned process tree.
 #[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct TreeMember {
@@ -374,7 +396,8 @@ pub(crate) fn scan_forgotten_orphan_trees(
     let self_pid = std::process::id() as i32;
 
     // 1. The orphan roots: owner provably dead, detached, sleeping, idle,
-    //    and not on the exempt list.
+    //    not on the exempt list, and old enough that "just detached and
+    //    still in use" cannot explain them.
     let mut roots: Vec<i32> = Vec::new();
     for entry in table.entries.values() {
         if entry.pid <= 1 || entry.pid == self_pid {
@@ -393,6 +416,13 @@ pub(crate) fn scan_forgotten_orphan_trees(
             continue;
         }
         if entry.cpu_ticks / ticks_per_sec.max(1) > policy.max_cpu_seconds {
+            continue;
+        }
+        // Age: a tree that has only just started cannot be a leak that
+        // anybody has had a chance to notice, and a freshly detached
+        // browser may still have a client attached to it.
+        let age_secs = crate::reap::elapsed_secs(entry.starttime, ticks_per_sec, boot_time, now);
+        if age_secs < FORGOTTEN_MIN_TREE_AGE_SECS {
             continue;
         }
         roots.push(entry.pid);
