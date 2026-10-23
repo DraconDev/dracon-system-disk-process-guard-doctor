@@ -609,17 +609,20 @@ pub(crate) struct MemoryReport {
     /// `reap_orphans_on_pressure` is set and pressure is warn/critical):
     /// kills AND skipped re-verifies, same record shape as `reaped`.
     pub(crate) pressure_reaped: Vec<ReapedProcess>,
-    /// ADDED 2026-10-22: heavy, idle, orphaned processes that are provably
-    /// TEST jobs. Reported on every pass; ended only under memory pressure
-    /// (see `forgotten_reaped`). Details in forgotten.rs.
-    pub(crate) forgotten_orphans: Vec<ForgottenOrphan>,
-    /// ADDED 2026-10-22: heavy processes that were CONSIDERED and vetoed
-    /// because they look like a live desktop session. Reported so the
-    /// operator can see that a heavy Chrome was weighed and left alone.
-    pub(crate) vetoed_orphans: Vec<VetoedOrphan>,
-    /// ADDED 2026-10-22: what the pressure-gated forgotten-orphan pass
-    /// ended this cycle (empty unless pressure is warn/critical).
-    pub(crate) forgotten_reaped: Vec<ReapedProcess>,
+    /// ADDED 2026-10-22; CHANGED 2026-10-23 to trees: heavy, idle,
+    /// orphaned TREES that are provably TEST jobs. Reported on every pass;
+    /// ended only under memory pressure (see `forgotten_reaped`). Details
+    /// in forgotten.rs.
+    pub(crate) forgotten_trees: Vec<ForgottenTree>,
+    /// ADDED 2026-10-22; CHANGED 2026-10-23 to trees: heavy trees that
+    /// were CONSIDERED and vetoed because they look like a live desktop
+    /// session. Reported so the operator can see that a heavy Chrome was
+    /// weighed and left alone.
+    pub(crate) vetoed_trees: Vec<VetoedTree>,
+    /// ADDED 2026-10-22; CHANGED 2026-10-23 to trees: what the
+    /// pressure-gated forgotten-orphan pass ended this cycle (empty unless
+    /// pressure is warn/critical).
+    pub(crate) forgotten_reaped: Vec<ReapedTree>,
 }
 
 /// A zombie (defunct) process with context useful for diagnosis.
@@ -5772,8 +5775,8 @@ async fn check_memory_pressure(
         top_rss,
         limited,
         pressure_reaped,
-        forgotten_orphans: forgotten.candidates,
-        vetoed_orphans: forgotten.vetoed,
+        forgotten_trees: forgotten.candidates,
+        vetoed_trees: forgotten.vetoed,
         forgotten_reaped,
     })
 }
