@@ -210,7 +210,7 @@ The new knob:
 
 | knob | default | meaning |
 |---|---|---|
-| `forgotten_orphan_footprint_mb` | 2048 | the resident-plus-swapped weight floor for a forgotten orphan |
+| `forgotten_orphan_footprint_mb` | 2048 MiB | the resident-plus-swapped weight floor for a forgotten orphan |
 
 ## 4. The guard's own diagnostics
 
