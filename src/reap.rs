@@ -400,11 +400,7 @@ pub(crate) fn scan_reap_candidates(
         if args.is_empty() {
             continue;
         }
-        if policy
-            .exempt_names
-            .iter()
-            .any(|exempt| args.contains(exempt.as_str()))
-        {
+        if matches_exempt(&cmdline_executable(&cmdline_raw), &policy.exempt_names) {
             continue;
         }
         let Some(signature) = matches_signature(&args, &policy.signatures) else {
@@ -1003,11 +999,7 @@ pub(crate) fn scan_pressure_orphans(
         if args.is_empty() {
             continue;
         }
-        if policy
-            .exempt_names
-            .iter()
-            .any(|exempt| args.contains(exempt.as_str()))
-        {
+        if matches_exempt(&cmdline_executable(&cmdline_raw), &policy.exempt_names) {
             continue;
         }
         let Some(signature) = matches_signature(&args, &policy.signatures) else {
