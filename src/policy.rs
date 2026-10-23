@@ -341,6 +341,18 @@ pub(crate) struct GuardPolicy {
     // is what makes it safe.
     #[serde(default = "default_forgotten_orphan_footprint_mb")]
     pub(crate) forgotten_orphan_footprint_mb: u64,
+    // ADDED 2026-10-23: the weight floor for a FORGOTTEN heavy orphan
+    // TREE, in MiB of resident PLUS swapped footprint, measured as the
+    // AGGREGATE over the tree's root and every member. This is the floor
+    // that makes death-by-a-thousand-cuts visible: the 2026-10-23 leak was
+    // 8.6 GB spread over 792 orphaned browser processes of ~3 MiB each, so
+    // no single process ever crossed the per-process floor above and the
+    // guard logged critical memory pressure while reaping nothing. A tree
+    // qualifies when EITHER its aggregate crosses this floor OR its root
+    // crosses the per-process floor above; 0 disables the aggregate
+    // trigger entirely, leaving the per-process one.
+    #[serde(default = "default_forgotten_orphan_tree_footprint_mb")]
+    pub(crate) forgotten_orphan_tree_footprint_mb: u64,
     // ADDED 2026-08-25 (v0.112.39): only purge trash entries older than
     // this many days, so clean_trash keeps a recovery window instead of
     // emptying everything at once at the next action-level event.
@@ -594,6 +606,18 @@ pub(crate) fn default_cleanup_command_timeout_secs() -> u64 {
 /// the reclaim is not worth the risk of a wrong classification.
 pub(crate) fn default_forgotten_orphan_footprint_mb() -> u64 {
     2048
+}
+
+/// ADDED 2026-10-23: 1 GiB of resident-plus-swapped footprint, measured
+/// over a whole orphaned browser TREE rather than one process.
+///
+/// The 2026-10-23 leak held 8.6 GB across 792 orphaned browser processes
+/// whose median single-process weight was 3 MiB, so the 2 GiB per-process
+/// floor was never crossed by any of them and the guard saw nothing. A
+/// leaked tree holding 1 GiB is unambiguously worth reclaiming, and this
+/// floor is an order of magnitude below what actually cost that day.
+pub(crate) fn default_forgotten_orphan_tree_footprint_mb() -> u64 {
+    1024
 }
 
 pub(crate) fn default_quarantine_max_bytes_per_pass_mb() -> u64 {
