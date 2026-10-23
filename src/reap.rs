@@ -848,9 +848,7 @@ pub(crate) fn verify_forgotten_tree_for_reap(
     let Ok(raw) = std::fs::read_to_string(pid_dir.join("stat")) else {
         return None;
     };
-    let Some(fields) = parse_stat(&raw) else {
-        return None;
-    };
+    let fields = parse_stat(&raw)?;
     // PID reuse: same number, different process. Never signal it.
     if fields.starttime != tree.root_starttime {
         return None;
@@ -1115,7 +1113,7 @@ pub(crate) fn reap_forgotten_orphan_trees(
         };
         // Deepest first, so a parent cannot outlive its children.
         let mut members = verified.members;
-        members.sort_by(|a, b| b.depth.cmp(&a.depth));
+        members.sort_by_key(|member| std::cmp::Reverse(member.depth));
         let outcome = terminate_tree(&members);
         eprintln!(
             "🛡️ forgotten-reap: tree {} ({} processes, {}MiB) -> {} ended, {} left, {} skipped{}",
