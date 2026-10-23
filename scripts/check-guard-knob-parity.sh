@@ -53,6 +53,7 @@ GUARD_KNOBS=(
   tmp_scratch_warn_gib
   cleanup_command_timeout_secs
   forgotten_orphan_footprint_mb
+  forgotten_orphan_tree_footprint_mb
 )
 
 fail=0
