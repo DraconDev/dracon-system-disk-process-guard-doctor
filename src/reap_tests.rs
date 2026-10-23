@@ -907,7 +907,7 @@ fn pressure_scan_keeps_non_allowlisted_and_exempt_processes() {
     fx.proc_owned(4242, 9000, "sleep", &["sleep", "600"], 'S', 0, 5, 600, 1024);
     assert!(fx.orphan_scan(&policy()).is_empty());
     let mut exempt = policy();
-    exempt.exempt_names = vec!["bun test".to_string()];
+    exempt.exempt_names = vec!["bun".to_string()];
     let fx = Fixture::new("orphan-exempt");
     fx.fake_parent(9000, "systemd");
     fx.proc_owned(
@@ -922,6 +922,50 @@ fn pressure_scan_keeps_non_allowlisted_and_exempt_processes() {
         1024,
     );
     assert!(fx.orphan_scan(&exempt).is_empty());
+}
+
+/// CHANGED 2026-10-23: an exempt entry names an EXECUTABLE, not a
+/// command-line fragment.
+///
+/// The reaper used to match an exempt entry as a substring of the whole
+/// command line, so the token `chrome` matched
+/// `--user-data-dir=/tmp/puppeteer_dev_chrome_profile-*` and every
+/// Puppeteer test browser was exempt — invisible to the guard before any
+/// other gate ran. The match is now on the executable name, exactly as
+/// the renice path has always done it.
+#[test]
+fn an_exempt_entry_names_an_executable_not_a_command_line_fragment() {
+    let fx = Fixture::new("orphan-exempt-fragment");
+    fx.fake_parent(9000, "systemd");
+    fx.proc_owned(
+        4242,
+        9000,
+        "chromium",
+        &[
+            "chromium",
+            "--headless=new",
+            "--user-data-dir=/tmp/puppeteer_dev_chrome_profile-abc",
+        ],
+        'S',
+        0,
+        5,
+        600,
+        1024,
+    );
+    // A fragment entry does not exempt it any more...
+    let mut fragment = policy();
+    fragment.exempt_names = vec!["chrome".to_string()];
+    assert!(
+        !fx.orphan_scan(&fragment).is_empty(),
+        "a fragment entry must not exempt a test browser"
+    );
+    // ... but the executable name does.
+    let mut by_name = policy();
+    by_name.exempt_names = vec!["chromium".to_string()];
+    assert!(
+        fx.orphan_scan(&by_name).is_empty(),
+        "the executable name must still exempt it"
+    );
 }
 
 #[test]
