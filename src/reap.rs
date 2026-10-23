@@ -510,11 +510,7 @@ pub(crate) fn verify_candidate_for_reap(
     if args.is_empty() {
         return false;
     }
-    if policy
-        .exempt_names
-        .iter()
-        .any(|exempt| args.contains(exempt.as_str()))
-    {
+    if matches_exempt(&cmdline_executable(&cmdline_raw), &policy.exempt_names) {
         return false;
     }
     matches_signature(&args, &policy.signatures).is_some()
@@ -733,11 +729,7 @@ pub(crate) fn verify_orphan_for_reap(
     if args.is_empty() {
         return false;
     }
-    if policy
-        .exempt_names
-        .iter()
-        .any(|exempt| args.contains(exempt.as_str()))
-    {
+    if matches_exempt(&cmdline_executable(&cmdline_raw), &policy.exempt_names) {
         return false;
     }
     matches_signature(&args, &policy.signatures).is_some()
@@ -803,11 +795,7 @@ pub(crate) fn verify_forgotten_heavy_for_reap(
     if args.is_empty() {
         return false;
     }
-    if policy
-        .exempt_names
-        .iter()
-        .any(|exempt| args.contains(exempt.as_str()))
-    {
+    if matches_exempt(&cmdline_executable(&cmdline_raw), &policy.exempt_names) {
         return false;
     }
     // The desktop-session veto applies at kill time as well: a process that
