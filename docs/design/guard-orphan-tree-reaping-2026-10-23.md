@@ -328,3 +328,95 @@ above is the sum of both, not the RSS alone.
   it was only just detached. This is a theoretical false positive and it
   is inherent to the shape, not to this implementation; the operator's
   lever is the exempt list or a higher footprint floor.
+
+## 7. The live proof (2026-10-24)
+
+The tree path was verified end to end against the running daemon, on a tree
+that was created deliberately for the purpose and then left alone:
+
+```
+🧹 forgotten orphan tree: chromium pid=4148111 9 processes 293MiB (root 107MiB) age=1107s cpu=2s — headless
+🛡️ forgotten-reap: tree 4148111 (9 processes, 293MiB) -> 9 ended, 0 left, 0 skipped
+```
+
+Nine processes: the root, two zygotes, the GPU process, the network service,
+the storage service, two renderers, and the detached crashpad handler that
+`setsid`ed out of the tree and was tied back by `--crashpad-handler-pid`.
+All nine ended; none survived; none was skipped.
+
+The operator's own Chrome (PID 59843, 49 descendants, 6.4 GB) was alive and
+untouched throughout. Its command line carries no `--headless` and no
+`--user-data-dir`, so the desktop veto classifies it as a live session and
+the tree is weighed and left alone, whatever its weight.
+
+## 8. Two defects the proof exposed
+
+Both were found by the proof itself, and both are fixed here.
+
+### 8.1 The policy could never be reloaded again
+
+The daemon refused the SIGHUP that was supposed to pick up the new floor:
+
+```
+SIGHUP reload deferred: keeping previous policy so pending process adjustments are retried
+```
+
+The guard applies a nice value to a heavy process to slow it down. Restoring
+it needs `CAP_SYS_NICE`, and the guard's unit has it — but **`CAP_SYS_NICE`
+is namespaced**. A process holding it in a nested user namespace has it in
+that namespace and in its DESCENDANTS, never in an ancestor. The guard's
+unit runs in a nested user namespace (`user:[4026532749]`) while the
+processes it wants to renice live in the initial one (`user:[4026531837]`).
+
+Lowering a process's priority needs no capability at all when you own the
+process, so the guard could always make things worse and never better. The
+probe that decides "can I restore this?" looked only at the guard's own
+`/proc/self/status`, so it said yes for processes the guard provably could
+not touch. Every restore failed with `Permission denied`, every restore was
+retried, the restore never succeeded — and because the reload is deferred
+while a restore is outstanding, **every later SIGHUP was deferred too**. One
+un-restorable renice made the whole guard impossible to reconfigure.
+
+Two changes:
+
+- the probe is namespace-aware now (`nice_restore_namespace_ok`): the
+  capability must apply in the TARGET's user namespace, and it fails closed
+  when either namespace cannot be read;
+- a restore that fails permanently — the guard is not permitted to set that
+  process's priority at all — is DROPPED instead of retried forever, so it
+  stops holding the reload hostage. The process still keeps its degraded
+  priority until it exits; what changes is that the guard stops pretending
+  it can undo it, and stops blocking the policy reload while it cannot.
+
+The same probe now also refuses to APPLY a priority the guard could not take
+back. That follows the guard's own stated rule — "do not apply a reversible
+limiter unless the service can complete both halves of that lifecycle" —
+which the old namespace-blind probe let it break.
+
+### 8.2 The housekeeping starved the protection loop
+
+The first proof attempt failed for a different reason: the tree was detected
+on the first pass and was not reaped for another eight minutes.
+
+The disk cleanup ran INLINE, ahead of the memory checks, in the same pass.
+On this host a single cleanup pass takes minutes: a `/tmp` with thousands of
+entries, a Trash the CI's `safe-delete` keeps refilling. The daemon
+completed exactly ONE pass in thirteen minutes, and the forgotten-orphan
+tree — eligible from the first minute — was reaped only when the cleanup
+finished and the next pass ran.
+
+The guard was doing housekeeping while the memory it exists to protect
+drained away. The cleanup now runs in its own task: the pass never waits
+for it, so the protection loop keeps its `interval_secs` cadence whatever
+the filesystem is doing, and the cleanup's summary comes back through a
+shared slot for the report.
+
+### 8.3 What this costs
+
+The renice mitigation no longer applies to processes outside the guard's own
+user namespace — on this host, that is all of the heavy ones. The guard
+keeps its other two levers (OOM biasing and CPU quota capping), both of
+which are reversible without a capability. The processes that were already
+left at a degraded nice by the old one-way ratchet are not restored by this
+change: undoing them needs `CAP_SYS_NICE` in the INITIAL user namespace,
+which is root's to give.
