@@ -8520,7 +8520,7 @@ pub(crate) async fn run_guard_once(
             // fills 20–60 GiB/h. The cheap non-rust kinds now run here too
             // (include_rust=false keeps the heavy ~/Dev scan on its own path).
             state.last_proactive_cleanup = Some(Instant::now());
-            spawn_background_cleanup(guard, state, used, false, cleanup_slot.clone());
+            spawn_background_cleanup(guard, state, used, CleanupMode::Proactive, cleanup_slot.clone());
         }
     }
 
