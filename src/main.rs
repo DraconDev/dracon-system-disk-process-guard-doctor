@@ -5326,16 +5326,21 @@ async fn check_memory_pressure(
         }
     }
 
-    // ── Forgotten heavy orphans (ADDED 2026-10-22) ──────────────────
+    // ── Forgotten heavy orphan TREES (2026-10-22; trees 2026-10-23) ──
     // The operator's shape: heavy, idle, and left behind by a test — "not
     // long running and working but truly heavy and forgotten, like some
     // chrome instances left behind during tests".
     //
-    // The SCAN is unconditional: every qualifying process is reported on
-    // every pass, with its evidence, and so is every process that was
+    // The SCAN is unconditional: every qualifying tree is reported on
+    // every pass, with its evidence, and so is every tree that was
     // considered and VETOED because it looks like a live desktop session.
     // ENDING one is pressure-gated, like the other orphan path, and
     // re-verifies every gate live before the signal.
+    //
+    // The weight is the AGGREGATE over the tree: the 2026-10-23 leak was
+    // 8.6 GB across 792 orphaned browser processes of ~3 MiB each, so the
+    // per-process floor was never crossed by any of them and the guard
+    // logged critical memory pressure while reaping nothing.
     let forgotten = forgotten_scan(guard);
     for c in &forgotten.candidates {
         eprintln!(
