@@ -63,6 +63,13 @@ pub(crate) struct ReapPolicy {
     /// forgotten-orphan pass. The other passes do not weigh a process; this
     /// one is about the heavy ones, and the floor is what decides which.
     pub(crate) forgotten_footprint_mb: u64,
+    /// ADDED 2026-10-23: the resident-plus-swapped footprint floor for a
+    /// forgotten-orphan TREE, measured as the AGGREGATE over the root and
+    /// every member. This is the floor that makes death-by-a-thousand-cuts
+    /// visible: the 2026-10-23 leak was 8.6 GB spread over 792 processes
+    /// of ~3 MiB each, so no single process ever crossed the per-process
+    /// floor and the guard could see none of them.
+    pub(crate) forgotten_tree_footprint_mb: u64,
 }
 
 /// Split a comma-separated list into a deterministic, sorted Vec.
@@ -84,6 +91,7 @@ impl Default for ReapPolicy {
             signatures: sorted_signatures(DEFAULT_REAP_REPORT_SIGNATURES),
             exempt_names: Vec::new(),
             forgotten_footprint_mb: crate::default_forgotten_orphan_footprint_mb(),
+            forgotten_tree_footprint_mb: crate::default_forgotten_orphan_tree_footprint_mb(),
         }
     }
 }
