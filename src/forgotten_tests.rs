@@ -554,6 +554,144 @@ fn a_tree_that_has_only_just_started_is_not_a_candidate() {
     );
 }
 
+/// THE 2026-10-23 OPERATOR DECISION: for a BROWSER, the exempt list does
+/// not decide — the desktop-session veto does.
+///
+/// `process_exempt_names` names whole APPLICATIONS. The token `chrome`
+/// protects the operator's live session AND every headless test browser,
+/// and the headless test browsers are the leak: two orphaned google-chrome
+/// test trees on this host hold 2.1 GB that the guard could never see.
+/// The veto tells them apart exactly, so a headless test browser is a
+/// candidate even with `chrome` on the exempt list, and the operator's own
+/// desktop Chrome is vetoed even though the name would have exempted it.
+#[test]
+fn for_a_browser_the_desktop_veto_decides_not_the_exempt_list() {
+    let mut exempt = policy();
+    exempt.exempt_names = vec!["chrome".to_string()];
+
+    // A headless google-chrome test tree: a candidate, despite the name.
+    let fx = Fixture::new("veto-not-exempt");
+    fx.fake_parent(1, "systemd");
+    fx.proc(
+        9300,
+        1,
+        "chrome",
+        &[
+            "/nix/store/x/google-chrome/share/google/chrome/chrome",
+            "--headless=new",
+            "--user-data-dir=/tmp/cw-real-profile-standard-1792777061299",
+        ],
+        'S',
+        0,
+        2,
+        3 * 3600,
+        4096,
+    );
+    let scan = fx.scan_with_floors(&exempt, 2048, 64);
+    assert_eq!(
+        scan.candidates.len(),
+        1,
+        "a headless test browser must be a candidate even when 'chrome' is exempt: {:?}",
+        scan.candidates
+    );
+
+    // The operator's own desktop Chrome: VETOED, never a candidate.
+    let fx = Fixture::new("veto-not-exempt-desktop");
+    fx.fake_parent(1, "systemd");
+    fx.proc(
+        9400,
+        1,
+        "chrome",
+        &[
+            "/nix/store/x/google-chrome/share/google/chrome/chrome",
+            "--ozone-platform=x11",
+            "--no-first-run",
+        ],
+        'S',
+        0,
+        1,
+        10 * 3600,
+        8192,
+    );
+    let scan = fx.scan_with_floors(&exempt, 2048, 64);
+    assert!(
+        scan.candidates.is_empty(),
+        "the operator's desktop Chrome must never be a candidate: {:?}",
+        scan.candidates
+    );
+}
+
+/// The kill-time gate applies the same rule: a browser that no longer
+/// looks like a test job is not ours to end.
+#[test]
+fn the_kill_time_gate_uses_the_veto_for_a_browser_too() {
+    let mut exempt = policy();
+    exempt.exempt_names = vec!["chrome".to_string()];
+    let fx = Fixture::new("veto-not-exempt-kill");
+    fx.fake_parent(1, "systemd");
+    fx.proc(
+        9500,
+        1,
+        "chrome",
+        &[
+            "/nix/store/x/google-chrome/share/google/chrome/chrome",
+            "--headless=new",
+            "--user-data-dir=/tmp/cw-real-profile-standard-1792777061299",
+        ],
+        'S',
+        0,
+        2,
+        3 * 3600,
+        4096,
+    );
+    let scan = fx.scan_with_floors(&exempt, 2048, 64);
+    assert_eq!(scan.candidates.len(), 1, "{:?}", scan.candidates);
+    let tree = &scan.candidates[0];
+    assert!(
+        verify_forgotten_tree_for_reap(&fx.root, tree, &exempt, TICKS).is_some(),
+        "a headless test browser must pass the kill-time gate"
+    );
+
+    // The root turns into the operator's desktop session: refused.
+    let dir = fx.root.join("9500");
+    fs::write(
+        dir.join("cmdline"),
+        b"/nix/store/x/google-chrome/share/google/chrome/chrome\0--ozone-platform=x11\0",
+    )
+    .expect("cmdline");
+    assert!(
+        verify_forgotten_tree_for_reap(&fx.root, tree, &exempt, TICKS).is_none(),
+        "a browser that became a desktop session must not be signalled"
+    );
+}
+
+/// A non-browser exempt process keeps its name exemption: the veto only
+/// speaks for browsers.
+#[test]
+fn a_non_browser_exempt_process_keeps_its_name_exemption() {
+    let mut exempt = policy();
+    exempt.exempt_names = vec!["bun".to_string()];
+    let fx = Fixture::new("veto-not-exempt-other");
+    fx.fake_parent(1, "systemd");
+    fx.proc(
+        9600,
+        1,
+        "bun",
+        &["bun", "test", "src/lib"],
+        'S',
+        0,
+        2,
+        3 * 3600,
+        4096,
+    );
+    let scan = fx.scan_with_floors(&exempt, 2048, 64);
+    assert!(
+        scan.candidates.is_empty(),
+        "a non-browser exempt process keeps its exemption: {:?}",
+        scan.candidates
+    );
+}
+
 /// THE 2026-10-23 EXEMPT REGRESSION: the exempt list used to be matched
 /// as a substring of the WHOLE command line, so the token `chrome`
 /// matched `--user-data-dir=/tmp/puppeteer_dev_chrome_profile-*` and every
