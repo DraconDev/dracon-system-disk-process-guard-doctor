@@ -968,6 +968,55 @@ fn an_exempt_entry_names_an_executable_not_a_command_line_fragment() {
     );
 }
 
+/// CHROMIUM REWRITES ITS OWN ARGV, so `/proc/<pid>/cmdline` comes back for
+/// a Chrome process as ONE NUL-free blob rather than as NUL-separated
+/// fields. The executable name must still come out right — otherwise the
+/// operator's own Chrome silently stops being exempt, which is the exact
+/// protection the exempt list exists to provide.
+#[test]
+fn a_rewritten_argv_still_yields_the_executable_name() {
+    // What a Chrome process's cmdline actually looks like: one blob, the
+    // binary path followed by every argument, with no NUL anywhere.
+    let blob = "/nix/store/x/google-chrome-149.0.7827.200/share/google/chrome/chrome \
+                --ozone-platform=x11 --headless=new --user-data-dir=/tmp/profile-123 about:blank";
+    assert_eq!(cmdline_executable(blob), "chrome");
+
+    // A normal, NUL-separated command line is unchanged by this.
+    assert_eq!(
+        cmdline_executable("/usr/bin/chromium\0--headless=new\0--no-sandbox\0"),
+        "chromium"
+    );
+}
+
+/// The executable name is read from `/proc/<pid>/exe` when it can be, so
+/// it is right even when the command line has been rewritten. The symlink
+/// is the authoritative answer.
+#[test]
+fn the_executable_name_comes_from_the_exe_symlink_when_there_is_one() {
+    let fx = Fixture::new("exe-symlink");
+    fx.fake_parent(9000, "systemd");
+    fx.proc_owned(
+        4242,
+        9000,
+        "chrome",
+        // A rewritten blob: the name is only recoverable from the exe link.
+        &["/nix/store/x/google-chrome/share/google/chrome/chrome --ozone-platform=x11"],
+        'S',
+        0,
+        5,
+        600,
+        1024,
+    );
+    fx.exe_symlink(4242, "/nix/store/x/google-chrome/share/google/chrome/chrome");
+
+    let mut exempt = policy();
+    exempt.exempt_names = vec!["chrome".to_string()];
+    assert!(
+        fx.orphan_scan(&exempt).is_empty(),
+        "the exe symlink must name the executable, so 'chrome' exempts it"
+    );
+}
+
 #[test]
 fn pressure_scan_never_returns_reserved_or_own_pids() {
     let fx = Fixture::new("orphan-reserved");
