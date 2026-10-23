@@ -496,6 +496,64 @@ fn the_detached_crashpad_handler_is_part_of_the_tree() {
     assert_eq!(tree.aggregate_footprint_mb, 250);
 }
 
+/// A tree that has only just started cannot be a leak anybody had a
+/// chance to notice — and a freshly detached browser may still have a
+/// client attached to it. The lifetime-CPU gate does NOT tell the two
+/// apart (a live measurement found an orphaned Chromium root with only
+/// FOUR SECONDS of CPU), so time is the gate.
+#[test]
+fn a_tree_that_has_only_just_started_is_not_a_candidate() {
+    let fx = Fixture::new("young");
+    fx.fake_parent(1, "systemd");
+    fx.proc(
+        9100,
+        1,
+        "chromium",
+        &[
+            "/usr/bin/chromium",
+            "--headless=new",
+            "--user-data-dir=/tmp/puppeteer_dev_chrome_profile-abc",
+        ],
+        'S',
+        0,
+        2,
+        30, // thirty seconds old
+        4096,
+    );
+    let scan = fx.scan_with_floors(&policy(), 2048, 64);
+    assert!(
+        scan.candidates.is_empty(),
+        "a 30-second-old tree must not be a candidate: {:?}",
+        scan.candidates
+    );
+
+    // The same tree, old enough, is.
+    let fx = Fixture::new("old-enough");
+    fx.fake_parent(1, "systemd");
+    fx.proc(
+        9200,
+        1,
+        "chromium",
+        &[
+            "/usr/bin/chromium",
+            "--headless=new",
+            "--user-data-dir=/tmp/puppeteer_dev_chrome_profile-abc",
+        ],
+        'S',
+        0,
+        2,
+        FORGOTTEN_MIN_TREE_AGE_SECS + 60,
+        4096,
+    );
+    let scan = fx.scan_with_floors(&policy(), 2048, 64);
+    assert_eq!(
+        scan.candidates.len(),
+        1,
+        "a tree past the age floor must be a candidate: {:?}",
+        scan.candidates
+    );
+}
+
 /// THE 2026-10-23 EXEMPT REGRESSION: the exempt list used to be matched
 /// as a substring of the WHOLE command line, so the token `chrome`
 /// matched `--user-data-dir=/tmp/puppeteer_dev_chrome_profile-*` and every

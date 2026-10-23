@@ -829,6 +829,13 @@ pub(crate) fn verify_forgotten_tree_for_reap(
     if fields.cpu_ticks / ticks_per_sec.max(1) > policy.max_cpu_seconds {
         return None;
     }
+    // The age floor holds at kill time too: the tree must have been
+    // running long enough that "just detached and still in use" cannot
+    // explain it. The scan enforced this, and the kill follows the scan
+    // within seconds, so the scanned age is the right figure to check.
+    if tree.age_secs < crate::forgotten::FORGOTTEN_MIN_TREE_AGE_SECS {
+        return None;
+    }
     let Ok(cmdline_raw) = std::fs::read_to_string(pid_dir.join("cmdline")) else {
         return None;
     };
