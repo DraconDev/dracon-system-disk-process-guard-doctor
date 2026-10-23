@@ -388,6 +388,23 @@ fn write_process_fixture(
     if let Some(cgroup) = cgroup {
         fs::write(dir.join("cgroup"), cgroup).expect("write cgroup fixture");
     }
+    // ADDED 2026-10-24: the fixture process must look like it lives in the
+    // guard's OWN user namespace, or the guard treats it as unrestorable
+    // and drops the adjustment instead of restoring it (which is the
+    // behaviour the production path needs, and the opposite of what these
+    // tests are about).
+    if let Some(ns) = own_user_namespace_inode() {
+        let ns_dir = dir.join("ns");
+        fs::create_dir_all(&ns_dir).expect("create ns fixture");
+        std::os::unix::fs::symlink(format!("user:[{ns}]"), ns_dir.join("user"))
+            .expect("write ns fixture");
+    }
+}
+
+/// The inode of the user namespace this test process lives in.
+fn own_user_namespace_inode() -> Option<u64> {
+    let link = fs::read_link("/proc/self/ns/user").ok()?;
+    crate::parse_namespace_inode(&link)
 }
 
 /// Marker argument used only by `settle_fixture`. No production caller

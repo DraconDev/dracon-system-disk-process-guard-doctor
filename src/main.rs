@@ -1275,34 +1275,8 @@ pub(crate) fn parse_namespace_inode(link: &Path) -> Option<u64> {
     inner.parse().ok()
 }
 
-/// Whether the guard can put this process's priority back the way it found
-/// it.
-///
-/// ADDED 2026-10-24. Two conditions, both required:
-///
-/// - the guard must hold `CAP_SYS_NICE`, and
-/// - that capability must apply IN THE TARGET'S USER NAMESPACE.
-///
-/// The second condition is the one that was missing. The guard could
-/// always LOWER a process's priority (lowering priority needs no
-/// capability at all when you own the process) and could never RAISE it
-/// again. The renice mitigation was a one-way ratchet, and because the
-/// undo always failed with `Permission denied`, EVERY SIGHUP policy
-/// reload was deferred forever — the guard became impossible to
-/// reconfigure on this host.
-///
-/// Fails closed: a target whose namespace cannot be read is treated as
-/// unrestorable, because the cost of being wrong in that direction is a
-/// process left at a degraded priority, while the cost of being wrong in
-/// the other direction is a mitigation that cannot be undone.
-pub(crate) fn can_restore_nice_for(proc_root: &Path, pid: i32) -> bool {
-    let own = user_namespace_inode(proc_root, std::process::id() as i32);
-    let target = user_namespace_inode(proc_root, pid);
-    nice_restore_namespace_ok(own, target) && has_nice_restore_privilege()
-}
-
-/// Whether the guard's own user namespace is the target's, so the guard's
-/// `CAP_SYS_NICE` reaches it.
+/// Whether the guard's own user namespace is the target's, so that a
+/// `CAP_SYS_NICE` the guard holds applies to the target.
 ///
 /// A capability held in a namespace applies in that namespace and in its
 /// DESCENDANTS only. Two different namespaces therefore mean the guard's
@@ -1313,6 +1287,29 @@ pub(crate) fn can_restore_nice_for(proc_root: &Path, pid: i32) -> bool {
 /// mitigation that can never be undone.
 pub(crate) fn nice_restore_namespace_ok(own_ns: Option<u64>, target_ns: Option<u64>) -> bool {
     matches!((own_ns, target_ns), (Some(own), Some(target)) if own == target)
+}
+
+/// Whether the guard can put this process's priority back the way it found
+/// it — the NAMESPACE half of that question.
+///
+/// ADDED 2026-10-24. The capability half (`CAP_SYS_NICE`) is checked
+/// separately, where the guard decides whether to apply a mitigation at
+/// all. This half answers the question that actually broke: the guard's
+/// unit runs in a nested user namespace while most of the host's
+/// processes live in the initial one, so the guard could always LOWER a
+/// process's priority (which needs no capability at all) and could never
+/// RAISE it again. The renice mitigation was a one-way ratchet, and
+/// because the undo always failed with `Permission denied`, EVERY SIGHUP
+/// policy reload was deferred forever — the guard became impossible to
+/// reconfigure on this host.
+///
+/// The guard's own namespace is read from the REAL `/proc`, not from
+/// `proc_root`: it is a property of the running guard, and `proc_root` is
+/// a fixture tree in tests that does not contain the guard.
+pub(crate) fn can_restore_nice_for(proc_root: &Path, pid: i32) -> bool {
+    let own = user_namespace_inode(Path::new("/proc"), std::process::id() as i32);
+    let target = user_namespace_inode(proc_root, pid);
+    nice_restore_namespace_ok(own, target)
 }
 
 /// Whether a failed `renice` is a PERMANENT authority failure: the guard
