@@ -64,7 +64,37 @@ Audit F119 (2026-10-08) had already recorded the reaper's whole-command-
 line substring as the odd one out: the renice path has always matched the
 executable **name**. The reaper never changed.
 
-### 2.3 The documented pressure gate did not exist
+### 2.3 Chromium rewrites its own argv, so the command line is not the executable
+
+Found while verifying this change against the live host.
+
+Chromium reuses the memory after its argv for its own purposes, so
+`/proc/<pid>/cmdline` comes back for a Chrome process as **one NUL-free
+blob** rather than as NUL-separated fields:
+
+```
+/nix/store/…/share/google/chrome/chrome --ozone-platform=x11 --headless=new
+  --user-data-dir=/tmp/cw-real-profile-standard-1792777061299 … about:blank
+```
+
+A naive "split on NUL, take the first field" therefore yields the WHOLE
+blob, and the basename of that is whatever followed the last slash in the
+blob — not the executable's name. On this host that made the operator's
+own Chrome stop being exempt, which is the exact protection the exempt
+list exists to provide. The same mangling is why the OLD substring rule
+happened to work for Chrome at all: the blob still contains
+`/share/google/chrome/chrome`.
+
+Two fixes, both in `reap.rs`:
+
+- the executable name is read from the **`/proc/<pid>/exe` symlink**,
+  which is authoritative and unaffected by the argv rewrite (with the
+  command line as the fallback for processes whose exe link cannot be
+  read, such as another user's);
+- the command-line fallback takes the first **whitespace-delimited**
+  token of the blob, which is the executable path.
+
+### 2.4 The documented pressure gate did not exist
 
 `docs/design/guard-disk-memory-hardening-2026-10-22.md` states:
 
@@ -207,14 +237,43 @@ pub(crate) fn matches_exempt(exe: &str, exempt_names: &[String]) -> bool {
 }
 ```
 
-The match is on the executable name — the basename of `argv[0]` — which is
-what the renice path has always done, and what the example policy tells
-operators to write ("bare process names here").
+The match is on the executable name — the basename of the binary the
+process is running — which is what the renice path has always done, and
+what the example policy tells operators to write ("bare process names
+here").
 
 A token also covers a name that extends it with a `-`, so `wezterm` still
 covers `wezterm-gui`. It deliberately does **not** extend with a `_`, so
 `chrome` protects the operator's own browser while a
 `chrome_crashpad_handler` stays visible to the forgotten pass.
+
+### 4.1 What this costs, and what it does not
+
+The operator's `chrome` entry now does exactly what it says: every
+google-chrome process is exempt, **including** the headless google-chrome
+trees that some harnesses leak. The name exemption is checked before
+every other gate, so those trees are invisible to the forgotten pass.
+
+That is the operator's policy, and it was deliberate — "SIGKILL of it logs
+you out of every site". It is not widened here. The desktop veto is the
+precise instrument for "do not touch my live session", and it protects the
+operator's Chrome whether or not the name exemption is present; removing
+`chrome` from the list is what would let the forgotten pass see the
+google-chrome test trees, and that is the operator's call.
+
+Measured on this host while verifying the change, five qualifying trees:
+
+| root | binary | processes | aggregate | caught? |
+|---|---|---|---|---|
+| 3335362 | google-chrome | 25 | 1083 MiB | no — `chrome` is exempt |
+| 3350461 | google-chrome | 21 | 1020 MiB | no — `chrome` is exempt |
+| 3897063 | chromium | 9 | 386 MiB | **yes** |
+| 3816878 | chromium | 9 | 365 MiB | **yes** |
+| 554746 | chromium | 9 | 299 MiB | **yes** |
+
+So this change makes roughly 1 GiB of already-leaked browser memory
+reclaimable where the old guard could see none of it, and leaves the
+operator's google-chrome policy exactly as it was.
 
 ## 5. The knobs
 
