@@ -1,9 +1,18 @@
 //! Tests for the forgotten heavy orphans — the shape the operator
 //! described as "not long running and working but truly heavy and
 //! forgotten, like some chrome instances left behind during tests".
+//!
+//! CHANGED 2026-10-23: the pass weighs a whole TREE, not one process.
+//! The tests keep the old per-process cases (a lone heavy browser is
+//! still found) and add the cases that cost 8.6 GB on 2026-10-23: a tree
+//! of many small processes, the exempt list that swallowed the whole
+//! browser family, and the pressure gate that the documentation claimed
+//! existed but did not.
 
 use super::forgotten::*;
-use crate::reap::{verify_forgotten_heavy_for_reap, ReapCandidate, ReapPolicy};
+use crate::reap::{
+    cmdline_executable, matches_exempt, verify_forgotten_tree_for_reap, ReapPolicy,
+};
 use std::fs;
 use std::path::PathBuf;
 
@@ -84,14 +93,34 @@ impl Fixture {
         fs::write(dir.join("comm"), format!("{comm}\n")).expect("parent comm");
     }
 
-    fn scan(&self, policy: &ReapPolicy, floor_mb: u64) -> ForgottenScan {
-        scan_forgotten_heavy_orphans(
+    fn scan(&self, policy: &ReapPolicy, floor_mb: u64) -> ForgottenTreeScan {
+        scan_forgotten_orphan_trees(
             &self.root,
             policy,
             self.boot_time,
             self.now,
             TICKS,
             floor_mb,
+            floor_mb,
+        )
+    }
+
+    /// The scan with two independent floors: the per-process one and the
+    /// tree-aggregate one.
+    fn scan_with_floors(
+        &self,
+        policy: &ReapPolicy,
+        per_process_mb: u64,
+        tree_mb: u64,
+    ) -> ForgottenTreeScan {
+        scan_forgotten_orphan_trees(
+            &self.root,
+            policy,
+            self.boot_time,
+            self.now,
+            TICKS,
+            per_process_mb,
+            tree_mb,
         )
     }
 }
@@ -109,6 +138,7 @@ fn policy() -> ReapPolicy {
         signatures: Vec::new(),
         exempt_names: Vec::new(),
         forgotten_footprint_mb: 2048,
+        forgotten_tree_footprint_mb: 1024,
     }
 }
 
@@ -188,8 +218,9 @@ fn a_forgotten_heavy_test_browser_is_a_candidate() {
         "the forgotten browser must be found"
     );
     let c = &scan.candidates[0];
-    assert_eq!(c.pid, 4242);
-    assert_eq!(c.rss_mb, 4096);
+    assert_eq!(c.root_pid, 4242);
+    assert_eq!(c.member_count, 1);
+    assert_eq!(c.aggregate_footprint_mb, 4096);
     assert!(
         c.why.contains("headless"),
         "the reason must be recorded: {}",
@@ -227,7 +258,7 @@ fn a_heavy_desktop_browser_is_vetoed_and_never_a_candidate() {
         "the veto must say why it was vetoed"
     );
     assert!(
-        scan.vetoed[0].footprint_mb > 0,
+        scan.vetoed[0].aggregate_footprint_mb > 0,
         "the veto must carry the weight that made it worth considering"
     );
 }
@@ -281,101 +312,384 @@ fn a_busy_orphan_is_not_a_candidate() {
     );
 }
 
-/// The kill-time re-verification applies the desktop veto AGAIN: a process
-/// that no longer looks like a test job is not ours to end, whatever the
-/// scan said.
+/// THE 2026-10-23 REGRESSION: a tree of many SMALL processes.
+///
+/// The leak that cost 8.6 GB was 792 orphaned browser processes whose
+/// median single-process weight was 3 MiB. Under the old per-process
+/// floor of 2 GiB, not one of them ever qualified, so the guard logged
+/// critical memory pressure and reaped nothing. The weight that decides
+/// is the tree's AGGREGATE.
 #[test]
-fn the_kill_time_gate_rejects_a_process_that_is_now_a_desktop_session() {
+fn a_tree_of_many_small_processes_is_a_candidate_by_its_aggregate_weight() {
+    let fx = Fixture::new("aggregate");
+    fx.fake_parent(1, "systemd");
+    // The root: a headless test browser whose owner died.
+    fx.proc(
+        3000,
+        1,
+        "chromium",
+        &[
+            "/usr/bin/chromium",
+            "--headless=new",
+            "--no-sandbox",
+            "--user-data-dir=/tmp/puppeteer_dev_chrome_profile-abc",
+        ],
+        'S',
+        0,
+        2,
+        3 * 3600,
+        3,
+    );
+    // Its renderers: 40 of them, 3 MiB each — 120 MiB, well under the
+    // 2 GiB per-process floor, none of them an orphan on its own.
+    for i in 0..40 {
+        fx.proc(
+            3100 + i,
+            3000,
+            "chromium",
+            &[
+                "/usr/bin/chromium",
+                "--type=renderer",
+                "--headless=new",
+                "--user-data-dir=/tmp/puppeteer_dev_chrome_profile-abc",
+            ],
+            'S',
+            0,
+            1,
+            3 * 3600,
+            3,
+        );
+    }
+
+    // The OLD behaviour: nothing qualifies, because no single process
+    // crosses the 2 GiB per-process floor.
+    let per_process_only = fx.scan_with_floors(&policy(), 2048, u64::MAX);
+    assert!(
+        per_process_only.candidates.is_empty(),
+        "no single process is 2 GiB: {:?}",
+        per_process_only.candidates
+    );
+
+    // The NEW behaviour: the tree's aggregate is 123 MiB, which clears
+    // the 64 MiB aggregate floor used here.
+    let scan = fx.scan_with_floors(&policy(), 2048, 64);
+    assert_eq!(
+        scan.candidates.len(),
+        1,
+        "the tree must be found by its aggregate weight: {:?}",
+        scan.candidates
+    );
+    let tree = &scan.candidates[0];
+    assert_eq!(tree.root_pid, 3000);
+    assert_eq!(tree.member_count, 41, "root plus forty renderers");
+    assert_eq!(tree.aggregate_footprint_mb, 123);
+    assert_eq!(tree.root_footprint_mb, 3, "the root alone is tiny");
+}
+
+/// A tree that is heavy in aggregate but whose ROOT is a desktop session
+/// is vetoed as a whole — the veto protects the tree, not just the root.
+#[test]
+fn a_heavy_desktop_tree_is_vetoed_even_though_its_root_is_light() {
+    let fx = Fixture::new("veto_tree");
+    fx.fake_parent(1, "systemd");
+    fx.proc(
+        4000,
+        1,
+        "chrome",
+        &["/nix/store/x/google-chrome/chrome", "--profile-directory=Default"],
+        'S',
+        0,
+        1,
+        10 * 3600,
+        10,
+    );
+    for i in 0..40 {
+        fx.proc(
+            4100 + i,
+            4000,
+            "chrome",
+            &["/nix/store/x/google-chrome/chrome", "--type=renderer"],
+            'S',
+            0,
+            1,
+            10 * 3600,
+            10,
+        );
+    }
+    let scan = fx.scan_with_floors(&policy(), 2048, 64);
+    assert!(
+        scan.candidates.is_empty(),
+        "a desktop tree must never be a candidate: {:?}",
+        scan.candidates
+    );
+}
+
+/// The detached crashpad handler belongs to the tree: Chromium's handler
+/// calls `setsid` and is reparented to init, so it survives the browser
+/// as a lone orphan — but the browser's own command lines name it.
+#[test]
+fn the_detached_crashpad_handler_is_part_of_the_tree() {
+    let fx = Fixture::new("crashpad");
+    fx.fake_parent(1, "systemd");
+    fx.proc(
+        5000,
+        1,
+        "chromium",
+        &[
+            "/usr/bin/chromium",
+            "--headless=new",
+            "--user-data-dir=/tmp/puppeteer_dev_chrome_profile-abc",
+        ],
+        'S',
+        0,
+        2,
+        3 * 3600,
+        100,
+    );
+    fx.proc(
+        5001,
+        5000,
+        "chromium",
+        &[
+            "/usr/bin/chromium",
+            "--type=zygote",
+            "--crashpad-handler-pid=5900",
+            "--user-data-dir=/tmp/puppeteer_dev_chrome_profile-abc",
+        ],
+        'S',
+        0,
+        1,
+        3 * 3600,
+        100,
+    );
+    // The handler detached out of the tree and was reparented to init.
+    fx.fake_parent(1, "systemd");
+    fx.proc(
+        5900,
+        1,
+        "chrome_crashpad_handler",
+        &["/nix/store/x/chromium/chrome_crashpad_handler", "--monitor-self"],
+        'S',
+        0,
+        1,
+        3 * 3600,
+        50,
+    );
+
+    let scan = fx.scan_with_floors(&policy(), 2048, 64);
+    assert_eq!(scan.candidates.len(), 1, "{:?}", scan.candidates);
+    let tree = &scan.candidates[0];
+    assert_eq!(tree.member_count, 3, "root, zygote, and the handler");
+    assert!(
+        tree.members.iter().any(|m| m.pid == 5900),
+        "the crashpad handler must be in the tree: {:?}",
+        tree.members
+    );
+    assert_eq!(tree.aggregate_footprint_mb, 250);
+}
+
+/// THE 2026-10-23 EXEMPT REGRESSION: the exempt list used to be matched
+/// as a substring of the WHOLE command line, so the token `chrome`
+/// matched `--user-data-dir=/tmp/puppeteer_dev_chrome_profile-*` and every
+/// Puppeteer test browser was exempt — invisible to the guard before any
+/// other gate ran.
+#[test]
+fn a_test_profile_path_does_not_exempt_a_test_browser() {
+    let args = "/usr/bin/chromium --headless=new --user-data-dir=/tmp/puppeteer_dev_chrome_profile-abc";
+    let exempt = vec!["chrome".to_string()];
+    assert!(
+        !matches_exempt(&cmdline_executable(args), &exempt),
+        "a puppeteer test browser must NOT be exempt just because its profile path contains 'chrome'"
+    );
+    // The operator's own browser IS protected: its executable is `chrome`.
+    let own = "/nix/store/x/google-chrome-149.0.7827.200/share/google/chrome/chrome --ozone-platform=x11";
+    assert!(
+        matches_exempt(&cmdline_executable(own), &exempt),
+        "the operator's own chrome must stay exempt"
+    );
+}
+
+/// The exempt list is a list of PROCESS NAMES, and it extends a name
+/// with a `-` (so `wezterm` covers `wezterm-gui`) but not with a `_`
+/// (so `chrome` does not swallow `chrome_crashpad_handler`).
+#[test]
+fn the_exempt_list_matches_process_names() {
+    let exempt = vec!["wezterm".to_string(), "chrome".to_string()];
+    assert!(matches_exempt("wezterm", &exempt));
+    assert!(matches_exempt("wezterm-gui", &exempt));
+    assert!(matches_exempt("chrome", &exempt));
+    assert!(!matches_exempt("chrome_crashpad_handler", &exempt));
+    assert!(!matches_exempt("chromium", &exempt));
+    assert!(!matches_exempt("", &exempt));
+}
+
+/// THE DOCUMENTED INVARIANT: the pressure gate is a named function that
+/// fails CLOSED. The design doc and the CHANGELOG both claimed it
+/// existed and that a test pinned its closed side; neither did.
+#[test]
+fn the_forgotten_reap_is_skipped_without_memory_pressure() {
+    assert!(
+        !forgotten_reap_allowed_under_pressure("ok"),
+        "no pressure is not permission to end a process"
+    );
+    assert!(!forgotten_reap_allowed_under_pressure(""));
+    assert!(
+        !forgotten_reap_allowed_under_pressure("unknown"),
+        "an unrecognised pressure level must fail closed"
+    );
+    assert!(
+        !forgotten_reap_allowed_under_pressure("action"),
+        "an unrecognised pressure level must fail closed"
+    );
+    assert!(forgotten_reap_allowed_under_pressure("warn"));
+    assert!(forgotten_reap_allowed_under_pressure("critical"));
+}
+
+/// The kill-time re-verification applies the desktop veto AGAIN: a tree
+/// whose root no longer looks like a test job is not ours to end.
+#[test]
+fn the_kill_time_gate_rejects_a_tree_that_is_now_a_desktop_session() {
     let fx = Fixture::new("kill_gate");
     fx.fake_parent(1, "systemd");
     fx.proc(
-        8181,
+        6000,
         1,
-        "chrome",
-        &["/usr/bin/chromium", "--headless=new"],
+        "chromium",
+        &[
+            "/usr/bin/chromium",
+            "--headless=new",
+            "--user-data-dir=/tmp/puppeteer_dev_chrome_profile-abc",
+        ],
         'S',
         0,
         2,
         3 * 3600,
         4096,
     );
-    let candidate = ReapCandidate {
-        pid: 8181,
-        comm: "chrome".to_string(),
-        args: "/usr/bin/chromium --headless=new".to_string(),
-        idle_hours: 3,
-        cpu_seconds: 2,
-        rss_mb: 4096,
-        signature: "headless".to_string(),
-        starttime: {
-            let uptime = fx.now - fx.boot_time;
-            (uptime - 3 * 3600) * TICKS
-        },
-    };
-    // The scan's own verdict: it is a test job, so the gate accepts it.
+    let scan = fx.scan_with_floors(&policy(), 2048, 64);
+    assert_eq!(scan.candidates.len(), 1, "{:?}", scan.candidates);
+    let tree = &scan.candidates[0];
+
+    // Unchanged, the gate accepts it.
     assert!(
-        verify_forgotten_heavy_for_reap(&fx.root, &candidate, &policy(), TICKS),
-        "an unchanged test job must pass the kill-time gate"
+        verify_forgotten_tree_for_reap(&fx.root, tree, &policy(), TICKS).is_some(),
+        "an unchanged test tree must pass the kill-time gate"
     );
 
-    // Now the same process is a desktop session: the gate must refuse.
-    let dir = fx.root.join("8181");
+    // Now the root is a desktop session: the gate must refuse.
+    let dir = fx.root.join("6000");
     fs::write(
         dir.join("cmdline"),
         b"/usr/bin/google-chrome\0--profile-directory=Default\0",
     )
     .expect("cmdline");
     assert!(
-        !verify_forgotten_heavy_for_reap(&fx.root, &candidate, &policy(), TICKS),
-        "a process that turned into a desktop session must not be signalled"
+        verify_forgotten_tree_for_reap(&fx.root, tree, &policy(), TICKS).is_none(),
+        "a tree that turned into a desktop session must not be signalled"
     );
 }
 
-/// The kill-time gate also refuses a process that is no longer heavy, and
-/// one whose PID was recycled.
+/// The kill-time gate refuses a recycled PID, and refuses a tree that is
+/// no longer heavy.
 #[test]
-fn the_kill_time_gate_refuses_a_light_or_recycled_process() {
+fn the_kill_time_gate_refuses_a_recycled_pid_or_a_light_tree() {
     let fx = Fixture::new("kill_gate_2");
     fx.fake_parent(1, "systemd");
     fx.proc(
-        9191,
+        7000,
         1,
-        "chrome",
-        &["/usr/bin/chromium", "--headless=new"],
+        "chromium",
+        &[
+            "/usr/bin/chromium",
+            "--headless=new",
+            "--user-data-dir=/tmp/puppeteer_dev_chrome_profile-abc",
+        ],
         'S',
         0,
         2,
         3 * 3600,
         4096,
     );
-    let uptime = fx.now - fx.boot_time;
-    let candidate = ReapCandidate {
-        pid: 9191,
-        comm: "chrome".to_string(),
-        args: "/usr/bin/chromium --headless=new".to_string(),
-        idle_hours: 3,
-        cpu_seconds: 2,
-        rss_mb: 4096,
-        signature: "headless".to_string(),
-        starttime: (uptime - 3 * 3600) * TICKS,
-    };
+    let scan = fx.scan_with_floors(&policy(), 2048, 64);
+    assert_eq!(scan.candidates.len(), 1, "{:?}", scan.candidates);
+    let tree = &scan.candidates[0];
+
     // A recycled PID (the starttime no longer matches) is never signalled.
-    let mut recycled = candidate.clone();
-    recycled.starttime += 1;
+    let mut recycled = tree.clone();
+    recycled.root_starttime += 1;
     assert!(
-        !verify_forgotten_heavy_for_reap(&fx.root, &recycled, &policy(), TICKS),
+        verify_forgotten_tree_for_reap(&fx.root, &recycled, &policy(), TICKS).is_none(),
         "a recycled PID must never be signalled"
     );
 
     // No longer heavy: the footprint is below the floor.
-    let dir = fx.root.join("9191");
+    let dir = fx.root.join("7000");
     fs::write(
         dir.join("status"),
-        "Name:\tchrome\nUid:\t1000\t1000\t1000\t1000\nVmRSS:\t1024 kB\nVmSwap:\t0 kB\n",
+        "Name:\tchromium\nUid:\t1000\t1000\t1000\t1000\nVmRSS:\t1024 kB\nVmSwap:\t0 kB\n",
     )
     .expect("status");
     assert!(
-        !verify_forgotten_heavy_for_reap(&fx.root, &candidate, &policy(), TICKS),
-        "a process that is no longer heavy must not be signalled"
+        verify_forgotten_tree_for_reap(&fx.root, tree, &policy(), TICKS).is_none(),
+        "a tree that is no longer heavy must not be signalled"
     );
+}
+
+/// A member whose PID was recycled is left out of the kill set rather
+/// than ending the whole tree: the rest of the tree is still reclaimable.
+#[test]
+fn a_recycled_member_is_left_out_of_the_kill_set_not_the_whole_tree() {
+    let fx = Fixture::new("kill_gate_3");
+    fx.fake_parent(1, "systemd");
+    fx.proc(
+        8000,
+        1,
+        "chromium",
+        &[
+            "/usr/bin/chromium",
+            "--headless=new",
+            "--user-data-dir=/tmp/puppeteer_dev_chrome_profile-abc",
+        ],
+        'S',
+        0,
+        2,
+        3 * 3600,
+        4096,
+    );
+    fx.proc(
+        8001,
+        8000,
+        "chromium",
+        &["/usr/bin/chromium", "--type=renderer"],
+        'S',
+        0,
+        1,
+        3 * 3600,
+        4096,
+    );
+    let scan = fx.scan_with_floors(&policy(), 2048, 64);
+    assert_eq!(scan.candidates.len(), 1, "{:?}", scan.candidates);
+    let tree = &scan.candidates[0];
+    assert_eq!(tree.member_count, 2);
+
+    // The renderer is recycled: it is no longer the process the scan saw.
+    let uptime = fx.now - fx.boot_time;
+    let dir = fx.root.join("8001");
+    fs::write(
+        dir.join("stat"),
+        format!(
+            "8001 (chromium) S 8000 8001 8001 0 0 -1 4194304 0 0 0 100 0 0 0 20 0 1 0 {} 0 0 0 0 0 0 0 0 0 0 0 0 17 2 0 0 0 0 0",
+            uptime * TICKS
+        ),
+    )
+    .expect("stat");
+
+    let verified = verify_forgotten_tree_for_reap(&fx.root, tree, &policy(), TICKS)
+        .expect("the tree must still be reapable");
+    assert!(
+        verified.members.iter().all(|m| m.pid != 8001),
+        "the recycled member must be left out: {:?}",
+        verified.members
+    );
+    assert_eq!(verified.skipped, 1);
 }
