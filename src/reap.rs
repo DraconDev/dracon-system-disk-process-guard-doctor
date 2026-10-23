@@ -877,7 +877,9 @@ pub(crate) fn verify_forgotten_tree_for_reap(
     if args.is_empty() {
         return None;
     }
-    if matches_exempt(&process_executable_name(&pid_dir, &cmdline_raw), &policy.exempt_names) {
+    if matches_exempt(&process_executable_name(&pid_dir, &cmdline_raw), &policy.exempt_names)
+        && !crate::forgotten::browser_decides_by_veto(&args)
+    {
         return None;
     }
     // The desktop-session veto applies at kill time as well: a tree that no
