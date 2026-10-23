@@ -917,7 +917,19 @@ pub(crate) fn verify_forgotten_tree_for_reap(
             skipped += 1;
             continue;
         };
-        if matches_exempt(&process_executable_name(&pid_dir, &cmdline_raw), &policy.exempt_names) {
+        let member_args = cmdline_raw.replace('\0', " ").trim().to_string();
+        // The same rule as the root: for a browser the desktop veto is the
+        // instrument, not the name exemption. A member of a tree whose
+        // root was proved to be a disposable TEST job is that job's own
+        // machinery — the exemption exists to protect the operator's
+        // applications, and a browser helper inside a dead test's tree is
+        // not one.
+        if !crate::forgotten::browser_decides_by_veto(&member_args)
+            && matches_exempt(
+                &process_executable_name(&member_dir, &cmdline_raw),
+                &policy.exempt_names,
+            )
+        {
             skipped += 1;
             continue;
         }
