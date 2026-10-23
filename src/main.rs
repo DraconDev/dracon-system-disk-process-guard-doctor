@@ -7769,6 +7769,85 @@ async fn check_heavy_processes(
     Ok(alerts)
 }
 
+/// Which tier of cleanup a background pass is running.
+///
+/// ADDED 2026-10-24: the cleanup moved off the guard's serial pass into
+/// its own task, and the two tiers do different work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CleanupMode {
+    /// The disk is at action/critical: the full cleanup, rust included.
+    Pressure,
+    /// The proactive tier: the cheap kinds on their own cadence, plus the
+    /// rust-target scan when it is armed.
+    Proactive,
+}
+
+/// Start a disk cleanup in the BACKGROUND and return immediately.
+///
+/// ADDED 2026-10-24. The guard's protection loop — memory-pressure
+/// mitigation, the heavy-process limiter, the forgotten-orphan tree reap
+/// — used to wait behind this work, because it ran inline, ahead of them.
+/// On a busy filesystem a single cleanup pass took eight minutes, and
+/// during that time the guard applied no mitigation and reaped nothing
+/// while the host was in critical memory pressure.
+///
+/// The task owns its own scratch runtime state: the live one belongs to
+/// the protection loop, which is running concurrently, and the cleanup
+/// only needs the disk-fill history for its ETA plus its own report-state
+/// bookkeeping.
+///
+/// The cleanup's summary is handed back through `slot` and picked up by a
+/// later pass.
+fn spawn_background_cleanup(
+    guard: &GuardPolicy,
+    state: &GuardRuntimeState,
+    used: u8,
+    mode: CleanupMode,
+    slot: Arc<tokio::sync::Mutex<CleanupSummary>>,
+) {
+    let guard = guard.clone();
+    let mut scratch = GuardRuntimeState::default();
+    scratch.disk_bytes_history = state.disk_bytes_history.clone();
+    tokio::spawn(async move {
+        let mut summary = CleanupSummary::default();
+        // ADDED 2026-09-27 (space tiers Phase 2): relocate-first —
+        // move cold bulk before deleting anything rebuildable.
+        if guard.auto_relocate {
+            match run_auto_relocate(&guard).await {
+                Ok((moves, moved_bytes, candidates)) => {
+                    summary.relocated_count = moves;
+                    summary.relocated_bytes = moved_bytes;
+                    summary.relocate_candidates = candidates;
+                }
+                Err(e) => eprintln!("⚠️ auto-relocate failed: {e:#}"),
+            }
+        }
+        // Re-read pressure after moves so delete-based cleanup (and the
+        // critical age-gate bypass) acts on post-move reality.
+        let mut used = used;
+        if summary.relocated_count > 0 {
+            if let Ok(d) = disk_details_for(&guard.disk_mount_path).await {
+                used = d.use_percent;
+            }
+        }
+        let outcome = match mode {
+            CleanupMode::Pressure => run_auto_cleanup(&guard, &mut scratch, used, true).await,
+            CleanupMode::Proactive => async {
+                if guard.auto_cleanup_rust {
+                    run_proactive_cleanup(&guard, &mut scratch).await?;
+                }
+                run_auto_cleanup(&guard, &mut scratch, used, false).await
+            }
+            .await,
+        };
+        if let Err(e) = outcome {
+            eprintln!("⚠️ background cleanup failed: {e:#}");
+        }
+        let mut slot = slot.lock().await;
+        *slot = summary;
+    });
+}
+
 fn auto_cleanup_due_at(state: &GuardRuntimeState, interval_secs: u64, now: Instant) -> bool {
     cooldown_due(state.last_auto_cleanup, interval_secs, now)
 }
@@ -8425,7 +8504,7 @@ pub(crate) async fn run_guard_once(
             // Set the timestamp before the scan so a persistent filesystem
             // error cannot turn into a 30-second retry loop.
             state.last_auto_cleanup = Some(now);
-            spawn_background_cleanup(guard, state, used, true, cleanup_slot.clone());
+            spawn_background_cleanup(guard, state, used, CleanupMode::Pressure, cleanup_slot.clone());
         }
     } else if used >= guard.proactive_cleanup_percent {
         state.guard_cycle += 1;
