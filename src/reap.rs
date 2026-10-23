@@ -296,23 +296,30 @@ impl ProcTable {
         self.entries.get(&pid)
     }
 
-    /// Every descendant of `root`, breadth-first, excluding `root` itself.
+    /// Every descendant of `root`, with its depth below the root, in
+    /// breadth-first order.
+    ///
+    /// The depth is what lets the tree be ended deepest-first: a parent
+    /// that outlives its children can respawn them, and a root that dies
+    /// first leaves its children reparented to init — which is the exact
+    /// shape this pass exists to clean up.
     ///
     /// A cycle cannot happen in a parent/child forest, but a PID can be
     /// reparented mid-walk, so the visited set is kept: a reparented
     /// subtree is simply not descended into.
-    pub(crate) fn descendants(&self, root: i32) -> Vec<i32> {
+    pub(crate) fn descendants(&self, root: i32) -> Vec<(i32, u32)> {
         let mut out = Vec::new();
         let mut seen: HashSet<i32> = HashSet::new();
         seen.insert(root);
-        let mut queue: Vec<i32> = vec![root];
-        while let Some(pid) = queue.pop() {
+        let mut queue: std::collections::VecDeque<(i32, u32)> = std::collections::VecDeque::new();
+        queue.push_back((root, 0));
+        while let Some((pid, depth)) = queue.pop_front() {
             for child in self.children.get(&pid).into_iter().flatten() {
                 if !seen.insert(*child) {
                     continue;
                 }
-                out.push(*child);
-                queue.push(*child);
+                out.push((*child, depth + 1));
+                queue.push_back((*child, depth + 1));
             }
         }
         out
