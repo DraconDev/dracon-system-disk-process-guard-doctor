@@ -147,6 +147,25 @@ pub(crate) fn forgotten_reap_allowed_under_pressure(pressure: &str) -> bool {
 /// list, both of which are knobs.
 pub(crate) const FORGOTTEN_MIN_TREE_AGE_SECS: u64 = 300;
 
+/// True when the exempt list must NOT decide this command line's fate,
+/// because the desktop-session veto is the precise instrument for it.
+///
+/// ADDED 2026-10-23: `process_exempt_names` names whole APPLICATIONS. For
+/// a BROWSER the name exemption is the wrong instrument: the token
+/// `chrome` protects the operator's live session AND every headless test
+/// browser — and the headless test browsers are precisely the leak this
+/// pass exists to clean up. The desktop veto tells the two apart exactly
+/// (a live session carries no `--user-data-dir`; a test job is headless
+/// or runs from a temporary profile), so for a browser root the veto
+/// decides and the name exemption does not apply.
+///
+/// The operator's own Chrome stays protected twice over: the veto
+/// classifies it as a live desktop session, and every other guard path
+/// (renice, OOM bias) still consults the exempt list by name.
+pub(crate) fn browser_decides_by_veto(args: &str) -> bool {
+    args.to_ascii_lowercase().contains("chrom")
+}
+
 /// One member of an orphaned process tree.
 #[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct TreeMember {
