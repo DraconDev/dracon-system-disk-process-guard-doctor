@@ -254,26 +254,31 @@ google-chrome process is exempt, **including** the headless google-chrome
 trees that some harnesses leak. The name exemption is checked before
 every other gate, so those trees are invisible to the forgotten pass.
 
-That is the operator's policy, and it was deliberate — "SIGKILL of it logs
-you out of every site". It is not widened here. The desktop veto is the
-precise instrument for "do not touch my live session", and it protects the
-operator's Chrome whether or not the name exemption is present; removing
-`chrome` from the list is what would let the forgotten pass see the
-google-chrome test trees, and that is the operator's call.
+That was the state on 2026-10-23, and the operator's call was to change
+it: **for a browser, the desktop-session veto decides and the exempt
+list does not apply.** The veto tells the two shapes apart exactly — a
+live desktop session carries no `--user-data-dir`, a test job is headless
+or runs from a temporary profile — where the name exemption is blunt and
+hides the leak.
+
+So the forgotten pass now asks the veto for browsers and the exempt list
+for everything else. The operator's own Chrome stays protected twice
+over: the veto classifies it as a live desktop session, and every other
+guard path (renice, OOM bias) still consults the exempt list by name.
 
 Measured on this host while verifying the change, five qualifying trees:
 
-| root | binary | processes | aggregate | caught? |
-|---|---|---|---|---|
-| 3335362 | google-chrome | 25 | 1083 MiB | no — `chrome` is exempt |
-| 3350461 | google-chrome | 21 | 1020 MiB | no — `chrome` is exempt |
-| 3897063 | chromium | 9 | 386 MiB | **yes** |
-| 3816878 | chromium | 9 | 365 MiB | **yes** |
-| 554746 | chromium | 9 | 299 MiB | **yes** |
+| root | binary | processes | aggregate | before | after |
+|---|---|---|---|---|---|
+| 3335362 | google-chrome | 25 | 1083 MiB | exempt | **reaped** |
+| 3350461 | google-chrome | 21 | 1020 MiB | exempt | **reaped** |
+| 3897063 | chromium | 9 | 386 MiB | reaped | reaped |
+| 3816878 | chromium | 9 | 365 MiB | reaped | reaped |
+| 554746 | chromium | 9 | 299 MiB | reaped | reaped |
 
-So this change makes roughly 1 GiB of already-leaked browser memory
-reclaimable where the old guard could see none of it, and leaves the
-operator's google-chrome policy exactly as it was.
+Deployed on 2026-10-23, the first two went from holding 2.1 GB to gone
+within one daemon cycle, and the operator's own Chrome — the same binary,
+the same executable name — was left untouched.
 
 ## 5. The knobs
 
