@@ -1298,10 +1298,21 @@ pub(crate) fn parse_namespace_inode(link: &Path) -> Option<u64> {
 pub(crate) fn can_restore_nice_for(proc_root: &Path, pid: i32) -> bool {
     let own = user_namespace_inode(proc_root, std::process::id() as i32);
     let target = user_namespace_inode(proc_root, pid);
-    match (own, target) {
-        (Some(own_ns), Some(target_ns)) if own_ns == target_ns => has_nice_restore_privilege(),
-        _ => false,
-    }
+    nice_restore_namespace_ok(own, target) && has_nice_restore_privilege()
+}
+
+/// Whether the guard's own user namespace is the target's, so the guard's
+/// `CAP_SYS_NICE` reaches it.
+///
+/// A capability held in a namespace applies in that namespace and in its
+/// DESCENDANTS only. Two different namespaces therefore mean the guard's
+/// capability does not reach the target, and the target's priority cannot
+/// be restored. An unreadable namespace on either side is treated as
+/// "different": the cost of being wrong there is a process left at a
+/// degraded priority, while the cost of being wrong the other way is a
+/// mitigation that can never be undone.
+pub(crate) fn nice_restore_namespace_ok(own_ns: Option<u64>, target_ns: Option<u64>) -> bool {
+    matches!((own_ns, target_ns), (Some(own), Some(target)) if own == target)
 }
 
 /// Whether a failed `renice` is a PERMANENT authority failure: the guard
