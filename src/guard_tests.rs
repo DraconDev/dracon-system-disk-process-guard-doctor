@@ -1684,6 +1684,42 @@ async fn the_pass_stores_the_measured_fill_rate_for_the_scratch_report() {
     );
 }
 
+/// ADDED 2026-10-24 (audit): the scratch line's number is how much writing
+/// the held-back scratch would absorb — NOT how long until the disk is full.
+/// It must not borrow the rapid-fill alarm's wording for it, or the journal
+/// reads "hours until full: 0.3" beside "estimated 2.7 hours until full".
+#[test]
+fn the_scratch_eta_does_not_claim_to_be_the_hours_until_the_disk_is_full() {
+    let gib = 1024u64 * 1024 * 1024;
+    let text = crate::scratch_eta_text(16 * gib, crate::DiskFillRate::Filling(51.3));
+    assert!(
+        !text.contains("hours until full"),
+        "the scratch figure must not reuse the alarm's wording: {text}"
+    );
+    assert!(
+        text.contains("0.3 hours of writes at 51.3 GiB/h"),
+        "the figure must say what it measures: {text}"
+    );
+
+    // A disk that is not filling, and a rate that cannot be measured, are
+    // different facts — and neither is "the disk is not filling" unless the
+    // disk really is not filling.
+    let not_filling = crate::scratch_eta_text(16 * gib, crate::DiskFillRate::NotFilling);
+    assert!(
+        not_filling.contains("the disk is not filling"),
+        "a flat disk says so: {not_filling}"
+    );
+    let unmeasured = crate::scratch_eta_text(16 * gib, crate::DiskFillRate::Unmeasured);
+    assert!(
+        unmeasured.contains("cannot be measured yet"),
+        "an unmeasurable rate says so: {unmeasured}"
+    );
+    assert!(
+        !unmeasured.contains("the disk is not filling"),
+        "an unmeasurable rate must NOT claim the disk is not filling: {unmeasured}"
+    );
+}
+
 /// ADDED 2026-10-24 (audit): a rate that cannot be measured must not be
 /// reported as "the disk is not filling".
 #[tokio::test]

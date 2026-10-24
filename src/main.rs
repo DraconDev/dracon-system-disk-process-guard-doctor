@@ -1582,6 +1582,31 @@ impl DiskFillRate {
     }
 }
 
+/// How much writing the held-back scratch would absorb at the measured rate.
+///
+/// ADDED 2026-10-24 (audit): the number is `held_back_bytes / rate` — how
+/// many hours of writing the scratch would absorb. It is NOT the time until
+/// the disk is full, which is `free_space / rate` and is what the
+/// rapid-fill alarm reports. The scratch line once carried the alarm's
+/// wording for its own number, so the journal read "hours until full: 0.3"
+/// beside "estimated 2.7 hours until full" — the same words on the same
+/// disk, meaning two different things.
+fn scratch_eta_text(blocked_bytes: u64, rate: DiskFillRate) -> String {
+    match rate {
+        DiskFillRate::Filling(gbph) => {
+            let hours = blocked_bytes as f64 / 1_073_741_824.0 / gbph;
+            format!("{hours:.1} hours of writes at {gbph:.1} GiB/h")
+        }
+        DiskFillRate::NotFilling => {
+            "the disk is not filling, so the held-back scratch has no deadline".to_string()
+        }
+        DiskFillRate::Unmeasured => {
+            "the fill rate cannot be measured yet, so the held-back scratch has no deadline"
+                .to_string()
+        }
+    }
+}
+
 /// Sustained disk fill rate in GiB/hour from a byte-precise df history.
 ///
 /// Returns `Unmeasured` until at least 3 samples spanning 60s of wall time
@@ -7987,32 +8012,24 @@ async fn run_auto_cleanup(
                 // fill; neither of them sees 144 GiB of deletable litter
                 // waiting for its floor.
                 if outcome.age_blocked_bytes > 0 {
-                    // The hours-until-full figure is the rate THIS pass
-                    // measured — the same one the rapid-fill alarm quotes.
-                    // Recomputing it here would use a different sample
-                    // window (the cleanup runs in the background, and the
-                    // history keeps growing), and the two lines would
-                    // contradict each other on screen.
+                    // The rate is the one THIS pass measured — the same one
+                    // the rapid-fill alarm quotes. Recomputing it here would
+                    // use a different sample window (the cleanup runs in the
+                    // background, and the history keeps growing), and the two
+                    // lines would contradict each other on screen.
                     //
-                    // A disk that is genuinely not filling has no such
-                    // figure, and that is said plainly rather than omitted:
-                    // "the scratch is N GiB" without it reads like the disk
-                    // is in trouble when it is not. A rate that cannot be
-                    // MEASURED is a third thing, and it says so — the old
-                    // wording claimed the disk was not filling at moments
-                    // when the disk was filling at 51.3 GiB/h.
-                    let eta = match state.disk_fill_rate {
-                        DiskFillRate::Filling(gbph) => {
-                            let hours = outcome.age_blocked_bytes as f64 / 1_073_741_824.0 / gbph;
-                            format!("{hours:.1}")
-                        }
-                        DiskFillRate::NotFilling => "never (the disk is not filling)".to_string(),
-                        DiskFillRate::Unmeasured => {
-                            "unknown (the fill rate cannot be measured yet)".to_string()
-                        }
-                    };
+                    // The NUMBER is how much writing the held-back scratch
+                    // would absorb at that rate — NOT how long until the disk
+                    // is full. The two are different quantities: the rapid-
+                    // fill alarm's "hours until full" is the free space
+                    // divided by the rate. The scratch line used to carry the
+                    // alarm's wording for its own number, so the journal
+                    // read "hours until full: 0.3" beside "estimated 2.7
+                    // hours until full" — the same words on the same disk,
+                    // meaning two different things.
+                    let eta = scratch_eta_text(outcome.age_blocked_bytes, state.disk_fill_rate);
                     eprintln!(
-                        "🧹 Tmp: {} held by the age floor across {} entries — hours until full: {}",
+                        "🧹 Tmp: {} held by the age floor across {} entries — {}",
                         human_bytes(outcome.age_blocked_bytes),
                         outcome.age_blocked_entries,
                         eta
