@@ -617,6 +617,55 @@ pub(crate) fn default_tmp_scratch_warn_gib() -> u64 {
     20
 }
 
+/// The state of the size-aware tmp floor's knobs.
+///
+/// ADDED 2026-10-24 (audit): the size-aware floor is documented as a SHORT
+/// floor — "an entry of at least `tmp_large_entry_bytes` is judged against
+/// `tmp_large_min_age_hours` instead of the general `tmp_min_age_hours`" — and
+/// its whole purpose is to reclaim bulk scratch SOONER. A configured large
+/// floor that is not shorter than the general one cannot do that: large
+/// entries would still be judged against the general floor and the knob would
+/// be a silent no-op. The sweep used to decide this by comparing two computed
+/// cutoffs and simply fell through, so the operator configured a knob, saw
+/// the guard ignore it, and had no way to tell why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum LargeFloorKnobs {
+    /// The size-aware floor is off: the operator disabled it (0), or the
+    /// general tmp gate is off, so there is nothing for it to shorten.
+    Off,
+    /// Configured and usable: the large floor is shorter than the general one.
+    Usable,
+    /// Configured but NOT usable: the large floor is not shorter than the
+    /// general floor, so the knob cannot shorten anything.
+    NotShorter {
+        /// The general floor, in hours.
+        general: u64,
+        /// The configured size-aware floor, in hours.
+        large: u64,
+    },
+}
+
+/// Classify the size-aware floor's knobs.
+///
+/// Pure: no I/O, no globals, so the policy-load report and the sweep can
+/// share it and cannot disagree.
+pub(crate) fn large_floor_knob_state(policy: &GuardPolicy) -> LargeFloorKnobs {
+    if policy.tmp_min_age_hours == 0 {
+        // The general tmp gate is off, so the whole sweep is skipped.
+        return LargeFloorKnobs::Off;
+    }
+    if policy.tmp_large_min_age_hours == 0 || policy.tmp_large_entry_bytes == 0 {
+        return LargeFloorKnobs::Off;
+    }
+    if policy.tmp_large_min_age_hours < policy.tmp_min_age_hours {
+        return LargeFloorKnobs::Usable;
+    }
+    LargeFloorKnobs::NotShorter {
+        general: policy.tmp_min_age_hours,
+        large: policy.tmp_large_min_age_hours,
+    }
+}
+
 /// ADDED 2026-10-22: five minutes. Long enough for an ordinary GC, short
 /// enough that the guard's loop regains control and samples memory again
 /// before a swap spike goes unnoticed.
