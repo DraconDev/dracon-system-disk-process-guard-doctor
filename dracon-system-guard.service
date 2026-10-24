@@ -76,18 +76,23 @@ ProtectHome=read-only
 # real misconfiguration worth failing loudly for.
 # ReadWritePaths=%h/.dracon %h/.local/state/dracon %h/.local/share -%h/Dev -%h/.local/share/Trash -%h/.cargo -%h/.cache -%h/.npm -%h/.local/state/nix /tmp
 # CHANGED 2026-10-01: the two OPERATOR-CONFIGURED storage roots are granted too.
-# `quarantine_dir` and `relocate_cold_root` are policy values, not defaults, so
+# `stash_dir` and `relocate_cold_root` are policy values, not defaults, so
 # they cannot be inferred here — but whichever paths the example config teaches
-# are the ones an operator copies, and until they are listed every quarantine
+# are the ones an operator copies, and until they are listed every stash
 # move AND every expiry failed with "Read-only file system (os error 30)": the
 # reclaim path was dead exactly when the disk needed it, and the ~20G already
-# quarantined could not be expired at all. The example config ships these two
+# stashd could not be expired at all. The example config ships these two
 # paths, so they are listed here and pinned by
 # `the_example_configs_storage_roots_are_inside_the_units_readwritepaths`
 # (src/policy_tests.rs); the daemon additionally names any root the operator has
 # repointed elsewhere at startup instead of failing silently per candidate.
 # Both are '-'-prefixed: a host with no second drive must still start.
-ReadWritePaths=%h/.dracon %h/.local/state/dracon %h/.local/share -%h/Dev -%h/.local/share/Trash -%h/.cargo -%h/.cache -%h/.npm -%h/.local/state/nix /tmp -/mnt/data/quarantine -/mnt/data/cold
+# ADDED 2026-10-24 (rename): the second disk's stash directory still carries
+# its old name on disk — /mnt/data is root-owned, so renaming it takes one
+# privileged command (`sudo mv /mnt/data/quarantine /mnt/data/stash`). Both
+# spellings are granted so the guard can write the directory under either
+# name; the '-'-prefix means a missing one is ignored.
+ReadWritePaths=%h/.dracon %h/.local/state/dracon %h/.local/share -%h/Dev -%h/.local/share/Trash -%h/.cargo -%h/.cache -%h/.npm -%h/.local/state/nix /tmp -/mnt/data/stash -/mnt/data/quarantine -/mnt/data/cold
 PrivateTmp=false
 
 # Kernel-level sandboxing (all certain — these daemons never use these privileges)
