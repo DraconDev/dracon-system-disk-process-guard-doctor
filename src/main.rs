@@ -5932,6 +5932,7 @@ async fn check_memory_pressure(
         forgotten_trees: forgotten.candidates,
         vetoed_trees: forgotten.vetoed,
         forgotten_reaped,
+        protected_trees: forgotten.protected,
     })
 }
 
