@@ -5659,10 +5659,19 @@ async fn check_memory_pressure(
                     // nothing about a process it was trying to throttle and
                     // had no way to know the attempt had even been made.
                     limited.push(format!("cpu-cap refused {}: {}", p.command, e));
-                    eprintln!(
-                        "⚠️ cpu-cap failed for pid={} cmd={}: {}",
-                        p.pid, p.command, e
-                    );
+                    // Log the refusal when it is NEW or when it CHANGED. A
+                    // refusal that repeats with the same reason is the same
+                    // news, and the report line carries it from then on.
+                    let changed = state
+                        .cap_refusals
+                        .get(&p.pid)
+                        .is_none_or(|r| r.reason != e);
+                    if changed {
+                        eprintln!(
+                            "⚠️ cpu-cap failed for pid={} cmd={}: {}",
+                            p.pid, p.command, e
+                        );
+                    }
                     state.cap_refusals.insert(
                         p.pid,
                         CapRefusal {
