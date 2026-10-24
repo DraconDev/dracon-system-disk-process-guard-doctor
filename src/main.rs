@@ -2329,13 +2329,22 @@ fn sweep_stranded_oom_descendants(
             },
         );
     }
+    // The write-ahead persist comes FIRST: a crash mid-restore must leave the
+    // ledger still saying "there is a pending restoration".
     if !persist_mitigations(state) {
         return OomSweepResult {
             restored: Vec::new(),
             deferred: state.oom_pending_descendants.len(),
         };
     }
-    restore_pending_oom_descendants(proc_root, state, exempt_names)
+    let result = restore_pending_oom_descendants(proc_root, state, exempt_names);
+    // FIXED 2026-10-24 (audit): the restore REMOVES the entries it has
+    // discharged, and that removal was never persisted. The ledger therefore
+    // kept dead pending entries on disk and re-hydrated them on the next
+    // daemon start — the debt came back from the dead and blocked the
+    // parent's release again. Persist the settled state as well.
+    persist_mitigations(state);
+    result
 }
 
 /// Apply a manager-owned lease to an existing isolated workload scope.
