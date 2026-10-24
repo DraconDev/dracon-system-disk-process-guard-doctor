@@ -744,7 +744,21 @@ pub(crate) fn scan_forgotten_orphan_trees(
                 // A veto is only worth reporting when the tree is actually
                 // heavy: the operator wants to see that a heavy Chrome was
                 // weighed and left alone, not a list of every helper.
-                if tree.aggregate_footprint_mb >= per_process_floor_mb {
+                //
+                // The weight rule is the SAME rule the candidate path uses —
+                // the tree's AGGREGATE against the tree floor, or the root's
+                // OWN weight against the per-process floor. It used to gate
+                // the tree's aggregate with the per-process floor, which is
+                // documented as the ROOT's own weight floor: a knob used for
+                // something its name does not say. The consequence was that
+                // the two lists answered "what is heavy?" differently, so a
+                // 500 MiB desktop tree was invisible while a 500 MiB test
+                // tree was a candidate — "if this had been mine to reclaim,
+                // would I have reclaimed it?" has to have the same answer
+                // whichever answer it gives.
+                if tree.aggregate_footprint_mb >= tree_floor_mb
+                    || tree.root_footprint_mb >= per_process_floor_mb
+                {
                     out.vetoed.push(VetoedTree {
                         root_pid: tree.root_pid,
                         root_comm: tree.root_comm.clone(),
