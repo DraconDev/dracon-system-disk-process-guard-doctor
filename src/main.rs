@@ -7204,7 +7204,7 @@ async fn reclaim_reaped_browser_profiles(
         }
         // It must be under a validated tmp root — this is what keeps the
         // operator's real browser profile out of reach.
-        let Some(root) = root_paths.iter().find(|r| dir.starts_with(r)) else {
+        let Some(root) = reclaim_root_for(dir, &root_paths) else {
             eprintln!(
                 "🛡️ keeping browser profile {}: outside the validated tmp roots",
                 dir.display()
