@@ -196,25 +196,53 @@ pub(crate) fn tcp_table_has_established(path: &Path, port: u16) -> bool {
     let Ok(text) = std::fs::read_to_string(path) else {
         return false;
     };
-    let want = format!("{port:04X}");
     for line in text.lines().skip(1) {
-        let mut fields = line.split_whitespace();
-        let (Some(local), Some(remote), Some(state)) =
-            (fields.next(), fields.next(), fields.next())
-        else {
+        let Some((local_port, remote_port, state)) = parse_proc_tcp_line(line) else {
             continue;
         };
         // 01 = TCP_ESTABLISHED
         if state != "01" {
             continue;
         }
-        if remote.rsplit(':').next() == Some(want.as_str())
-            || local.rsplit(':').next() == Some(want.as_str())
-        {
+        if local_port == port || remote_port == port {
             return true;
         }
     }
     false
+}
+
+/// The port number of a `/proc/net/tcp` address column, if the token is one.
+///
+/// The columns look like `0100007F:1F90` (IPv4) or
+/// `00000000000000000000000000000000:1F90` (IPv6): an address, a colon and
+/// the four hex digits of the port.
+fn proc_tcp_port(token: &str) -> Option<u16> {
+    let (_, port) = token.rsplit_once(':')?;
+    if port.len() != 4 || !port.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    u16::from_str_radix(port, 16).ok()
+}
+
+/// The two ports and the state of one `/proc/net/tcp` row.
+///
+/// The row begins with the SLOT column (`0:`, `12:`) — which is NOT the
+/// local address — so the address columns cannot simply be taken as the
+/// first whitespace-separated fields. They are located by shape instead:
+/// two address-shaped columns followed by a two-digit hex state.
+fn parse_proc_tcp_line(line: &str) -> Option<(u16, u16, &str)> {
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+    for i in 0..tokens.len().saturating_sub(2) {
+        let (Some(local), Some(remote)) = (proc_tcp_port(tokens[i]), proc_tcp_port(tokens[i + 1]))
+        else {
+            continue;
+        };
+        let state = tokens[i + 2];
+        if state.len() == 2 && state.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Some((local, remote, state));
+        }
+    }
+    None
 }
 
 /// Whether anything is connected to `port` right now.
