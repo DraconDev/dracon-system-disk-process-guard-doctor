@@ -4880,60 +4880,77 @@ async fn clean_old_node_modules(
             };
 
             if size > 0 {
-                let mut succeeded = true;
-                // ADDED 2026-09-27 (space tiers Phase 2): stash-first.
-                let mut stashed = false;
-                let mut freed = size;
-                if apply {
-                    if stash_first {
-                        match stash_first_remove(&path, stash_dir, protected_paths) {
-                            Ok((manifest, f)) => {
-                                stashed = true;
-                                freed = f;
-                                eprintln!(
-                                    "📦 Node stashed: {} as {}",
-                                    path.display(),
-                                    manifest.name
-                                );
-                            }
-                            Err(e) => {
-                                eprintln!("⚠️ failed to stash {}: {}", path.display(), e);
+                // FIXED 2026-10-24 (audit): the user-protected-path refusal
+                // used to live INSIDE the `if apply` block — the same
+                // overstatement that was fixed in the rust-target path on
+                // 2026-10-02. In a dry run the block is skipped entirely,
+                // so the preview listed every protected node_modules tree as
+                // reclaimable AND counted its bytes.
+                //
+                // Hoisted so preview and apply go through ONE check and
+                // cannot disagree. It covers the stash-first branch too: the
+                // stash move runs the same `check_safe_to_delete_guard`
+                // internally (`stash_move_inner`), so a protected tree is
+                // not reclaimable either way.
+                match check_safe_to_delete_guard(&path, protected_paths) {
+                    Ok(safe_path) => {
+                        let mut succeeded = true;
+                        // ADDED 2026-09-27 (space tiers Phase 2): stash-first.
+                        let mut stashed = false;
+                        let mut freed = size;
+                        if apply {
+                            if stash_first {
+                                match stash_first_remove(&path, stash_dir, protected_paths) {
+                                    Ok((manifest, f)) => {
+                                        stashed = true;
+                                        freed = f;
+                                        eprintln!(
+                                            "📦 Node stashed: {} as {}",
+                                            path.display(),
+                                            manifest.name
+                                        );
+                                    }
+                                    Err(e) => {
+                                        eprintln!("⚠️ failed to stash {}: {}", path.display(), e);
+                                        succeeded = false;
+                                    }
+                                }
+                            } else if let Err(e) = tokio::fs::remove_dir_all(&safe_path).await {
+                                eprintln!("⚠️ failed to remove {}: {}", path.display(), e);
                                 succeeded = false;
                             }
                         }
-                    } else {
-                        match check_safe_to_delete_guard(&path, protected_paths) {
-                            Ok(ref safe_path) => {
-                                if let Err(e) = tokio::fs::remove_dir_all(safe_path).await {
-                                    eprintln!("⚠️ failed to remove {}: {}", path.display(), e);
-                                    succeeded = false;
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("⚠️ skipping {}: {}", path.display(), e);
-                                continue;
+                        if !apply || succeeded {
+                            if stashed {
+                                cleaned.push(format!(
+                                    "{} (stashed, {} days old, {}, freed {})",
+                                    path.display(),
+                                    modified_secs_ago / 86400,
+                                    human_bytes(size),
+                                    human_bytes(freed)
+                                ));
+                                reclaimed += freed;
+                            } else {
+                                cleaned.push(format!(
+                                    "{} ({} days old, {})",
+                                    path.display(),
+                                    modified_secs_ago / 86400,
+                                    human_bytes(size)
+                                ));
+                                reclaimed += size;
                             }
                         }
                     }
-                }
-                if !apply || succeeded {
-                    if stashed {
-                        cleaned.push(format!(
-                            "{} (stashed, {} days old, {}, freed {})",
+                    Err(e) => {
+                        if apply {
+                            eprintln!("⚠️ skipping {}: {}", path.display(), e);
+                        }
+                        protected.push(format!(
+                            "{} ({})",
                             path.display(),
-                            modified_secs_ago / 86400,
-                            human_bytes(size),
-                            human_bytes(freed)
+                            one_line(&e.to_string())
                         ));
-                        reclaimed += freed;
-                    } else {
-                        cleaned.push(format!(
-                            "{} ({} days old, {})",
-                            path.display(),
-                            modified_secs_ago / 86400,
-                            human_bytes(size)
-                        ));
-                        reclaimed += size;
+                        continue;
                     }
                 }
             }
