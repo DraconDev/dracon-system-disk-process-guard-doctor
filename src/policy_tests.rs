@@ -305,7 +305,7 @@ fn sentinel_zero_knobs_are_never_clamped() {
         relocate_min_age_days: 0,
         trash_min_age_days: 0,
         rust_target_action_min_age_days: 0,
-        quarantine_ttl_days: 0,
+        stash_ttl_days: 0,
         cap_offenders_cpu_percent: 0,
         reap_report_min_idle_hours: 0,
         reap_report_max_cpu_seconds: 0,
@@ -321,7 +321,7 @@ fn sentinel_zero_knobs_are_never_clamped() {
     }
     // Spot-check the values actually survived, so the test is not vacuous.
     assert_eq!(sentinel.trend_warn_hours, 0);
-    assert_eq!(sentinel.quarantine_ttl_days, 0);
+    assert_eq!(sentinel.stash_ttl_days, 0);
     assert_eq!(sentinel.zombie_threshold, 0);
     assert_eq!(sentinel.nix_keep_generations, 0);
     assert_eq!(sentinel.rust_target_action_min_age_days, 0);
@@ -387,12 +387,12 @@ fn sentinel_zero_knob_list_matches_the_policy_fields() {
         "relocate_min_age_days",
         "trash_min_age_days",
         "rust_target_action_min_age_days",
-        "quarantine_ttl_days",
+        "stash_ttl_days",
         "cap_offenders_cpu_percent",
         "reap_report_min_idle_hours",
         "reap_report_max_cpu_seconds",
         "nix_keep_generations",
-        "quarantine_expire_interval_secs",
+        "stash_expire_interval_secs",
     ];
     let mut listed: Vec<&&str> = SENTINEL_ZERO_KNOBS.iter().collect();
     listed.sort();
@@ -409,15 +409,15 @@ fn sentinel_zero_knob_list_matches_the_policy_fields() {
 fn blank_strings_fall_back_to_their_defaults() {
     let mut p = GuardPolicy {
         sync_freeze_marker: "   ".to_string(),
-        quarantine_dir: String::new(),
+        stash_dir: String::new(),
         notify_command: "  ".to_string(),
         ..Default::default()
     };
     let adjusted = normalize_guard_policy(&mut p);
     assert_eq!(p.sync_freeze_marker, default_sync_freeze_marker());
-    assert_eq!(p.quarantine_dir, default_quarantine_dir());
+    assert_eq!(p.stash_dir, default_stash_dir());
     assert_eq!(p.notify_command, default_notify_command());
-    for field in ["sync_freeze_marker", "quarantine_dir", "notify_command"] {
+    for field in ["sync_freeze_marker", "stash_dir", "notify_command"] {
         assert!(adjusted.contains(&field), "{field} must be reported");
     }
 }
@@ -511,8 +511,8 @@ fn already_legal_policy_is_left_untouched() {
 /// A parsed TOML carrying out-of-range values must come out normalized, so
 /// every consumer gets in-range values by construction. Nine of the eleven
 /// `load_system_policy` call sites never normalized, which is exactly how a
-/// bad `quarantine_ttl_days` or `storage.min_size_mb` used to reach relocate,
-/// quarantine and storage RAW.
+/// bad `stash_ttl_days` or `storage.min_size_mb` used to reach relocate,
+/// stash and storage RAW.
 #[test]
 fn parsed_policy_is_normalized_at_the_load_boundary() {
     let toml_src = r#"
@@ -521,7 +521,7 @@ interval_secs = 0
 guard_log_max_mb = 0
 renice_value = -20
 process_cpu_percent = nan
-quarantine_ttl_days = 0
+stash_ttl_days = 0
 disk_warn_percent = 200
 process_sustain_secs = 900
 process_stuck_after_secs = 1
@@ -536,7 +536,7 @@ min_size_mb = 0
     assert_eq!(parsed.guard.renice_value, 0);
     assert!(parsed.guard.process_cpu_percent.is_finite());
     // 0 is a documented sentinel, so it survives.
-    assert_eq!(parsed.guard.quarantine_ttl_days, 0);
+    assert_eq!(parsed.guard.stash_ttl_days, 0);
     assert!(parsed.guard.disk_warn_percent <= 100);
     assert!(parsed.guard.process_stuck_after_secs >= parsed.guard.process_sustain_secs);
     assert!(parsed.storage.min_size_mb >= 1);
@@ -1314,7 +1314,7 @@ fn shipped_unit() -> String {
 }
 
 /// The example config teaches operators these two storage paths; if the shipped
-/// unit cannot write to them, every quarantine move and every expiry fails
+/// unit cannot write to them, every stash move and every expiry fails
 /// EROFS under `ProtectSystem=strict`.
 ///
 /// This is the same regression the default log dir has been pinned against
@@ -1335,7 +1335,7 @@ fn the_example_configs_storage_roots_are_inside_the_units_readwritepaths() {
     for line in example.lines() {
         let line = line.trim_start_matches('#').trim();
         let Some(rest) = line
-            .strip_prefix("quarantine_dir")
+            .strip_prefix("stash_dir")
             .or_else(|| line.strip_prefix("relocate_cold_root"))
         else {
             continue;
@@ -1387,7 +1387,7 @@ fn a_repointed_storage_root_outside_readwritepaths_is_reported() {
     );
 
     // Strip the entry (the state before this fix) and the root must surface.
-    let stripped = shipped_unit().replace(" -/mnt/data/quarantine -/mnt/data/cold", "");
+    let stripped = shipped_unit().replace(" -/mnt/data/stash -/mnt/data/cold", "");
     assert!(
         !stripped.contains("/mnt/data/cold"),
         "the mutation must actually remove the entry"
@@ -1450,7 +1450,7 @@ fn repointed_log_and_freeze_roots_outside_readwritepaths_are_reported() {
 fn unit_readwrite_paths_expands_home_and_keeps_optional_entries() {
     let unit = "\
 ReadWritePaths=%h/.dracon /tmp
-ReadWritePaths=-%h/Dev -/mnt/data/quarantine
+ReadWritePaths=-%h/Dev -/mnt/data/stash
 ";
     let home = std::path::Path::new("/home/tester");
     let granted = crate::safety::unit_readwrite_paths(unit, home);
@@ -1460,7 +1460,7 @@ ReadWritePaths=-%h/Dev -/mnt/data/quarantine
     );
     assert!(granted.contains(&"/home/tester/Dev".into()), "{granted:?}");
     assert!(
-        granted.contains(&"/mnt/data/quarantine".into()),
+        granted.contains(&"/mnt/data/stash".into()),
         "a '-' prefix means 'ignore if missing', not 'never granted': {granted:?}"
     );
     assert!(granted.contains(&"/tmp".into()), "{granted:?}");

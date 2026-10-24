@@ -2621,7 +2621,7 @@ fn live_unix_socket_match_is_component_wise() {
     );
 }
 
-// --- 2026-10-12 (obvious-fat fast path): e2e-litter tmp window + quarantine budget ---
+// --- 2026-10-12 (obvious-fat fast path): e2e-litter tmp window + stash budget ---
 
 /// Backdate a directory itself (creating children bumps it to now).
 fn backdate_dir(path: &std::path::Path, age_secs: u64) {
@@ -2680,36 +2680,36 @@ fn tmp_e2e_match_covers_glob_shapes() {
 }
 
 #[test]
-fn quarantine_budget_boundary_is_exclusive() {
-    assert_eq!(quarantine_budget_bytes(0), u64::MAX, "0 = unlimited");
+fn stash_budget_boundary_is_exclusive() {
+    assert_eq!(stash_budget_bytes(0), u64::MAX, "0 = unlimited");
     assert_eq!(
-        quarantine_budget_bytes(10240),
+        stash_budget_bytes(10240),
         10240 * 1024 * 1024,
         "MiB to bytes"
     );
-    let ten = quarantine_budget_bytes(10240);
+    let ten = stash_budget_bytes(10240);
     assert!(
-        !quarantine_over_budget(0, ten, ten),
+        !stash_over_budget(0, ten, ten),
         "exactly at budget is allowed"
     );
     assert!(
-        quarantine_over_budget(0, ten + 1, ten),
+        stash_over_budget(0, ten + 1, ten),
         "one byte over defers"
     );
     assert!(
-        !quarantine_over_budget(ten, 0, ten),
+        !stash_over_budget(ten, 0, ten),
         "zero-size entry always fits"
     );
     assert!(
-        quarantine_over_budget(ten, 1, ten),
+        stash_over_budget(ten, 1, ten),
         "full budget defers anything"
     );
     assert!(
-        !quarantine_over_budget(0, u64::MAX / 2, u64::MAX),
+        !stash_over_budget(0, u64::MAX / 2, u64::MAX),
         "unlimited never defers"
     );
     assert!(
-        !quarantine_over_budget(u64::MAX, u64::MAX, u64::MAX),
+        !stash_over_budget(u64::MAX, u64::MAX, u64::MAX),
         "saturating add must not panic at the extremes"
     );
 }
@@ -4191,35 +4191,35 @@ fn cleanup_stale_cooldowns_survives_an_extreme_cooldown() {
 #[test]
 fn guard_runtime_state_default_no_expiry_yet() {
     let state = GuardRuntimeState::default();
-    assert!(state.last_quarantine_expire.is_none());
+    assert!(state.last_stash_expire.is_none());
 }
 
 #[test]
-fn quarantine_expire_interval_zero_is_never_clamped() {
+fn stash_expire_interval_zero_is_never_clamped() {
     // 0 means "never expire automatically". A floor!() here would silently
     // re-enable unattended deletion for an operator who explicitly opted out,
     // which is the opposite failure from the one a floor guards against.
     let mut policy = GuardPolicy {
-        quarantine_expire_interval_secs: 0,
+        stash_expire_interval_secs: 0,
         ..Default::default()
     };
     normalize_guard_policy(&mut policy);
-    assert_eq!(policy.quarantine_expire_interval_secs, 0);
+    assert_eq!(policy.stash_expire_interval_secs, 0);
 }
 
 #[test]
-fn quarantine_expire_interval_defaults_to_a_day() {
+fn stash_expire_interval_defaults_to_a_day() {
     let policy = GuardPolicy::default();
-    assert_eq!(policy.quarantine_expire_interval_secs, 86_400);
+    assert_eq!(policy.stash_expire_interval_secs, 86_400);
 }
 
-/// The two opt-outs that stop `maybe_expire_quarantine` from deleting anything.
+/// The two opt-outs that stop `maybe_expire_stash` from deleting anything.
 /// Both are about not deleting what the operator did not ask to be deleted:
 /// interval 0 disables the unattended path, and an unarmed
-/// `clean_quarantine_first` means any entries present came from a human running
-/// `quarantine move` by hand.
+/// `clean_stash_first` means any entries present came from a human running
+/// `stash move` by hand.
 #[test]
-fn maybe_expire_quarantine_respects_both_opt_outs() {
+fn maybe_expire_stash_respects_both_opt_outs() {
     let root = std::env::temp_dir().join(format!(
         "dracon-expire-gate-{}-{}",
         std::process::id(),
@@ -4231,8 +4231,8 @@ fn maybe_expire_quarantine_respects_both_opt_outs() {
     std::fs::write(src.join("a.txt"), b"hello").unwrap();
     let qdir = root.join("q");
     // Move it in, then age the manifest far past any TTL so expiry WOULD act.
-    let manifest = quarantine_move(&src, &qdir, &[]).unwrap();
-    let aged = QuarantineManifest {
+    let manifest = stash_move(&src, &qdir, &[]).unwrap();
+    let aged = StashManifest {
         name: manifest.name.clone(),
         origin: manifest.origin.clone(),
         moved_at_unix: now_unix().saturating_sub(400 * 86_400),
@@ -4241,61 +4241,61 @@ fn maybe_expire_quarantine_respects_both_opt_outs() {
         auto: manifest.auto,
     };
     std::fs::write(
-        qdir.join(&manifest.name).join(".quarantine.json"),
+        qdir.join(&manifest.name).join(".stash.json"),
         serde_json::to_string_pretty(&aged).unwrap(),
     )
     .unwrap();
     let entry_dir = qdir.join(&manifest.name);
 
     let armed = GuardPolicy {
-        quarantine_dir: qdir.display().to_string(),
-        clean_quarantine_first: true,
-        quarantine_ttl_days: 30,
-        quarantine_expire_interval_secs: 0,
+        stash_dir: qdir.display().to_string(),
+        clean_stash_first: true,
+        stash_ttl_days: 30,
+        stash_expire_interval_secs: 0,
         ..Default::default()
     };
     let mut state = GuardRuntimeState::default();
 
     // Opt-out 1: interval 0.
-    maybe_expire_quarantine(&armed, &mut state, Instant::now());
+    maybe_expire_stash(&armed, &mut state, Instant::now());
     assert!(
         entry_dir.exists(),
         "interval 0 must disable the unattended expiry entirely"
     );
 
-    // Opt-out 2: quarantine not armed, interval positive.
+    // Opt-out 2: stash not armed, interval positive.
     let unarmed = GuardPolicy {
-        quarantine_expire_interval_secs: 86_400,
-        clean_quarantine_first: false,
+        stash_expire_interval_secs: 86_400,
+        clean_stash_first: false,
         ..armed.clone()
     };
     let mut state2 = GuardRuntimeState::default();
-    maybe_expire_quarantine(&unarmed, &mut state2, Instant::now());
+    maybe_expire_stash(&unarmed, &mut state2, Instant::now());
     assert!(
         entry_dir.exists(),
-        "entries from a manual `quarantine move` must not become an unattended delete"
+        "entries from a manual `stash move` must not become an unattended delete"
     );
 
     // Neither opt-out: the entry is past TTL and must actually be removed, and
     // the cooldown must be stamped so the next pass is a no-op.
     // (auto_cleanup_apply must be armed: audit M5 made expiry honor it.)
     let active = GuardPolicy {
-        quarantine_expire_interval_secs: 86_400,
+        stash_expire_interval_secs: 86_400,
         auto_cleanup_apply: true,
         ..armed.clone()
     };
     let mut state3 = GuardRuntimeState::default();
-    maybe_expire_quarantine(&active, &mut state3, Instant::now());
+    maybe_expire_stash(&active, &mut state3, Instant::now());
     assert!(!entry_dir.exists(), "a past-TTL entry must be expired");
-    assert!(state3.last_quarantine_expire.is_some());
+    assert!(state3.last_stash_expire.is_some());
 
     // And the cooldown holds: a second immediate pass must not re-scan. Proven
     // by re-creating an expired entry and confirming it survives the next pass.
     let src2 = root.join("work2").join("proj");
     std::fs::create_dir_all(&src2).unwrap();
     std::fs::write(src2.join("b.txt"), b"world!").unwrap();
-    let m2 = quarantine_move(&src2, &qdir, &[]).unwrap();
-    let aged2 = QuarantineManifest {
+    let m2 = stash_move(&src2, &qdir, &[]).unwrap();
+    let aged2 = StashManifest {
         name: m2.name.clone(),
         origin: m2.origin.clone(),
         moved_at_unix: now_unix().saturating_sub(400 * 86_400),
@@ -4304,11 +4304,11 @@ fn maybe_expire_quarantine_respects_both_opt_outs() {
         auto: m2.auto,
     };
     std::fs::write(
-        qdir.join(&m2.name).join(".quarantine.json"),
+        qdir.join(&m2.name).join(".stash.json"),
         serde_json::to_string_pretty(&aged2).unwrap(),
     )
     .unwrap();
-    maybe_expire_quarantine(&active, &mut state3, Instant::now());
+    maybe_expire_stash(&active, &mut state3, Instant::now());
     assert!(
         qdir.join(&m2.name).exists(),
         "the cooldown must stop a per-pass rescan"
@@ -4317,12 +4317,12 @@ fn maybe_expire_quarantine_respects_both_opt_outs() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// Audit M5 (2026-10-02): `maybe_expire_quarantine` must honor
+/// Audit M5 (2026-10-02): `maybe_expire_stash` must honor
 /// `auto_cleanup_apply` — previously it hardcoded apply=true, arming
 /// unattended deletes for operators who believed `false` meant dry-run.
 /// A dry-run pass scans and reports but removes nothing.
 #[test]
-fn maybe_expire_quarantine_dry_run_deletes_nothing() {
+fn maybe_expire_stash_dry_run_deletes_nothing() {
     let root = std::env::temp_dir().join(format!(
         "dracon-expire-dryrun-{}-{}",
         std::process::id(),
@@ -4333,8 +4333,8 @@ fn maybe_expire_quarantine_dry_run_deletes_nothing() {
     std::fs::create_dir_all(&src).unwrap();
     std::fs::write(src.join("a.txt"), b"hello").unwrap();
     let qdir = root.join("q");
-    let manifest = quarantine_move(&src, &qdir, &[]).unwrap();
-    let aged = QuarantineManifest {
+    let manifest = stash_move(&src, &qdir, &[]).unwrap();
+    let aged = StashManifest {
         name: manifest.name.clone(),
         origin: manifest.origin.clone(),
         moved_at_unix: now_unix().saturating_sub(400 * 86_400),
@@ -4343,7 +4343,7 @@ fn maybe_expire_quarantine_dry_run_deletes_nothing() {
         auto: manifest.auto,
     };
     std::fs::write(
-        qdir.join(&manifest.name).join(".quarantine.json"),
+        qdir.join(&manifest.name).join(".stash.json"),
         serde_json::to_string_pretty(&aged).unwrap(),
     )
     .unwrap();
@@ -4352,20 +4352,20 @@ fn maybe_expire_quarantine_dry_run_deletes_nothing() {
     // Fully armed EXCEPT auto_cleanup_apply: the past-TTL entry must
     // survive, and the cooldown must still stamp (no rescan spam).
     let dry = GuardPolicy {
-        quarantine_dir: qdir.display().to_string(),
-        clean_quarantine_first: true,
-        quarantine_ttl_days: 30,
-        quarantine_expire_interval_secs: 86_400,
+        stash_dir: qdir.display().to_string(),
+        clean_stash_first: true,
+        stash_ttl_days: 30,
+        stash_expire_interval_secs: 86_400,
         auto_cleanup_apply: false,
         ..Default::default()
     };
     let mut state = GuardRuntimeState::default();
-    maybe_expire_quarantine(&dry, &mut state, Instant::now());
+    maybe_expire_stash(&dry, &mut state, Instant::now());
     assert!(
         entry_dir.exists(),
         "dry-run expiry must not delete a past-TTL entry"
     );
-    assert!(state.last_quarantine_expire.is_some());
+    assert!(state.last_stash_expire.is_some());
 
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -4400,8 +4400,8 @@ const ABSURD_INTERVALS: &[u64] = &[
     u64::MAX,
 ];
 
-/// Build an expired entry in a fresh quarantine root, returning
-/// `(root, quarantine_dir, entry_name)`.
+/// Build an expired entry in a fresh stash root, returning
+/// `(root, stash_dir, entry_name)`.
 fn absurd_interval_fixture(tag: &str) -> (PathBuf, PathBuf, String) {
     let root = std::env::temp_dir().join(format!(
         "dracon-expire-absurd-{}-{}",
@@ -4413,8 +4413,8 @@ fn absurd_interval_fixture(tag: &str) -> (PathBuf, PathBuf, String) {
     let src = root.join("work").join("proj");
     std::fs::create_dir_all(&src).unwrap();
     std::fs::write(src.join("a.txt"), b"hello").unwrap();
-    let manifest = quarantine_move(&src, &qdir, &[]).unwrap();
-    let aged = QuarantineManifest {
+    let manifest = stash_move(&src, &qdir, &[]).unwrap();
+    let aged = StashManifest {
         name: manifest.name.clone(),
         origin: manifest.origin.clone(),
         moved_at_unix: now_unix().saturating_sub(400 * 86_400),
@@ -4423,7 +4423,7 @@ fn absurd_interval_fixture(tag: &str) -> (PathBuf, PathBuf, String) {
         auto: manifest.auto,
     };
     std::fs::write(
-        qdir.join(&manifest.name).join(".quarantine.json"),
+        qdir.join(&manifest.name).join(".stash.json"),
         serde_json::to_string_pretty(&aged).unwrap(),
     )
     .unwrap();
@@ -4432,13 +4432,13 @@ fn absurd_interval_fixture(tag: &str) -> (PathBuf, PathBuf, String) {
 
 fn expiry_policy(qdir: &Path, interval: u64) -> GuardPolicy {
     GuardPolicy {
-        quarantine_dir: qdir.display().to_string(),
-        clean_quarantine_first: true,
-        quarantine_ttl_days: 30,
-        quarantine_expire_interval_secs: interval,
+        stash_dir: qdir.display().to_string(),
+        clean_stash_first: true,
+        stash_ttl_days: 30,
+        stash_expire_interval_secs: interval,
         // FIXED 2026-10-03 (audit M5 follow-up): expiry honors
         // `auto_cleanup_apply` — the default false is dry-run (pinned
-        // by `maybe_expire_quarantine_dry_run_deletes_nothing`), so
+        // by `maybe_expire_stash_dry_run_deletes_nothing`), so
         // these interval tests must arm apply to exercise deletion.
         // This also strengthens the not-due test: the cooldown gates
         // even a fully armed policy.
@@ -4457,10 +4457,10 @@ fn absurd_expiry_intervals_are_not_due_once_the_cooldown_exists() {
         // but far short of 60, so the floor is the only thing keeping this
         // entry alive. Without it a policy of 1 becomes a per-pass delete.
         let mut state = GuardRuntimeState {
-            last_quarantine_expire: Some(Instant::now() - Duration::from_secs(2)),
+            last_stash_expire: Some(Instant::now() - Duration::from_secs(2)),
             ..Default::default()
         };
-        maybe_expire_quarantine(&expiry_policy(&qdir, interval), &mut state, Instant::now());
+        maybe_expire_stash(&expiry_policy(&qdir, interval), &mut state, Instant::now());
         if interval != 0 {
             assert!(
                 qdir.join(&name).exists(),
@@ -4479,18 +4479,18 @@ fn absurd_expiry_intervals_complete_normally_on_the_first_pass() {
     // and it must expire the entry rather than silently doing nothing.
     for &interval in ABSURD_INTERVALS {
         let mut state = GuardRuntimeState::default();
-        maybe_expire_quarantine(&expiry_policy(&qdir, interval), &mut state, Instant::now());
+        maybe_expire_stash(&expiry_policy(&qdir, interval), &mut state, Instant::now());
         if interval == 0 {
             // Opting out returns before the cooldown is touched, so the
             // runtime state is left exactly as an operator who never configured
             // the knob would leave it.
             assert!(
-                state.last_quarantine_expire.is_none(),
+                state.last_stash_expire.is_none(),
                 "interval 0 must leave the runtime state untouched"
             );
         } else {
             assert!(
-                state.last_quarantine_expire.is_some(),
+                state.last_stash_expire.is_some(),
                 "the cooldown must be stamped (interval={interval})"
             );
         }
@@ -4563,9 +4563,9 @@ async fn dry_run_preview_omits_user_protected_targets() {
         rust_search_roots: root.display().to_string(),
         cleanup_min_size_mb: 1,
         protected_paths: vec![protected_proj.display().to_string()],
-        // Nothing here may touch the real quarantine dir.
-        quarantine_dir: root.join("q").display().to_string(),
-        clean_quarantine_first: true,
+        // Nothing here may touch the real stash dir.
+        stash_dir: root.join("q").display().to_string(),
+        clean_stash_first: true,
         ..Default::default()
     };
 

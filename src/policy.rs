@@ -380,20 +380,20 @@ pub(crate) struct GuardPolicy {
     // decisions still key off the primary mount.
     #[serde(default)]
     pub(crate) disk_extra_mounts: String,
-    // ADDED 2026-09-26 (space tiers): quarantine root for hold-then-delete.
-    #[serde(default = "default_quarantine_dir")]
-    pub(crate) quarantine_dir: String,
-    // ADDED 2026-09-26 (space tiers): quarantine TTL in days; 0 disables expiry.
-    #[serde(default = "default_quarantine_ttl_days")]
-    pub(crate) quarantine_ttl_days: u64,
-    // ADDED 2026-10-02: how often the daemon runs quarantine expiry ITSELF.
+    // ADDED 2026-09-26 (space tiers): stash root for hold-then-delete.
+    #[serde(default = "default_stash_dir")]
+    pub(crate) stash_dir: String,
+    // ADDED 2026-09-26 (space tiers): stash TTL in days; 0 disables expiry.
+    #[serde(default = "default_stash_ttl_days")]
+    pub(crate) stash_ttl_days: u64,
+    // ADDED 2026-10-02: how often the daemon runs stash expiry ITSELF.
     //
-    // The TTL above was never enforced by anything. `quarantine_expire` had
+    // The TTL above was never enforced by anything. `stash_expire` had
     // exactly one non-test caller — the CLI `Expire` arm — so the only way an
     // entry ever aged out was a human running it by hand. No systemd timer, no
     // cron, no daemon pass. That was harmless while the reclaim path could not
-    // write (every move failed with EROFS, so nothing was ever quarantined),
-    // but once the ReadWritePaths fix made quarantine work, the guard began
+    // write (every move failed with EROFS, so nothing was ever stashd),
+    // but once the ReadWritePaths fix made stash work, the guard began
     // converting deletes into permanent second-disk usage: a move frees `/` at
     // copy time and only frees `/mnt/data` when the entry expires, so a TTL
     // that never fires means the system pays for every reclaimed tree twice,
@@ -401,23 +401,23 @@ pub(crate) struct GuardPolicy {
     //
     // 0 = never expire automatically. The manual CLI path still works; only the
     // unattended one is disabled.
-    #[serde(default = "default_quarantine_expire_interval_secs")]
-    pub(crate) quarantine_expire_interval_secs: u64,
+    #[serde(default = "default_stash_expire_interval_secs")]
+    pub(crate) stash_expire_interval_secs: u64,
     // ADDED 2026-09-27 (space tiers Phase 2): daemon rust-target and
-    // node_modules cleanup moves candidates to quarantine instead of
+    // node_modules cleanup moves candidates to stash instead of
     // deleting them. Explicit `guard clean` always deletes.
     #[serde(default)]
-    pub(crate) clean_quarantine_first: bool,
-    // ADDED 2026-10-12 (stall guard): cap on cross-device quarantine-move
+    pub(crate) clean_stash_first: bool,
+    // ADDED 2026-10-12 (stall guard): cap on cross-device stash-move
     // bytes per cleanup pass. The 2026-10-04 stall was repeated full-copy
-    // moves of 10-30 GiB targets to /mnt/data/quarantine, after which
+    // moves of 10-30 GiB targets to /mnt/data/stash, after which
     // auto_cleanup_rust was disabled outright. With a budget the guard moves
     // candidates up to the cap and DEFERS the rest with an explicit note
     // instead of stalling the desktop; the operator handles the huge ones
     // deliberately. 0 = unlimited. NOT a zero-sentinel: 0 removes the limit
     // rather than disabling a feature, so no floor is applied.
-    #[serde(default = "default_quarantine_max_bytes_per_pass_mb")]
-    pub(crate) quarantine_max_bytes_per_pass_mb: u64,
+    #[serde(default = "default_stash_max_bytes_per_pass_mb")]
+    pub(crate) stash_max_bytes_per_pass_mb: u64,
     // ADDED 2026-09-27 (space tiers Phase 2): scan for cold relocation
     // candidates at action/critical. Needs relocate_cold_root set; that
     // default is empty (disabled) so no machine path is ever assumed —
@@ -526,11 +526,11 @@ impl Default for GuardPolicy {
             rust_target_action_min_age_days: default_rust_target_action_min_age_days(),
             proactive_cleanup_interval_cycles: default_proactive_cleanup_interval_cycles(),
             disk_extra_mounts: String::new(),
-            quarantine_dir: default_quarantine_dir(),
-            quarantine_ttl_days: default_quarantine_ttl_days(),
-            quarantine_expire_interval_secs: default_quarantine_expire_interval_secs(),
-            clean_quarantine_first: false,
-            quarantine_max_bytes_per_pass_mb: default_quarantine_max_bytes_per_pass_mb(),
+            stash_dir: default_stash_dir(),
+            stash_ttl_days: default_stash_ttl_days(),
+            stash_expire_interval_secs: default_stash_expire_interval_secs(),
+            clean_stash_first: false,
+            stash_max_bytes_per_pass_mb: default_stash_max_bytes_per_pass_mb(),
             auto_relocate: default_true(),
             auto_relocate_apply: false,
             relocate_candidate_roots: default_relocate_candidate_roots(),
@@ -642,7 +642,7 @@ pub(crate) fn default_forgotten_orphan_tree_footprint_mb() -> u64 {
     256
 }
 
-pub(crate) fn default_quarantine_max_bytes_per_pass_mb() -> u64 {
+pub(crate) fn default_stash_max_bytes_per_pass_mb() -> u64 {
     10240
 }
 
@@ -1091,17 +1091,17 @@ pub(crate) fn default_proactive_cleanup_interval_cycles() -> u64 {
     120
 }
 
-pub(crate) fn default_quarantine_dir() -> String {
-    "~/.local/share/dracon/quarantine".to_string()
+pub(crate) fn default_stash_dir() -> String {
+    "~/.local/share/dracon/stash".to_string()
 }
 
-pub(crate) fn default_quarantine_ttl_days() -> u64 {
+pub(crate) fn default_stash_ttl_days() -> u64 {
     30
 }
 
-pub(crate) fn default_quarantine_expire_interval_secs() -> u64 {
+pub(crate) fn default_stash_expire_interval_secs() -> u64 {
     // A day is the natural unit for a 30-day TTL: the scan is one
-    // metadata walk of the quarantine root (one manifest per entry, not one
+    // metadata walk of the stash root (one manifest per entry, not one
     // per file), and a day is far finer than the resolution any operator
     // cares about for "when does my 30-day hold end".
     86_400
@@ -1136,7 +1136,7 @@ pub(crate) fn default_relocate_max_moves_per_pass() -> u64 {
 //
 // `normalize_guard_policy` is the SINGLE place the ranges are applied, and
 // `SystemPolicy::normalize` runs it from `load_system_policy`, so every
-// consumer — daemon, doctor, setup, links, relocate, quarantine, storage —
+// consumer — daemon, doctor, setup, links, relocate, stash, storage —
 // gets in-range values by construction.
 //
 // Two rules decide clamp vs. leave-alone:
@@ -1183,10 +1183,10 @@ pub(crate) const SENTINEL_ZERO_KNOBS: &[&str] = &[
     "trash_min_age_days",
     // 0 = disable the action-tier age gate (old delete-anything posture).
     "rust_target_action_min_age_days",
-    // 0 = never expire quarantine entries.
-    "quarantine_ttl_days",
-    // 0 = never run quarantine expiry automatically (CLI still works).
-    "quarantine_expire_interval_secs",
+    // 0 = never expire stash entries.
+    "stash_ttl_days",
+    // 0 = never run stash expiry automatically (CLI still works).
+    "stash_expire_interval_secs",
     // 0 = CPU throttling off.
     "cap_offenders_cpu_percent",
     // 0 = report every idle process / report only never-ran processes.
@@ -1328,7 +1328,7 @@ pub(crate) fn normalize_guard_policy_with_home(
     let mut adjusted: Vec<&'static str> = Vec::new();
 
     // FIXED 2026-10-02 (audit HIGH): `protected_paths` was the ONLY path-valued
-    // guard knob that never had `~` expanded. Every sibling — quarantine_dir,
+    // guard knob that never had `~` expanded. Every sibling — stash_dir,
     // relocate_cold_root, relocate_candidate_roots, rust_search_roots, the guard
     // log path — expands at point of use, so `~/Dev/...` worked for all of them.
     // Here the raw string went straight to `Path::canonicalize`, which resolves
@@ -1529,9 +1529,9 @@ pub(crate) fn normalize_guard_policy_with_home(
     // nix_keep_generations: 0 is a sentinel; no upper bound is meaningful
     // (nix treats "+N" as keep N, and a large N is merely conservative).
 
-    // --- quarantine / relocation -----------------------------------------
-    // quarantine_ttl_days: 0 is a sentinel (never expire), no clamp.
-    // quarantine_expire_interval_secs: 0 is a sentinel (never expire
+    // --- stash / relocation -----------------------------------------
+    // stash_ttl_days: 0 is a sentinel (never expire), no clamp.
+    // stash_expire_interval_secs: 0 is a sentinel (never expire
     // automatically), no clamp. Flooring either would silently RE-ENABLE
     // unattended deletion for an operator who explicitly opted out, which is
     // the opposite failure from the one a floor guards against.
@@ -1557,9 +1557,9 @@ pub(crate) fn normalize_guard_policy_with_home(
         adjusted.push("sync_freeze_marker");
         policy.sync_freeze_marker = default_sync_freeze_marker();
     }
-    if policy.quarantine_dir.trim().is_empty() {
-        adjusted.push("quarantine_dir");
-        policy.quarantine_dir = default_quarantine_dir();
+    if policy.stash_dir.trim().is_empty() {
+        adjusted.push("stash_dir");
+        policy.stash_dir = default_stash_dir();
     }
     if policy.notify_command.trim().is_empty() {
         adjusted.push("notify_command");

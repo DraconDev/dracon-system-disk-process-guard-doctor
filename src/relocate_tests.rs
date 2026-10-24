@@ -716,7 +716,7 @@ fn extra_mounts_default_is_empty_so_no_mount_is_visibility_only_by_default() {
 // clean_old_node_modules — 130 lines that DELETE directories, and which had
 // no coverage at all before the 0.112.42 release review. Only the two
 // properties that can lose data are asserted here: a dry run must be inert,
-// and a protected path must survive regardless of the quarantine flag.
+// and a protected path must survive regardless of the stash flag.
 // ---------------------------------------------------------------------------
 
 /// Build a node_modules tree whose directory mtime is `age_days` old, so
@@ -738,8 +738,8 @@ async fn node_modules_dry_run_deletes_nothing_and_leaves_the_tree_intact() {
     // destructive.
     let root = test_root("nm-dry");
     let nm = aged_node_modules(&root, 90);
-    let quarantine = root.join("quarantine");
-    std::fs::create_dir_all(&quarantine).unwrap();
+    let stash = root.join("stash");
+    std::fs::create_dir_all(&stash).unwrap();
     assert!(nm.exists(), "fixture must exist before the run");
 
     let (_, cleaned) = clean_old_node_modules(
@@ -748,7 +748,7 @@ async fn node_modules_dry_run_deletes_nothing_and_leaves_the_tree_intact() {
         false,
         &[],
         false,
-        &quarantine,
+        &stash,
     )
     .await
     .expect("dry run must not error");
@@ -762,12 +762,12 @@ async fn node_modules_dry_run_deletes_nothing_and_leaves_the_tree_intact() {
 }
 
 #[tokio::test]
-async fn node_modules_quarantine_first_dry_run_also_deletes_nothing() {
-    // The quarantine flag must not turn a dry run into a move.
-    let root = test_root("nm-dry-quarantine");
+async fn node_modules_stash_first_dry_run_also_deletes_nothing() {
+    // The stash flag must not turn a dry run into a move.
+    let root = test_root("nm-dry-stash");
     let nm = aged_node_modules(&root, 90);
-    let quarantine = root.join("quarantine");
-    std::fs::create_dir_all(&quarantine).unwrap();
+    let stash = root.join("stash");
+    std::fs::create_dir_all(&stash).unwrap();
 
     let (_, cleaned) = clean_old_node_modules(
         std::slice::from_ref(&root),
@@ -775,7 +775,7 @@ async fn node_modules_quarantine_first_dry_run_also_deletes_nothing() {
         false,
         &[],
         true,
-        &quarantine,
+        &stash,
     )
     .await
     .expect("dry run must not error");
@@ -783,12 +783,12 @@ async fn node_modules_quarantine_first_dry_run_also_deletes_nothing() {
     assert!(!cleaned.is_empty(), "must still report candidates");
     assert!(
         nm.exists(),
-        "quarantine-first dry run must not move anything"
+        "stash-first dry run must not move anything"
     );
-    let entries: Vec<_> = std::fs::read_dir(&quarantine).unwrap().collect();
+    let entries: Vec<_> = std::fs::read_dir(&stash).unwrap().collect();
     assert!(
         entries.is_empty(),
-        "nothing may be written to the quarantine root on a dry run"
+        "nothing may be written to the stash root on a dry run"
     );
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -800,8 +800,8 @@ async fn node_modules_protected_path_survives_a_real_apply() {
     let root = test_root("nm-protected");
     let nm = aged_node_modules(&root, 90);
     let protected = root.join("proj");
-    let quarantine = root.join("quarantine");
-    std::fs::create_dir_all(&quarantine).unwrap();
+    let stash = root.join("stash");
+    std::fs::create_dir_all(&stash).unwrap();
     let protected_str = protected.to_string_lossy().to_string();
 
     clean_old_node_modules(
@@ -810,7 +810,7 @@ async fn node_modules_protected_path_survives_a_real_apply() {
         true,
         std::slice::from_ref(&protected_str),
         false,
-        &quarantine,
+        &stash,
     )
     .await
     .expect("apply must not error");
