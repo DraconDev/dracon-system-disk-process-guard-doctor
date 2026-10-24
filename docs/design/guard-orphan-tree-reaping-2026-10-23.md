@@ -743,6 +743,31 @@ and wrong in another, or right in principle and wrong in the measurement:
 | 1 | lifetime CPU as "is it in use?" | hid every leak that did real work |
 | 2 | the exempt list applied to a tree's descendants | weighed a browser tree as its root, and left its helpers running |
 | 3 | silent `continue` on a tree left alone | made "weighed and left alone" look identical to "not there" |
+| 4 | lifetime CPU as "is this worth reporting?" | hid the operator's own 10.2 GiB browser, forever |
 
 Each of them was found by asking the guard a question the documentation
 claimed it could answer, and watching it not answer it.
+
+### 9.8 The fourth defect: the biggest tree on the host was invisible
+
+Defect 1 was the lifetime-CPU proxy in the REAP path. The same proxy
+stood in the REPORT path, and nobody had noticed because the second one
+is quieter: the veto path skipped any desktop tree whose root had burned
+more than `reap_report_max_cpu_seconds` of lifetime CPU, so a busy
+desktop tree was skipped **before it was ever weighed**.
+
+On this host that meant the operator's own Chrome: 65 processes, 10.2 GiB
+of resident-plus-swapped footprint, 8.3 hours of lifetime CPU. The guard
+had never reported it — not once in the whole journal — and it had never
+measured it either. The busier and heavier a tree was, the more certain
+the guard was to hide it, so the single largest tree on the machine was
+the one the operator could never see.
+
+The fix is to gate the veto report on WEIGHT — the same per-process floor
+the "heavy trees left alone" report already uses — instead of on how much
+work the tree did. A desktop session is still never a candidate and is
+never ended; it is now weighed and named, which is exactly what the
+veto report was written to do.
+
+This is the whole shape of the audit, once more: the same measurement
+error, in a third place, and each occurrence hid a different thing.
