@@ -265,6 +265,20 @@ pub(crate) fn tree_usage(tree: &ForgottenTree) -> Usage {
     }
 }
 
+/// The `--user-data-dir` a tree's root named, if any.
+///
+/// ADDED 2026-10-24: a leaked browser leaves two halves — the processes and
+/// the profile directory they owned. The guard now ends the processes
+/// promptly, so it also knows which profile belonged to the tree it just
+/// ended.
+///
+/// The path is returned with its ORIGINAL case: the profile directory is
+/// opened and removed by path, and a directory whose name contains an
+/// uppercase letter does not exist at the lowercased path.
+pub(crate) fn tree_user_data_dir(tree: &ForgottenTree) -> Option<PathBuf> {
+    extract_user_data_dir_raw(&tree.root_args).map(PathBuf::from)
+}
+
 /// The `--user-data-dir` value from a command line, if it has one.
 fn extract_user_data_dir(lower_args: &str) -> Option<String> {
     let idx = lower_args.find("--user-data-dir=")?;
