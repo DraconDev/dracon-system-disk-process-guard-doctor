@@ -961,17 +961,38 @@ fn an_established_connection_is_what_means_a_client_is_attached() {
     fs::write(
         &path,
         "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n\
-         0: 0100007F:1F90 0100007F:A2A5 01 00000000:00000000 00:00000000 00000000  1000        0 12345 1 0000 100 0 0 10 0\n\
+         0: 0100007F:1F90 0100007F:A24D 01 00000000:00000000 00:00000000 00000000  1000        0 12345 1 0000 100 0 0 10 0\n\
          1: 0100007F:C350 0100007F:2328 0A 00000000:00000000 00:00000000 00000000  1000        0 22222 1 0000 100 0 0 10 0\n",
     )
     .expect("tcp table");
-    // A2A5 == 41549, established.
+    // A24D == 41549, established. The row also proves that the SLOT column
+    // ("0:") is not mistaken for the local address.
     assert!(tcp_table_has_established(&path, 41549));
     // 2328 == 9000, in TIME_WAIT (0A), not established.
     assert!(!tcp_table_has_established(&path, 9000));
     // Nothing at all is listening on this one.
     assert!(!tcp_table_has_established(&path, 1234));
     let _ = fs::remove_file(&path);
+}
+
+/// The port column of `/proc/net/tcp` is HEX, and getting it wrong turns a
+/// live client into an invisible one.
+///
+/// This test pins the conversion: the fixture above uses `A24D`, and the
+/// port it means is 41549. An earlier fixture used `A2A5` and asserted the
+/// same port — A2A5 is 41637, so the assertion could only ever have been
+/// satisfied by a bug. The live case is the same one: the leaked browser's
+/// DevTools port 41549 appears in `/proc/net/tcp` as `A24D`.
+#[test]
+fn the_tcp_port_column_is_read_as_hexadecimal() {
+    assert_eq!(41549u16, u16::from_str_radix("A24D", 16).unwrap());
+    assert_eq!(u16::from_str_radix("A2A5", 16).unwrap(), 41637);
+    // The shape of a real row: the slot column is "42:", not an address.
+    let (local, remote, state) =
+        parse_proc_tcp_line("  42: 0100007F:A24D 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 458732102 1 0000 100 0 0 10 0").unwrap();
+    assert_eq!(local, 41549);
+    assert_eq!(remote, 0);
+    assert_eq!(state, "0A");
 }
 
 /// THE REGRESSION: a heavy, orphaned, headless tree that did a lot of work
