@@ -669,3 +669,58 @@ launched with `--user-data-dir=/tmp/proof-profile-reclaim-…`, orphaned
 
 Eleven processes ended and the profile went with them — in the same pass,
 instead of six hours later.
+
+### 9.6 A third defect, found by the proof of the second fix
+
+Building the live proof for §10 (reclaiming the profile directory) needed
+a deliberate leak of its own. It was created, orphaned, and left alone —
+and the guard **did not report it**.
+
+The tree was 9 processes holding 379 MiB (RSS 203 + swap 215), orphaned,
+headless, 500 seconds old, on a host in critical memory pressure. Its
+DevTools port had only a LISTEN socket and no ESTABLISHED connection. It
+passed every gate the documentation described.
+
+It was invisible because of a defect the same audit had already found
+elsewhere and fixed in one place but not in another.
+
+**The exempt list names APPLICATIONS, and every process of a `chrome` tree
+is named `chrome`.** The operator's exempt list contains `chrome`. The ROOT
+of a browser tree is admitted despite that exemption — for a browser, the
+desktop veto decides instead of the name, which was fixed earlier in this
+work. But the tree BUILDER still applied the name exemption to the tree's
+DESCENDANTS while it was assembling them.
+
+Two consequences, both wrong:
+
+- the tree's **aggregate weight was measured as the root's alone**. The
+  proof tree weighed **122 MiB** to the guard and **379 MiB** to anything
+  that actually counted its members. The 256 MiB floor is between those
+  two numbers, so the leak was under the floor and the guard could not see
+  it — in the very pass that exists to see it;
+- when such a tree **was** ended, its helpers were not in the tree, so
+  they were never signalled and survived it.
+
+The kill-time gate had this right all along — a browser helper inside a
+dead test's tree is that job's own machinery, not one of the operator's
+applications — so the tree that was **weighed** and the tree that would
+have been **ended** disagreed with each other. The builder now agrees with
+the gate, and the two are the same tree.
+
+A **non-browser** tree keeps the exemption exactly as before: an exempt
+daemon inside a dev-server tree is still the operator's, and is neither
+ended nor counted as reclaimable.
+
+### 9.7 What the audit turned up, in one place
+
+Three defects, all the same shape — a gate that was right in one place
+and wrong in another, or right in principle and wrong in the measurement:
+
+| # | the gate | what it did |
+|---|---|---|
+| 1 | lifetime CPU as "is it in use?" | hid every leak that did real work |
+| 2 | the exempt list applied to a tree's descendants | weighed a browser tree as its root, and left its helpers running |
+| 3 | silent `continue` on a tree left alone | made "weighed and left alone" look identical to "not there" |
+
+Each of them was found by asking the guard a question the documentation
+claimed it could answer, and watching it not answer it.
