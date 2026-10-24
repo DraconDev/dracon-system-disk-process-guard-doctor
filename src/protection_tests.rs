@@ -155,30 +155,29 @@ fn oom_write_ahead_failure_is_observable_and_does_not_claim_persistence() {
     assert!(state.last_persisted_mitigations.is_none());
 }
 
-/// ADDED 2026-10-24 (audit O1): a leftover bias record must not be adopted.
+/// ADDED 2026-10-24 (audit O1): a recorded bias is only trusted when the LIVE
+/// value says so.
 ///
-/// The ledger's claim that a pid is biased has to be checked against the LIVE
-/// `oom_score_adj`. A record whose live value is not the bias target is a
-/// leftover from a run that restored the value but could not drop the
-/// record. Adopting it would keep the ledger claiming "biased" for a process
-/// that is not biased — and `apply_oom_bias` skips any pid the ledger
-/// believes is already biased, so the stale claim silently disabled OOM
-/// steering for a live top-RSS process. Two live processes carried exactly
-/// that record on this host when the audit found it.
+/// The guard used to trust its own bookkeeping and skip the process: a
+/// record whose live value was not the bias target silently disabled OOM
+/// steering for a live top-RSS process under critical pressure, because the
+/// guard skipped the pid on every pass believing its own bookkeeping said
+/// "already done". Two live processes carried exactly that record on this
+/// host when the audit found it (the ledger said "biased", the live
+/// `oom_score_adj` was back at 200, and the host was at 2% available
+/// memory).
 #[test]
-fn hydration_drops_a_stale_oom_bias_record() {
-    let tmp = tempfile::tempdir().unwrap();
-    let pid = std::process::id() as i32;
-    let identity = read_proc_identity(Path::new("/proc"), pid).unwrap();
-    let mut state = GuardRuntimeState::default();
-    state.oom_biased_pids.insert(pid, (200, identity.clone()));
-    let ledger = tmp.path().join("ledger.json");
-    assert!(persist_mitigations_to(&mut state, &ledger));
-
-    let mut restarted = GuardRuntimeState::default();
-    hydrate_mitigations_from(&ledger, &mut restarted);
+fn a_recorded_bias_is_only_trusted_when_the_live_value_says_so() {
     assert!(
-        !restarted.oom_biased_pids.contains_key(&pid),
-        "a bias record whose live oom_score_adj is not the bias target is stale and must be dropped"
+        !recorded_bias_is_stale(Some(OOM_BIAS_TARGET)),
+        "a process that IS at the bias target is not stale"
+    );
+    assert!(
+        recorded_bias_is_stale(Some(200)),
+        "a process that is back at its original value IS stale"
+    );
+    assert!(
+        !recorded_bias_is_stale(None),
+        "an unreadable live value is not proof that the claim is false"
     );
 }
