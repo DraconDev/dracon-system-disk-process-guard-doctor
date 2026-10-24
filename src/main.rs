@@ -858,7 +858,13 @@ pub(crate) struct GuardRuntimeState {
     /// to the root's original value instead of remaining stranded at 250.
     pub(crate) oom_known_descendants: HashMap<i32, HashSet<(i32, u64)>>,
     /// Descendant restorations that could not yet be verified or written.
-    /// Root bias entries stay alive while any child incarnation is pending.
+    ///
+    /// CHANGED 2026-10-24 (audit): these entries no longer keep the root's
+    /// bias record alive. They used to, and the refusal left the ledger
+    /// claiming "biased" for a process whose live `oom_score_adj` had
+    /// already been restored — which silently disabled OOM steering for it.
+    /// Each entry carries its own root pid and original value, so the debt
+    /// is self-contained.
     pub(crate) oom_pending_descendants: HashMap<(i32, u64), OomPendingDescendant>,
     pub(crate) oom_cooled_since: HashMap<i32, Instant>,
     /// ADDED 2026-08-10 (v0.112.36): pids inside a transient
@@ -866,6 +872,17 @@ pub(crate) struct GuardRuntimeState {
     /// and their release timers.
     pub(crate) capped_pids: HashMap<i32, (String, String, ProcessIdentity)>,
     pub(crate) cap_cooled_since: HashMap<i32, Instant>,
+    /// CPU-cap attempts that were REFUSED, with the reason.
+    ///
+    /// ADDED 2026-10-24 (audit): a refusal such as "scope contains exempt
+    /// process chrome" cannot be resolved by retrying harder — the scope
+    /// holds an exempt process until that process exits. The old code
+    /// retried on every pass and logged the same refusal every pass (one
+    /// line per offending process per pass), and nothing durable said the
+    /// guard had TRIED and been refused. The reason is remembered so the
+    /// attempt is not repeated until the cooldown expires, and so the
+    /// refusal can be named in the report instead of only in the log.
+    pub(crate) cap_refusals: HashMap<i32, CapRefusal>,
     pub(crate) active_build_pids: HashSet<i32>,
     pub(crate) reniced_pids: HashMap<i32, LegacyReniceState>,
     pub(crate) cooled_since: HashMap<i32, Instant>,
