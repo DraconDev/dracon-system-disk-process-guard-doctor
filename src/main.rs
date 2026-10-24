@@ -7814,7 +7814,7 @@ fn spawn_background_cleanup(
     slot: Arc<tokio::sync::Mutex<CleanupSummary>>,
 ) {
     let guard = guard.clone();
-    let scratch = GuardRuntimeState {
+    let mut scratch = GuardRuntimeState {
         disk_bytes_history: state.disk_bytes_history.clone(),
         ..GuardRuntimeState::default()
     };
