@@ -6835,10 +6835,17 @@ async fn clean_tmp_e2e_fast_path_with_proc(
             }
             // FIXED 2026-10-24 (audit): all three tmp removal paths (the e2e
             // fast path, the general floor and the size-aware floor) now ask
-            // ONE helper whether the entry is held or protected. The three
+            // ONE helper which gate, if any, stops the removal. The three
             // used to be spelled out separately, and the size-aware floor
             // drifted past all of them.
-            if tmp_entry_is_protected(&path, root, protected_paths, &open_paths, live_sockets) {
+            if let Some(block) =
+                tmp_entry_block(&path, root, protected_paths, &open_paths, live_sockets)
+            {
+                eprintln!(
+                    "🛡️ keeping tmp entry {}: {}",
+                    path.display(),
+                    block.reason()
+                );
                 continue;
             }
             let entry_size = if meta.is_dir() {
@@ -6886,8 +6893,7 @@ fn age_of(hours: u64) -> Duration {
     Duration::from_secs(hours.saturating_mul(3_600))
 }
 
-/// Whether a tmp entry is held by something live or protected, and must
-/// therefore not be deleted.
+/// Why a tmp entry must not be deleted, if it must not be deleted.
 ///
 /// FIXED 2026-10-24 (audit): the size-aware floor used to remove a large
 /// entry WITHOUT consulting any of these gates, because it ran before them.
@@ -6901,28 +6907,45 @@ fn age_of(hours: u64) -> Duration {
 ///   2. a bound unix socket inside it — deleting the socket PATH strands a
 ///      live daemon (codex app-server, 2026-10-21);
 ///   3. the protected-path and tmp-root containment checks.
-fn tmp_entry_is_protected(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TmpEntryBlock {
+    /// A live process holds a file, cwd or exe under the entry.
+    HeldOpen,
+    /// The entry carries a bound unix socket.
+    LiveSocket,
+    /// The entry is under a protected path, or outside the validated tmp root.
+    Protected,
+}
+
+impl TmpEntryBlock {
+    /// The line to print when this block stops a removal.
+    fn reason(self) -> &'static str {
+        match self {
+            TmpEntryBlock::HeldOpen => "held open by a live process",
+            TmpEntryBlock::LiveSocket => "holds a live unix socket",
+            TmpEntryBlock::Protected => "protected path",
+        }
+    }
+}
+
+/// Which gate, if any, stops this tmp entry from being deleted.
+fn tmp_entry_block(
     path: &Path,
     root: &Path,
     protected_paths: &[String],
     open_paths: &HashSet<PathBuf>,
     live_sockets: &HashSet<PathBuf>,
-) -> bool {
+) -> Option<TmpEntryBlock> {
     if path_has_open_ancestor(path, open_paths) {
-        return true; // held open by a live process
+        return Some(TmpEntryBlock::HeldOpen);
     }
     if path_holds_live_unix_socket(path, live_sockets) {
-        eprintln!(
-            "🛡️ keeping tmp entry {}: holds a live unix socket",
-            path.display()
-        );
-        return true;
+        return Some(TmpEntryBlock::LiveSocket);
     }
-    if let Err(e) = check_safe_to_delete_tmp_entry(path, root, protected_paths) {
-        eprintln!("🛡️ keeping protected tmp entry {}: {}", path.display(), e);
-        return true;
+    if check_safe_to_delete_tmp_entry(path, root, protected_paths).is_err() {
+        return Some(TmpEntryBlock::Protected);
     }
-    false
+    None
 }
 
 /// What one tmp cleanup pass found.
