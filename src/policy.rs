@@ -392,7 +392,7 @@ pub(crate) struct GuardPolicy {
     // exactly one non-test caller — the CLI `Expire` arm — so the only way an
     // entry ever aged out was a human running it by hand. No systemd timer, no
     // cron, no daemon pass. That was harmless while the reclaim path could not
-    // write (every move failed with EROFS, so nothing was ever stashd),
+    // write (every move failed with EROFS, so nothing was ever stashed),
     // but once the ReadWritePaths fix made stash work, the guard began
     // converting deletes into permanent second-disk usage: a move frees `/` at
     // copy time and only frees `/mnt/data` when the entry expires, so a TTL

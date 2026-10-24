@@ -678,7 +678,7 @@ fn stash_expire_detailed_zero_ttl_reports_nothing() {
 /// and the whole protection rests on ONE call: `check_safe_to_delete_guard`
 /// inside `stash_move`. If that call is ever dropped in a refactor, the
 /// config keeps parsing, the guard keeps reporting candidates, and the protected
-/// tree gets stashd anyway — silently, because nothing else notices.
+/// tree gets stashed anyway — silently, because nothing else notices.
 ///
 /// So this pins the behaviour from the stash side: a protected ancestor
 /// refuses the move, and a sibling outside it still moves. Without the second

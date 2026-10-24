@@ -3233,7 +3233,7 @@ async fn auto_cleanup_rust_targets(
     // a failed move wasting budget only defers others — safe direction.
     // Direct deletes (stash-first off) are uncapped: no copy, no stall.
     let stash_budget = stash_budget_bytes(guard.stash_max_bytes_per_pass_mb);
-    let mut stashd_bytes = 0u64;
+    let mut stashed_bytes = 0u64;
 
     for target in targets {
         // Skip if too small
@@ -3336,7 +3336,7 @@ async fn auto_cleanup_rust_targets(
         // ADDED 2026-10-12 (stall guard): over-budget entries defer with an
         // explicit operator note instead of stalling the desktop mid-pass.
         if guard.clean_stash_first
-            && stash_over_budget(stashd_bytes, target.bytes, stash_budget)
+            && stash_over_budget(stashed_bytes, target.bytes, stash_budget)
         {
             result.protected_paths.push(format!(
                 "{} ({}, over per-pass stash budget {}, deferred — needs operator)",
@@ -3347,19 +3347,19 @@ async fn auto_cleanup_rust_targets(
             continue;
         }
         if guard.clean_stash_first {
-            stashd_bytes = stashd_bytes.saturating_add(target.bytes);
+            stashed_bytes = stashed_bytes.saturating_add(target.bytes);
         }
-        let mut stashd = false;
+        let mut stashed = false;
         let mut freed = target.bytes;
         if apply {
             if guard.clean_stash_first {
                 let qdir = stash_root(guard);
                 match stash_first_remove(&target.path, &qdir, &guard.protected_paths) {
                     Ok((manifest, f)) => {
-                        stashd = true;
+                        stashed = true;
                         freed = f;
                         eprintln!(
-                            "📦 Rust stashd: {} as {}",
+                            "📦 Rust stashed: {} as {}",
                             target.path.display(),
                             manifest.name
                         );
@@ -3383,9 +3383,9 @@ async fn auto_cleanup_rust_targets(
 
         result.cleaned_count += 1;
         result.reclaimed_bytes += freed;
-        if stashd {
+        if stashed {
             result.cleaned_paths.push(format!(
-                "{} (stashd, {}, freed {})",
+                "{} (stashed, {}, freed {})",
                 target.path.display(),
                 human_bytes(target.bytes),
                 human_bytes(freed)
@@ -3471,7 +3471,7 @@ async fn proactive_cleanup_rust_targets(
     // as the action path — a 14d-stale forgotten target is exactly the huge
     // cross-device copy that stalled the desktop in 2026-10-04.
     let stash_budget = stash_budget_bytes(guard.stash_max_bytes_per_pass_mb);
-    let mut stashd_bytes = 0u64;
+    let mut stashed_bytes = 0u64;
 
     for target in targets {
         if target.bytes < min_size_bytes {
@@ -3504,7 +3504,7 @@ async fn proactive_cleanup_rust_targets(
         // ADDED 2026-10-12 (stall guard): over-budget entries defer with an
         // explicit operator note instead of stalling the desktop mid-pass.
         if guard.clean_stash_first
-            && stash_over_budget(stashd_bytes, target.bytes, stash_budget)
+            && stash_over_budget(stashed_bytes, target.bytes, stash_budget)
         {
             result.protected_paths.push(format!(
                 "{} ({}, over per-pass stash budget {}, deferred — needs operator)",
@@ -3515,19 +3515,19 @@ async fn proactive_cleanup_rust_targets(
             continue;
         }
         if guard.clean_stash_first {
-            stashd_bytes = stashd_bytes.saturating_add(target.bytes);
+            stashed_bytes = stashed_bytes.saturating_add(target.bytes);
         }
-        let mut stashd = false;
+        let mut stashed = false;
         let mut freed = target.bytes;
         if apply {
             if guard.clean_stash_first {
                 let qdir = stash_root(guard);
                 match stash_first_remove(&target.path, &qdir, &guard.protected_paths) {
                     Ok((manifest, f)) => {
-                        stashd = true;
+                        stashed = true;
                         freed = f;
                         eprintln!(
-                            "📦 proactive stashd: {} as {}",
+                            "📦 proactive stashed: {} as {}",
                             target.path.display(),
                             manifest.name
                         );
@@ -3566,9 +3566,9 @@ async fn proactive_cleanup_rust_targets(
 
         result.cleaned_count += 1;
         result.reclaimed_bytes += freed;
-        if stashd {
+        if stashed {
             result.cleaned_paths.push(format!(
-                "{} (stashd, {} days stale, {}, freed {})",
+                "{} (stashed, {} days stale, {}, freed {})",
                 target.path.display(),
                 target.mtime_secs_ago / 86400,
                 human_bytes(target.bytes),
@@ -4805,16 +4805,16 @@ async fn clean_old_node_modules(
             if size > 0 {
                 let mut succeeded = true;
                 // ADDED 2026-09-27 (space tiers Phase 2): stash-first.
-                let mut stashd = false;
+                let mut stashed = false;
                 let mut freed = size;
                 if apply {
                     if stash_first {
                         match stash_first_remove(&path, stash_dir, protected_paths) {
                             Ok((manifest, f)) => {
-                                stashd = true;
+                                stashed = true;
                                 freed = f;
                                 eprintln!(
-                                    "📦 Node stashd: {} as {}",
+                                    "📦 Node stashed: {} as {}",
                                     path.display(),
                                     manifest.name
                                 );
@@ -4840,9 +4840,9 @@ async fn clean_old_node_modules(
                     }
                 }
                 if !apply || succeeded {
-                    if stashd {
+                    if stashed {
                         cleaned.push(format!(
-                            "{} (stashd, {} days old, {}, freed {})",
+                            "{} (stashed, {} days old, {}, freed {})",
                             path.display(),
                             modified_secs_ago / 86400,
                             human_bytes(size),
