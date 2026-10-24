@@ -2101,10 +2101,7 @@ fn apply_oom_bias(
     samples: &[ProcSample],
     state: &mut GuardRuntimeState,
 ) -> Result<Option<(i32, i32)>, String> {
-    if state.mitigation_ledger_unavailable
-        || state.oom_biased_pids.contains_key(&p.pid)
-        || !process_sample_is_current(p)
-    {
+    if state.mitigation_ledger_unavailable || !process_sample_is_current(p) {
         return Ok(None);
     }
     use std::io::{Read, Seek, SeekFrom, Write};
@@ -2122,6 +2119,29 @@ fn apply_oom_bias(
     let mut text = String::new();
     file.read_to_string(&mut text).map_err(|e| e.to_string())?;
     let original = text.trim().parse::<i32>().map_err(|e| e.to_string())?;
+    // FIXED 2026-10-24 (audit O1): the ledger's record says this pid is
+    // already biased, and the old code trusted that WITHOUT looking at the
+    // live value. A record whose live value is not the bias target is a
+    // leftover — the adjustment was restored by something else — and
+    // trusting it silently disabled OOM steering for a live top-RSS process:
+    // the guard skipped the pid on every pass because its own bookkeeping
+    // said "already done". Two live processes carried exactly that record on
+    // this host when the audit found it (the ledger said "biased", the live
+    // `oom_score_adj` was back at 200, and the host was at 2% available
+    // memory).
+    //
+    // The live value decides. An unreadable value is NOT proof that the
+    // claim is false, so the claim is kept.
+    if state.oom_biased_pids.contains_key(&p.pid) {
+        if !recorded_bias_is_stale(Some(original)) {
+            return Ok(None);
+        }
+        eprintln!(
+            "⚠️ oom-bias record for pid={} is stale (live adj {} is not the bias target) — re-applying",
+            p.pid, original
+        );
+        state.oom_biased_pids.remove(&p.pid);
+    }
     let Some(target) = oom_bias_target(original) else {
         return Ok(None);
     };
@@ -2160,6 +2180,17 @@ pub(crate) fn oom_bias_target(current: i32) -> Option<i32> {
     } else {
         Some(OOM_BIAS_TARGET)
     }
+}
+
+/// Whether a recorded OOM bias no longer describes the live process.
+///
+/// ADDED 2026-10-24 (audit O1): a record whose live `oom_score_adj` is not
+/// the bias target is a LEFTOVER — the adjustment was restored by something
+/// else — and the guard must not treat the process as "already biased".
+/// `None` means the live value could not be read, which is NOT proof that
+/// the claim is false.
+pub(crate) fn recorded_bias_is_stale(live_adj: Option<i32>) -> bool {
+    live_adj.is_some_and(|live| live != OOM_BIAS_TARGET)
 }
 
 const KERNEL_PROCESS_PREFIXES: &[&str] = &[
