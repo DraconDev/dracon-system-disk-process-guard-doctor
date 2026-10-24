@@ -1722,3 +1722,63 @@ async fn a_sighup_reload_is_not_deferred_by_an_unrestorable_nice_adjustment() {
     );
     let _ = fs::remove_dir_all(&root);
 }
+
+/// THE CREDENTIAL HEURISTIC IS A SUBSTRING MATCH, and it flags files that
+/// merely MENTION a credential word.
+///
+/// Measured on this host on 2026-10-24: 55 top-level trash entries, 11 GiB,
+/// kept forever — including a 3.9 GiB web bundle (`android-chrome-192x192.png`),
+/// five 865 MiB repository checkouts (test files named `…-token-….test.ts`
+/// and `…-chrome.md`), and the operator's own manuscript (a chapter called
+/// "borrowed credentials").
+///
+/// This test PINS that behaviour deliberately: it is a known cost, not an
+/// accident, and narrowing the heuristic is a decision that must be made
+/// consciously rather than by accident in a refactor. If this test starts
+/// failing, the heuristic was narrowed — which is a good outcome, but it
+/// must be a deliberate one.
+#[test]
+fn the_credential_heuristic_also_flags_names_that_only_mention_credentials() {
+    // A web asset, not a credential.
+    assert!(crate::looks_credential_like("android-chrome-192x192.png"));
+    assert!(crate::looks_credential_like("chrome.CdV59toY.css"));
+    // A test file about a scanner, not a credential.
+    assert!(crate::looks_credential_like("artifact-secret-scan-2026-10-01.test.ts"));
+    assert!(crate::looks_credential_like(
+        "aud-271-premium-token-validity-2026-08-05.test.ts"
+    ));
+    // A chapter title.
+    assert!(crate::looks_credential_like("02-borrowed-credentials.md"));
+    assert!(crate::looks_credential_like("01-the-archivists-secret.md"));
+    // The genuine ones must keep matching.
+    assert!(crate::looks_credential_like("Login Data"));
+    assert!(crate::looks_credential_like("id_ed25519.key"));
+}
+
+/// A guard that KEEPS something must say what keeping it costs.
+///
+/// The credential guard reported an entry COUNT ("keeping 55 flagged
+/// entries") and nothing else. A count looks like a rounding error; the
+/// size was 11 GiB. This pins that the cost is measured and reported.
+#[tokio::test]
+async fn the_credential_guard_reports_the_disk_cost_of_what_it_keeps() {
+    let root = std::env::temp_dir().join(format!("dracon-kept-cost-{}", std::process::id()));
+    let files = root.join("files");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(files.join("big")).expect("big entry");
+    std::fs::create_dir_all(files.join("small")).expect("small entry");
+    // 4 KiB in the big entry, 1 KiB in the small one.
+    std::fs::write(files.join("big").join("blob.bin"), vec![0u8; 4096]).expect("blob");
+    std::fs::write(files.join("small").join("blob.bin"), vec![0u8; 1024]).expect("blob");
+
+    let mut names = std::collections::HashSet::new();
+    names.insert("big".to_string());
+    names.insert("small".to_string());
+    let (total, sizes) = crate::kept_trash_entry_sizes(&files, &names).await;
+    assert_eq!(total, 5120, "the kept entries' size must be measured");
+    assert_eq!(sizes.len(), 2);
+    assert_eq!(sizes[0].0, "big", "the biggest kept entry must come first");
+    assert_eq!(sizes[0].1, 4096);
+    assert_eq!(sizes[1].1, 1024);
+    let _ = std::fs::remove_dir_all(&root);
+}
