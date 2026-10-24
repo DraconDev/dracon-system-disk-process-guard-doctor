@@ -7262,13 +7262,28 @@ async fn reclaim_reaped_browser_profiles(
     reclaimed
 }
 
+/// The validated tmp root that contains `dir`, if any.
+///
+/// This is the check that keeps the operator's REAL browser profile out of
+/// reach: `~/.config/google-chrome` is not under a tmp root, so a tree that
+/// named it may be ended, but its profile is never removed.
+///
+/// The match is component-wise, so a sibling that merely shares a textual
+/// prefix (`/tmp/profiles-old` against the root `/tmp/profiles`) does not
+/// qualify.
+fn reclaim_root_for(dir: &Path, root_paths: &[PathBuf]) -> Option<PathBuf> {
+    root_paths
+        .iter()
+        .find(|root| dir.starts_with(root) && dir != *root)
+        .cloned()
+}
+
 /// Whether any live process's COMMAND LINE names `path`.
 ///
 /// The open-file scan cannot see this: a browser that has just started on a
 /// profile path may not have a file open under it yet, and it is exactly
 /// that moment when deleting the path would break it.
-async fn path_named_by_live_cmdline(proc_root: &Path, path: &Path) -> bool {
-    let needle = path.to_string_lossy().to_string();
+async fn path_named_by_live_cmdline(proc_root: &Path, path: &Path) -> bool {    let needle = path.to_string_lossy().to_string();
     if needle.is_empty() {
         return false;
     }
