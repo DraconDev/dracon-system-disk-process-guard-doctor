@@ -7828,7 +7828,7 @@ async fn run_auto_cleanup(
                 }
             })
             .collect();
-        let (bytes, cleaned) = match clean_old_node_modules(
+        let node_outcome = match clean_old_node_modules(
             &roots,
             guard.node_modules_max_age_days,
             apply,
@@ -7841,15 +7841,32 @@ async fn run_auto_cleanup(
             Ok(result) => result,
             Err(e) => {
                 eprintln!("⚠️ Node modules cleanup failed: {}", e);
-                (0, vec![])
+                NodeCleanupOutcome::default()
             }
         };
-        total_reclaimed += bytes;
-        all_cleaned.extend(cleaned.iter().map(|s| format!("Node: {}", s)));
+        total_reclaimed += node_outcome.reclaimed;
+        all_cleaned.extend(node_outcome.cleaned.iter().map(|s| format!("Node: {}", s)));
         if apply {
-            for c in &cleaned {
+            for c in &node_outcome.cleaned {
                 eprintln!("📂 {}", c);
             }
+        }
+        // ADDED 2026-10-24 (audit): a protected tree is NOT reclaimable, and
+        // the refusal used to happen only when applying — so a dry run
+        // counted it as reclaimable space. One aggregated line per cycle,
+        // matching the tmp "needs another user" convention.
+        if !node_outcome.protected.is_empty() {
+            let sample: Vec<&str> = node_outcome
+                .protected
+                .iter()
+                .take(3)
+                .map(|s| s.as_str())
+                .collect();
+            eprintln!(
+                "🛡️ Node: {} node_modules trees are protected and will not be reclaimed (e.g. {})",
+                node_outcome.protected.len(),
+                sample.join(", ")
+            );
         }
     }
 
@@ -10827,10 +10844,15 @@ async fn cmd_guard_clean(
         )
         .await
         {
-            Ok((bytes, cleaned)) => {
-                total_reclaimed += bytes;
-                for c in cleaned {
+            Ok(outcome) => {
+                total_reclaimed += outcome.reclaimed;
+                for c in outcome.cleaned {
                     actions.push(format!("Node: {}", c));
+                }
+                // ADDED 2026-10-24 (audit): a protected tree is not
+                // reclaimable, and the refusal only ran when applying.
+                for p in outcome.protected {
+                    actions.push(format!("Protected: {}", p));
                 }
             }
             Err(e) => failures.push(format!("Node: {}", e)),
