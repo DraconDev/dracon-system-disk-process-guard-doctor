@@ -865,3 +865,83 @@ async fn auto_relocate_pauses_when_df_fails() {
     );
     cleanup(&root);
 }
+
+/// ADDED 2026-10-24 (audit F4): a dry run must not count a PROTECTED tree as
+/// reclaimable space.
+///
+/// The refusal used to run only when applying, so the preview listed every
+/// protected tree as reclaimable AND counted its bytes — the same
+/// overstatement that was fixed in the rust-target path on 2026-10-02, and
+/// one that misled the operator twice in one session.
+#[tokio::test]
+async fn node_modules_dry_run_does_not_count_a_protected_tree() {
+    let root = test_root("nm-dry-protected");
+    let nm = aged_node_modules(&root, 90);
+    let protected = root.join("proj");
+    let protected_str = protected.to_string_lossy().to_string();
+    let stash = root.join("stash");
+    std::fs::create_dir_all(&stash).unwrap();
+
+    let outcome = clean_old_node_modules(
+        std::slice::from_ref(&root),
+        30,
+        false,
+        std::slice::from_ref(&protected_str),
+        false,
+        &stash,
+    )
+    .await
+    .expect("dry run must not error");
+
+    assert_eq!(
+        outcome.reclaimed, 0,
+        "a protected tree is not reclaimable, so a dry run must not count it"
+    );
+    assert!(
+        outcome.cleaned.is_empty(),
+        "a protected tree must not be listed as a cleanup candidate"
+    );
+    assert_eq!(
+        outcome.protected.len(),
+        1,
+        "the refusal must be named, not silently dropped"
+    );
+    assert!(nm.exists(), "dry run must not delete anything");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// ADDED 2026-10-24 (audit F6): an absurd `node_modules_max_age_days` must
+/// not overflow the age computation.
+///
+/// `max_age_days * 24 * 3600` was the only non-saturating age computation in
+/// the crate: it wrapped in release builds and panicked in debug ones, which
+/// turned a nonsense knob into a wrong age — and, in debug builds, a crash.
+#[tokio::test]
+async fn node_modules_absurd_max_age_does_not_overflow() {
+    let root = test_root("nm-absurd-age");
+    let nm = aged_node_modules(&root, 90);
+    let stash = root.join("stash");
+    std::fs::create_dir_all(&stash).unwrap();
+
+    let outcome = clean_old_node_modules(
+        std::slice::from_ref(&root),
+        u64::MAX,
+        false,
+        &[],
+        false,
+        &stash,
+    )
+    .await
+    .expect("an absurd age must not panic or wrap");
+
+    assert_eq!(
+        outcome.reclaimed, 0,
+        "a saturated age means nothing is old enough, which is the safe direction"
+    );
+    assert!(
+        outcome.cleaned.is_empty(),
+        "nothing may be listed under an absurd age"
+    );
+    assert!(nm.exists(), "the tree must be left alone");
+    let _ = std::fs::remove_dir_all(&root);
+}
