@@ -1392,7 +1392,6 @@ fn a_repointed_storage_root_outside_readwritepaths_is_reported() {
     // transitional paths happen to be granted beside them.
     let stripped = shipped_unit()
         .replace(" -/mnt/data/stash", "")
-        .replace(" -/mnt/data/quarantine", "")
         .replace(" -/mnt/data/cold", "");
     assert!(
         !stripped.contains("/mnt/data/cold"),
