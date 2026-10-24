@@ -6500,9 +6500,26 @@ fn hydrate_mitigations_from(path: &Path, state: &mut GuardRuntimeState) {
             );
         }
         if let Some(original) = record.original_oom_adj {
-            state
-                .oom_biased_pids
-                .insert(record.pid, (original, record.identity.clone()));
+            // ADDED 2026-10-24 (audit O1): the record claims this pid is
+            // biased. Verify the LIVE value before adopting the claim: a
+            // leftover record (the adjustment was restored by something
+            // else) would keep the ledger lying AND make `apply_oom_bias`
+            // skip a live process that needs steering under pressure. An
+            // unreadable value is NOT proof of staleness — the record is
+            // kept so the restore path can still try.
+            let stale = oom_restore::current_adj(Path::new("/proc"), record.pid)
+                .map(|live| live != OOM_BIAS_TARGET)
+                .unwrap_or(false);
+            if stale {
+                eprintln!(
+                    "⚠️ mitigation ledger: dropping a stale oom-bias record for pid={} — its live oom_score_adj is not the bias target",
+                    record.pid
+                );
+            } else {
+                state
+                    .oom_biased_pids
+                    .insert(record.pid, (original, record.identity.clone()));
+            }
         }
         if let Some(scope) = record.cap_scope {
             state.capped_pids.insert(

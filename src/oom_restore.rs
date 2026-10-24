@@ -5,6 +5,21 @@ use std::{
     path::Path,
 };
 
+/// The live `oom_score_adj` of a pid, read without changing it.
+///
+/// ADDED 2026-10-24 (audit O1): the ledger's claim that a pid is biased has
+/// to be checked against the LIVE value before it is adopted. A claim whose
+/// live value is not the bias target is a leftover, and adopting it keeps
+/// the ledger lying — and makes `apply_oom_bias` skip a live process that
+/// needs steering under pressure.
+pub(crate) fn current_adj(proc_root: &Path, pid: i32) -> Result<i32, String> {
+    let path = proc_root.join(pid.to_string()).join("oom_score_adj");
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    text.trim()
+        .parse::<i32>()
+        .map_err(|e| format!("invalid oom_score_adj in {}: {e}", path.display()))
+}
+
 pub(crate) fn restore(
     proc_root: &Path,
     pid: i32,
