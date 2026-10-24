@@ -6500,26 +6500,18 @@ fn hydrate_mitigations_from(path: &Path, state: &mut GuardRuntimeState) {
             );
         }
         if let Some(original) = record.original_oom_adj {
-            // ADDED 2026-10-24 (audit O1): the record claims this pid is
-            // biased. Verify the LIVE value before adopting the claim: a
-            // leftover record (the adjustment was restored by something
-            // else) would keep the ledger lying AND make `apply_oom_bias`
-            // skip a live process that needs steering under pressure. An
-            // unreadable value is NOT proof of staleness — the record is
-            // kept so the restore path can still try.
-            let stale = oom_restore::current_adj(Path::new("/proc"), record.pid)
-                .map(|live| live != OOM_BIAS_TARGET)
-                .unwrap_or(false);
-            if stale {
-                eprintln!(
-                    "⚠️ mitigation ledger: dropping a stale oom-bias record for pid={} — its live oom_score_adj is not the bias target",
-                    record.pid
-                );
-            } else {
-                state
-                    .oom_biased_pids
-                    .insert(record.pid, (original, record.identity.clone()));
-            }
+            // The record is an OBLIGATION, not a claim about the live value:
+            // it says "this pid was biased, so its original value must be
+            // restored". Adopting it is what lets the release path restore a
+            // bias that a previous run applied — the obligation must survive
+            // a restart, or the process stays pinned at 250 forever.
+            //
+            // Whether the claim is still TRUE of the live process is decided
+            // where it matters: `apply_oom_bias` re-checks the live value
+            // before it trusts the record and skips the process.
+            state
+                .oom_biased_pids
+                .insert(record.pid, (original, record.identity.clone()));
         }
         if let Some(scope) = record.cap_scope {
             state.capped_pids.insert(
