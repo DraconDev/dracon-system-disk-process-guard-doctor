@@ -623,6 +623,12 @@ pub(crate) struct MemoryReport {
     /// pressure-gated forgotten-orphan pass ended this cycle (empty unless
     /// pressure is warn/critical).
     pub(crate) forgotten_reaped: Vec<ReapedTree>,
+    /// ADDED 2026-10-24 (audit): heavy orphaned trees that were weighed and
+    /// deliberately NOT ended — a client is still connected to one, or it is
+    /// busy with no debugging port to check. Reported because a heavy
+    /// orphan the guard is leaving alone is exactly what the operator needs
+    /// to see; the old code skipped such trees SILENTLY.
+    pub(crate) protected_trees: Vec<ProtectedTree>,
 }
 
 /// A zombie (defunct) process with context useful for diagnosis.
