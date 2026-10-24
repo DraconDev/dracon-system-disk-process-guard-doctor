@@ -7141,8 +7141,19 @@ async fn clean_tmp_paths_with_proc(
                     // against the general floor. Counted whatever its size —
                     // the long tail of SMALL entries is where the incident's
                     // 62.7 GiB actually sat.
-                    out.age_blocked_bytes += size;
-                    out.age_blocked_entries += 1;
+                    //
+                    // FIXED 2026-10-24 (audit): only count the entry when the
+                    // age floor is what is actually holding it back. An entry
+                    // that a live process holds open, that carries a bound
+                    // unix socket, or that sits under a protected path would
+                    // NOT be reclaimed by lowering the floor, so counting it
+                    // here told the operator "lower tmp_min_age_hours to free
+                    // 30 GiB" when lowering it frees nothing.
+                    if !tmp_entry_is_protected(&path, root, protected_paths, &open_paths, live_sockets)
+                    {
+                        out.age_blocked_bytes += size;
+                        out.age_blocked_entries += 1;
+                    }
                 }
                 continue; // fresh content
             }
