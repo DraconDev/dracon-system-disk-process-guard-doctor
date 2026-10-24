@@ -7696,12 +7696,30 @@ async fn run_auto_cleanup(
                         outcome.age_blocked_entries,
                         eta
                     );
+                    // ADDED 2026-10-24 (audit): the two floors are unlocked
+                    // by different knobs. One total cannot give one piece
+                    // of advice, so the size-aware share is named: telling
+                    // the operator to lower `tmp_min_age_hours` when the
+                    // bytes are held by `tmp_large_min_age_hours` points at
+                    // the knob that frees nothing.
+                    if outcome.large_blocked_bytes > 0 {
+                        eprintln!(
+                            "🧹 Tmp: {} across {} of those entries is held by the size-aware floor (tmp_large_min_age_hours); the rest by the general floor (tmp_min_age_hours)",
+                            human_bytes(outcome.large_blocked_bytes),
+                            outcome.large_blocked_entries
+                        );
+                    }
                     let warn_gib = guard.tmp_scratch_warn_gib;
                     if scratch_warning_threshold_exceeded(outcome.age_blocked_bytes, warn_gib) {
                         eprintln!(
-                            "⚠️ Tmp: {} of scratch is held by the age floor (warn threshold {} GiB) — lower tmp_min_age_hours or enable tmp_large_min_age_hours",
+                            "⚠️ Tmp: {} of scratch is held by the age floor (warn threshold {} GiB) — lower tmp_min_age_hours{}",
                             human_bytes(outcome.age_blocked_bytes),
-                            warn_gib
+                            warn_gib,
+                            if outcome.large_blocked_bytes > 0 {
+                                ", or tmp_large_min_age_hours for the size-aware floor"
+                            } else {
+                                ""
+                            }
                         );
                     }
                 }
