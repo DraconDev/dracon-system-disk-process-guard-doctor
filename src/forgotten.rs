@@ -360,11 +360,29 @@ pub(crate) struct VetoedTree {
     pub(crate) reason: String,
 }
 
-/// The outcome of one scan: what qualifies, and what was vetoed.
+/// A heavy orphaned tree that was weighed and deliberately NOT ended.
+///
+/// ADDED 2026-10-24 (audit): the guard used to skip such trees SILENTLY —
+/// a tree the CPU gate excluded was never reported at all, so a 1.5 GB
+/// orphan could sit there for days with the guard saying nothing. Silence
+/// is the one thing this pass must never do: a heavy orphan that is being
+/// left alone is exactly what the operator needs to see.
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct ProtectedTree {
+    pub(crate) root_pid: i32,
+    pub(crate) root_comm: String,
+    pub(crate) aggregate_footprint_mb: u64,
+    pub(crate) member_count: usize,
+    pub(crate) reason: String,
+}
+
+/// The outcome of one scan: what qualifies, what was vetoed, what was left
+/// alone on purpose.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ForgottenTreeScan {
     pub(crate) candidates: Vec<ForgottenTree>,
     pub(crate) vetoed: Vec<VetoedTree>,
+    pub(crate) protected: Vec<ProtectedTree>,
 }
 
 /// The crashpad handler PID a command line names, if any.
