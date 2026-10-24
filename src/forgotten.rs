@@ -718,13 +718,27 @@ pub(crate) fn scan_forgotten_orphan_trees(
             DesktopVerdict::Test { why } => why,
             DesktopVerdict::Desktop { reason } => {
                 // A live desktop session is never a candidate, whatever its
-                // weight. It is only worth REPORTING when it is heavy, and a
-                // busy one is not news on every pass — so the lifetime-CPU
-                // proxy still decides whether a desktop tree is worth
-                // weighing at all.
-                if root.cpu_ticks / ticks_per_sec.max(1) > policy.max_cpu_seconds {
-                    continue;
-                }
+                // weight. It IS worth REPORTING when it is heavy: the
+                // operator wants to see that a heavy Chrome was weighed and
+                // left alone, not a list of every helper process.
+                //
+                // The gate that used to stand here was the LIFETIME-CPU
+                // proxy — "a busy one is not news on every pass" — and it
+                // hid the single most important tree on the host. The
+                // operator's own Chrome had 8.3 HOURS of lifetime CPU and
+                // 10.2 GiB across 65 processes, and the guard had never
+                // reported it once: it was skipped before it was ever
+                // weighed. That is the same measurement error as the
+                // lifetime-CPU gate this work removed from the REAP path,
+                // applied to the REPORT path — and it fails in the same
+                // direction. The more work a tree did, the more certain
+                // the guard was to hide it, so the busiest and heaviest
+                // tree on the machine was the one you could never see.
+                //
+                // The WEIGHT is the right gate, and it is already here: a
+                // tree is reported only when it crosses the per-process
+                // floor. That bounds the report to genuinely heavy trees —
+                // on this host, one line for the operator's Chrome.
                 let tree = build_tree(proc_root, &table, root_pid, policy, boot_time, now, ticks_per_sec);
                 claimed.extend(tree.members.iter().map(|m| m.pid));
                 // A veto is only worth reporting when the tree is actually

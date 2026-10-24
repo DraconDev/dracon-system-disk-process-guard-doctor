@@ -1276,3 +1276,64 @@ fn a_non_browser_tree_still_honours_the_exempt_list() {
     );
     let _ = fs::remove_dir_all(&fx.root);
 }
+
+/// A heavy DESKTOP session must be REPORTED, even when it is busy.
+///
+/// THE REGRESSION: the veto path skipped any tree whose root had burned
+/// more than `reap_report_max_cpu_seconds` of lifetime CPU, so the
+/// operator's own Chrome — 8.3 hours of CPU, 10.2 GiB, 65 processes — was
+/// never reported by the guard, not once, because it was skipped before
+/// it was ever weighed. That is the same lifetime-CPU-as-proxy error this
+/// work removed from the REAP path, applied to the REPORT path, and it
+/// failed in the same direction: the busier and heavier a tree was, the
+/// more certain the guard was to hide it.
+#[test]
+fn a_busy_desktop_session_is_still_reported_as_vetoed() {
+    let fx = Fixture::new("busy-desktop");
+    fx.fake_parent(1, "systemd");
+    // A live desktop browser: no --headless, no --user-data-dir, so the
+    // veto classifies it as the operator's own session. 3 GiB.
+    fx.proc(
+        7600,
+        1,
+        "chrome",
+        &["/usr/bin/google-chrome", "--profile-directory=Default"],
+        'S',
+        0,
+        // 4000 s of lifetime CPU — far past the policy's 30 s limit.
+        4000,
+        3600,
+        3072,
+    );
+    // A heavy helper, so the tree's aggregate is over the floor.
+    fx.proc(
+        7601,
+        7600,
+        "chrome",
+        &["/usr/bin/google-chrome", "--type=renderer"],
+        'S',
+        0,
+        4000,
+        3600,
+        1024,
+    );
+    let scan = fx.scan_with_floors(&policy(), 2048, 256);
+    assert!(
+        scan.candidates.is_empty(),
+        "a desktop session is never a candidate: {:?}",
+        scan.candidates
+    );
+    assert_eq!(
+        scan.vetoed.len(),
+        1,
+        "a heavy desktop session must be REPORTED, busy or not: {:?}",
+        scan.vetoed
+    );
+    assert_eq!(scan.vetoed[0].root_pid, 7600);
+    assert!(
+        scan.vetoed[0].aggregate_footprint_mb >= 4096,
+        "the vetoed tree must be weighed as a whole: {}",
+        scan.vetoed[0].aggregate_footprint_mb
+    );
+    let _ = fs::remove_dir_all(&fx.root);
+}
