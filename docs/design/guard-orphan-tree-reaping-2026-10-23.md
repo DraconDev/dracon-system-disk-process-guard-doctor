@@ -356,7 +356,33 @@ All nine ended; none survived; none was skipped.
 The operator's own Chrome (PID 59843, 49 descendants, 6.4 GB) was alive and
 untouched throughout. Its command line carries no `--headless` and no
 `--user-data-dir`, so the desktop veto classifies it as a live session and
-the tree is weighed and left alone, whatever its weight.
+the tree is weighed and left alone, whatever its weight. It is in fact
+protected three times over: it has burned 4.96 HOURS of lifetime CPU, so the
+idle gate excludes it before the veto is even reached; the veto classifies
+it; and every other guard path still consults the exempt list by name.
+
+That first proof ran at a 64 MiB floor, on a tree created for the purpose.
+The SECOND proof ran at the production floor of 256 MiB, against the real
+configuration, and reaped TWO trees — the deliberate one and another that
+the Playwright harness had left behind in the meantime:
+
+```
+🧹 forgotten orphan tree: chromium pid=2121473 9 processes 304MiB (root 108MiB) age=748s cpu=2s — headless
+🧹 forgotten orphan tree: chromium pid=2330587 8 processes 364MiB (root 119MiB) age=492s cpu=2s — headless
+🛡️ forgotten-reap: tree 2330587 (8 processes, 364MiB) -> 8 ended, 0 left, 0 skipped
+🛡️ forgotten-reap: tree 2121473 (9 processes, 304MiB) -> 9 ended, 0 left, 0 skipped
+```
+
+Seventeen processes ended, none survived, none was skipped. The guard's
+pass cadence held at 32-33 seconds throughout — including while the disk
+cleanup was running.
+
+The second proof also proved the RELOAD path, by using it: the floor was
+set to 4096 MiB and the daemon reloaded (the aged 363 MiB tree was then NOT
+reported, proving the new value was in force), then set back to 256 MiB and
+the tree was reported and reaped. Before the fix in 8.1 that second SIGHUP
+would have been deferred and the floor would still have been 4096: the tree
+would have been reported at the first SIGHUP and never reaped.
 
 ## 8. Two defects the proof exposed
 
