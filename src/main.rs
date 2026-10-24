@@ -6968,6 +6968,17 @@ pub(crate) struct TmpCleanupOutcome {
     pub(crate) age_blocked_bytes: u64,
     /// How many entries make up `age_blocked_bytes`.
     pub(crate) age_blocked_entries: usize,
+    /// The subset of `age_blocked_bytes` held by the SIZE-AWARE floor: large
+    /// entries that are old enough to be scratch but not yet old enough for
+    /// the short floor.
+    ///
+    /// ADDED 2026-10-24 (audit): the two floors are unlocked by DIFFERENT
+    /// knobs, so one total cannot give one piece of advice. Telling the
+    /// operator to lower `tmp_min_age_hours` when the bytes are held by
+    /// `tmp_large_min_age_hours` points at the knob that frees nothing.
+    pub(crate) large_blocked_bytes: u64,
+    /// How many entries make up `large_blocked_bytes`.
+    pub(crate) large_blocked_entries: usize,
 }
 
 /// Age-based top-level /tmp cleanup (ADDED 2026-08-25, v0.112.39).
@@ -7080,10 +7091,21 @@ async fn clean_tmp_paths_with_proc(
         + now
             .checked_sub(age_of(large_min_age_hours))
             .unwrap_or(Duration::ZERO);
+    // The size-aware floor only applies when its floor is SHORTER than the
+    // general one: that is what makes it a shortcut to reclaiming bulk
+    // scratch sooner rather than a second, stricter gate.
+    //
+    // FIXED 2026-10-24 (audit): this used to be decided by comparing the two
+    // computed cutoffs, which is the same test in the normal case but
+    // silently degraded to "off" when either age saturated. A configured
+    // `tmp_large_min_age_hours` that is NOT shorter than the general floor
+    // cannot do what its name says — large entries would still be judged
+    // against the general floor — so it is reported as a misconfiguration
+    // when the policy is loaded rather than ignored here.
     let large_floor_active = use_large_floor
         && large_min_age_hours > 0
         && large_entry_bytes > 0
-        && large_cutoff > cutoff;
+        && large_min_age_hours < min_age_hours;
     for root in &root_paths {
         let mut rd = match tokio::fs::read_dir(root).await {
             Ok(rd) => rd,
