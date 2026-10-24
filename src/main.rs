@@ -2379,6 +2379,7 @@ fn sweep_stranded_oom_descendants(
             .entry(pending.root_pid)
             .or_insert(pending.original_adj);
     }
+    let biased_roots: HashSet<i32> = root_original_adj.keys().copied().collect();
     let parent_by_pid: HashMap<i32, i32> = samples
         .iter()
         .map(|sample| (sample.pid, sample.ppid))
