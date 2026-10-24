@@ -860,8 +860,24 @@ pub(crate) fn verify_forgotten_tree_for_reap(
     if fields.tty_nr != 0 || fields.state != 'S' {
         return None;
     }
-    if fields.cpu_ticks / ticks_per_sec.max(1) > policy.max_cpu_seconds {
-        return None;
+    // Is anybody driving it NOW? Re-checked at kill time, because a client
+    // can attach between the scan and the signal: a tree that was undriven
+    // when it was weighed may be in use by the time the guard reaches for
+    // it, and that tree is not ours to end.
+    //
+    // The lifetime-CPU proxy applies ONLY when the usage question cannot be
+    // answered (no debugging port, so no client can be driving it over
+    // one). When the answer IS available, it replaces the proxy: a tree
+    // nobody is driving is a leak however much work it did in its life.
+    let usage = crate::forgotten::tree_usage(tree);
+    match usage {
+        crate::forgotten::Usage::Driven => return None,
+        crate::forgotten::Usage::Unknown => {
+            if fields.cpu_ticks / ticks_per_sec.max(1) > policy.max_cpu_seconds {
+                return None;
+            }
+        }
+        crate::forgotten::Usage::Undriven => {}
     }
     // The age floor holds at kill time too: the tree must have been
     // running long enough that "just detached and still in use" cannot
