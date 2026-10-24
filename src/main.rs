@@ -4979,7 +4979,11 @@ async fn clean_old_node_modules(
         }
     }
 
-    Ok((reclaimed, cleaned))
+    Ok(NodeCleanupOutcome {
+        reclaimed,
+        cleaned,
+        protected,
+    })
 }
 
 /// Find large log files
