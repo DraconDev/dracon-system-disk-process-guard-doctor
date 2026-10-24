@@ -7183,7 +7183,14 @@ async fn clean_tmp_paths_with_proc(
             // FIXED 2026-10-24 (audit): the general floor and the size-aware
             // floor share ONE gate helper, so neither can drift past the
             // open-file / live-socket / protected-path checks again.
-            if tmp_entry_is_protected(&path, root, protected_paths, &open_paths, live_sockets) {
+            if let Some(block) =
+                tmp_entry_block(&path, root, protected_paths, &open_paths, live_sockets)
+            {
+                eprintln!(
+                    "🛡️ keeping tmp entry {}: {}",
+                    path.display(),
+                    block.reason()
+                );
                 continue;
             }
             let entry_size = tmp_entry_size(&path, &meta).await;
