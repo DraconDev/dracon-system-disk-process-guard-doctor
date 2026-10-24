@@ -1159,3 +1159,120 @@ fn a_tree_that_partly_survived_yields_no_profile() {
     );
     let _ = fs::remove_dir_all(&fx.root);
 }
+
+/// THE REGRESSION: a browser's own helpers must not be carved out of its
+/// tree by the exempt list.
+///
+/// The exempt list names APPLICATIONS — `chrome` is on the operator's list
+/// — and every process of a chrome tree is named `chrome`. The ROOT was
+/// already admitted despite the name exemption (the desktop veto decides
+/// for a browser), but the exemption was still applied to the tree's
+/// DESCENDANTS while the tree was built. Two things followed, and both were
+/// wrong:
+///
+///   * the tree's AGGREGATE weight was measured as the ROOT'S alone, so a
+///     379 MiB, 9-process tree weighed 122 MiB — below the floor, and
+///     invisible to the very pass that exists to see it;
+///   * when such a tree WAS ended, its helpers were not in the tree, so
+///     they were never signalled and survived it.
+#[test]
+fn a_browsers_own_helpers_stay_in_its_tree() {
+    let mut pol = policy();
+    // The operator's real exempt list names chrome.
+    pol.exempt_names = vec!["chrome".to_string()];
+    let fx = Fixture::new("family");
+    fx.fake_parent(1, "systemd");
+    // The root: 40 MiB.
+    fx.proc(
+        7400,
+        1,
+        "chrome",
+        &[
+            "/usr/bin/chrome",
+            "--headless=new",
+            "--user-data-dir=/tmp/profile-family",
+        ],
+        'S',
+        0,
+        0,
+        3600,
+        40,
+    );
+    // Three helpers, each 120 MiB, each named chrome too.
+    for (i, pid) in [7401i32, 7402, 7403].iter().enumerate() {
+        fx.proc(
+            *pid,
+            7400,
+            "chrome",
+            &["/usr/bin/chrome", "--type=renderer"],
+            'S',
+            0,
+            0,
+            3600,
+            120,
+        );
+        let _ = i;
+    }
+    // The tree's real weight: 40 + 120*3 = 400 MiB. The root alone is 40.
+    let scan = fx.scan_with_floors(&pol, 2048, 256);
+    assert_eq!(
+        scan.candidates.len(),
+        1,
+        "a 400 MiB chrome tree must be a candidate: {:?}",
+        scan.candidates
+    );
+    let tree = &scan.candidates[0];
+    assert_eq!(
+        tree.member_count, 4,
+        "the browser's own helpers must be IN the tree: {:?}",
+        tree.members
+    );
+    assert!(
+        tree.aggregate_footprint_mb >= 400,
+        "the tree must be weighed as a whole, not as its root: {}",
+        tree.aggregate_footprint_mb
+    );
+    let _ = fs::remove_dir_all(&fx.root);
+}
+
+/// A NON-browser tree keeps the exemption: an exempt daemon inside a
+/// dev-server tree is still the operator's, and must neither be ended nor
+/// counted as reclaimable.
+#[test]
+fn a_non_browser_tree_still_honours_the_exempt_list() {
+    let mut pol = policy();
+    pol.exempt_names = vec!["dbus-daemon".to_string()];
+    let fx = Fixture::new("nonbrowser");
+    fx.fake_parent(1, "systemd");
+    fx.proc(
+        7500,
+        1,
+        "node",
+        &["/usr/bin/node", "server.js"],
+        'S',
+        0,
+        0,
+        3600,
+        100,
+    );
+    fx.proc(
+        7501,
+        7500,
+        "dbus-daemon",
+        &["/usr/bin/dbus-daemon"],
+        'S',
+        0,
+        0,
+        3600,
+        900,
+    );
+    let scan = fx.scan_with_floors(&pol, 2048, 256);
+    // The exempt daemon is left out of the tree and out of the weight, so
+    // the tree weighs 100 MiB and does not cross the floor.
+    assert!(
+        scan.candidates.is_empty(),
+        "an exempt member must not be counted as reclaimable: {:?}",
+        scan.candidates
+    );
+    let _ = fs::remove_dir_all(&fx.root);
+}
