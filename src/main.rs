@@ -6833,22 +6833,12 @@ async fn clean_tmp_e2e_fast_path_with_proc(
                     continue;
                 }
             }
-            if path_has_open_ancestor(&path, &open_paths) {
-                continue;
-            }
-            // A bound unix socket is an anonymous inode in /proc/<pid>/fd, so
-            // the open-path scan above cannot see it. The socket PATH is the
-            // only handle there is — deleting it strands a live daemon
-            // (codex app-server, 2026-10-21).
-            if path_holds_live_unix_socket(&path, live_sockets) {
-                eprintln!(
-                    "🛡️ keeping tmp entry {}: holds a live unix socket",
-                    path.display()
-                );
-                continue;
-            }
-            if let Err(e) = check_safe_to_delete_tmp_entry(&path, root, protected_paths) {
-                eprintln!("🛡️ keeping protected tmp entry {}: {}", path.display(), e);
+            // FIXED 2026-10-24 (audit): all three tmp removal paths (the e2e
+            // fast path, the general floor and the size-aware floor) now ask
+            // ONE helper whether the entry is held or protected. The three
+            // used to be spelled out separately, and the size-aware floor
+            // drifted past all of them.
+            if tmp_entry_is_protected(&path, root, protected_paths, &open_paths, live_sockets) {
                 continue;
             }
             let entry_size = if meta.is_dir() {
@@ -7156,22 +7146,10 @@ async fn clean_tmp_paths_with_proc(
                 }
                 continue; // fresh content
             }
-            if path_has_open_ancestor(&path, &open_paths) {
-                continue; // held open by a live process
-            }
-            // A bound unix socket is an anonymous inode in /proc/<pid>/fd, so
-            // the open-path scan above cannot see it. The socket PATH is the
-            // only handle there is — deleting it strands a live daemon
-            // (codex app-server, 2026-10-21).
-            if path_holds_live_unix_socket(&path, live_sockets) {
-                eprintln!(
-                    "🛡️ keeping tmp entry {}: holds a live unix socket",
-                    path.display()
-                );
-                continue;
-            }
-            if let Err(e) = check_safe_to_delete_tmp_entry(&path, root, protected_paths) {
-                eprintln!("🛡️ keeping protected tmp entry {}: {}", path.display(), e);
+            // FIXED 2026-10-24 (audit): the general floor and the size-aware
+            // floor share ONE gate helper, so neither can drift past the
+            // open-file / live-socket / protected-path checks again.
+            if tmp_entry_is_protected(&path, root, protected_paths, &open_paths, live_sockets) {
                 continue;
             }
             let entry_size = tmp_entry_size(&path, &meta).await;
