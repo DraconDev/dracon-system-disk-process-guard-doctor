@@ -49,9 +49,9 @@ rebuilds under load), `.git` (48G, sanctioned-slimming-only), `Backups`
 1. **`tmp_e2e_patterns` / `tmp_e2e_min_age_hours`** (default 6h): e2e/test
    litter gets a shorter gate; lifts entirely at the critical tier. Exclusive
    window with the general pass (no double-count); all open/cwd/exe, symlink,
-   and protected-path checks unchanged; direct delete, never quarantine.
-2. **`quarantine_max_bytes_per_pass_mb`** (default 10240, 0 = unlimited):
-   caps cross-device quarantine-copy bytes per pass in the action + proactive
+   and protected-path checks unchanged; direct delete, never stash.
+2. **`stash_max_bytes_per_pass_mb`** (default 10240, 0 = unlimited):
+   caps cross-device stash-copy bytes per pass in the action + proactive
    rust-target paths. Over-budget candidates defer with an explicit note in
    both dry-run and apply. This is the re-arm path for `auto_cleanup_rust`,
    disabled since the 2026-10-04 stall — the operator flips it back when
@@ -68,6 +68,6 @@ window, 0-sentinel, critical bypass, open-held, budget boundary). Full suite
 
 - Top-`VmSwap` reporters in memory-pressure events (the actual lesson).
 - `auto_cleanup_rust = true` re-arm in the live config (operator decision).
-- Quarantine budget for the node_modules path (same stall class, unwired).
+- Stash budget for the node_modules path (same stall class, unwired).
 - Release: `scripts/release.sh 0.112.45 --dry-run` when the operator wants it
   (version bump + publish stay in the pipeline, never hand-edited).

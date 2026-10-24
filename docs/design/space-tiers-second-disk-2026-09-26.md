@@ -1,4 +1,4 @@
-# Space tiers + second disk + quarantine design (2026-09-26)
+# Space tiers + second disk + stash design (2026-09-26)
 
 Status: accepted direction, Phase 0 ready to run, Phase 1+ to implement.
 Context: `/` (nvme, 907G) at 97% with ~28G free and still filling; guard already
@@ -33,22 +33,22 @@ the remaining bulk is *kept* data in the wrong place, not trash.
 ## Tier model
 
 - HOT (nvme, working): sources, active `target/`, daily builds. Never moved.
-- WARM / quarantine (second disk, TTL'd): "keeping for now, probably delete".
+- WARM / stash (second disk, TTL'd): "keeping for now, probably delete".
   Explicit expiry (default 30d), then auto-delete. Neither trash nor archive.
 - COLD (second disk, symlinked): big, rarely touched, genuinely kept. Moved
   once, reached via managed symlink recorded in link policy.
-- TRASH (delete): aged-out quarantine, stale build outputs, caches.
+- TRASH (delete): aged-out stash, stale build outputs, caches.
 
 ## Rules
 
 - Symlink cold *directories*, never individual files; never relocate `target/`
-  (rebuild instead); never auto-delete without a quarantine stop first.
-- `relocate <path> --to cold|quarantine` = verified copy, swap in symlink,
+  (rebuild instead); never auto-delete without a stash stop first.
+- `relocate <path> --to cold|stash` = verified copy, swap in symlink,
   policy entry, `link doctor` confirms. Reversible by construction.
 - Guard watches every configured mount with per-mount state; at action level
   it proposes (then optionally applies) top cold relocations, not just deletes.
-- `guard clean` moves ambiguous candidates to quarantine with a manifest
-  (origin, date, size); `quarantine list/restore/expunge`; guard expires past TTL.
+- `guard clean` moves ambiguous candidates to stash with a manifest
+  (origin, date, size); `stash list/restore/expunge`; guard expires past TTL.
 - Cloud (Google 5T) deferred to Phase 3: export only for data cold 90+ days,
   explicit allowlist, rclone + encryption, tested restore. No tiering discipline
   first means filling 5T the same way.
@@ -58,17 +58,17 @@ the remaining bulk is *kept* data in the wrong place, not trash.
 - Phase 0 (manual, no code): reclaim second disk, stable `/mnt/data` mount,
   delete the duplicate `out/`, untrack generated output, move cold dirs.
   DONE 2026-09-27: sda2 at /mnt/data (boot-required, no nofail), 417G free,
-  cold/quarantine/scratch live; NixOS swapfile staged for post-reboot.
-- Phase 1 (code): per-mount guard, `relocate` on top of link policy, quarantine.
+  cold/stash/scratch live; NixOS swapfile staged for post-reboot.
+- Phase 1 (code): per-mount guard, `relocate` on top of link policy, stash.
   DONE 2026-09-26: + git-tracked refusal (`--allow-tracked` override).
-- Phase 2 (code): relocate-first automation, quarantine-first cleanup,
+- Phase 2 (code): relocate-first automation, stash-first cleanup,
   link-drift monitoring, `setup` readiness. DONE 2026-09-27 (this change).
 - Phase 3 (later): cloud export for proven-cold.
 
 ## Multi-user setup contract (2026-09-27)
 
 No machine path is assumed in code: `relocate_cold_root` defaults to empty
-(disabled), quarantine defaults under `$HOME`, candidate roots default to
+(disabled), stash defaults under `$HOME`, candidate roots default to
 `~/Dev`. Each machine configures its own cold root + mounts in policy;
 `dracon-system setup` reports readiness and `setup --apply` provisions the
 dirs. A future guided wizard (`setup --init`: discover mounts, propose
