@@ -1722,3 +1722,81 @@ async fn a_sighup_reload_is_not_deferred_by_an_unrestorable_nice_adjustment() {
     );
     let _ = fs::remove_dir_all(&root);
 }
+
+// TEMPORARY DIAGNOSTIC (2026-10-24) — explains, for every live browser-ish
+// process, exactly which gate of the forgotten-orphan scan rejects it.
+#[test]
+fn diagnose_the_live_forgotten_scan() {
+    let policy = crate::reap::ReapPolicy {
+        min_idle_hours: 0,
+        max_cpu_seconds: crate::reap::DEFAULT_REAP_REPORT_MAX_CPU_SECONDS,
+        signatures: vec![],
+        exempt_names: vec![
+            "systemd".into(),
+            "dbus-daemon".into(),
+            "Xorg".into(),
+            "kwin_wayland".into(),
+            "plasmashell".into(),
+            "dracon-code".into(),
+            "pi".into(),
+            "wezterm".into(),
+            "wezterm-gui".into(),
+            "chrome".into(),
+        ],
+        forgotten_footprint_mb: 2048,
+        forgotten_tree_footprint_mb: 256,
+    };
+    let boot = crate::read_boot_time(Path::new("/proc")).expect("boot time");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(boot);
+    let table = crate::reap::read_proc_table(Path::new("/proc"));
+    println!("table entries: {}", table.entries.len());
+    for entry in table.entries.values() {
+        if !entry.exe.contains("chrom") && !entry.args.to_ascii_lowercase().contains("chrom") {
+            continue;
+        }
+        let parent_comm = fs::read_to_string(format!("/proc/{}/comm", entry.ppid))
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let age = crate::reap::elapsed_secs(entry.starttime, 100, boot, now);
+        let verdict = crate::forgotten::classify_desktop_session(&entry.args);
+        let exempt = crate::reap::matches_exempt(&entry.exe, &policy.exempt_names);
+        println!(
+            "pid={} ppid={} parent_comm={:?} tty={} state={} cpu_s={} age_s={} exempt_by_name={} veto_decides={} verdict={:?}",
+            entry.pid,
+            entry.ppid,
+            parent_comm,
+            entry.tty_nr,
+            entry.state,
+            entry.cpu_ticks / 100,
+            age,
+            exempt,
+            crate::forgotten::browser_decides_by_veto(&entry.args),
+            verdict
+        );
+        println!("    args_head={:?}", &entry.args[..entry.args.len().min(120)]);
+    }
+    let scan = crate::forgotten::scan_forgotten_orphan_trees(
+        Path::new("/proc"),
+        &policy,
+        boot,
+        now,
+        100,
+        2048,
+        256,
+    );
+    println!(
+        "SCAN: {} candidates, {} vetoed",
+        scan.candidates.len(),
+        scan.vetoed.len()
+    );
+    for c in &scan.candidates {
+        println!("  candidate pid={} {}MiB why={}", c.root_pid, c.aggregate_footprint_mb, c.why);
+    }
+    for v in &scan.vetoed {
+        println!("  vetoed pid={} {}MiB {}", v.root_pid, v.aggregate_footprint_mb, v.reason);
+    }
+}
