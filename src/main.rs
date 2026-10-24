@@ -735,6 +735,25 @@ pub(crate) struct OomPendingDescendant {
 /// while independent descendant obligations remain durable.
 const OOM_DESCENDANT_RETRY_LIMIT: u32 = 5;
 
+/// A refused CPU-cap attempt, and when it was refused.
+///
+/// ADDED 2026-10-24 (audit).
+#[derive(Debug, Clone)]
+pub(crate) struct CapRefusal {
+    /// The refusal as the cap layer reported it.
+    pub(crate) reason: String,
+    /// When the attempt was refused.
+    pub(crate) at: Instant,
+}
+
+/// How long a refused CPU-cap attempt is remembered before it is tried again.
+///
+/// ADDED 2026-10-24 (audit): a refusal caused by an exempt process inside
+/// the scope cannot be resolved by retrying — it clears when that process
+/// exits. Ten minutes is long enough to stop the per-pass retry storm and
+/// short enough that the cap is applied soon after the scope is clean.
+const CAP_REFUSAL_COOLDOWN_SECS: u64 = 600;
+
 /// Cap on remembered descendant incarnations per biased root. ADDED
 /// 2026-10-01 (audit): the set grew by one entry per descendant ever seen and
 /// was only cleared when the root left `oom_biased_pids`, so a long
@@ -5603,6 +5622,17 @@ async fn check_memory_pressure(
             if state.capped_pids.contains_key(&p.pid) {
                 continue;
             }
+            // ADDED 2026-10-24 (audit): a refusal is remembered. Retrying it
+            // on every pass produced one identical log line per offending
+            // process per pass, forever, for a condition (an exempt process
+            // inside the scope) that no retry can fix.
+            if state
+                .cap_refusals
+                .get(&p.pid)
+                .is_some_and(|r| r.at.elapsed().as_secs() < CAP_REFUSAL_COOLDOWN_SECS)
+            {
+                continue;
+            }
             let identity_ok = process_sample_is_current(p);
             if !identity_ok {
                 continue;
@@ -5613,6 +5643,7 @@ async fn check_memory_pressure(
                         p.pid,
                         (scope.clone(), orig_cgroup, process_sample_identity(p)),
                     );
+                    state.cap_refusals.remove(&p.pid);
                     eprintln!(
                         "🛡️ cpu-cap pid={} cmd={} -> CPUQuota={}% (scope {})",
                         p.pid, p.command, guard.cap_offenders_cpu_percent, scope
@@ -5622,10 +5653,24 @@ async fn check_memory_pressure(
                         p.command, guard.cap_offenders_cpu_percent
                     ));
                 }
-                Err(e) => eprintln!(
-                    "⚠️ cpu-cap failed for pid={} cmd={}: {}",
-                    p.pid, p.command, e
-                ),
+                Err(e) => {
+                    // The refusal is named in the report, not only in the log:
+                    // the operator could otherwise see the guard doing
+                    // nothing about a process it was trying to throttle and
+                    // had no way to know the attempt had even been made.
+                    limited.push(format!("cpu-cap refused {}: {}", p.command, e));
+                    eprintln!(
+                        "⚠️ cpu-cap failed for pid={} cmd={}: {}",
+                        p.pid, p.command, e
+                    );
+                    state.cap_refusals.insert(
+                        p.pid,
+                        CapRefusal {
+                            reason: e,
+                            at: Instant::now(),
+                        },
+                    );
+                }
             }
         }
     }
