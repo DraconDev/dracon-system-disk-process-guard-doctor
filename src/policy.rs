@@ -1302,6 +1302,49 @@ impl SystemPolicy {
         // Sorted so the comparison is order-independent.
         adjusted.sort_unstable();
         report_clamps(adjusted);
+        // ADDED 2026-10-24 (audit): a configured knob that cannot do what it
+        // says is not a "clamped value" — it is a value the guard will
+        // IGNORE, and the operator has no other way to find out. Reported
+        // here, at the single policy-load boundary, so the message appears
+        // once per distinct state instead of on every pass.
+        report_large_floor_knobs(large_floor_knob_state(&self.guard));
+    }
+}
+
+/// The last size-aware-floor state reported in this process.
+static LAST_REPORTED_LARGE_FLOOR: std::sync::OnceLock<std::sync::Mutex<Option<LargeFloorKnobs>>> =
+    std::sync::OnceLock::new();
+
+/// Report the size-aware floor's knob state once per distinct state.
+///
+/// The guard re-reads the policy on every pass, so an unconditional warning
+/// would print 2,880 times a day at the default 30 s interval and teach the
+/// operator to ignore policy warnings — the exact failure the `~`-expansion
+/// bug had. The state is remembered instead, so a change is reported once
+/// and a fixed policy is reported as recovered.
+fn report_large_floor_knobs(state: LargeFloorKnobs) {
+    let cell = LAST_REPORTED_LARGE_FLOOR.get_or_init(|| std::sync::Mutex::new(None));
+    let mut last = cell.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if last.as_ref() == Some(&state) {
+        return;
+    }
+    let previous = last.replace(state.clone());
+    match &state {
+        LargeFloorKnobs::Off | LargeFloorKnobs::Usable => {
+            // A recovery is worth confirming rather than inferring from
+            // silence: the operator changed the file, and silence would
+            // leave them unsure whether it took effect.
+            if matches!(previous, Some(LargeFloorKnobs::NotShorter { .. })) {
+                eprintln!(
+                    "✓ policy: the size-aware tmp floor is configured correctly again (tmp_large_min_age_hours is shorter than tmp_min_age_hours)"
+                );
+            }
+        }
+        LargeFloorKnobs::NotShorter { general, large } => {
+            eprintln!(
+                "⚠ policy: tmp_large_min_age_hours ({large}) is not shorter than tmp_min_age_hours ({general}) — the size-aware tmp floor cannot apply, so large tmp entries are judged against the general floor. Set tmp_large_min_age_hours below tmp_min_age_hours to enable it."
+            );
+        }
     }
 }
 
