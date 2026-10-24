@@ -353,6 +353,27 @@ pub(crate) struct GuardPolicy {
     // trigger entirely, leaving the per-process one.
     #[serde(default = "default_forgotten_orphan_tree_footprint_mb")]
     pub(crate) forgotten_orphan_tree_footprint_mb: u64,
+    // ADDED 2026-10-24: whether ending a forgotten browser tree also
+    // reclaims the PROFILE DIRECTORY that tree owned.
+    //
+    // A leaked browser is two halves: the processes and the ~850 MiB profile
+    // they leave behind in /tmp. The guard now ends the processes promptly,
+    // but the profile waits for the general tmp age floor (6 h on this
+    // host), and the CI leaks a browser tree every few minutes — measured at
+    // seven orphaned profiles holding 5.9 GB after five hours, and still
+    // growing at roughly 1.2 GB/hour.
+    //
+    // The guard can reclaim it at reap time because it has just PROVED the
+    // browser is dead and abandoned — a stronger proof than an age floor can
+    // ever give. The reclaim is confined to the guard's VALIDATED TMP
+    // ROOTS: a profile outside them (the operator's real
+    // `~/.config/google-chrome`, say) is never touched, however the tree
+    // that named it ended.
+    //
+    // Set false to keep the old behaviour: the profile is left for the tmp
+    // sweep to age out.
+    #[serde(default = "default_true")]
+    pub(crate) reclaim_reaped_browser_profiles: bool,
     // ADDED 2026-08-25 (v0.112.39): only purge trash entries older than
     // this many days, so clean_trash keeps a recovery window instead of
     // emptying everything at once at the next action-level event.
@@ -519,6 +540,7 @@ impl Default for GuardPolicy {
             cleanup_command_timeout_secs: default_cleanup_command_timeout_secs(),
             forgotten_orphan_footprint_mb: default_forgotten_orphan_footprint_mb(),
             forgotten_orphan_tree_footprint_mb: default_forgotten_orphan_tree_footprint_mb(),
+            reclaim_reaped_browser_profiles: default_true(),
             trash_min_age_days: default_trash_min_age_days(),
             protected_paths: Vec::new(),
             proactive_cleanup_percent: default_proactive_cleanup_percent(),
