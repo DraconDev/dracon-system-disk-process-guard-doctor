@@ -1710,3 +1710,103 @@ fn unresolvable_protected_entry_warns_once_and_does_not_refuse() {
     );
     let _ = std::fs::remove_dir_all(&cand_c);
 }
+
+// ---------------------------------------------------------------------------
+// ADDED 2026-10-24 (audit F3): the size-aware tmp floor's knobs.
+// ---------------------------------------------------------------------------
+
+/// The size-aware floor is documented as a SHORT floor: a large entry is
+/// judged against `tmp_large_min_age_hours` INSTEAD of the general
+/// `tmp_min_age_hours`, so that bulk scratch is reclaimed sooner.
+///
+/// A configured large floor that is not shorter cannot shorten anything, so
+/// the knob was a SILENT no-op — the guard ignored it and the operator had no
+/// way to find out why. The state is now classified so the misconfiguration
+/// can be reported.
+#[test]
+fn large_floor_knob_state_classifies_the_configuration() {
+    let usable = GuardPolicy {
+        tmp_min_age_hours: 6,
+        tmp_large_min_age_hours: 2,
+        tmp_large_entry_bytes: 1024 * 1024 * 1024,
+        ..Default::default()
+    };
+    assert_eq!(
+        large_floor_knob_state(&usable),
+        LargeFloorKnobs::Usable,
+        "a shorter large floor is the documented, working configuration"
+    );
+
+    let misconfigured = GuardPolicy {
+        tmp_min_age_hours: 24,
+        tmp_large_min_age_hours: 48,
+        tmp_large_entry_bytes: 1024 * 1024 * 1024,
+        ..Default::default()
+    };
+    assert_eq!(
+        large_floor_knob_state(&misconfigured),
+        LargeFloorKnobs::NotShorter {
+            general: 24,
+            large: 48,
+        },
+        "a large floor that is not shorter cannot shorten the general floor"
+    );
+
+    // Equal is not shorter either: the knob would change nothing.
+    let equal = GuardPolicy {
+        tmp_min_age_hours: 24,
+        tmp_large_min_age_hours: 24,
+        tmp_large_entry_bytes: 1024 * 1024 * 1024,
+        ..Default::default()
+    };
+    assert!(
+        matches!(
+            large_floor_knob_state(&equal),
+            LargeFloorKnobs::NotShorter { .. }
+        ),
+        "an equal floor is not a shortcut either"
+    );
+
+    // Explicitly disabled knobs are a decision, not a misconfiguration.
+    let disabled = GuardPolicy {
+        tmp_min_age_hours: 24,
+        tmp_large_min_age_hours: 0,
+        tmp_large_entry_bytes: 1024 * 1024 * 1024,
+        ..Default::default()
+    };
+    assert_eq!(
+        large_floor_knob_state(&disabled),
+        LargeFloorKnobs::Off,
+        "0 disables the size-aware floor"
+    );
+
+    // With the general tmp gate off there is nothing to shorten.
+    let no_general = GuardPolicy {
+        tmp_min_age_hours: 0,
+        tmp_large_min_age_hours: 2,
+        tmp_large_entry_bytes: 1024 * 1024 * 1024,
+        ..Default::default()
+    };
+    assert_eq!(
+        large_floor_knob_state(&no_general),
+        LargeFloorKnobs::Off,
+        "with the general tmp gate off the size-aware floor has nothing to do"
+    );
+}
+
+/// The shipped default must be the WORKING configuration: the doc used to say
+/// "off by default" while the default values enabled it, which taught the
+/// operator the opposite of the truth.
+#[test]
+fn the_shipped_large_floor_default_is_usable() {
+    let defaults = GuardPolicy::default();
+    assert!(
+        defaults.tmp_large_entry_bytes > 0 && defaults.tmp_large_min_age_hours > 0,
+        "the size-aware floor ships enabled"
+    );
+    assert_eq!(
+        large_floor_knob_state(&defaults),
+        LargeFloorKnobs::Usable,
+        "the shipped default must be a configuration that actually works"
+    );
+}
