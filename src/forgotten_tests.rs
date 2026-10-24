@@ -1337,3 +1337,184 @@ fn a_busy_desktop_session_is_still_reported_as_vetoed() {
     );
     let _ = fs::remove_dir_all(&fx.root);
 }
+
+// ---------------------------------------------------------------------------
+// THE INVARIANT (2026-10-24)
+// ---------------------------------------------------------------------------
+
+/// No heavy BROWSER tree may be SILENTLY DROPPED.
+///
+/// This is the invariant underneath all five defects the audit found, and
+/// it is the one thing that should never be allowed to break again:
+///
+///   1. lifetime CPU as "is it in use?"      — a leak was skipped entirely
+///   2. the exempt list applied to descendants — a tree weighed as its root
+///   3. silent `continue` on a tree left alone — "left alone" looked like
+///      "not there"
+///   4. lifetime CPU as "is it worth reporting?" — the operator's own 11.3
+///      GiB browser was never reported and never measured
+///   5. a `/proc/net/tcp` parser that could never detect a live client
+///
+/// Every one of them was the same mistake in a different place: a heavy
+/// tree that the guard decided something about, and then said NOTHING
+/// about. The three lists are the guard's vocabulary for "I saw this and
+/// here is what I decided" — candidate, vetoed, protected — and a heavy
+/// browser tree that is in NONE of them has been dropped on the floor.
+///
+/// A tree below the floor is not a violation: it is not heavy, and
+/// reporting every helper process would be noise. A NON-browser is not a
+/// violation either: this pass is about browsers, and the other passes
+/// report non-browser orphans.
+#[test]
+fn no_heavy_browser_tree_is_ever_silently_dropped() {
+    let fx = Fixture::new("invariant");
+    fx.fake_parent(1, "systemd");
+
+    // (a) A heavy headless orphan nobody is driving -> CANDIDATE.
+    fx.proc(
+        7800,
+        1,
+        "chrome",
+        &[
+            "/usr/bin/chrome",
+            "--headless=new",
+            "--user-data-dir=/tmp/invariant-a",
+        ],
+        'S',
+        0,
+        0,
+        3600,
+        900,
+    );
+    // (b) A heavy headless orphan with a client attached -> PROTECTED.
+    fx.proc(
+        7810,
+        1,
+        "chrome",
+        &[
+            "/usr/bin/chrome",
+            "--headless=new",
+            "--user-data-dir=/tmp/invariant-b",
+        ],
+        'S',
+        0,
+        0,
+        3600,
+        900,
+    );
+    // (c) A heavy DESKTOP session, busy as anything -> VETOED. This is the
+    //     one that defect 4 hid: 4000 s of CPU and 900 MiB, and the guard
+    //     used to skip it before it was ever weighed.
+    fx.proc(
+        7820,
+        1,
+        "chrome",
+        &["/usr/bin/google-chrome", "--profile-directory=Default"],
+        'S',
+        0,
+        4000,
+        3600,
+        900,
+    );
+    // (d) A LIGHT headless orphan -> below the floor, so not reported.
+    //     It must NOT appear in any list.
+    fx.proc(
+        7830,
+        1,
+        "chrome",
+        &[
+            "/usr/bin/chrome",
+            "--headless=new",
+            "--user-data-dir=/tmp/invariant-d",
+        ],
+        'S',
+        0,
+        0,
+        3600,
+        4,
+    );
+    // (e) A YOUNG heavy headless orphan -> under the age floor, so not
+    //     reported yet. Also must NOT appear.
+    fx.proc(
+        7840,
+        1,
+        "chrome",
+        &[
+            "/usr/bin/chrome",
+            "--headless=new",
+            "--user-data-dir=/tmp/invariant-e",
+        ],
+        'S',
+        0,
+        0,
+        60,
+        900,
+    );
+
+    // (b) is "driven": give it a DevTools port with a client attached.
+    let driven_profile =
+        std::env::temp_dir().join(format!("dracon-invariant-driven-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&driven_profile);
+    fs::create_dir_all(&driven_profile).expect("driven profile");
+    // The port file names a port; the /proc table below is faked, so point
+    // it at a profile whose DevToolsActivePort names a port, and let the
+    // tree_usage check find it unconnected (Unknown) — which still must
+    // produce a verdict, never silence.
+    fs::write(driven_profile.join("DevToolsActivePort"), "59991\n").expect("port file");
+
+    // Re-point (b) at the profile with a port so it gets a real verdict.
+    fx.proc(
+        7810,
+        1,
+        "chrome",
+        &[
+            "/usr/bin/chrome",
+            "--headless=new",
+            &format!("--user-data-dir={}", driven_profile.display()),
+        ],
+        'S',
+        0,
+        0,
+        3600,
+        900,
+    );
+
+    let scan = fx.scan_with_floors(&policy(), 2048, 256);
+
+    // Every heavy browser tree must be in exactly one list.
+    let mut listed: Vec<(i32, &str)> = Vec::new();
+    for c in &scan.candidates {
+        listed.push((c.root_pid, "candidate"));
+    }
+    for v in &scan.vetoed {
+        listed.push((v.root_pid, "vetoed"));
+    }
+    for p in &scan.protected {
+        listed.push((p.root_pid, "protected"));
+    }
+    for pid in [7800i32, 7810, 7820] {
+        let hits: Vec<&str> = listed
+            .iter()
+            .filter(|(p, _)| *p == pid)
+            .map(|(_, kind)| *kind)
+            .collect();
+        assert_eq!(
+            hits.len(),
+            1,
+            "heavy tree {pid} must appear in EXACTLY ONE of candidate/vetoed/protected, got {hits:?} (candidates {:?}, vetoed {:?}, protected {:?})",
+            scan.candidates.iter().map(|c| c.root_pid).collect::<Vec<_>>(),
+            scan.vetoed.iter().map(|v| v.root_pid).collect::<Vec<_>>(),
+            scan.protected.iter().map(|p| p.root_pid).collect::<Vec<_>>(),
+        );
+    }
+    // The light tree and the young tree are not heavy enough / old enough
+    // to be news, and must NOT be in any list.
+    for pid in [7830i32, 7840] {
+        assert!(
+            !listed.iter().any(|(p, _)| *p == pid),
+            "tree {pid} is below the floor or under the age floor and must not be listed: {listed:?}"
+        );
+    }
+    let _ = fs::remove_dir_all(&driven_profile);
+    let _ = fs::remove_dir_all(&fx.root);
+}
