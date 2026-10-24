@@ -4225,6 +4225,30 @@ async fn empty_trash_at(
                         }
                     }
                     if !skip_names.is_empty() {
+                        // The guard must not hide the COST of what it keeps.
+                        //
+                        // "55 flagged entries" says nothing about how much
+                        // disk that is, and the answer here was 11 GiB that
+                        // grew every time the CI trashed a repository whose
+                        // test files are named `…-token-…test.ts` — and the
+                        // operator's own manuscript, kept because a chapter
+                        // is called "borrowed credentials". The entry count
+                        // looks like a rounding error; the size does not.
+                        //
+                        // Reporting only: no behaviour changes here.
+                        let mut kept_bytes = 0u64;
+                        let mut kept_sizes: Vec<(String, u64)> = Vec::with_capacity(skip_names.len());
+                        for name in &skip_names {
+                            let entry_bytes = get_dir_size(&trash_files.join(name)).await.unwrap_or(0);
+                            kept_bytes = kept_bytes.saturating_add(entry_bytes);
+                            kept_sizes.push((name.clone(), entry_bytes));
+                        }
+                        kept_sizes.sort_by(|a, b| b.1.cmp(&a.1));
+                        let biggest: Vec<String> = kept_sizes
+                            .iter()
+                            .take(3)
+                            .map(|(name, bytes)| format!("{} ({})", name, human_bytes(*bytes)))
+                            .collect();
                         let mut why = format!(
                             "{} credential-like file(s), e.g. {}",
                             match_count,
@@ -4242,6 +4266,17 @@ async fn empty_trash_at(
                         }
                         if walk_errors > 0 {
                             why.push_str(&format!("; {} unreadable subtrees", walk_errors));
+                        }
+                        if kept_bytes > 0 {
+                            why.push_str(&format!(
+                                "; they hold {} (biggest: {})",
+                                human_bytes(kept_bytes),
+                                if biggest.is_empty() {
+                                    "(none)".to_string()
+                                } else {
+                                    biggest.join(", ")
+                                }
+                            ));
                         }
                         eprintln!(
                             "🛡️ trash: keeping {} flagged entr{} ({}), purging the rest",
