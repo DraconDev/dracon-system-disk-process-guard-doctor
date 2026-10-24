@@ -348,7 +348,7 @@ fn expand_unit_path(token: &str, home: &Path) -> PathBuf {
 /// `ProtectSystem=strict` remounts the whole hierarchy read-only inside the
 /// service's namespace, and `ProtectHome=read-only` does the same for `$HOME`.
 /// Only these paths are exempted, so a root that is not under one of them fails
-/// every write with EROFS — which is exactly how quarantine silently stopped
+/// every write with EROFS — which is exactly how stash silently stopped
 /// working on 2026-10-01.
 pub(crate) fn unit_grants_write(unit: &str, home: &Path, path: &Path) -> bool {
     // FIXED 2026-10-03 (audit R4-SYS-14): compare canonical paths so
@@ -388,7 +388,7 @@ pub(crate) fn uncovered_storage_roots(
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
     let cold_root = guard.relocate_cold_root.trim();
     let mut roots: Vec<(&'static str, PathBuf)> = vec![
-        ("quarantine_dir", crate::quarantine_root(guard)),
+        ("stash_dir", crate::stash_root(guard)),
         ("relocate_cold_root", crate::expand_tilde(cold_root)),
     ];
     // FIXED 2026-10-03 (audit R4-SYS-06): the guard also WRITES the
@@ -411,7 +411,7 @@ pub(crate) fn uncovered_storage_roots(
     let marker = guard.sync_freeze_marker.trim();
     if marker.is_empty() {
         // Blank normalizes to the default (policy.rs), exactly as
-        // quarantine_root does for its blank — check the default.
+        // stash_root does for its blank — check the default.
         roots.push((
             "sync_freeze_marker",
             PathBuf::from(crate::default_sync_freeze_marker()),
@@ -438,7 +438,7 @@ pub(crate) fn uncovered_storage_roots(
 ///
 /// Printed to stderr so `guard once --json` stays machine-parseable. Emitted
 /// once per process from the command entry point, NOT per pass: the old
-/// behaviour was one "failed to quarantine … Read-only file system" line per
+/// behaviour was one "failed to stash … Read-only file system" line per
 /// candidate per pass, which buried the single actionable fact under thousands
 /// of identical errors.
 pub(crate) fn warn_uncovered_storage_roots(guard: &crate::GuardPolicy) {
