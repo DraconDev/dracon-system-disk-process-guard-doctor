@@ -4971,3 +4971,74 @@ fn sync_freeze_marker_path_expands_the_documented_tilde_form() {
         "must not stay a literal relative `~/...`"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Reclaiming the profile a reaped browser tree left behind (2026-10-24)
+// ---------------------------------------------------------------------------
+
+/// The reclaim is confined to the guard's VALIDATED TMP ROOTS. That is the
+/// check that keeps the operator's REAL browser profile out of reach: a
+/// tree that named `~/.config/google-chrome` may be ended, but its profile
+/// is never removed.
+#[test]
+fn a_profile_outside_the_validated_tmp_roots_is_never_reclaimed() {
+    let roots = vec![PathBuf::from("/tmp")];
+    // The operator's real profile: outside every tmp root.
+    assert_eq!(
+        crate::reclaim_root_for(
+            Path::new("/home/dracon/.config/google-chrome"),
+            &roots
+        ),
+        None
+    );
+    // A test profile under the tmp root: reclaimable.
+    assert_eq!(
+        crate::reclaim_root_for(Path::new("/tmp/cw-real-profile-1234"), &roots),
+        Some(PathBuf::from("/tmp"))
+    );
+    // The root ITSELF is never reclaimed — it is not a profile.
+    assert_eq!(crate::reclaim_root_for(Path::new("/tmp"), &roots), None);
+}
+
+/// A sibling that merely shares a textual prefix must not qualify.
+#[test]
+fn a_sibling_directory_outside_the_root_does_not_qualify() {
+    let roots = vec![PathBuf::from("/tmp/profiles")];
+    assert_eq!(
+        crate::reclaim_root_for(Path::new("/tmp/profiles-old/x"), &roots),
+        None,
+        "a shared textual prefix is not containment"
+    );
+    assert_eq!(
+        crate::reclaim_root_for(Path::new("/tmp/profiles/x"), &roots),
+        Some(PathBuf::from("/tmp/profiles"))
+    );
+}
+
+/// A live process that still NAMES the profile in its command line keeps
+/// it: a browser that started on the same path after the old one died is
+/// exactly the moment when deleting it would break that browser.
+#[tokio::test]
+async fn a_live_process_that_names_the_profile_keeps_it() {
+    let root = std::env::temp_dir().join(format!("dracon-profile-cmdline-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("4242")).expect("pid dir");
+    fs::write(
+        root.join("4242").join("cmdline"),
+        b"/usr/bin/chrome\0--user-data-dir=/tmp/cw-real-profile-4242\0",
+    )
+    .expect("cmdline");
+    // Another process that names something else entirely.
+    fs::create_dir_all(root.join("4243")).expect("pid dir");
+    fs::write(root.join("4243").join("cmdline"), b"/usr/bin/firefox\0").expect("cmdline");
+
+    assert!(
+        crate::path_named_by_live_cmdline(&root, Path::new("/tmp/cw-real-profile-4242")).await,
+        "the process that names the profile must be seen"
+    );
+    assert!(
+        !crate::path_named_by_live_cmdline(&root, Path::new("/tmp/cw-real-profile-9999")).await,
+        "a profile nobody names must not be seen"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
