@@ -5509,6 +5509,15 @@ async fn check_memory_pressure(
             v.root_comm, v.root_pid, v.member_count, v.aggregate_footprint_mb, v.reason
         );
     }
+    // A heavy orphan that is deliberately left alone is REPORTED, not
+    // skipped in silence: the operator needs to see the 1.5 GB tree the
+    // guard is not ending, and why.
+    for p in &forgotten.protected {
+        eprintln!(
+            "🛡️ heavy orphan tree left alone: {} pid={} {} processes {}MiB — {}",
+            p.root_comm, p.root_pid, p.member_count, p.aggregate_footprint_mb, p.reason
+        );
+    }
     let mut forgotten_reaped: Vec<ReapedTree> = Vec::new();
     // The gate is a NAMED function, not an inline string comparison, and it
     // fails CLOSED: an unrecognised pressure level is not permission to
