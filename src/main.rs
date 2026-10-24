@@ -9746,6 +9746,28 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
                 )),
             ]);
         }
+        if !memory.protected_trees.is_empty() {
+            let mut parts: Vec<String> = memory
+                .protected_trees
+                .iter()
+                .map(|t| {
+                    format!(
+                        "pid={} {} proc {}MiB — {}",
+                        t.root_pid, t.member_count, t.aggregate_footprint_mb, t.reason
+                    )
+                })
+                .collect();
+            parts.sort();
+            table.add_row(vec![
+                Cell::new("🛡️"),
+                Cell::new("Heavy trees left alone"),
+                Cell::new(format!(
+                    "{} — {}",
+                    memory.protected_trees.len(),
+                    parts.join(", ")
+                )),
+            ]);
+        }
     }
 
     println!("{table}");
