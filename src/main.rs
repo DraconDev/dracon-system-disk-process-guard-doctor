@@ -5545,6 +5545,19 @@ async fn check_memory_pressure(
                 r.members_ended
             ));
         }
+        // A leaked browser is two halves: the processes and the profile
+        // directory they owned. The guard has just proved the browser is
+        // dead, so the profile is reclaimed NOW rather than waiting out the
+        // tmp age floor. Only a tree that was fully ended yields a profile.
+        let profile_dirs: Vec<PathBuf> = forgotten_reaped
+            .iter()
+            .filter_map(|r| r.profile_dir.clone())
+            .collect();
+        let reclaimed_profiles =
+            reclaim_reaped_browser_profiles(Path::new("/proc"), guard, &profile_dirs).await;
+        for p in &reclaimed_profiles {
+            limited.push(format!("reclaimed browser profile {p}"));
+        }
     }
 
     // A child forked after its parent was biased inherits oom_score_adj=250,
@@ -7115,6 +7128,171 @@ async fn remove_tmp_entry(
             out.denied.push(format!("{}: {}", path.display(), e));
         }
     }
+}
+
+/// Reclaim the profile directories of browser trees the guard has just ended.
+///
+/// ADDED 2026-10-24. A leaked browser leaves TWO halves: the processes and
+/// the profile directory they owned. On this host that profile is ~850 MiB —
+/// seven of them held 5.9 GB after five hours, and the CI leaks one every
+/// few minutes, so the residue grows at roughly 1.2 GB/hour while the disk
+/// sits at 87%. Ending the processes promptly but leaving the profile to
+/// wait out the tmp age floor (6 h here) reclaims only half of the leak.
+///
+/// The guard may reclaim it NOW because it has just PROVED the browser is
+/// dead and abandoned. That proof is re-checked here, at the moment of
+/// removal, because it was earned a moment ago and the world moves:
+///
+/// * the tree was ENDED and every member of it is gone — a tree that partly
+///   survived is not proof that its profile is abandoned;
+/// * the profile lives under one of the guard's VALIDATED TMP ROOTS. A
+///   profile outside them — the operator's real `~/.config/google-chrome`,
+///   say — is never touched, however the tree that named it ended;
+/// * no live process names it in its command line: a browser that started
+///   on the same path after the old one died;
+/// * nothing holds a file open under it, and no live unix socket lives in
+///   it (a bound socket is an anonymous inode, invisible to the open-file
+///   scan — see the codex app-server incident, 2026-10-21);
+/// * it passes the guard's normal protected-path and symlink checks.
+///
+/// Every check that CAN fail closed does. If the open-file scan cannot be
+/// run, nothing is removed: an empty set would silently disable the
+/// protection, which is the failure mode that cost the codex daemon its
+/// control socket.
+async fn reclaim_reaped_browser_profiles(
+    proc_root: &Path,
+    guard: &GuardPolicy,
+    dirs: &[PathBuf],
+) -> Vec<String> {
+    let mut reclaimed = Vec::new();
+    if !guard.reclaim_reaped_browser_profiles || dirs.is_empty() {
+        return reclaimed;
+    }
+    let roots: Vec<String> = guard
+        .tmp_search_paths
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let root_paths = match resolve_safe_tmp_roots(&roots) {
+        Ok(r) if !r.is_empty() => r,
+        _ => {
+            eprintln!(
+                "⚠️ browser-profile reclaim: no validated tmp root — reclaiming nothing"
+            );
+            return reclaimed;
+        }
+    };
+    let open = match collect_open_paths_under_from(proc_root, &root_paths).await {
+        Some(set) => set,
+        None => {
+            eprintln!(
+                "⚠️ browser-profile reclaim: open-file scan failed — reclaiming nothing (cannot prove nothing is held open)"
+            );
+            return reclaimed;
+        }
+    };
+    let live_sockets = live_unix_socket_paths();
+    for dir in dirs {
+        // It must be a real directory: a symlink is never followed, because
+        // the target might be anywhere.
+        let Ok(meta) = std::fs::symlink_metadata(dir) else {
+            continue;
+        };
+        if meta.file_type().is_symlink() || !meta.is_dir() {
+            continue;
+        }
+        // It must be under a validated tmp root — this is what keeps the
+        // operator's real browser profile out of reach.
+        let Some(root) = root_paths.iter().find(|r| dir.starts_with(r)) else {
+            eprintln!(
+                "🛡️ keeping browser profile {}: outside the validated tmp roots",
+                dir.display()
+            );
+            continue;
+        };
+        if path_has_open_ancestor(dir, &open) {
+            eprintln!(
+                "🛡️ keeping browser profile {}: a live process holds it open",
+                dir.display()
+            );
+            continue;
+        }
+        if path_holds_live_unix_socket(dir, &live_sockets) {
+            eprintln!(
+                "🛡️ keeping browser profile {}: holds a live unix socket",
+                dir.display()
+            );
+            continue;
+        }
+        if path_named_by_live_cmdline(proc_root, dir).await {
+            eprintln!(
+                "🛡️ keeping browser profile {}: a live process still names it",
+                dir.display()
+            );
+            continue;
+        }
+        if let Err(e) = check_safe_to_delete_tmp_entry(dir, root, &guard.protected_paths) {
+            eprintln!(
+                "🛡️ keeping browser profile {}: {}",
+                dir.display(),
+                e
+            );
+            continue;
+        }
+        let size = get_dir_size(dir).await.unwrap_or(0);
+        match tokio::fs::remove_dir_all(dir).await {
+            Ok(()) => {
+                eprintln!(
+                    "🧹 reclaimed browser profile: {} ({})",
+                    dir.display(),
+                    human_bytes(size)
+                );
+                reclaimed.push(format!("{} ({})", dir.display(), human_bytes(size)));
+            }
+            Err(e) => {
+                eprintln!(
+                    "⚠️ failed to reclaim browser profile {}: {}",
+                    dir.display(),
+                    e
+                );
+            }
+        }
+    }
+    reclaimed
+}
+
+/// Whether any live process's COMMAND LINE names `path`.
+///
+/// The open-file scan cannot see this: a browser that has just started on a
+/// profile path may not have a file open under it yet, and it is exactly
+/// that moment when deleting the path would break it.
+async fn path_named_by_live_cmdline(proc_root: &Path, path: &Path) -> bool {
+    let needle = path.to_string_lossy().to_string();
+    if needle.is_empty() {
+        return false;
+    }
+    let mut rd = match tokio::fs::read_dir(proc_root).await {
+        Ok(rd) => rd,
+        Err(_) => return true,
+    };
+    while let Ok(Some(entry)) = rd.next_entry().await {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.is_empty() || !name.chars().all(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        let Ok(raw) = tokio::fs::read(proc_root.join(&*name).join("cmdline")).await else {
+            continue;
+        };
+        // Chromium rewrites its argv into a NUL-free blob, so the text is
+        // searched as-is rather than by field.
+        let text = String::from_utf8_lossy(&raw);
+        if text.contains(&needle) {
+            return true;
+        }
+    }
+    false
 }
 
 async fn run_auto_cleanup(
