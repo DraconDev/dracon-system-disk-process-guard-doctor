@@ -1129,9 +1129,25 @@ fn sweep_stranded_oom_descendants_restores_only_post_bias_children() {
     assert_eq!(actions.deferred, 1);
     assert!(state.oom_pending_descendants.contains_key(&(105, 81)));
     remove_oom_bias(&mut state, 101);
+    // CHANGED 2026-10-24 (audit O1): the root's own bias record used to
+    // STAY while a child restoration was pending. The caller restores the
+    // live value FIRST and only then asks for the record to be dropped, so
+    // the refusal left the ledger claiming "biased" for a process whose live
+    // `oom_score_adj` was already back at its original value — and
+    // `apply_oom_bias` skips any pid the ledger believes is already biased,
+    // so the stale record silently disabled OOM steering for a live top-RSS
+    // process. Two live processes carried that stale record on this host.
+    //
+    // The child's debt does NOT depend on the root's record: the pending
+    // entry carries its own root pid and original value, and the sweep
+    // restores it from the pending map alone.
     assert!(
-        state.oom_biased_pids.contains_key(&101),
-        "root bias must remain tracked while child restoration is pending"
+        !state.oom_biased_pids.contains_key(&101),
+        "the root's bias record must reflect the live value, not a pending child"
+    );
+    assert!(
+        state.oom_pending_descendants.contains_key(&(105, 81)),
+        "the pending child restoration must survive the root's release"
     );
     assert_eq!(
         fs::read_to_string(tmp.join("102/oom_score_adj")).unwrap(),
