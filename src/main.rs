@@ -7814,8 +7814,10 @@ fn spawn_background_cleanup(
     slot: Arc<tokio::sync::Mutex<CleanupSummary>>,
 ) {
     let guard = guard.clone();
-    let mut scratch = GuardRuntimeState::default();
-    scratch.disk_bytes_history = state.disk_bytes_history.clone();
+    let scratch = GuardRuntimeState {
+        disk_bytes_history: state.disk_bytes_history.clone(),
+        ..GuardRuntimeState::default()
+    };
     tokio::spawn(async move {
         let mut summary = CleanupSummary::default();
         // ADDED 2026-09-27 (space tiers Phase 2): relocate-first —
