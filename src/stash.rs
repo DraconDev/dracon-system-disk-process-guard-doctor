@@ -666,7 +666,7 @@ pub(crate) fn cmd_stash(cmd: StashCommands) -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&manifest)?);
             } else {
                 println!(
-                    "✅ Stashd {} ({} in {} files) as {}",
+                    "✅ Stashed {} ({} in {} files) as {}",
                     manifest.origin,
                     human_bytes(manifest.bytes),
                     manifest.files,
