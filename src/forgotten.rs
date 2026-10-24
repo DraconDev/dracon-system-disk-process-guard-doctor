@@ -98,6 +98,145 @@ pub(crate) fn classify_desktop_session(args: &str) -> DesktopVerdict {
     }
 }
 
+/// The `--user-data-dir` value from a command line, with its ORIGINAL case.
+///
+/// The existing `extract_user_data_dir` takes the lowercased command line,
+/// which is right for classifying a profile but wrong for OPENING it: a
+/// profile directory whose name contains an uppercase letter is not at the
+/// lowercased path.
+fn extract_user_data_dir_raw(args: &str) -> Option<String> {
+    let idx = args.find("--user-data-dir=")?;
+    let rest = &args[idx + "--user-data-dir=".len()..];
+    let end = rest
+        .find(|c: char| c.is_whitespace() || c == '"' || c == '\'')
+        .unwrap_or(rest.len());
+    let value = rest[..end].trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+/// The DevTools port a browser exposes, from `--remote-debugging-port=N`.
+///
+/// A port of 0 means "the OS picks one", and the real port is written to
+/// the profile's `DevToolsActivePort` file — see `devtools_port_from_profile`.
+pub(crate) fn devtools_port(args: &str) -> Option<u16> {
+    const MARKER: &str = "--remote-debugging-port=";
+    let idx = args.find(MARKER)?;
+    let rest = &args[idx + MARKER.len()..];
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
+    let port: u16 = rest[..end].parse().ok()?;
+    if port == 0 {
+        None
+    } else {
+        Some(port)
+    }
+}
+
+/// The DevTools port a browser exposes, read from its profile's
+/// `DevToolsActivePort` file.
+///
+/// Chromium writes the port it actually bound to as the first line of
+/// `<user-data-dir>/DevToolsActivePort`. This is how a browser launched
+/// with `--remote-debugging-port=0` is found.
+pub(crate) fn devtools_port_from_profile(args: &str) -> Option<u16> {
+    let profile = extract_user_data_dir_raw(args)?;
+    let text = std::fs::read_to_string(Path::new(&profile).join("DevToolsActivePort")).ok()?;
+    text.lines().next()?.trim().parse().ok()
+}
+
+/// The DevTools port a tree exposes, if any.
+pub(crate) fn tree_devtools_port(tree: &ForgottenTree) -> Option<u16> {
+    devtools_port(&tree.root_args).or_else(|| devtools_port_from_profile(&tree.root_args))
+}
+
+/// Whether anybody is still USING a tree.
+///
+/// ADDED 2026-10-24 (audit). The pass used to decide "is it still in use?"
+/// with LIFETIME CPU: a tree that had burned more than
+/// `reap_report_max_cpu_seconds` was skipped entirely — not reported, not
+/// reaped, forever. That is the wrong measurement, and it fails in the
+/// worst possible direction: the leak that MATTERED is a leak that did
+/// real work, and the more work it did the more certain the guard was to
+/// ignore it. On this host it hid an orphaned 1.5 GB, 20-process headless
+/// browser tree that nothing was driving, burning half a core forever.
+///
+/// The precise question is not "how much has it done" but "is anyone
+/// still driving it". A browser that a client drives over the DevTools
+/// protocol holds an ESTABLISHED connection to its debugging port; a
+/// browser nobody drives holds none. Chromium keeps LISTENING on that port
+/// either way, so the port being open proves nothing — only a live
+/// connection does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Usage {
+    /// A client is attached to the tree's DevTools endpoint: somebody is
+    /// using it right now. Never end it.
+    Driven,
+    /// The tree exposes a DevTools endpoint and NOTHING is attached to it.
+    /// Nobody is using it. This is the answer the lifetime-CPU proxy could
+    /// never give.
+    Undriven,
+    /// The tree exposes no DevTools endpoint, or its profile could not be
+    /// read: the question cannot be answered, so the conservative gate
+    /// applies instead.
+    Unknown,
+}
+
+/// Whether a TCP table lists an ESTABLISHED connection involving `port`.
+///
+/// The browser LISTENS on the DevTools port and the client CONNECTS to it,
+/// so the browser's port appears as the REMOTE address of the connection.
+/// The local address is checked too, so the answer does not depend on
+/// which side the kernel recorded.
+pub(crate) fn tcp_table_has_established(path: &Path, port: u16) -> bool {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let want = format!("{port:04X}");
+    for line in text.lines().skip(1) {
+        let mut fields = line.split_whitespace();
+        let (Some(local), Some(remote), Some(state)) =
+            (fields.next(), fields.next(), fields.next())
+        else {
+            continue;
+        };
+        // 01 = TCP_ESTABLISHED
+        if state != "01" {
+            continue;
+        }
+        if remote.rsplit(':').next() == Some(want.as_str())
+            || local.rsplit(':').next() == Some(want.as_str())
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Whether anything is connected to `port` right now.
+pub(crate) fn port_has_live_client(port: u16) -> bool {
+    tcp_table_has_established(Path::new("/proc/net/tcp"), port)
+        || tcp_table_has_established(Path::new("/proc/net/tcp6"), port)
+}
+
+/// Whether anybody is still driving this tree.
+pub(crate) fn tree_usage(tree: &ForgottenTree) -> Usage {
+    match tree_devtools_port(tree) {
+        Some(port) => {
+            if port_has_live_client(port) {
+                Usage::Driven
+            } else {
+                Usage::Undriven
+            }
+        }
+        None => Usage::Unknown,
+    }
+}
+
 /// The `--user-data-dir` value from a command line, if it has one.
 fn extract_user_data_dir(lower_args: &str) -> Option<String> {
     let idx = lower_args.find("--user-data-dir=")?;
