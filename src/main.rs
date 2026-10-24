@@ -735,15 +735,13 @@ pub(crate) struct OomPendingDescendant {
 /// while independent descendant obligations remain durable.
 const OOM_DESCENDANT_RETRY_LIMIT: u32 = 5;
 
-/// A refused CPU-cap attempt, and when it was refused.
+/// The last refused CPU-cap reason, retained to suppress duplicate logs.
 ///
 /// ADDED 2026-10-24 (audit).
 #[derive(Debug, Clone)]
 pub(crate) struct CapRefusal {
     /// The refusal as the cap layer reported it.
     pub(crate) reason: String,
-    /// When the attempt was refused.
-    pub(crate) at: Instant,
 }
 
 /// Whether a refusal is worth logging again.
@@ -907,8 +905,12 @@ pub(crate) struct GuardRuntimeState {
     /// retried on every pass and logged the same refusal every pass (one
     /// line per offending process per pass), and nothing durable said the
     /// guard had TRIED and been refused. The reason is remembered so the
-    /// attempt is not repeated until the cooldown expires, and so the
-    /// refusal can be named in the report instead of only in the log.
+    /// refusal can be named in the report instead of only in the log, and so
+    /// the LOG is deduplicated: the same reason is not logged again, but the
+    /// attempt itself IS retried on the next pass, because the cap layer
+    /// reports "incomplete CPU lease recovered; retry next pass" — a lease
+    /// it could not tear down cleanly is repaired by the next attempt, not
+    /// by waiting for a cooldown.
     pub(crate) cap_refusals: HashMap<i32, CapRefusal>,
     pub(crate) active_build_pids: HashSet<i32>,
     pub(crate) reniced_pids: HashMap<i32, LegacyReniceState>,
@@ -5729,10 +5731,7 @@ async fn check_memory_pressure(
                     }
                     state.cap_refusals.insert(
                         p.pid,
-                        CapRefusal {
-                            reason: e,
-                            at: Instant::now(),
-                        },
+                        CapRefusal { reason: e },
                     );
                 }
             }
