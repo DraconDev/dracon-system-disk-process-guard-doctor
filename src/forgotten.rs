@@ -230,7 +230,7 @@ fn proc_tcp_port(token: &str) -> Option<u16> {
 /// local address — so the address columns cannot simply be taken as the
 /// first whitespace-separated fields. They are located by shape instead:
 /// two address-shaped columns followed by a two-digit hex state.
-fn parse_proc_tcp_line(line: &str) -> Option<(u16, u16, &str)> {
+pub(crate) fn parse_proc_tcp_line(line: &str) -> Option<(u16, u16, &str)> {
     let tokens: Vec<&str> = line.split_whitespace().collect();
     for i in 0..tokens.len().saturating_sub(2) {
         let (Some(local), Some(remote)) = (proc_tcp_port(tokens[i]), proc_tcp_port(tokens[i + 1]))
