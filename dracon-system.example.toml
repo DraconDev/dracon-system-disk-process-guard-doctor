@@ -291,10 +291,19 @@ clean_tmp = false
 # tmp_large_entry_bytes is judged against tmp_large_min_age_hours instead
 # of the general floor, so a bulk scratch clone does not have to wait the
 # general floor out. The 2026-10-21 incident left 144 GiB of exactly that
-# behind the 24h gate while the disk reached 100%. It is consulted only
-# when the disk is filling (the proactive/action tier), because deciding it
-# costs a size measurement per entry. 0 disables it — the default here,
-# because it changes what gets DELETED.
+# behind the 24h gate while the disk reached 100%. The floor itself is
+# consulted only when the disk is filling (the proactive/action tier),
+# because deciding it costs a size measurement per entry; the REPORT of the
+# scratch the age floor holds back is produced on every sweep.
+#
+# It ships ENABLED (1 GiB threshold, 2 h floor) — it used to be documented
+# here as "off by default", which contradicted the values below and taught
+# the operator the opposite of the truth. 0 disables it.
+#
+# tmp_large_min_age_hours must be SHORTER than tmp_min_age_hours: the large
+# floor exists to reclaim bulk scratch SOONER, not to hold big scratch
+# longer. A value that is not shorter cannot shorten the general floor, and
+# the guard reports that at policy load instead of ignoring it silently.
 # tmp_large_entry_bytes = 1073741824   # 1 GiB
 # tmp_large_min_age_hours = 2           # short floor for large entries (0 = off)
 # Warn when the scratch the age floor holds back reaches this size (GiB);
