@@ -1,10 +1,10 @@
 //! Setup readiness — the seed of multi-user onboarding.
 //!
 //! ADDED 2026-09-27 (space tiers Phase 2): space-tier automation needs
-//! per-machine configuration (a cold root on a second disk, a quarantine
+//! per-machine configuration (a cold root on a second disk, a stash
 //! dir, candidate roots). Nothing is assumed: `dracon-system setup` discovers
 //! mounts and reports what is configured, and `setup --apply` creates the
-//! missing cold/quarantine directories. Future work grows this into a full
+//! missing cold/stash directories. Future work grows this into a full
 //! guided setup; the readiness contract starts here.
 
 use anyhow::Result;
@@ -227,31 +227,31 @@ pub(crate) fn build_setup_report(
     }
 
     checks.push(check_dir_configured(&guard.relocate_cold_root, "cold root"));
-    let qdir = if guard.quarantine_dir.trim().is_empty() {
-        crate::default_quarantine_dir()
+    let qdir = if guard.stash_dir.trim().is_empty() {
+        crate::default_stash_dir()
     } else {
-        guard.quarantine_dir.trim().to_string()
+        guard.stash_dir.trim().to_string()
     };
-    checks.push(check_dir_configured(&qdir, "quarantine"));
+    checks.push(check_dir_configured(&qdir, "stash"));
 
     checks.push(SetupCheck {
         name: "auto mode".to_string(),
         ok: true,
         detail: format!(
-            "relocate scan={}, apply={}, quarantine-first={}",
-            guard.auto_relocate, guard.auto_relocate_apply, guard.clean_quarantine_first
+            "relocate scan={}, apply={}, stash-first={}",
+            guard.auto_relocate, guard.auto_relocate_apply, guard.clean_stash_first
         ),
     });
 
-    // Ready = cold root + quarantine both usable. Mounts/candidates inform
-    // but do not gate: a single-disk user can still quarantine locally.
+    // Ready = cold root + stash both usable. Mounts/candidates inform
+    // but do not gate: a single-disk user can still stash locally.
     // A policy that failed to parse means every check below ran on built-in
     // defaults, so "ready" would be a statement about a configuration the
     // operator never wrote (audit 2026-10-01).
     let ready = policy_error.is_none()
         && checks
             .iter()
-            .filter(|c| c.name == "cold root" || c.name == "quarantine")
+            .filter(|c| c.name == "cold root" || c.name == "stash")
             .all(|c| c.ok);
     SetupReport {
         policy_path: path
@@ -278,9 +278,9 @@ pub(crate) fn cmd_setup(apply: bool, json: bool) -> Result<()> {
         if cold_raw.is_empty() {
             anyhow::bail!("cannot apply: relocate_cold_root is not configured");
         }
-        let qdir = crate::quarantine_root(&policy.guard);
+        let qdir = crate::stash_root(&policy.guard);
         // The two managed roots must not nest: a cold root inside the
-        // quarantine root (or vice versa) would make cleanup and expiry
+        // stash root (or vice versa) would make cleanup and expiry
         // operate on each other's trees. Both sides are resolved through
         // resolve_policy_path so the comparison is absolute-vs-absolute — the
         // lexical check missed nesting whenever one side was relative
@@ -288,14 +288,14 @@ pub(crate) fn cmd_setup(apply: bool, json: bool) -> Result<()> {
         let cold_path = crate::resolve_policy_path(cold_raw);
         if cold_path != qdir && (cold_path.starts_with(&qdir) || qdir.starts_with(&cold_path)) {
             anyhow::bail!(
-                "cannot apply: cold root {} nests inside quarantine root {} (or vice versa)",
+                "cannot apply: cold root {} nests inside stash root {} (or vice versa)",
                 cold_path.display(),
                 qdir.display()
             );
         }
         let protected = &policy.guard.protected_paths;
         println!("cold root: {}", ensure_setup_dir(&cold_path, protected)?);
-        println!("quarantine: {}", ensure_setup_dir(&qdir, protected)?);
+        println!("stash: {}", ensure_setup_dir(&qdir, protected)?);
     }
 
     let report = collect_setup_report();

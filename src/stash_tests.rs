@@ -1,11 +1,11 @@
-//! Tests for quarantine.rs (hold-then-delete staging with TTL).
+//! Tests for stash.rs (hold-then-delete staging with TTL).
 
 use super::*;
 use std::fs;
 
 fn test_root(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
-        "dracon-quarantine-test-{}-{}",
+        "dracon-stash-test-{}-{}",
         std::process::id(),
         name
     ))
@@ -24,38 +24,38 @@ fn cleanup(root: &Path) {
 }
 
 #[test]
-fn quarantine_move_list_restore_roundtrip() {
+fn stash_move_list_restore_roundtrip() {
     let root = test_root("roundtrip");
     let src = fixture_dir(&root);
     let qdir = root.join("q");
-    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let manifest = crate::stash_move(&src, &qdir, &[]).unwrap();
     assert_eq!(manifest.files, 2);
     assert_eq!(manifest.bytes, 11);
     assert!(!src.exists());
 
-    let list = crate::quarantine_list(&qdir, 30).unwrap();
+    let list = crate::stash_list(&qdir, 30).unwrap();
     assert_eq!(list.entries.len(), 1);
     assert_eq!(list.entries[0].origin, manifest.origin);
     assert!(!list.entries[0].expired);
 
-    let restored = crate::quarantine_restore(&qdir, &manifest.name).unwrap();
+    let restored = crate::stash_restore(&qdir, &manifest.name).unwrap();
     assert_eq!(restored, PathBuf::from(&manifest.origin));
     assert_eq!(fs::read(src.join("a.txt")).unwrap(), b"hello");
     // Manifest must not leak back into the restored tree.
-    assert!(!src.join(".quarantine.json").exists());
-    let list = crate::quarantine_list(&qdir, 30).unwrap();
+    assert!(!src.join(".stash.json").exists());
+    let list = crate::stash_list(&qdir, 30).unwrap();
     assert!(list.entries.is_empty());
     cleanup(&root);
 }
 
 #[test]
-fn quarantine_preserves_a_reserved_user_file() {
+fn stash_preserves_a_reserved_user_file() {
     let temp = tempfile::tempdir().unwrap();
     let src = fixture_dir(temp.path());
-    fs::write(src.join(".quarantine.json"), b"original user data").unwrap();
-    assert!(crate::quarantine_move(&src, &temp.path().join("q"), &[]).is_err());
+    fs::write(src.join(".stash.json"), b"original user data").unwrap();
+    assert!(crate::stash_move(&src, &temp.path().join("q"), &[]).is_err());
     assert_eq!(
-        fs::read(src.join(".quarantine.json")).unwrap(),
+        fs::read(src.join(".stash.json")).unwrap(),
         b"original user data"
     );
     assert_eq!(fs::read(src.join("a.txt")).unwrap(), b"hello");
@@ -63,7 +63,7 @@ fn quarantine_preserves_a_reserved_user_file() {
 
 #[cfg(unix)]
 #[test]
-fn quarantine_preserves_reserved_symlinks_and_their_targets() {
+fn stash_preserves_reserved_symlinks_and_their_targets() {
     use std::os::unix::fs::symlink;
     for dangling in [false, true] {
         let temp = tempfile::tempdir().unwrap();
@@ -72,10 +72,10 @@ fn quarantine_preserves_reserved_symlinks_and_their_targets() {
         if !dangling {
             fs::write(&outside, b"outside user data").unwrap();
         }
-        symlink(&outside, src.join(".quarantine.json")).unwrap();
-        assert!(crate::quarantine_move(&src, &temp.path().join("q"), &[]).is_err());
+        symlink(&outside, src.join(".stash.json")).unwrap();
+        assert!(crate::stash_move(&src, &temp.path().join("q"), &[]).is_err());
         assert_eq!(
-            fs::read_link(src.join(".quarantine.json")).unwrap(),
+            fs::read_link(src.join(".stash.json")).unwrap(),
             outside
         );
         if dangling {
@@ -88,13 +88,13 @@ fn quarantine_preserves_reserved_symlinks_and_their_targets() {
 
 #[cfg(unix)]
 #[test]
-fn quarantine_restore_copy_path_drops_manifest_and_verifies() {
+fn stash_restore_copy_path_drops_manifest_and_verifies() {
     // Audit falsification round: the copy fallback copied entry_dir
     // INCLUDING the manifest, so the tally never matched (manifest was
     // written after the source tally) and every cross-device restore
     // failed verification and deleted its own work — plus leaked a
     // manifest on the paths that got that far. /dev/shm is tmpfs, so a
-    // quarantine root there forces the EXDEV copy path against an ext4
+    // stash root there forces the EXDEV copy path against an ext4
     // origin.
     if !std::path::Path::new("/dev/shm").is_dir() {
         return;
@@ -106,17 +106,17 @@ fn quarantine_restore_copy_path_drops_manifest_and_verifies() {
         .unwrap()
         .as_nanos();
     let qdir = std::path::PathBuf::from(format!(
-        "/dev/shm/dracon-quarantine-test-{}-{stamp}",
+        "/dev/shm/dracon-stash-test-{}-{stamp}",
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&qdir);
-    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let manifest = crate::stash_move(&src, &qdir, &[]).unwrap();
     assert!(!src.exists(), "move must vacate the source");
-    let restored = crate::quarantine_restore(&qdir, &manifest.name).unwrap();
+    let restored = crate::stash_restore(&qdir, &manifest.name).unwrap();
     assert_eq!(restored, PathBuf::from(&manifest.origin));
     assert_eq!(std::fs::read(src.join("a.txt")).unwrap(), b"hello");
     assert!(
-        !src.join(".quarantine.json").exists(),
+        !src.join(".stash.json").exists(),
         "restored tree must not contain a stray manifest"
     );
     let _ = std::fs::remove_dir_all(&qdir);
@@ -125,41 +125,41 @@ fn quarantine_restore_copy_path_drops_manifest_and_verifies() {
 
 #[cfg(unix)]
 #[test]
-fn quarantine_move_refuses_symlink() {
+fn stash_move_refuses_symlink() {
     use std::os::unix::fs::symlink;
     let root = test_root("symlink");
     let src = fixture_dir(&root);
     let link = root.join("linkdir");
     symlink(&src, &link).unwrap();
-    let err = crate::quarantine_move(&link, &root.join("q"), &[]).unwrap_err();
+    let err = crate::stash_move(&link, &root.join("q"), &[]).unwrap_err();
     assert!(format!("{err:#}").contains("symlink"));
     cleanup(&root);
 }
 
 #[test]
-fn quarantine_restore_refuses_existing_origin() {
+fn stash_restore_refuses_existing_origin() {
     let root = test_root("exists");
     let src = fixture_dir(&root);
     let qdir = root.join("q");
-    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let manifest = crate::stash_move(&src, &qdir, &[]).unwrap();
     fs::create_dir_all(&src).unwrap();
-    let err = crate::quarantine_restore(&qdir, &manifest.name).unwrap_err();
+    let err = crate::stash_restore(&qdir, &manifest.name).unwrap_err();
     assert!(format!("{err:#}").contains("already exists"));
     // The refusal happens before any manifest removal, so the entry stays
     // restorable once the blocking origin is cleared.
-    assert!(qdir.join(&manifest.name).join(".quarantine.json").exists());
+    assert!(qdir.join(&manifest.name).join(".stash.json").exists());
     cleanup(&root);
 }
 
 #[test]
-fn quarantine_restore_refuses_traversal_names() {
+fn stash_restore_refuses_traversal_names() {
     let root = test_root("traversal");
     let qdir = root.join("q");
     fs::create_dir_all(&qdir).unwrap();
     for hostile in ["../evil", "..", ".", "", "a/b", "/abs", "a\\b", "a\0b"] {
-        let err = crate::quarantine_restore(&qdir, hostile).unwrap_err();
+        let err = crate::stash_restore(&qdir, hostile).unwrap_err();
         assert!(
-            format!("{err:#}").contains("invalid quarantine entry name"),
+            format!("{err:#}").contains("invalid stash entry name"),
             "name {hostile:?} must be refused"
         );
     }
@@ -168,7 +168,7 @@ fn quarantine_restore_refuses_traversal_names() {
 
 #[cfg(unix)]
 #[test]
-fn quarantine_restore_refuses_smuggled_symlink() {
+fn stash_restore_refuses_smuggled_symlink() {
     use std::os::unix::fs::symlink;
     let root = test_root("smlink");
     let outside = root.join("outside");
@@ -176,25 +176,25 @@ fn quarantine_restore_refuses_smuggled_symlink() {
     let qdir = root.join("q");
     fs::create_dir_all(&qdir).unwrap();
     symlink(&outside, qdir.join("linked")).unwrap();
-    let err = crate::quarantine_restore(&qdir, "linked").unwrap_err();
+    let err = crate::stash_restore(&qdir, "linked").unwrap_err();
     let msg = format!("{err:#}");
     assert!(
         msg.contains("symlink") || msg.contains("no manifest"),
         "smuggled symlink must be refused: {msg}"
     );
     // Nothing outside the root was touched.
-    assert!(outside.is_dir() && !outside.join(".quarantine.json").exists());
+    assert!(outside.is_dir() && !outside.join(".stash.json").exists());
     cleanup(&root);
 }
 
 #[test]
-fn quarantine_expire_deletes_only_past_ttl() {
+fn stash_expire_deletes_only_past_ttl() {
     let root = test_root("expire");
     let src = fixture_dir(&root);
     let qdir = root.join("q");
-    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let manifest = crate::stash_move(&src, &qdir, &[]).unwrap();
     // Age the entry 40 days by rewriting its manifest.
-    let aged = crate::QuarantineManifest {
+    let aged = crate::StashManifest {
         name: manifest.name.clone(),
         origin: manifest.origin.clone(),
         moved_at_unix: crate::now_unix().saturating_sub(40 * 86_400),
@@ -204,33 +204,33 @@ fn quarantine_expire_deletes_only_past_ttl() {
     };
     let entry_dir = qdir.join(&manifest.name);
     fs::write(
-        entry_dir.join(".quarantine.json"),
+        entry_dir.join(".stash.json"),
         serde_json::to_string_pretty(&aged).unwrap(),
     )
     .unwrap();
 
     // Fresh TTL window: nothing expires.
-    let listed = crate::quarantine_list(&qdir, 60).unwrap();
+    let listed = crate::stash_list(&qdir, 60).unwrap();
     assert!(!listed.entries[0].expired);
     // Past TTL: dry-run reports, apply deletes.
-    let listed = crate::quarantine_list(&qdir, 30).unwrap();
+    let listed = crate::stash_list(&qdir, 30).unwrap();
     assert!(listed.entries[0].expired);
-    let dry = crate::quarantine_expire(&qdir, 30, false).unwrap();
+    let dry = crate::stash_expire(&qdir, 30, false).unwrap();
     assert_eq!(dry, vec![manifest.name.clone()]);
     assert!(entry_dir.exists());
-    let gone = crate::quarantine_expire(&qdir, 30, true).unwrap();
+    let gone = crate::stash_expire(&qdir, 30, true).unwrap();
     assert_eq!(gone, vec![manifest.name.clone()]);
     assert!(!entry_dir.exists());
     cleanup(&root);
 }
 
 #[test]
-fn quarantine_expire_zero_ttl_disables() {
+fn stash_expire_zero_ttl_disables() {
     let root = test_root("zerottl");
     let src = fixture_dir(&root);
     let qdir = root.join("q");
-    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
-    let out = crate::quarantine_expire(&qdir, 0, true).unwrap();
+    let manifest = crate::stash_move(&src, &qdir, &[]).unwrap();
+    let out = crate::stash_expire(&qdir, 0, true).unwrap();
     assert!(out.is_empty());
     assert!(qdir.join(&manifest.name).exists());
     cleanup(&root);
@@ -238,15 +238,15 @@ fn quarantine_expire_zero_ttl_disables() {
 
 #[cfg(unix)]
 #[test]
-fn quarantine_expire_skips_escaped_entries_without_aborting_batch() {
+fn stash_expire_skips_escaped_entries_without_aborting_batch() {
     // Audit falsification round: an entry that resolves outside the root
     // used to abort the whole batch (bail), discarding removals already
     // collected. It must now be skipped loudly while the batch completes.
     let root = test_root("expireskip");
     let src = fixture_dir(&root);
     let qdir = root.join("q");
-    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
-    let aged = crate::QuarantineManifest {
+    let manifest = crate::stash_move(&src, &qdir, &[]).unwrap();
+    let aged = crate::StashManifest {
         name: manifest.name.clone(),
         origin: manifest.origin.clone(),
         moved_at_unix: crate::now_unix().saturating_sub(40 * 86_400),
@@ -256,7 +256,7 @@ fn quarantine_expire_skips_escaped_entries_without_aborting_batch() {
     };
     let entry_dir = qdir.join(&manifest.name);
     fs::write(
-        entry_dir.join(".quarantine.json"),
+        entry_dir.join(".stash.json"),
         serde_json::to_string_pretty(&aged).unwrap(),
     )
     .unwrap();
@@ -264,12 +264,12 @@ fn quarantine_expire_skips_escaped_entries_without_aborting_batch() {
     let outside = root.join("outside");
     fs::create_dir_all(&outside).unwrap();
     fs::write(
-        outside.join(".quarantine.json"),
+        outside.join(".stash.json"),
         serde_json::to_string_pretty(&aged).unwrap(),
     )
     .unwrap();
     std::os::unix::fs::symlink(&outside, qdir.join("evil")).unwrap();
-    let removed = crate::quarantine_expire(&qdir, 30, true).unwrap();
+    let removed = crate::stash_expire(&qdir, 30, true).unwrap();
     assert_eq!(removed, vec![manifest.name.clone()]);
     assert!(!entry_dir.exists(), "expired entry removed");
     assert!(
@@ -281,11 +281,11 @@ fn quarantine_expire_skips_escaped_entries_without_aborting_batch() {
 }
 
 #[test]
-fn quarantine_first_remove_same_fs_frees_nothing() {
+fn stash_first_remove_same_fs_frees_nothing() {
     let root = test_root("firstsame");
     let src = fixture_dir(&root);
     let qdir = root.join("q");
-    let (manifest, freed) = crate::quarantine_first_remove(&src, &qdir, &[]).unwrap();
+    let (manifest, freed) = crate::stash_first_remove(&src, &qdir, &[]).unwrap();
     assert_eq!(manifest.bytes, 11);
     assert_eq!(freed, 0);
     assert!(!src.exists());
@@ -293,7 +293,7 @@ fn quarantine_first_remove_same_fs_frees_nothing() {
 }
 
 #[test]
-fn quarantine_first_remove_cross_fs_frees_bytes() {
+fn stash_first_remove_cross_fs_frees_bytes() {
     // /dev/shm is tmpfs (different device from /tmp on normal systems).
     let shm = PathBuf::from("/dev/shm");
     let probe = shm.join(format!("dracon-q-probe-{}", std::process::id()));
@@ -304,21 +304,21 @@ fn quarantine_first_remove_cross_fs_frees_bytes() {
     let root = test_root("firstcross");
     let src = fixture_dir(&root);
     let qdir = shm.join(format!("dracon-q-test-{}", std::process::id()));
-    let (manifest, freed) = crate::quarantine_first_remove(&src, &qdir, &[]).unwrap();
+    let (manifest, freed) = crate::stash_first_remove(&src, &qdir, &[]).unwrap();
     assert_eq!(freed, 11);
-    let restored = crate::quarantine_restore(&qdir, &manifest.name).unwrap();
+    let restored = crate::stash_restore(&qdir, &manifest.name).unwrap();
     assert_eq!(restored, src.canonicalize().unwrap());
     assert_eq!(fs::read(src.join("a.txt")).unwrap(), b"hello");
     assert_eq!(fs::read(src.join("nested/b.txt")).unwrap(), b"world!");
-    assert!(!src.join(".quarantine.json").exists());
+    assert!(!src.join(".stash.json").exists());
     let _ = fs::remove_dir_all(&qdir);
     cleanup(&root);
 }
 
 #[test]
-fn quarantine_list_empty_root() {
+fn stash_list_empty_root() {
     let root = test_root("empty");
-    let list = crate::quarantine_list(&root.join("q"), 30).unwrap();
+    let list = crate::stash_list(&root.join("q"), 30).unwrap();
     assert!(list.entries.is_empty());
     assert_eq!(list.total_bytes, 0);
     cleanup(&root);
@@ -330,23 +330,23 @@ fn quarantine_list_empty_root() {
 //
 // The manifest is the only record of where an entry came from. Without it
 // the entry is unrestorable, so expiring it would turn "recoverable by hand"
-// into "gone". The quarantine root is written only by this daemon, so an
+// into "gone". The stash root is written only by this daemon, so an
 // unreadable manifest is corruption or outside interference — not a routine
 // condition a TTL exists to bound — and a genuinely transient read error
 // resolves itself, after which the entry ages normally.
 //
-// The defect these tests close: the fail-safe was SILENT. `quarantine list`
-// showed origin "unknown" and `quarantine expire` said "No expired entries",
-// which is indistinguishable from a quarantine holding nothing.
+// The defect these tests close: the fail-safe was SILENT. `stash list`
+// showed origin "unknown" and `stash expire` said "No expired entries",
+// which is indistinguishable from a stash holding nothing.
 // ---------------------------------------------------------------------------
 
-/// Create an entry in the quarantine root, optionally with a broken manifest.
+/// Create an entry in the stash root, optionally with a broken manifest.
 fn raw_entry(root: &Path, name: &str, manifest: Option<&str>) -> PathBuf {
     let dir = root.join(name);
     fs::create_dir_all(dir.join("data")).unwrap();
     fs::write(dir.join("data").join("file.bin"), vec![b'x'; 4096]).unwrap();
     if let Some(text) = manifest {
-        fs::write(dir.join(".quarantine.json"), text).unwrap();
+        fs::write(dir.join(".stash.json"), text).unwrap();
     }
     dir
 }
@@ -362,7 +362,7 @@ fn an_unreadable_manifest_is_reported_as_pinned() {
     raw_entry(&qdir, "broken.1", Some("{not json"));
     raw_entry(&qdir, "missing.1", None);
 
-    let list = crate::quarantine_list(&qdir, 30).unwrap();
+    let list = crate::stash_list(&qdir, 30).unwrap();
 
     let pinned: Vec<String> = list
         .entries
@@ -422,7 +422,7 @@ fn a_pinned_entry_is_never_expired_however_old_it_is() {
     let entry = raw_entry(&qdir, "ancient-broken.1", Some("{{{ not json"));
     backdate_mtime(&entry, 400);
 
-    let removed = crate::quarantine_expire(&qdir, 30, true).unwrap();
+    let removed = crate::stash_expire(&qdir, 30, true).unwrap();
 
     assert!(
         removed.is_empty(),
@@ -433,7 +433,7 @@ fn a_pinned_entry_is_never_expired_however_old_it_is() {
         "a 400-day-old entry with an unreadable manifest must still be on disk"
     );
     // And it must still be reported as held, not quietly dropped from the list.
-    let list = crate::quarantine_list(&qdir, 30).unwrap();
+    let list = crate::stash_list(&qdir, 30).unwrap();
     assert_eq!(
         list.pinned,
         vec!["ancient-broken.1".to_string()],
@@ -449,7 +449,7 @@ fn expire_zero_ttl_still_cannot_reach_a_pinned_entry() {
     let root = test_root("pin-ttl0");
     let qdir = root.join("q");
     raw_entry(&qdir, "broken.1", Some("nope"));
-    assert!(crate::quarantine_expire(&qdir, 0, true).unwrap().is_empty());
+    assert!(crate::stash_expire(&qdir, 0, true).unwrap().is_empty());
     assert!(qdir.join("broken.1").exists());
     cleanup(&root);
 }
@@ -460,7 +460,7 @@ fn purge_dry_run_deletes_nothing_and_reports_the_cost() {
     let qdir = root.join("q");
     raw_entry(&qdir, "broken.1", Some("not json"));
 
-    let (contents, bytes, was_pinned) = crate::quarantine_purge(&qdir, "broken.1", false).unwrap();
+    let (contents, bytes, was_pinned) = crate::stash_purge(&qdir, "broken.1", false).unwrap();
 
     assert!(was_pinned, "purge must report that the entry was pinned");
     assert!(bytes > 0, "purge must report the size it would reclaim");
@@ -480,13 +480,13 @@ fn purge_apply_removes_a_pinned_entry_that_restore_cannot() {
 
     // First prove the safe path really cannot handle it — that is why the
     // escape hatch exists at all.
-    let restore_err = crate::quarantine_restore(&qdir, "broken.1").unwrap_err();
+    let restore_err = crate::stash_restore(&qdir, "broken.1").unwrap_err();
     assert!(
         format!("{restore_err:#}").contains("manifest"),
         "restore must still refuse, got: {restore_err:#}"
     );
 
-    let (_, bytes, was_pinned) = crate::quarantine_purge(&qdir, "broken.1", true).unwrap();
+    let (_, bytes, was_pinned) = crate::stash_purge(&qdir, "broken.1", true).unwrap();
     assert!(was_pinned && bytes > 0);
     assert!(
         !qdir.exists() || !qdir.join("broken.1").exists(),
@@ -506,10 +506,10 @@ fn purge_refuses_the_same_names_restore_refuses() {
     fs::create_dir_all(&outside).unwrap();
 
     for bad in ["..", ".", "", "a/b", "a\\b", "../outside"] {
-        let err = crate::quarantine_purge(&qdir, bad, true).unwrap_err();
+        let err = crate::stash_purge(&qdir, bad, true).unwrap_err();
         assert!(
-            format!("{err:#}").contains("invalid quarantine entry name")
-                || format!("{err:#}").contains("no such quarantine entry"),
+            format!("{err:#}").contains("invalid stash entry name")
+                || format!("{err:#}").contains("no such stash entry"),
             "purge must refuse {bad:?}, got: {err:#}"
         );
     }
@@ -527,7 +527,7 @@ fn purge_refuses_to_operate_through_a_symlinked_entry() {
     fs::create_dir_all(&qdir).unwrap();
     std::os::unix::fs::symlink(&victim, qdir.join("sneaky")).unwrap();
 
-    let err = crate::quarantine_purge(&qdir, "sneaky", true).unwrap_err();
+    let err = crate::stash_purge(&qdir, "sneaky", true).unwrap_err();
     assert!(
         format!("{err:#}").contains("symlink"),
         "purge must refuse a symlinked entry, got: {err:#}"
@@ -548,11 +548,11 @@ fn purge_also_handles_a_healthy_entry() {
     let qdir = root.join("q");
     raw_entry(&qdir, "ok.1", Some(GOOD_MANIFEST));
 
-    let (_, bytes, was_pinned) = crate::quarantine_purge(&qdir, "ok.1", false).unwrap();
+    let (_, bytes, was_pinned) = crate::stash_purge(&qdir, "ok.1", false).unwrap();
     assert!(!was_pinned, "a healthy entry is not pinned");
     assert!(bytes > 0);
     assert!(qdir.join("ok.1").exists(), "dry run keeps it");
-    crate::quarantine_purge(&qdir, "ok.1", true).unwrap();
+    crate::stash_purge(&qdir, "ok.1", true).unwrap();
     assert!(!qdir.join("ok.1").exists());
     cleanup(&root);
 }
@@ -565,8 +565,8 @@ fn purge_also_handles_a_healthy_entry() {
 // detail for the daemon to log a deletion an operator could act on.
 
 /// Age an entry by rewriting its manifest with a timestamp `days` in the past.
-fn age_entry(qdir: &Path, manifest: &crate::QuarantineManifest, days: u64) -> PathBuf {
-    let aged = crate::QuarantineManifest {
+fn age_entry(qdir: &Path, manifest: &crate::StashManifest, days: u64) -> PathBuf {
+    let aged = crate::StashManifest {
         name: manifest.name.clone(),
         origin: manifest.origin.clone(),
         moved_at_unix: crate::now_unix().saturating_sub(days * 86_400),
@@ -576,7 +576,7 @@ fn age_entry(qdir: &Path, manifest: &crate::QuarantineManifest, days: u64) -> Pa
     };
     let entry_dir = qdir.join(&manifest.name);
     fs::write(
-        entry_dir.join(".quarantine.json"),
+        entry_dir.join(".stash.json"),
         serde_json::to_string_pretty(&aged).unwrap(),
     )
     .unwrap();
@@ -584,19 +584,19 @@ fn age_entry(qdir: &Path, manifest: &crate::QuarantineManifest, days: u64) -> Pa
 }
 
 #[test]
-fn quarantine_expire_never_removes_a_pinned_entry() {
+fn stash_expire_never_removes_a_pinned_entry() {
     let root = test_root("pinned-expire");
     let src = fixture_dir(&root);
     let qdir = root.join("q");
-    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let manifest = crate::stash_move(&src, &qdir, &[]).unwrap();
     let entry_dir = age_entry(&qdir, &manifest, 40);
 
     // Destroy the manifest so the entry can never be dated. This is the
     // `node-compile-cache` case from the live host: an entry nobody can restore
     // and nobody can age out.
-    fs::remove_file(entry_dir.join(".quarantine.json")).unwrap();
+    fs::remove_file(entry_dir.join(".stash.json")).unwrap();
 
-    let outcome = crate::quarantine_expire_detailed(&qdir, 30, true).unwrap();
+    let outcome = crate::stash_expire_detailed(&qdir, 30, true).unwrap();
     assert!(
         outcome.removed.is_empty(),
         "an entry with no manifest must never be deleted: {:?}",
@@ -614,24 +614,24 @@ fn quarantine_expire_never_removes_a_pinned_entry() {
 }
 
 #[test]
-fn quarantine_expire_outcome_carries_origin_and_bytes() {
+fn stash_expire_outcome_carries_origin_and_bytes() {
     let root = test_root("expire-detailed");
     let src = fixture_dir(&root);
     let qdir = root.join("q");
-    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let manifest = crate::stash_move(&src, &qdir, &[]).unwrap();
     let entry_dir = age_entry(&qdir, &manifest, 40);
 
     // Captured before the expiry, since afterwards the entry is gone.
-    let listed_size = crate::quarantine_list(&qdir, 30).unwrap().entries[0].bytes;
+    let listed_size = crate::stash_list(&qdir, 30).unwrap().entries[0].bytes;
 
-    let outcome = crate::quarantine_expire_detailed(&qdir, 30, true).unwrap();
+    let outcome = crate::stash_expire_detailed(&qdir, 30, true).unwrap();
     assert_eq!(outcome.removed.len(), 1);
     let gone = &outcome.removed[0];
     assert_eq!(gone.name, manifest.name);
     // The daemon logs both of these on every deletion; without them the
     // journal line is just a bare entry name with nothing to act on.
     assert_eq!(gone.origin, manifest.origin);
-    // The size must be the one `quarantine list` reports for the same entry —
+    // The size must be the one `stash list` reports for the same entry —
     // i.e. the directory as it actually sits on disk, manifest included — so an
     // operator reconciling the journal against the listing sees the same number.
     assert_eq!(gone.bytes, listed_size);
@@ -641,14 +641,14 @@ fn quarantine_expire_outcome_carries_origin_and_bytes() {
 }
 
 #[test]
-fn quarantine_expire_detailed_dry_run_removes_nothing_but_reports() {
+fn stash_expire_detailed_dry_run_removes_nothing_but_reports() {
     let root = test_root("expire-dryrun");
     let src = fixture_dir(&root);
     let qdir = root.join("q");
-    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let manifest = crate::stash_move(&src, &qdir, &[]).unwrap();
     let entry_dir = age_entry(&qdir, &manifest, 40);
 
-    let outcome = crate::quarantine_expire_detailed(&qdir, 30, false).unwrap();
+    let outcome = crate::stash_expire_detailed(&qdir, 30, false).unwrap();
     assert_eq!(
         outcome.removed.len(),
         1,
@@ -659,16 +659,16 @@ fn quarantine_expire_detailed_dry_run_removes_nothing_but_reports() {
 }
 
 #[test]
-fn quarantine_expire_detailed_zero_ttl_reports_nothing() {
+fn stash_expire_detailed_zero_ttl_reports_nothing() {
     // TTL 0 means "never expire". It must not be treated as "expire
     // everything" — the classic off-by-sentinel that a floor!() would cause.
     let root = test_root("expire-ttl-zero");
     let src = fixture_dir(&root);
     let qdir = root.join("q");
-    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let manifest = crate::stash_move(&src, &qdir, &[]).unwrap();
     let entry_dir = age_entry(&qdir, &manifest, 4000);
 
-    let outcome = crate::quarantine_expire_detailed(&qdir, 0, true).unwrap();
+    let outcome = crate::stash_expire_detailed(&qdir, 0, true).unwrap();
     assert!(outcome.removed.is_empty());
     assert!(entry_dir.exists());
     cleanup(&root);
@@ -676,15 +676,15 @@ fn quarantine_expire_detailed_zero_ttl_reports_nothing() {
 
 /// `protected_paths` is the operator's only way to say "never reclaim here",
 /// and the whole protection rests on ONE call: `check_safe_to_delete_guard`
-/// inside `quarantine_move`. If that call is ever dropped in a refactor, the
+/// inside `stash_move`. If that call is ever dropped in a refactor, the
 /// config keeps parsing, the guard keeps reporting candidates, and the protected
-/// tree gets quarantined anyway — silently, because nothing else notices.
+/// tree gets stashd anyway — silently, because nothing else notices.
 ///
-/// So this pins the behaviour from the quarantine side: a protected ancestor
+/// So this pins the behaviour from the stash side: a protected ancestor
 /// refuses the move, and a sibling outside it still moves. Without the second
 /// half the test would pass trivially if protection simply refused everything.
 #[test]
-fn quarantine_move_refuses_a_user_protected_ancestor() {
+fn stash_move_refuses_a_user_protected_ancestor() {
     let root = test_root("protected");
     let prot = root.join("protected");
     let inside = prot.join("proj").join("target");
@@ -698,7 +698,7 @@ fn quarantine_move_refuses_a_user_protected_ancestor() {
     let qdir = root.join("q");
     let user_protected = vec![prot.display().to_string()];
 
-    let err = crate::quarantine_move(&inside, &qdir, &user_protected).unwrap_err();
+    let err = crate::stash_move(&inside, &qdir, &user_protected).unwrap_err();
     let msg = format!("{err:#}");
     assert!(
         msg.contains("protected"),
@@ -714,7 +714,7 @@ fn quarantine_move_refuses_a_user_protected_ancestor() {
     );
 
     // A sibling outside the protected ancestor is unaffected.
-    let manifest = crate::quarantine_move(&outside, &qdir, &user_protected).unwrap();
+    let manifest = crate::stash_move(&outside, &qdir, &user_protected).unwrap();
     assert!(!outside.exists());
     assert!(qdir.join(&manifest.name).join("b.txt").exists());
 
@@ -731,12 +731,12 @@ fn pinned_entries_are_reported_even_when_the_ttl_is_zero() {
     let root = test_root("pinned-ttl-zero");
     let src = fixture_dir(&root);
     let qdir = root.join("q");
-    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let manifest = crate::stash_move(&src, &qdir, &[]).unwrap();
     let entry_dir = qdir.join(&manifest.name);
     // No manifest: nothing is computable, so nothing may age out.
-    fs::remove_file(entry_dir.join(".quarantine.json")).unwrap();
+    fs::remove_file(entry_dir.join(".stash.json")).unwrap();
 
-    let outcome = crate::quarantine_expire_detailed(&qdir, 0, true).unwrap();
+    let outcome = crate::stash_expire_detailed(&qdir, 0, true).unwrap();
     assert!(outcome.removed.is_empty(), "ttl 0 must remove nothing");
     assert!(entry_dir.exists(), "ttl 0 must delete nothing");
     assert_eq!(
@@ -750,7 +750,7 @@ fn pinned_entries_are_reported_even_when_the_ttl_is_zero() {
 
 #[cfg(unix)]
 #[test]
-fn quarantine_reserved_names_are_preserved_with_cross_device_destination() {
+fn stash_reserved_names_are_preserved_with_cross_device_destination() {
     use std::os::unix::fs::{symlink, MetadataExt};
     let Ok(destination) = tempfile::tempdir_in("/dev/shm") else {
         return;
@@ -768,13 +768,13 @@ fn quarantine_reserved_names_are_preserved_with_cross_device_destination() {
         if kind != "dangling" {
             fs::write(&outside, b"outside content").unwrap();
         }
-        let marker = src.join(".quarantine.json");
+        let marker = src.join(".stash.json");
         if kind == "regular" {
             fs::write(&marker, b"user metadata").unwrap();
         } else {
             symlink(&outside, &marker).unwrap();
         }
-        assert!(crate::quarantine_move(&src, destination.path(), &[]).is_err());
+        assert!(crate::stash_move(&src, destination.path(), &[]).is_err());
         assert_eq!(fs::read(src.join("keep")).unwrap(), b"original content");
         if kind == "regular" {
             assert_eq!(fs::read(&marker).unwrap(), b"user metadata");
@@ -790,16 +790,16 @@ fn quarantine_reserved_names_are_preserved_with_cross_device_destination() {
     assert_eq!(fs::read_dir(destination.path()).unwrap().count(), 0);
 }
 
-// --- Replace-on-re-quarantine ----------------------------------------------
-// The guard's auto path quarantines the same rebuilt target/ again and
+// --- Replace-on-re-stash ----------------------------------------------
+// The guard's auto path stashs the same rebuilt target/ again and
 // again (terhub/target: 9 generations in 3 days). An auto move now
 // records its provenance and deletes older AUTO generations of the same
-// origin, so quarantine holds at most one auto generation per origin.
+// origin, so stash holds at most one auto generation per origin.
 // Manual moves never trigger replacement, and anything that is not
 // provably an older auto generation of the same origin is kept.
 
-fn auto_move(origin: &Path, qdir: &Path) -> crate::QuarantineManifest {
-    let (manifest, _) = crate::quarantine_first_remove(origin, qdir, &[]).unwrap();
+fn auto_move(origin: &Path, qdir: &Path) -> crate::StashManifest {
+    let (manifest, _) = crate::stash_first_remove(origin, qdir, &[]).unwrap();
     assert!(manifest.auto, "auto path must record auto provenance");
     manifest
 }
@@ -819,7 +819,7 @@ fn manual_move_records_manual_provenance() {
     let root = test_root("provenance-manual");
     let src = fixture_dir(&root);
     let qdir = root.join("q");
-    let manifest = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let manifest = crate::stash_move(&src, &qdir, &[]).unwrap();
     assert!(!manifest.auto);
     cleanup(&root);
 }
@@ -832,7 +832,7 @@ fn auto_move_records_auto_provenance() {
     let manifest = auto_move(&src, &qdir);
     assert!(manifest.auto);
     // Provenance survives a serialize round-trip through the manifest file.
-    let text = fs::read_to_string(qdir.join(&manifest.name).join(".quarantine.json")).unwrap();
+    let text = fs::read_to_string(qdir.join(&manifest.name).join(".stash.json")).unwrap();
     assert!(
         text.contains("\"auto\": true"),
         "manifest must carry auto flag"
@@ -847,7 +847,7 @@ fn auto_move_replaces_an_older_auto_generation_of_the_same_origin() {
     let qdir = root.join("q");
     let first = auto_move(&src, &qdir);
     assert!(qdir.join(&first.name).exists());
-    // The loop rebuilds at the origin; the guard quarantines again.
+    // The loop rebuilds at the origin; the guard stashs again.
     let src = fixture_dir(&root);
     let second = auto_move(&src, &qdir);
     assert_ne!(first.name, second.name);
@@ -866,7 +866,7 @@ fn auto_move_keeps_an_older_manual_generation() {
     let src = fixture_dir(&root);
     let qdir = root.join("q");
     // Operator snapshot first, then the auto path fires on a rebuild.
-    let manual = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let manual = crate::stash_move(&src, &qdir, &[]).unwrap();
     let src = fixture_dir(&root);
     let second = auto_move(&src, &qdir);
     assert!(
@@ -887,7 +887,7 @@ fn auto_move_keeps_entries_from_other_origins() {
     let src_b = fixture_dir(&other_root);
     let first_a = auto_move(&src_a, &qdir);
     let first_b = auto_move(&src_b, &qdir);
-    // Rebuild + re-quarantine origin A only.
+    // Rebuild + re-stash origin A only.
     let src_a = fixture_dir(&root);
     let second_a = auto_move(&src_a, &qdir);
     assert!(!qdir.join(&first_a.name).exists());
@@ -907,7 +907,7 @@ fn pre_flag_manifests_parse_as_manual_and_are_kept() {
     let first = auto_move(&src, &qdir);
     // Rewrite the manifest in the pre-flag format (no `auto` key): old
     // entries are of unknown provenance, which fails closed to manual.
-    let manifest_path = qdir.join(&first.name).join(".quarantine.json");
+    let manifest_path = qdir.join(&first.name).join(".stash.json");
     let text = fs::read_to_string(&manifest_path).unwrap();
     assert!(text.contains("\"auto\""));
     let mut value: serde_json::Value = serde_json::from_str(&text).unwrap();
@@ -932,9 +932,9 @@ fn manual_moves_accumulate_without_replacement() {
     let root = test_root("manual-accumulates");
     let src = fixture_dir(&root);
     let qdir = root.join("q");
-    let first = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let first = crate::stash_move(&src, &qdir, &[]).unwrap();
     let src = fixture_dir(&root);
-    let second = crate::quarantine_move(&src, &qdir, &[]).unwrap();
+    let second = crate::stash_move(&src, &qdir, &[]).unwrap();
     // The CLI never deletes: two deliberate snapshots stay two entries.
     assert!(qdir.join(&first.name).exists());
     assert!(qdir.join(&second.name).exists());

@@ -1,8 +1,8 @@
-//! Quarantine — hold-then-delete staging with a TTL.
+//! Stash — hold-then-delete staging with a TTL.
 //!
 //! ADDED 2026-09-26 (space tiers, Phase 1): the middle tier between "working"
-//! and "trash" for data kept for now but likely deleted later. `quarantine
-//! move` relocates a path under the quarantine root with a manifest recording
+//! and "trash" for data kept for now but likely deleted later. `stash
+//! move` relocates a path under the stash root with a manifest recording
 //! its origin; `restore` moves it back; `expire` deletes entries older than
 //! the TTL (dry-run unless `--apply`). A TTL of 0 disables expiry.
 
@@ -14,23 +14,23 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     check_safe_to_delete_guard, copy_tree, expand_tilde, human_bytes, load_system_policy,
-    unique_backup_path, walk_stats, walk_stats_strict, QuarantineCommands,
+    unique_backup_path, walk_stats, walk_stats_strict, StashCommands,
 };
 
-const MANIFEST_NAME: &str = ".quarantine.json";
+const MANIFEST_NAME: &str = ".stash.json";
 
-/// Manifest stored inside each quarantine entry.
+/// Manifest stored inside each stash entry.
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct QuarantineManifest {
+pub(crate) struct StashManifest {
     pub(crate) name: String,
     pub(crate) origin: String,
     pub(crate) moved_at_unix: u64,
     pub(crate) bytes: u64,
     pub(crate) files: u64,
     /// Provenance: true when the guard's action tier moved this entry
-    /// (`quarantine_first_remove`), false for a deliberate CLI `move`.
+    /// (`stash_first_remove`), false for a deliberate CLI `move`.
     /// Missing (pre-flag manifests) deserializes to false: unknown
-    /// provenance fails closed to manual, so replace-on-re-quarantine
+    /// provenance fails closed to manual, so replace-on-re-stash
     /// never deletes an entry it cannot prove is auto-created.
     #[serde(default)]
     pub(crate) auto: bool,
@@ -38,7 +38,7 @@ pub(crate) struct QuarantineManifest {
 
 /// One listed entry (manifest may be missing for hand-placed dirs).
 #[derive(Debug, Serialize)]
-pub(crate) struct QuarantineEntry {
+pub(crate) struct StashEntry {
     pub(crate) name: String,
     pub(crate) origin: String,
     pub(crate) moved_at_unix: Option<u64>,
@@ -53,10 +53,10 @@ pub(crate) struct QuarantineEntry {
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct QuarantineList {
+pub(crate) struct StashList {
     pub(crate) root: String,
     pub(crate) ttl_days: u64,
-    pub(crate) entries: Vec<QuarantineEntry>,
+    pub(crate) entries: Vec<StashEntry>,
     pub(crate) total_bytes: u64,
     pub(crate) expired_bytes: u64,
     /// Names of entries the fail-safe is holding, and the bytes they hold.
@@ -71,14 +71,14 @@ pub(crate) fn now_unix() -> u64 {
         .unwrap_or(0)
 }
 
-/// Quarantine `origin` instead of deleting it. Returns the manifest plus the
+/// Stash `origin` instead of deleting it. Returns the manifest plus the
 /// bytes actually freed on the origin filesystem (0 for same-filesystem
 /// moves — the win there is the TTL expiry later, not immediate space).
-pub(crate) fn quarantine_first_remove(
+pub(crate) fn stash_first_remove(
     origin: &Path,
     root: &Path,
     user_protected: &[String],
-) -> Result<(QuarantineManifest, u64)> {
+) -> Result<(StashManifest, u64)> {
     // Capture the origin device BEFORE the move (the path is gone after).
     // FIXED 2026-09-27 (clippy `option_and_then_some`): `.and_then(|m| Some(m.dev()))`
     // is `.map(|m| m.dev())`. Pre-existing lint, newly fatal under the CI
@@ -95,8 +95,8 @@ pub(crate) fn quarantine_first_remove(
             0
         }
     });
-    let manifest = quarantine_move_inner(origin, root, user_protected, true)?;
-    // Replace-on-re-quarantine (2026-10-04): the auto path re-quarantines
+    let manifest = stash_move_inner(origin, root, user_protected, true)?;
+    // Replace-on-re-stash (2026-10-04): the auto path re-stashs
     // the same rebuilt target/ every cycle. Older AUTO generations of this
     // origin are superseded by the move that just landed, so they go now
     // instead of sitting until the TTL. Runs AFTER the new manifest is
@@ -105,7 +105,7 @@ pub(crate) fn quarantine_first_remove(
     let replaced = replace_older_auto_generations(root, &manifest);
     for name in &replaced {
         eprintln!(
-            "quarantine: replaced older auto generation {name} (origin {})",
+            "stash: replaced older auto generation {name} (origin {})",
             manifest.origin
         );
     }
@@ -127,16 +127,16 @@ pub(crate) fn quarantine_first_remove(
     Ok((manifest, freed))
 }
 
-pub(crate) fn quarantine_root(guard: &crate::GuardPolicy) -> PathBuf {
-    let raw = guard.quarantine_dir.trim();
+pub(crate) fn stash_root(guard: &crate::GuardPolicy) -> PathBuf {
+    let raw = guard.stash_dir.trim();
     if raw.is_empty() {
-        expand_tilde(&crate::default_quarantine_dir())
+        expand_tilde(&crate::default_stash_dir())
     } else {
         expand_tilde(raw)
     }
 }
 
-fn read_manifest(entry_dir: &Path) -> Option<QuarantineManifest> {
+fn read_manifest(entry_dir: &Path) -> Option<StashManifest> {
     let text = fs::read_to_string(entry_dir.join(MANIFEST_NAME)).ok()?;
     serde_json::from_str(&text).ok()
 }
@@ -155,42 +155,42 @@ fn entry_dir_for(root: &Path, origin: &Path) -> PathBuf {
     unique_backup_path(root, &format!("{base}.{ts}"))
 }
 
-/// Move `origin` into quarantine. Uses rename when possible (same filesystem),
+/// Move `origin` into stash. Uses rename when possible (same filesystem),
 /// else copy + verify + remove. Refuses symlinks and protected paths.
 ///
 /// This is the MANUAL entry point (CLI `move`): the manifest records
 /// `auto: false` and no replacement happens — deliberate snapshots
 /// accumulate and age out at the TTL.
-pub(crate) fn quarantine_move(
+pub(crate) fn stash_move(
     origin: &Path,
     root: &Path,
     user_protected: &[String],
-) -> Result<QuarantineManifest> {
-    quarantine_move_inner(origin, root, user_protected, false)
+) -> Result<StashManifest> {
+    stash_move_inner(origin, root, user_protected, false)
 }
 
 /// The shared move implementation. `auto` records provenance in the
 /// manifest; replacement of older generations is NOT done here but by
-/// the auto caller (`quarantine_first_remove`), so the manual path can
+/// the auto caller (`stash_first_remove`), so the manual path can
 /// never trigger a delete no matter how it is invoked.
-fn quarantine_move_inner(
+fn stash_move_inner(
     origin: &Path,
     root: &Path,
     user_protected: &[String],
     auto: bool,
-) -> Result<QuarantineManifest> {
+) -> Result<StashManifest> {
     let meta = fs::symlink_metadata(origin)
         .map_err(|e| anyhow::anyhow!("cannot inspect {}: {}", origin.display(), e))?;
     if meta.file_type().is_symlink() {
-        anyhow::bail!("refusing to quarantine symlink {}", origin.display());
+        anyhow::bail!("refusing to stash symlink {}", origin.display());
     }
     if !meta.is_dir() {
-        anyhow::bail!("quarantine supports directories only: {}", origin.display());
+        anyhow::bail!("stash supports directories only: {}", origin.display());
     }
     let canon_origin = check_safe_to_delete_guard(origin, user_protected)?;
     match fs::symlink_metadata(canon_origin.join(MANIFEST_NAME)) {
         Ok(_) => anyhow::bail!(
-            "refusing to quarantine {}: reserved metadata name {} already exists; source untouched",
+            "refusing to stash {}: reserved metadata name {} already exists; source untouched",
             canon_origin.display(),
             MANIFEST_NAME
         ),
@@ -200,7 +200,7 @@ fn quarantine_move_inner(
     fs::create_dir_all(root)?;
     let canon_root = root.canonicalize()?;
     if canon_origin.starts_with(&canon_root) || canon_root.starts_with(&canon_origin) {
-        anyhow::bail!("origin and quarantine root nest — refusing");
+        anyhow::bail!("origin and stash root nest — refusing");
     }
 
     let (files, bytes) = walk_stats_strict(&canon_origin)?;
@@ -218,7 +218,7 @@ fn quarantine_move_inner(
             })?;
             if skipped > 0 {
                 eprintln!(
-                    "quarantine move: skipped {} special files (sockets, fifos) — not preserved",
+                    "stash move: skipped {} special files (sockets, fifos) — not preserved",
                     skipped
                 );
             }
@@ -247,7 +247,7 @@ fn quarantine_move_inner(
         }
     }
 
-    let manifest = QuarantineManifest {
+    let manifest = StashManifest {
         name,
         origin: canon_origin.display().to_string(),
         moved_at_unix: now_unix(),
@@ -273,10 +273,10 @@ fn quarantine_move_inner(
         // future restore refuses manifest-less entries). Move it back
         // rather than leave it unrecorded.
         if fs::rename(&entry_dir, &canon_origin).is_ok() {
-            anyhow::anyhow!("quarantine manifest write failed — moved back to origin: {e}")
+            anyhow::anyhow!("stash manifest write failed — moved back to origin: {e}")
         } else {
             anyhow::anyhow!(
-                "quarantine manifest write failed AND move-back failed: data is at {} with no manifest, origin {} is gone",
+                "stash manifest write failed AND move-back failed: data is at {} with no manifest, origin {} is gone",
                 entry_dir.display(),
                 canon_origin.display()
             )
@@ -294,13 +294,13 @@ fn quarantine_move_inner(
 /// manifests (unknown provenance), other origins, unreadable manifests,
 /// and anything outside the canonical root are all kept. A deletion
 /// failure is loud but non-fatal — the TTL expiry is the backstop.
-pub(crate) fn replace_older_auto_generations(root: &Path, new: &QuarantineManifest) -> Vec<String> {
+pub(crate) fn replace_older_auto_generations(root: &Path, new: &StashManifest) -> Vec<String> {
     let mut replaced = Vec::new();
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
         Err(e) => {
             eprintln!(
-                "quarantine: cannot scan {} for older generations: {e} — keeping everything",
+                "stash: cannot scan {} for older generations: {e} — keeping everything",
                 root.display()
             );
             return replaced;
@@ -322,14 +322,14 @@ pub(crate) fn replace_older_auto_generations(root: &Path, new: &QuarantineManife
         let dir = match resolve_entry_dir(root, &name) {
             Ok(dir) => dir,
             Err(e) => {
-                eprintln!("quarantine: skipping unresolvable older generation {name}: {e:#}");
+                eprintln!("stash: skipping unresolvable older generation {name}: {e:#}");
                 continue;
             }
         };
         match fs::remove_dir_all(&dir) {
             Ok(()) => replaced.push(name),
             Err(e) => eprintln!(
-                "quarantine: could not remove older auto generation {name}: {e} — TTL expiry remains the backstop"
+                "stash: could not remove older auto generation {name}: {e} — TTL expiry remains the backstop"
             ),
         }
     }
@@ -343,7 +343,7 @@ pub(crate) fn replace_older_auto_generations(root: &Path, new: &QuarantineManife
 /// The manifest is the only record of where the entry came from; without it
 /// the entry is permanently unrestorable, so expiring it would convert
 /// "recoverable by hand" into "gone". Nothing is gained by taking that risk
-/// on a timer: the quarantine root is written only by this daemon, so an
+/// on a timer: the stash root is written only by this daemon, so an
 /// unreadable manifest means corruption or outside interference, not a
 /// routine condition that a TTL is there to bound — and a genuinely
 /// transient read error (EACCES, EIO) resolves itself, after which the entry
@@ -351,12 +351,12 @@ pub(crate) fn replace_older_auto_generations(root: &Path, new: &QuarantineManife
 ///
 /// The cost of that choice is that bytes can be held indefinitely, so the
 /// pin is never silent: it is listed, counted, and explained, and
-/// `quarantine purge <name>` is the documented operator escape hatch for a
+/// `stash purge <name>` is the documented operator escape hatch for a
 /// specific entry the operator has inspected.
 pub(crate) const PIN_REASON: &str =
-    "manifest unreadable — cannot age out or restore; clear with `quarantine purge <name> --apply`";
+    "manifest unreadable — cannot age out or restore; clear with `stash purge <name> --apply`";
 
-pub(crate) fn quarantine_list(root: &Path, ttl_days: u64) -> Result<QuarantineList> {
+pub(crate) fn stash_list(root: &Path, ttl_days: u64) -> Result<StashList> {
     let mut entries = Vec::new();
     let mut total_bytes = 0u64;
     let mut expired_bytes = 0u64;
@@ -393,7 +393,7 @@ pub(crate) fn quarantine_list(root: &Path, ttl_days: u64) -> Result<QuarantineLi
                 pinned.push(name.clone());
                 pinned_bytes += bytes;
             }
-            entries.push(QuarantineEntry {
+            entries.push(StashEntry {
                 name,
                 origin,
                 moved_at_unix: moved_at,
@@ -407,7 +407,7 @@ pub(crate) fn quarantine_list(root: &Path, ttl_days: u64) -> Result<QuarantineLi
         entries.sort_by(|a, b| a.name.cmp(&b.name));
         pinned.sort();
     }
-    Ok(QuarantineList {
+    Ok(StashList {
         root: root.display().to_string(),
         ttl_days,
         entries,
@@ -419,11 +419,11 @@ pub(crate) fn quarantine_list(root: &Path, ttl_days: u64) -> Result<QuarantineLi
 }
 
 /// Resolve a caller-supplied entry name to a real directory inside the
-/// quarantine root.
+/// stash root.
 ///
 /// The name is a single path component minted by `entry_dir_for`;
 /// separators, parent components, and absolute paths are refused before they
-/// can escape the quarantine root, and a smuggled symlink is refused rather
+/// can escape the stash root, and a smuggled symlink is refused rather
 /// than followed. Shared by `restore` and `purge` so the escape hatch
 /// inherits exactly the same containment checks as the safe path — a purge
 /// that validated names differently would be the weakest link in the module.
@@ -435,11 +435,11 @@ pub(crate) fn resolve_entry_dir(root: &Path, name: &str) -> Result<PathBuf> {
         || name.contains('\\')
         || name.contains('\0')
     {
-        anyhow::bail!("invalid quarantine entry name: {name}");
+        anyhow::bail!("invalid stash entry name: {name}");
     }
     let canon_root = root.canonicalize().map_err(|e| {
         anyhow::anyhow!(
-            "cannot canonicalize quarantine root {}: {}",
+            "cannot canonicalize stash root {}: {}",
             root.display(),
             e
         )
@@ -448,17 +448,17 @@ pub(crate) fn resolve_entry_dir(root: &Path, name: &str) -> Result<PathBuf> {
     // symlink_metadata does not follow links: a smuggled symlink into an
     // entry-named path is refused here instead of being operated through.
     let meta = fs::symlink_metadata(&entry_dir)
-        .map_err(|_| anyhow::anyhow!("no such quarantine entry: {name}"))?;
+        .map_err(|_| anyhow::anyhow!("no such stash entry: {name}"))?;
     if !meta.file_type().is_dir() {
         if meta.file_type().is_symlink() {
             anyhow::bail!("refusing to operate on symlink entry {name}");
         }
-        anyhow::bail!("no such quarantine entry: {name}");
+        anyhow::bail!("no such stash entry: {name}");
     }
     Ok(entry_dir)
 }
 
-/// Delete one named quarantine entry, whatever state its manifest is in.
+/// Delete one named stash entry, whatever state its manifest is in.
 ///
 /// This is the documented escape hatch for an entry the fail-safe is pinning
 /// (see `PIN_REASON`): the operator names ONE entry they have inspected and
@@ -470,7 +470,7 @@ pub(crate) fn resolve_entry_dir(root: &Path, name: &str) -> Result<PathBuf> {
 ///
 /// Dry-run unless `apply`, and it reports the size it would reclaim so the
 /// operator sees what they are about to give up before giving it up.
-pub(crate) fn quarantine_purge(
+pub(crate) fn stash_purge(
     root: &Path,
     name: &str,
     apply: bool,
@@ -493,7 +493,7 @@ pub(crate) fn quarantine_purge(
 /// Uses the shared `resolve_entry_dir` containment check, and the manifest
 /// is kept until the move succeeds, so a failed restore leaves the entry
 /// restorable instead of orphaning it.
-pub(crate) fn quarantine_restore(root: &Path, name: &str) -> Result<PathBuf> {
+pub(crate) fn stash_restore(root: &Path, name: &str) -> Result<PathBuf> {
     let entry_dir = resolve_entry_dir(root, name)?;
     let manifest = read_manifest(&entry_dir)
         .ok_or_else(|| anyhow::anyhow!("entry {name} has no manifest — refusing blind restore"))?;
@@ -523,7 +523,7 @@ pub(crate) fn quarantine_restore(root: &Path, name: &str) -> Result<PathBuf> {
             let (got_files, got_bytes) = walk_stats_strict(&origin)?;
             if got_files != manifest.files || got_bytes != manifest.bytes {
                 let _ = fs::remove_dir_all(&origin);
-                anyhow::bail!("restore verification failed — quarantine entry kept");
+                anyhow::bail!("restore verification failed — stash entry kept");
             }
             fs::remove_dir_all(&entry_dir)?;
             Ok(origin)
@@ -542,7 +542,7 @@ pub(crate) struct ExpiredEntry {
 }
 
 /// Everything one expiry pass did, so a caller does not have to walk the
-/// quarantine root a second time to learn what was removed and what could not
+/// stash root a second time to learn what was removed and what could not
 /// be.
 pub(crate) struct ExpireOutcome {
     pub(crate) removed: Vec<ExpiredEntry>,
@@ -555,14 +555,14 @@ pub(crate) struct ExpireOutcome {
 }
 
 /// Delete entries older than the TTL, returning one record per removal.
-/// Entries are validated to sit directly under the quarantine root before
+/// Entries are validated to sit directly under the stash root before
 /// removal. TTL 0 disables expiry.
 ///
 /// A pinned entry (unreadable manifest) is `expired = false` by construction in
-/// `quarantine_list`, so it can never reach the removal loop. That is the only
+/// `stash_list`, so it can never reach the removal loop. That is the only
 /// thing standing between a corrupt manifest and an un-datable deletion, so it
 /// is pinned by a test rather than by this comment.
-pub(crate) fn quarantine_expire_detailed(
+pub(crate) fn stash_expire_detailed(
     root: &Path,
     ttl_days: u64,
     apply: bool,
@@ -570,12 +570,12 @@ pub(crate) fn quarantine_expire_detailed(
     // FIXED 2026-10-02 (audit advisory): this used to return early when
     // ttl_days == 0, which skipped the directory walk and therefore also
     // skipped reporting pinned entries. Nothing is deleted either way —
-    // `quarantine_list` already computes `expired = ttl_days > 0 && age > ttl`,
+    // `stash_list` already computes `expired = ttl_days > 0 && age > ttl`,
     // so no entry can be removed when the TTL is 0 — but an operator who
     // disables expiry still has entries sitting there, and one of them may be
     // pinned with no way to age out. The report is about existing state, not
     // about the deletion decision, so it is now produced in both cases.
-    let list = quarantine_list(root, ttl_days)?;
+    let list = stash_list(root, ttl_days)?;
     let canon_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
     let mut removed = Vec::new();
     for entry in list.entries.iter().filter(|e| e.expired) {
@@ -584,7 +584,7 @@ pub(crate) fn quarantine_expire_detailed(
         // already gone; skip it rather than aborting the batch and losing
         // the removals already collected.
         let Ok(canon) = dir.canonicalize() else {
-            eprintln!("quarantine expire: entry {} vanished, skipping", entry.name);
+            eprintln!("stash expire: entry {} vanished, skipping", entry.name);
             continue;
         };
         if canon.parent() != Some(canon_root.as_path()) {
@@ -592,7 +592,7 @@ pub(crate) fn quarantine_expire_detailed(
             // batch discards the removals already collected. Skip it
             // loudly instead; the warning names the entry for the operator.
             eprintln!(
-                "quarantine expire: entry {} escaped quarantine root — refusing it, continuing batch",
+                "stash expire: entry {} escaped stash root — refusing it, continuing batch",
                 entry.name
             );
             continue;
@@ -614,29 +614,29 @@ pub(crate) fn quarantine_expire_detailed(
 }
 
 /// Delete entries older than the TTL, returning the names removed.
-/// Entries are validated to sit directly under the quarantine root before
+/// Entries are validated to sit directly under the stash root before
 /// removal. TTL 0 disables expiry.
-pub(crate) fn quarantine_expire(root: &Path, ttl_days: u64, apply: bool) -> Result<Vec<String>> {
-    Ok(quarantine_expire_detailed(root, ttl_days, apply)?
+pub(crate) fn stash_expire(root: &Path, ttl_days: u64, apply: bool) -> Result<Vec<String>> {
+    Ok(stash_expire_detailed(root, ttl_days, apply)?
         .removed
         .into_iter()
         .map(|e| e.name)
         .collect())
 }
 
-pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
+pub(crate) fn cmd_stash(cmd: StashCommands) -> Result<()> {
     use comfy_table::{presets::UTF8_FULL_CONDENSED, Cell, ContentArrangement, Table};
 
     let (_, policy) = load_system_policy()?;
-    let root = quarantine_root(&policy.guard);
-    let ttl = policy.guard.quarantine_ttl_days;
+    let root = stash_root(&policy.guard);
+    let ttl = policy.guard.stash_ttl_days;
     match cmd {
-        QuarantineCommands::Move { path, apply, json } => {
+        StashCommands::Move { path, apply, json } => {
             if !apply {
                 let meta = fs::symlink_metadata(&path)
                     .map_err(|e| anyhow::anyhow!("cannot inspect {}: {}", path.display(), e))?;
                 if !meta.is_dir() || meta.file_type().is_symlink() {
-                    anyhow::bail!("quarantine move supports real directories only");
+                    anyhow::bail!("stash move supports real directories only");
                 }
                 let (files, bytes) = walk_stats(&path);
                 if json {
@@ -651,7 +651,7 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
                     );
                 } else {
                     println!(
-                        "Would quarantine {} ({} in {} files) → {}",
+                        "Would stash {} ({} in {} files) → {}",
                         path.display(),
                         human_bytes(bytes),
                         files,
@@ -661,12 +661,12 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
                 }
                 return Ok(());
             }
-            let manifest = quarantine_move(&path, &root, &policy.guard.protected_paths)?;
+            let manifest = stash_move(&path, &root, &policy.guard.protected_paths)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&manifest)?);
             } else {
                 println!(
-                    "✅ Quarantined {} ({} in {} files) as {}",
+                    "✅ Stashd {} ({} in {} files) as {}",
                     manifest.origin,
                     human_bytes(manifest.bytes),
                     manifest.files,
@@ -674,12 +674,12 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
                 );
             }
         }
-        QuarantineCommands::List { json } => {
-            let list = quarantine_list(&root, ttl)?;
+        StashCommands::List { json } => {
+            let list = stash_list(&root, ttl)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&list)?);
             } else if list.entries.is_empty() {
-                println!("Quarantine {} is empty", root.display());
+                println!("Stash {} is empty", root.display());
             } else {
                 let mut table = Table::new();
                 table
@@ -717,7 +717,7 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
                 );
                 // The fail-safe is not allowed to be silent: an entry held
                 // forever because its manifest is unreadable would otherwise
-                // look exactly like a quarantine that has nothing to expire.
+                // look exactly like a stash that has nothing to expire.
                 if !list.pinned.is_empty() {
                     println!(
                         "⚠ {} entr{} pinned by the fail-safe ({}): {PIN_REASON}",
@@ -733,8 +733,8 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
                 }
             }
         }
-        QuarantineCommands::Restore { name, json } => {
-            let origin = quarantine_restore(&root, &name)?;
+        StashCommands::Restore { name, json } => {
+            let origin = stash_restore(&root, &name)?;
             if json {
                 println!(
                     "{}",
@@ -747,13 +747,13 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
                 println!("✅ Restored {name} → {}", origin.display());
             }
         }
-        QuarantineCommands::Expire { apply, json } => {
+        StashCommands::Expire { apply, json } => {
             // Captured BEFORE the expiry runs. After an --apply the entries
             // are gone, so re-listing would report an empty pinned set and
             // the warning would be suppressed by the very deletion it is
             // warning about.
-            let pinned = quarantine_list(&root, ttl)?.pinned;
-            let expired = quarantine_expire(&root, ttl, apply)?;
+            let pinned = stash_list(&root, ttl)?.pinned;
+            let expired = stash_expire(&root, ttl, apply)?;
             if json {
                 println!(
                     "{}",
@@ -802,12 +802,12 @@ pub(crate) fn cmd_quarantine(cmd: QuarantineCommands) -> Result<()> {
                         if pinned.len() == 1 { "y is" } else { "ies are" },
                         pinned.join(", ")
                     );
-                    println!("   clear one with: quarantine purge <name> --apply");
+                    println!("   clear one with: stash purge <name> --apply");
                 }
             }
         }
-        QuarantineCommands::Purge { name, apply, json } => {
-            let (contents, bytes, was_pinned) = quarantine_purge(&root, &name, apply)?;
+        StashCommands::Purge { name, apply, json } => {
+            let (contents, bytes, was_pinned) = stash_purge(&root, &name, apply)?;
             if json {
                 println!(
                     "{}",

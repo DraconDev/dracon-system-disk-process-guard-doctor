@@ -46,8 +46,8 @@ mod links;
 pub(crate) use links::*;
 mod policy;
 pub(crate) use policy::*;
-mod quarantine;
-pub(crate) use quarantine::*;
+mod stash;
+pub(crate) use stash::*;
 mod reap;
 pub(crate) use reap::*;
 mod relocate;
@@ -68,7 +68,7 @@ mod links_tests;
 #[cfg(test)]
 mod policy_tests;
 #[cfg(test)]
-mod quarantine_tests;
+mod stash_tests;
 #[cfg(test)]
 mod reap_tests;
 #[cfg(test)]
@@ -334,14 +334,14 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
-    /// Quarantine: hold-then-delete staging with a TTL.
-    Quarantine {
+    /// Stash: hold-then-delete staging with a TTL.
+    Stash {
         #[command(subcommand)]
-        cmd: QuarantineCommands,
+        cmd: StashCommands,
     },
-    /// Check space-tier setup readiness (cold root, quarantine, mounts).
+    /// Check space-tier setup readiness (cold root, stash, mounts).
     Setup {
-        /// Create missing cold/quarantine directories.
+        /// Create missing cold/stash directories.
         #[arg(long)]
         apply: bool,
         /// Emit machine-readable JSON.
@@ -373,24 +373,24 @@ enum LinkCommands {
 }
 
 #[derive(Subcommand, Debug)]
-enum QuarantineCommands {
-    /// Move a directory into quarantine (dry-run unless --apply).
+enum StashCommands {
+    /// Move a directory into stash (dry-run unless --apply).
     Move {
-        /// Directory to quarantine.
+        /// Directory to stash.
         path: PathBuf,
         #[arg(long)]
         apply: bool,
         #[arg(long)]
         json: bool,
     },
-    /// List quarantine entries.
+    /// List stash entries.
     List {
         #[arg(long)]
         json: bool,
     },
     /// Restore an entry to its recorded origin.
     Restore {
-        /// Entry name from `quarantine list`.
+        /// Entry name from `stash list`.
         name: String,
         #[arg(long)]
         json: bool,
@@ -408,7 +408,7 @@ enum QuarantineCommands {
     /// for a single named entry, never a bulk sweep of everything
     /// unreadable, and dry-run unless --apply.
     Purge {
-        /// Entry name from `quarantine list`.
+        /// Entry name from `stash list`.
         name: String,
         #[arg(long)]
         apply: bool,
@@ -880,11 +880,11 @@ pub(crate) struct GuardRuntimeState {
     /// Last action-level cleanup scan. Even report-only scans are bounded
     /// because they walk large Rust and Node trees.
     pub(crate) last_auto_cleanup: Option<Instant>,
-    /// ADDED 2026-10-02: last time the guard ran quarantine expiry itself.
+    /// ADDED 2026-10-02: last time the guard ran stash expiry itself.
     /// Separate from `last_auto_cleanup` on purpose: expiry drains the SECOND
     /// disk and must not inherit the reclaim cadence, or an operator tuning how
     /// often cleanup runs would silently change when a TTL is enforced.
-    pub(crate) last_quarantine_expire: Option<Instant>,
+    pub(crate) last_stash_expire: Option<Instant>,
     /// ADDED 2026-08-30 (memory-leak fix): bounded retry counters for the
     /// unrenice loops. The loops used to `continue` forever on
     /// ProcessIdentityStatus::Unavailable or a failed renice, never
@@ -1941,7 +1941,7 @@ pub(crate) fn stabilize_memory_pressure_at(
 ///
 /// FIXED 2026-10-09 (audit F130): this was `PathBuf::from(raw)` with no
 /// expansion at all, while every sibling storage root expanded it
-/// (`quarantine_root`, `resolve_policy_path`, the log dirs). The code
+/// (`stash_root`, `resolve_policy_path`, the log dirs). The code
 /// default is expanded at construction, but the shipped example config
 /// documents the value as `~/.dracon/dracon-sync.freeze`
 /// (dracon-system.example.toml), so following the example wrote a
@@ -3226,14 +3226,14 @@ async fn auto_cleanup_rust_targets(
         .saturating_mul(1024)
         .saturating_mul(1024);
 
-    // ADDED 2026-10-12 (stall guard): cap cross-device quarantine-move bytes
+    // ADDED 2026-10-12 (stall guard): cap cross-device stash-move bytes
     // per pass. 2026-10-04 disabled this whole path after repeated 10-30 GiB
-    // copies to /mnt/data/quarantine stalled the desktop. The budget is
+    // copies to /mnt/data/stash stalled the desktop. The budget is
     // reserved at gate time in BOTH dry-run and apply so preview == apply;
     // a failed move wasting budget only defers others — safe direction.
-    // Direct deletes (quarantine-first off) are uncapped: no copy, no stall.
-    let quarantine_budget = quarantine_budget_bytes(guard.quarantine_max_bytes_per_pass_mb);
-    let mut quarantined_bytes = 0u64;
+    // Direct deletes (stash-first off) are uncapped: no copy, no stall.
+    let stash_budget = stash_budget_bytes(guard.stash_max_bytes_per_pass_mb);
+    let mut stashd_bytes = 0u64;
 
     for target in targets {
         // Skip if too small
@@ -3331,41 +3331,41 @@ async fn auto_cleanup_rust_targets(
             continue;
         }
 
-        // ADDED 2026-09-27 (space tiers Phase 2): quarantine-first routing —
-        // move to quarantine (TTL'd, restorable) instead of deleting.
+        // ADDED 2026-09-27 (space tiers Phase 2): stash-first routing —
+        // move to stash (TTL'd, restorable) instead of deleting.
         // ADDED 2026-10-12 (stall guard): over-budget entries defer with an
         // explicit operator note instead of stalling the desktop mid-pass.
-        if guard.clean_quarantine_first
-            && quarantine_over_budget(quarantined_bytes, target.bytes, quarantine_budget)
+        if guard.clean_stash_first
+            && stash_over_budget(stashd_bytes, target.bytes, stash_budget)
         {
             result.protected_paths.push(format!(
-                "{} ({}, over per-pass quarantine budget {}, deferred — needs operator)",
+                "{} ({}, over per-pass stash budget {}, deferred — needs operator)",
                 target.path.display(),
                 human_bytes(target.bytes),
-                human_bytes(quarantine_budget)
+                human_bytes(stash_budget)
             ));
             continue;
         }
-        if guard.clean_quarantine_first {
-            quarantined_bytes = quarantined_bytes.saturating_add(target.bytes);
+        if guard.clean_stash_first {
+            stashd_bytes = stashd_bytes.saturating_add(target.bytes);
         }
-        let mut quarantined = false;
+        let mut stashd = false;
         let mut freed = target.bytes;
         if apply {
-            if guard.clean_quarantine_first {
-                let qdir = quarantine_root(guard);
-                match quarantine_first_remove(&target.path, &qdir, &guard.protected_paths) {
+            if guard.clean_stash_first {
+                let qdir = stash_root(guard);
+                match stash_first_remove(&target.path, &qdir, &guard.protected_paths) {
                     Ok((manifest, f)) => {
-                        quarantined = true;
+                        stashd = true;
                         freed = f;
                         eprintln!(
-                            "📦 Rust quarantined: {} as {}",
+                            "📦 Rust stashd: {} as {}",
                             target.path.display(),
                             manifest.name
                         );
                     }
                     Err(e) => {
-                        eprintln!("⚠️ failed to quarantine {}: {}", target.path.display(), e);
+                        eprintln!("⚠️ failed to stash {}: {}", target.path.display(), e);
                         continue;
                     }
                 }
@@ -3383,9 +3383,9 @@ async fn auto_cleanup_rust_targets(
 
         result.cleaned_count += 1;
         result.reclaimed_bytes += freed;
-        if quarantined {
+        if stashd {
             result.cleaned_paths.push(format!(
-                "{} (quarantined, {}, freed {})",
+                "{} (stashd, {}, freed {})",
                 target.path.display(),
                 human_bytes(target.bytes),
                 human_bytes(freed)
@@ -3467,11 +3467,11 @@ async fn proactive_cleanup_rust_targets(
         .saturating_mul(24)
         .saturating_mul(3600);
 
-    // ADDED 2026-10-12 (stall guard): same per-pass quarantine-move budget
+    // ADDED 2026-10-12 (stall guard): same per-pass stash-move budget
     // as the action path — a 14d-stale forgotten target is exactly the huge
     // cross-device copy that stalled the desktop in 2026-10-04.
-    let quarantine_budget = quarantine_budget_bytes(guard.quarantine_max_bytes_per_pass_mb);
-    let mut quarantined_bytes = 0u64;
+    let stash_budget = stash_budget_bytes(guard.stash_max_bytes_per_pass_mb);
+    let mut stashd_bytes = 0u64;
 
     for target in targets {
         if target.bytes < min_size_bytes {
@@ -3500,41 +3500,41 @@ async fn proactive_cleanup_rust_targets(
             continue;
         }
 
-        // ADDED 2026-09-27 (space tiers Phase 2): quarantine-first routing.
+        // ADDED 2026-09-27 (space tiers Phase 2): stash-first routing.
         // ADDED 2026-10-12 (stall guard): over-budget entries defer with an
         // explicit operator note instead of stalling the desktop mid-pass.
-        if guard.clean_quarantine_first
-            && quarantine_over_budget(quarantined_bytes, target.bytes, quarantine_budget)
+        if guard.clean_stash_first
+            && stash_over_budget(stashd_bytes, target.bytes, stash_budget)
         {
             result.protected_paths.push(format!(
-                "{} ({}, over per-pass quarantine budget {}, deferred — needs operator)",
+                "{} ({}, over per-pass stash budget {}, deferred — needs operator)",
                 target.path.display(),
                 human_bytes(target.bytes),
-                human_bytes(quarantine_budget)
+                human_bytes(stash_budget)
             ));
             continue;
         }
-        if guard.clean_quarantine_first {
-            quarantined_bytes = quarantined_bytes.saturating_add(target.bytes);
+        if guard.clean_stash_first {
+            stashd_bytes = stashd_bytes.saturating_add(target.bytes);
         }
-        let mut quarantined = false;
+        let mut stashd = false;
         let mut freed = target.bytes;
         if apply {
-            if guard.clean_quarantine_first {
-                let qdir = quarantine_root(guard);
-                match quarantine_first_remove(&target.path, &qdir, &guard.protected_paths) {
+            if guard.clean_stash_first {
+                let qdir = stash_root(guard);
+                match stash_first_remove(&target.path, &qdir, &guard.protected_paths) {
                     Ok((manifest, f)) => {
-                        quarantined = true;
+                        stashd = true;
                         freed = f;
                         eprintln!(
-                            "📦 proactive quarantined: {} as {}",
+                            "📦 proactive stashd: {} as {}",
                             target.path.display(),
                             manifest.name
                         );
                     }
                     Err(e) => {
                         eprintln!(
-                            "⚠️ proactive: failed to quarantine {}: {}",
+                            "⚠️ proactive: failed to stash {}: {}",
                             target.path.display(),
                             e
                         );
@@ -3566,9 +3566,9 @@ async fn proactive_cleanup_rust_targets(
 
         result.cleaned_count += 1;
         result.reclaimed_bytes += freed;
-        if quarantined {
+        if stashd {
             result.cleaned_paths.push(format!(
-                "{} (quarantined, {} days stale, {}, freed {})",
+                "{} (stashd, {} days stale, {}, freed {})",
                 target.path.display(),
                 target.mtime_secs_ago / 86400,
                 human_bytes(target.bytes),
@@ -4740,8 +4740,8 @@ async fn clean_old_node_modules(
     max_age_days: u64,
     apply: bool,
     protected_paths: &[String],
-    quarantine_first: bool,
-    quarantine_dir: &Path,
+    stash_first: bool,
+    stash_dir: &Path,
 ) -> Result<(u64, Vec<String>)> {
     use walkdir::WalkDir;
 
@@ -4804,23 +4804,23 @@ async fn clean_old_node_modules(
 
             if size > 0 {
                 let mut succeeded = true;
-                // ADDED 2026-09-27 (space tiers Phase 2): quarantine-first.
-                let mut quarantined = false;
+                // ADDED 2026-09-27 (space tiers Phase 2): stash-first.
+                let mut stashd = false;
                 let mut freed = size;
                 if apply {
-                    if quarantine_first {
-                        match quarantine_first_remove(&path, quarantine_dir, protected_paths) {
+                    if stash_first {
+                        match stash_first_remove(&path, stash_dir, protected_paths) {
                             Ok((manifest, f)) => {
-                                quarantined = true;
+                                stashd = true;
                                 freed = f;
                                 eprintln!(
-                                    "📦 Node quarantined: {} as {}",
+                                    "📦 Node stashd: {} as {}",
                                     path.display(),
                                     manifest.name
                                 );
                             }
                             Err(e) => {
-                                eprintln!("⚠️ failed to quarantine {}: {}", path.display(), e);
+                                eprintln!("⚠️ failed to stash {}: {}", path.display(), e);
                                 succeeded = false;
                             }
                         }
@@ -4840,9 +4840,9 @@ async fn clean_old_node_modules(
                     }
                 }
                 if !apply || succeeded {
-                    if quarantined {
+                    if stashd {
                         cleaned.push(format!(
-                            "{} (quarantined, {} days old, {}, freed {})",
+                            "{} (stashd, {} days old, {}, freed {})",
                             path.display(),
                             modified_secs_ago / 86400,
                             human_bytes(size),
@@ -6572,8 +6572,8 @@ fn resolve_safe_tmp_roots(roots: &[String]) -> Result<Vec<PathBuf>> {
 /// pass, so dry-run accounting can never double-count an entry. Every other
 /// protection is identical to the general pass (open fd / cwd / exe scan,
 /// symlink skip, protected paths, fail-closed tree walk). Deletion is DIRECT,
-/// never quarantine: /tmp is already disposable, and copying tens of GiB to
-/// quarantine just to delete it later defeats the purpose.
+/// never stash: /tmp is already disposable, and copying tens of GiB to
+/// stash just to delete it later defeats the purpose.
 ///
 /// Returns `(reclaimed_bytes, cleaned, denied)` where `denied` holds entries
 /// that could not be removed (typically root-owned leftovers needing sudo).
@@ -6609,9 +6609,9 @@ pub(crate) fn tmp_e2e_match(file_name: &str, patterns: &[String]) -> bool {
     })
 }
 
-/// Quarantine-move budget in bytes. 0 = unlimited (`u64::MAX`, never hit by
+/// Stash-move budget in bytes. 0 = unlimited (`u64::MAX`, never hit by
 /// a saturating add). Pure so the boundary is unit-testable.
-pub(crate) fn quarantine_budget_bytes(max_mb: u64) -> u64 {
+pub(crate) fn stash_budget_bytes(max_mb: u64) -> u64 {
     if max_mb == 0 {
         u64::MAX
     } else {
@@ -6619,10 +6619,10 @@ pub(crate) fn quarantine_budget_bytes(max_mb: u64) -> u64 {
     }
 }
 
-/// True when moving `entry_bytes` would exceed the per-pass quarantine
+/// True when moving `entry_bytes` would exceed the per-pass stash
 /// budget. Pure boundary helper: exactly-at-budget is allowed, one byte
 /// over defers.
-pub(crate) fn quarantine_over_budget(
+pub(crate) fn stash_over_budget(
     moved_bytes: u64,
     entry_bytes: u64,
     budget_bytes: u64,
@@ -7171,7 +7171,7 @@ async fn run_auto_cleanup(
         // shorter age gate. Runs FIRST; it owns only the window the general
         // pass skips (newer than the general cutoff), so dry-run accounting
         // never double-counts. Honours the whole-pass disable (general age 0)
-        // and its own 0 sentinel. Direct delete, never quarantine (/tmp is
+        // and its own 0 sentinel. Direct delete, never stash (/tmp is
         // already disposable).
         if guard.tmp_min_age_hours != 0 && guard.tmp_e2e_min_age_hours != 0 {
             let e2e_patterns = parse_tmp_e2e_patterns(&guard.tmp_e2e_patterns);
@@ -7343,8 +7343,8 @@ async fn run_auto_cleanup(
             guard.node_modules_max_age_days,
             apply,
             &guard.protected_paths,
-            guard.clean_quarantine_first,
-            &quarantine_root(guard),
+            guard.clean_stash_first,
+            &stash_root(guard),
         )
         .await
         {
@@ -7873,13 +7873,13 @@ fn cooldown_due(last: Option<Instant>, interval_secs: u64, now: Instant) -> bool
     last.is_none_or(|last| now.duration_since(last).as_secs() >= interval_secs.max(60))
 }
 
-/// Enforce the quarantine TTL from inside the guard, on its own cadence.
+/// Enforce the stash TTL from inside the guard, on its own cadence.
 ///
-/// Why this exists: `quarantine_expire` had exactly one non-test caller — the
+/// Why this exists: `stash_expire` had exactly one non-test caller — the
 /// CLI `Expire` arm. Nothing on any timer and no daemon pass ever called it,
 /// so a 30-day TTL was a number nobody read. That was invisible while the
-/// reclaim path could not write, but once quarantine actually worked the guard
-/// started converting deletes into permanent second-disk usage: a quarantine
+/// reclaim path could not write, but once stash actually worked the guard
+/// started converting deletes into permanent second-disk usage: a stash
 /// move FREES `/` at copy time (the origin is deleted) and only frees
 /// `/mnt/data` when the entry expires. An expiry that never runs does not keep a
 /// safety copy — it leaks.
@@ -7892,48 +7892,48 @@ fn cooldown_due(last: Option<Instant>, interval_secs: u64, now: Instant) -> bool
 /// Three gates beyond the cooldown, all about not deleting what the operator
 /// did not ask to be deleted:
 ///
-/// - `quarantine_expire_interval_secs = 0` opts out of the unattended path
+/// - `stash_expire_interval_secs = 0` opts out of the unattended path
 ///   entirely. The manual CLI still works.
-/// - `clean_quarantine_first` must be armed. If it is not, any entries present
-///   came from a human running `quarantine move` by hand, and those must not
+/// - `clean_stash_first` must be armed. If it is not, any entries present
+///   came from a human running `stash move` by hand, and those must not
 ///   become an unattended delete just because the directory is non-empty.
 /// - `auto_cleanup_apply` must be true for actual deletion (audit M5,
 ///   2026-10-02 — previously hardcoded apply, arming unattended deletes
 ///   for operators who believed `auto_cleanup_apply = false` meant
 ///   dry-run). When false the pass still scans and reports, but removes
 ///   nothing.
-fn maybe_expire_quarantine(guard: &GuardPolicy, state: &mut GuardRuntimeState, now: Instant) {
-    if guard.quarantine_expire_interval_secs == 0 {
+fn maybe_expire_stash(guard: &GuardPolicy, state: &mut GuardRuntimeState, now: Instant) {
+    if guard.stash_expire_interval_secs == 0 {
         return;
     }
-    if !guard.clean_quarantine_first {
+    if !guard.clean_stash_first {
         return;
     }
     if !cooldown_due(
-        state.last_quarantine_expire,
-        guard.quarantine_expire_interval_secs,
+        state.last_stash_expire,
+        guard.stash_expire_interval_secs,
         now,
     ) {
         return;
     }
     // Stamp before the work: a filesystem that errors on every pass must not
     // turn the interval into a per-pass retry.
-    state.last_quarantine_expire = Some(now);
+    state.last_stash_expire = Some(now);
 
-    let root = quarantine_root(guard);
+    let root = stash_root(guard);
     // Nothing to do, and no reason to spend a directory walk.
     if !root.is_dir() {
         return;
     }
-    match quarantine_expire_detailed(&root, guard.quarantine_ttl_days, guard.auto_cleanup_apply) {
+    match stash_expire_detailed(&root, guard.stash_ttl_days, guard.auto_cleanup_apply) {
         Ok(outcome) => {
             // A pinned entry can never age out — no manifest, no timestamp — so
-            // it needs a human (`quarantine purge`). Report it every pass, or it
+            // it needs a human (`stash purge`). Report it every pass, or it
             // quietly accumulates in a directory whose contract is bounded
             // growth.
             if !outcome.pinned.is_empty() {
                 eprintln!(
-                    "🕒 quarantine: {} pinned ({}), cannot age out — clear with `dracon-system quarantine purge <name> --apply`: {}",
+                    "🕒 stash: {} pinned ({}), cannot age out — clear with `dracon-system stash purge <name> --apply`: {}",
                     outcome.pinned.len(),
                     human_bytes(outcome.pinned_bytes),
                     outcome.pinned.join(", ")
@@ -7946,14 +7946,14 @@ fn maybe_expire_quarantine(guard: &GuardPolicy, state: &mut GuardRuntimeState, n
                 // In dry-run the entry is still on disk — say so explicitly.
                 if guard.auto_cleanup_apply {
                     eprintln!(
-                        "🕒 quarantine expired: {} (origin {}, freed {})",
+                        "🕒 stash expired: {} (origin {}, freed {})",
                         entry.name,
                         entry.origin,
                         human_bytes(entry.bytes)
                     );
                 } else {
                     eprintln!(
-                        "🕒 quarantine would expire (dry-run, auto_cleanup_apply=false): {} (origin {}, {})",
+                        "🕒 stash would expire (dry-run, auto_cleanup_apply=false): {} (origin {}, {})",
                         entry.name,
                         entry.origin,
                         human_bytes(entry.bytes)
@@ -7961,7 +7961,7 @@ fn maybe_expire_quarantine(guard: &GuardPolicy, state: &mut GuardRuntimeState, n
                 }
             }
         }
-        Err(e) => eprintln!("⚠️ quarantine expire failed: {e:#}"),
+        Err(e) => eprintln!("⚠️ stash expire failed: {e:#}"),
     }
 }
 
@@ -8547,11 +8547,11 @@ pub(crate) async fn run_guard_once(
         }
     }
 
-    // Quarantine expiry runs on every pass, outside the disk-pressure gate
+    // Stash expiry runs on every pass, outside the disk-pressure gate
     // above: it drains the SECOND disk rather than responding to pressure on
     // `/`, so putting it behind action/critical would mean the backlog only
     // ever clears during a crisis. Self-paced by its own cooldown.
-    maybe_expire_quarantine(guard, state, Instant::now());
+    maybe_expire_stash(guard, state, Instant::now());
 
     check_disk_state_change(guard, state, used, &dstate).await;
     check_link_drift(guard, state).await;
@@ -8710,10 +8710,10 @@ fn exit_status_for_error(error: &anyhow::Error) -> i32 {
 ///
 /// ADDED 2026-09-29 (queued audit follow-up, DECIDE #8): normalization runs
 /// HERE, at the load boundary, rather than at each consumer. Nine of the
-/// eleven `load_system_policy` call sites (setup.rs, links.rs, quarantine.rs,
+/// eleven `load_system_policy` call sites (setup.rs, links.rs, stash.rs,
 /// relocate.rs, the link-drift check, the storage default-root lookup) never
 /// called `normalize_guard_policy`, so an out-of-range threshold reached those
-/// subsystems RAW — `quarantine_ttl_days`, `storage.min_size_mb` and the
+/// subsystems RAW — `stash_ttl_days`, `storage.min_size_mb` and the
 /// relocate size/age/move-count knobs had no enforcement at all on that path.
 /// Normalizing once here makes every consumer in-range by construction, so a
 /// new call site cannot reintroduce the gap by forgetting to normalize.
@@ -9670,7 +9670,7 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
     // visible to a human running `guard once` without `--json`. `reaped` /
     // `pressure_reaped` were serialized to JSON and stderr only, so the
     // operator saw zero evidence that processes were killed. Same class as
-    // the relocation/quarantine visibility fixes: a destructive action with
+    // the relocation/stash visibility fixes: a destructive action with
     // no table row is an action nobody can review.
     if !guard.reap_stale_dev_servers {
         table.add_row(vec![
@@ -10304,7 +10304,7 @@ async fn cmd_guard_clean(
                 }
             })
             .collect();
-        // Explicit `guard clean` always deletes (no quarantine-first).
+        // Explicit `guard clean` always deletes (no stash-first).
         match clean_old_node_modules(
             &roots,
             guard_clone.node_modules_max_age_days,
@@ -10418,7 +10418,7 @@ async fn cmd_guard(cmd: GuardCommands) -> Result<()> {
         load_system_policy().map_err(|error| anyhow::Error::new(PolicyLoadError(error)))?;
     let mut guard = policy.guard;
     normalize_guard_policy(&mut guard);
-    // ONCE per process, before any subcommand runs: a configured quarantine or
+    // ONCE per process, before any subcommand runs: a configured stash or
     // cold root that the shipped unit leaves read-only would otherwise surface
     // only as a per-candidate EROFS, once per pass, forever.
     crate::warn_uncovered_storage_roots(&guard);
@@ -10537,7 +10537,7 @@ async fn run(cli: Cli) -> Result<()> {
             allow_tracked,
             json,
         } => cmd_relocate(path, to, apply, allow_tracked, json),
-        Commands::Quarantine { cmd } => cmd_quarantine(cmd),
+        Commands::Stash { cmd } => cmd_stash(cmd),
         Commands::Setup { apply, json } => cmd_setup(apply, json),
         Commands::Events {
             tail,
