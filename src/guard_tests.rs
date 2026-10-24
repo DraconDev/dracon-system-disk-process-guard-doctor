@@ -708,7 +708,7 @@ fn looks_credential_like_ignores_benign_names() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn disk_fill_rate_gbph_computes_sustained_rate() {
+fn disk_fill_rate_computes_sustained_rate() {
     let now = Instant::now();
     // 10 GiB per hour for 2 hours = 20 GiB growth.
     let history: Vec<(Instant, u64)> = vec![
@@ -716,33 +716,96 @@ fn disk_fill_rate_gbph_computes_sustained_rate() {
         (now - Duration::from_secs(3600), 510u64 * 1024 * 1024 * 1024),
         (now, 520u64 * 1024 * 1024 * 1024),
     ];
-    let rate = crate::disk_fill_rate_gbph(&history).expect("rate should compute");
+    let rate = crate::disk_fill_rate(&history)
+        .rate_gbph()
+        .expect("rate should compute");
     assert!((rate - 10.0).abs() < 0.5, "expected ~10 GiB/h, got {rate}");
 }
 
 #[test]
-fn disk_fill_rate_gbph_requires_minimum_samples_and_span() {
+fn disk_fill_rate_requires_minimum_samples_and_span() {
     let now = Instant::now();
-    assert!(crate::disk_fill_rate_gbph(&[]).is_none());
-    assert!(crate::disk_fill_rate_gbph(&[(now, 100), (now, 200)]).is_none());
+    assert_eq!(
+        crate::disk_fill_rate(&[]),
+        crate::DiskFillRate::Unmeasured,
+        "no samples at all is unmeasured, not 'not filling'"
+    );
+    assert_eq!(
+        crate::disk_fill_rate(&[(now, 100), (now, 200)]),
+        crate::DiskFillRate::Unmeasured,
+        "too few samples is unmeasured"
+    );
     // Span too short (10s < 60s).
     let short: Vec<(Instant, u64)> = vec![
         (now - Duration::from_secs(10), 100),
         (now - Duration::from_secs(5), 200),
         (now, 300),
     ];
-    assert!(crate::disk_fill_rate_gbph(&short).is_none());
+    assert_eq!(
+        crate::disk_fill_rate(&short),
+        crate::DiskFillRate::Unmeasured,
+        "a window that spans under 60s is unmeasured"
+    );
 }
 
 #[test]
-fn disk_fill_rate_gbph_returns_none_when_disk_shrinks() {
+fn disk_fill_rate_reports_not_filling_when_the_disk_is_flat() {
     let now = Instant::now();
+    let gib = 1024u64 * 1024 * 1024;
+    // A flat disk: no decrease, so the growth window is the whole history,
+    // and the measured slope is zero. That is the ONE case the guard can
+    // state as a fact: the disk is not filling.
     let history: Vec<(Instant, u64)> = vec![
-        (now - Duration::from_secs(7200), 600u64 * 1024 * 1024 * 1024),
-        (now - Duration::from_secs(3600), 550u64 * 1024 * 1024 * 1024),
-        (now, 500u64 * 1024 * 1024 * 1024),
+        (now - Duration::from_secs(7200), 600 * gib),
+        (now - Duration::from_secs(3600), 600 * gib),
+        (now, 600 * gib),
     ];
-    assert!(crate::disk_fill_rate_gbph(&history).is_none());
+    assert_eq!(
+        crate::disk_fill_rate(&history),
+        crate::DiskFillRate::NotFilling,
+        "a flat disk is genuinely not filling"
+    );
+}
+
+#[test]
+fn a_shrinking_disk_is_unmeasured_because_a_decrease_starts_a_new_window() {
+    let now = Instant::now();
+    let gib = 1024u64 * 1024 * 1024;
+    // Every sample is lower than the last. The reclamation rule starts a
+    // fresh growth window at the last decrease, and that window holds a
+    // single sample — so the trend cannot be measured. The guard must say
+    // "unmeasured" here, NOT "not filling": the disk may be shrinking
+    // because something reclaimed space, and the next samples will say.
+    let history: Vec<(Instant, u64)> = vec![
+        (now - Duration::from_secs(7200), 600 * gib),
+        (now - Duration::from_secs(3600), 550 * gib),
+        (now, 500 * gib),
+    ];
+    assert_eq!(
+        crate::disk_fill_rate(&history),
+        crate::DiskFillRate::Unmeasured
+    );
+}
+
+/// ADDED 2026-10-24 (audit): a reclamation resets the growth window, so the
+/// rate is briefly unmeasurable. That is a THIRD state, distinct from "the
+/// disk is not filling", and the report must not conflate them.
+#[test]
+fn a_reclamation_makes_the_rate_unmeasured_rather_than_not_filling() {
+    let now = Instant::now();
+    let gib = 1024u64 * 1024 * 1024;
+    let history: Vec<(Instant, u64)> = vec![
+        (now - Duration::from_secs(600), 600 * gib),
+        (now - Duration::from_secs(300), 700 * gib),
+        // The sweep reclaimed space: the used bytes drop.
+        (now - Duration::from_secs(10), 400 * gib),
+        (now, 410 * gib),
+    ];
+    assert_eq!(
+        crate::disk_fill_rate(&history),
+        crate::DiskFillRate::Unmeasured,
+        "a fresh growth window that is too young to measure is unmeasured"
+    );
 }
 
 // ── OOM-bias steering (v0.112.36) ────────────────────────────────────────
@@ -1545,11 +1608,17 @@ fn disk_fill_rate_recovers_after_large_reclamation() {
         (now - Duration::from_secs(30), 601 * gib),
         (now, 602 * gib),
     ];
-    let rate = crate::disk_fill_rate_gbph(&history).unwrap();
+    let rate = crate::disk_fill_rate(&history).rate_gbph().unwrap();
     assert!((rate - 120.0).abs() < 0.01);
     // Cleanup alone must not manufacture a positive growth observation.
-    assert!(crate::disk_fill_rate_gbph(&history[..3]).is_none());
-    assert!(crate::disk_fill_rate_gbph(&history[..4]).is_none());
+    assert_eq!(
+        crate::disk_fill_rate(&history[..3]),
+        crate::DiskFillRate::Unmeasured
+    );
+    assert_eq!(
+        crate::disk_fill_rate(&history[..4]),
+        crate::DiskFillRate::Unmeasured
+    );
 }
 
 #[test]
@@ -1581,6 +1650,56 @@ async fn disk_reclamation_rearms_the_rapid_fill_notification() {
         crate::report_state_transition(&mut state, "disk-rapid-fill", "rapid", 3600);
     assert_ne!(previous.as_deref(), Some("rapid"));
     assert!(due);
+}
+
+/// ADDED 2026-10-24 (audit): the fill rate is measured ONCE per pass and
+/// stored in the state, so the scratch ETA and the rapid-fill alarm quote
+/// the SAME figure. They used to be measured twice, from two different
+/// sample windows — the scratch one from a frozen clone of the history,
+/// taken before the pass's own deletions — and on the live host the scratch
+/// line said "the disk is not filling" while the alarm in the same pass
+/// reported a 51.3 GiB/h fill.
+#[tokio::test]
+async fn the_pass_stores_the_measured_fill_rate_for_the_scratch_report() {
+    let guard = crate::GuardPolicy::default();
+    let mut state = crate::GuardRuntimeState::default();
+    let now = Instant::now();
+    let gib = 1024u64 * 1024 * 1024;
+    // 10 GiB/h over two hours — below the 20 GiB/h alarm threshold, so the
+    // test does not send a notification.
+    state.disk_bytes_history = vec![
+        (now - Duration::from_secs(7200), 500 * gib),
+        (now - Duration::from_secs(3600), 510 * gib),
+    ];
+    let reported = crate::check_rapid_disk_fill(&guard, &mut state, 520 * gib, 50, 100 * gib).await;
+    let stored = state
+        .disk_fill_rate
+        .rate_gbph()
+        .expect("the pass must have measured a rate");
+    assert!((stored - 10.0).abs() < 0.5, "expected ~10 GiB/h, got {stored}");
+    assert_eq!(
+        reported,
+        Some(stored),
+        "the alarm and the stored rate must be the same figure"
+    );
+}
+
+/// ADDED 2026-10-24 (audit): a rate that cannot be measured must not be
+/// reported as "the disk is not filling".
+#[tokio::test]
+async fn an_unmeasurable_rate_is_stored_as_unmeasured_not_as_not_filling() {
+    let guard = crate::GuardPolicy::default();
+    let mut state = crate::GuardRuntimeState::default();
+    // A brand-new state has no history at all.
+    assert_eq!(state.disk_fill_rate, crate::DiskFillRate::Unmeasured);
+    assert!(crate::check_rapid_disk_fill(&guard, &mut state, 600, 60, 400)
+        .await
+        .is_none());
+    assert_eq!(
+        state.disk_fill_rate,
+        crate::DiskFillRate::Unmeasured,
+        "no history yet is unmeasured — it is NOT 'the disk is not filling'"
+    );
 }
 
 // ---------------------------------------------------------------------------

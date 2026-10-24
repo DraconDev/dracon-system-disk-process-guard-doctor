@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > is the canonical record.
 
 ## [Unreleased]
+## [0.112.49] - 2026-10-24
+
+### Fixed
+
+- **The scratch report no longer claims the disk is not filling when it has not measured it.** The hours-until-full figure for the held-back scratch was computed from a byte-precise fill rate that returned "no rate" for two very different situations: the disk genuinely not filling, and the rate simply not being measurable yet. Both were rendered as one string — "never (the disk is not filling)" — so the guard stated as a fact something it had not measured, on the one line the operator reads to decide how urgent the disk is. The rate is now a three-state value — unmeasured, not filling, filling — and the report says which one it has. An unmeasurable rate says so plainly instead of asserting a calm disk.
+- **The scratch report and the rapid-fill alarm now quote the SAME fill rate.** The two figures were measured twice, from two different sample windows: the alarm measured the rate in the pass, and the background cleanup recomputed it minutes later from a FROZEN CLONE of the history — taken before that pass's own deletions, and so always one sample stale. On this host the scratch line printed "never (the disk is not filling)" at 22:58:06 and the alarm printed "Disk growing at 51.3 GiB/h (84% used); 137.6 GiB available, estimated 2.7 hours until full" at 22:58:46 — the guard contradicting itself 41 seconds apart, on the same disk, in the same pass. The rate is now measured ONCE per pass and stored in the runtime state, so the two lines agree by construction.
+
+### Tests
+
+- The fill rate's three states are pinned: too few samples, a window spanning under 60 s, a fresh growth window after a reclamation, and a shrinking disk are all "unmeasured"; a flat disk is "not filling"; a sustained growth is a rate.
+- The pass stores the rate it measured, and the stored figure is the same one the alarm reports — so the two lines cannot drift apart again.
+
 ## [0.112.48] - 2026-10-24
 
 ### Fixed
