@@ -154,3 +154,31 @@ fn oom_write_ahead_failure_is_observable_and_does_not_claim_persistence() {
     ));
     assert!(state.last_persisted_mitigations.is_none());
 }
+
+/// ADDED 2026-10-24 (audit O1): a leftover bias record must not be adopted.
+///
+/// The ledger's claim that a pid is biased has to be checked against the LIVE
+/// `oom_score_adj`. A record whose live value is not the bias target is a
+/// leftover from a run that restored the value but could not drop the
+/// record. Adopting it would keep the ledger claiming "biased" for a process
+/// that is not biased — and `apply_oom_bias` skips any pid the ledger
+/// believes is already biased, so the stale claim silently disabled OOM
+/// steering for a live top-RSS process. Two live processes carried exactly
+/// that record on this host when the audit found it.
+#[test]
+fn hydration_drops_a_stale_oom_bias_record() {
+    let tmp = tempfile::tempdir().unwrap();
+    let pid = std::process::id() as i32;
+    let identity = read_proc_identity(Path::new("/proc"), pid).unwrap();
+    let mut state = GuardRuntimeState::default();
+    state.oom_biased_pids.insert(pid, (200, identity.clone()));
+    let ledger = tmp.path().join("ledger.json");
+    assert!(persist_mitigations_to(&mut state, &ledger));
+
+    let mut restarted = GuardRuntimeState::default();
+    hydrate_mitigations_from(&ledger, &mut restarted);
+    assert!(
+        !restarted.oom_biased_pids.contains_key(&pid),
+        "a bias record whose live oom_score_adj is not the bias target is stale and must be dropped"
+    );
+}
