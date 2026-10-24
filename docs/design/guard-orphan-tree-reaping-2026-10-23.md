@@ -583,3 +583,89 @@ appears in `/proc/net/tcp` as `A24D`. An earlier fixture in the test used
 could only ever have been satisfied by a bug. The columns are now located by
 shape rather than by position, and a test pins the conversion.
 
+## 10. The other half of the leak: the profile directory
+
+Reaping the processes is only half of what a leaked browser costs. The
+other half is the profile directory the browser owned: on this host, about
+**850 MiB** per tree.
+
+The guard's own measurement on 2026-10-24, after the tree path had been
+proven:
+
+| profile | size | age | owner |
+|---|---|---|---|
+| `cw-real-profile-standard-1792777061299` | 833 MiB | 295 min | none |
+| `cw-real-profile-standard-1792777103439` | 839 MiB | 294 min | none |
+| `cw-real-profile-standard-1792777711199` | 828 MiB | 294 min | none |
+| `cw-real-profile-standard-1792778314328` | 860 MiB | 294 min | none |
+| `cw-real-profile-standard-1792779219790` | 838 MiB | 294 min | none |
+| `cw-real-profile-standard-1792782158510` | 825 MiB | 294 min | none |
+| `cw-real-profile-standard-1792800354167` | 842 MiB | 5 min | none (the tree the guard had just reaped) |
+
+**5.9 GB**, every one of them the residue of a browser that was already
+dead. The last row is the proof that the residue is not incidental: it is
+the profile of the very tree the guard had just reaped three minutes
+earlier.
+
+The tmp sweep would have got them — eventually. The general age floor on
+this host is 6 hours, and these are 4.9 hours old, so they were minutes
+from being swept. But the sweep is a general mechanism and the floor is
+conservative by design; the CI leaks a browser tree every few minutes, so
+the residue was growing at roughly **1.2 GB/hour** while `/` sat at 87%.
+
+### 10.1 Why the guard may reclaim it now
+
+The age floor exists because the tmp sweep has no way to know whether
+something is still in use — it can only guess from a timestamp. The guard,
+at reap time, has something much better: it has just **proved** that the
+browser is dead and abandoned, by ending its whole tree and confirming
+that no member survived.
+
+That proof is a stronger statement than "this directory is six hours old",
+and it is exactly the statement the age floor was approximating. So the
+guard reclaims the profile at reap time, and the six-hour wait stops
+applying to a directory whose owner is known to be dead.
+
+### 10.2 What the reclaim will not touch
+
+The proof is re-checked at the moment of removal, because it was earned a
+moment ago and the world moves:
+
+- the tree must have been **fully ended** — a member that survived means
+  the browser may still be running, and one surviving member is enough;
+- the profile must live under one of the guard's **validated tmp roots**.
+  This is the check that keeps the operator's real
+  `~/.config/google-chrome` out of reach, however the tree that named it
+  ended. A headless browser pointed at a real profile is still a bad
+  neighbour, but its profile is not the guard's to delete;
+- no live process may **name it in its command line** — a browser that
+  started on the same path after the old one died is exactly the moment
+  when deleting it would break that browser;
+- nothing may hold a file **open** under it, and no live unix socket may
+  live in it. The socket probe is separate for the same reason as in the
+  tmp sweep (the codex app-server incident, 2026-10-21): a bound socket is
+  an anonymous inode, invisible to the open-file scan;
+- it must pass the guard's normal **protected-path and symlink** checks.
+
+Every check that can fail closed does. If the open-file scan cannot be
+run, nothing is removed — an empty set would silently disable the
+protection, which is the failure mode that cost the codex daemon its
+control socket.
+
+The knob `reclaim_reaped_browser_profiles` (default true) turns the whole
+thing off, and the profile goes back to waiting out the tmp age floor.
+
+### 10.3 The live proof
+
+A tree was created deliberately for the purpose — a headless Chromium
+launched with `--user-data-dir=/tmp/proof-profile-reclaim-…`, orphaned
+(reparented to systemd), and left alone:
+
+```
+🧹 forgotten orphan tree: chrome pid=3888221 11 processes 880MiB (root 208MiB) age=…s cpu=…s — headless
+🛡️ forgotten-reap: tree 3888221 (11 processes, 880MiB) -> 11 ended, 0 left, 0 skipped
+🧹 reclaimed browser profile: /tmp/proof-profile-reclaim-… (57 MiB)
+```
+
+Eleven processes ended and the profile went with them — in the same pass,
+instead of six hours later.
