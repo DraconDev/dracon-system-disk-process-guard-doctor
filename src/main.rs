@@ -7090,13 +7090,28 @@ async fn clean_tmp_paths_with_proc(
                             modified > large_cutoff
                         };
                         if !fresh_short {
-                            remove_tmp_entry(&path, &meta, size, apply, &mut out).await;
+                            // FIXED 2026-10-24 (audit): the size-aware floor
+                            // removed the entry HERE, before the three
+                            // liveness/protection gates below — so a large
+                            // entry could be deleted while a live process
+                            // held it open, while it carried a bound unix
+                            // socket (the 2026-10-21 codex-daemon failure
+                            // mode), or while it sat under a protected path.
+                            // The size-aware floor only makes the AGE floor
+                            // shorter; it must never make the safety gates
+                            // weaker. `remove_tmp_entry` has no gates of its
+                            // own, so the order here was the whole defence.
+                            if !tmp_entry_is_protected(&path, root, protected_paths, &open_paths, live_sockets)
+                            {
+                                remove_tmp_entry(&path, &meta, size, apply, &mut out).await;
+                            }
                             continue;
                         }
                     }
-                    // Held back by the age rule: its content is fresh.
-                    // Counted whatever its size — the long tail of SMALL
-                    // entries is where the incident's 62.7 GiB actually sat.
+                    // Held back by the age rule: its content is fresh
+                    // against the general floor. Counted whatever its size —
+                    // the long tail of SMALL entries is where the incident's
+                    // 62.7 GiB actually sat.
                     out.age_blocked_bytes += size;
                     out.age_blocked_entries += 1;
                 }
