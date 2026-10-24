@@ -378,8 +378,18 @@ pub(crate) fn stash_list(root: &Path, ttl_days: u64) -> Result<StashList> {
             let now = now_unix();
             let (origin, moved_at, age_days, expired) = match &manifest {
                 Some(m) => {
-                    let age = now.saturating_sub(m.moved_at_unix) / 86_400;
-                    let exp = ttl_days > 0 && age > ttl_days;
+                    let age_secs = now.saturating_sub(m.moved_at_unix);
+                    let age = age_secs / 86_400;
+                    // FIXED 2026-10-24 (audit): the expiry test compared
+                    // TRUNCATED whole days against the TTL, so an entry only
+                    // expired once it was a whole day PAST the TTL:
+                    // `stash_ttl_days = 7` actually kept entries for 8 days,
+                    // and the operator's retention promise was a day longer
+                    // than the file said on every single stash.
+                    //
+                    // The comparison is in seconds now, so the TTL is the
+                    // TTL. `age` stays truncated for display.
+                    let exp = ttl_days > 0 && age_secs > ttl_days.saturating_mul(86_400);
                     (m.origin.clone(), Some(m.moved_at_unix), Some(age), exp)
                 }
                 None => ("unknown".to_string(), None, None, false),
