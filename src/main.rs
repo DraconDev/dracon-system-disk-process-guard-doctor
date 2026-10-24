@@ -843,6 +843,16 @@ pub(crate) struct GuardRuntimeState {
     /// rapid-fill rate detection (percent deltas are too coarse on
     /// large disks: 1% of 907 GiB is ~9 GiB).
     pub(crate) disk_bytes_history: Vec<(Instant, u64)>,
+    /// The fill rate measured in the most recent pass.
+    ///
+    /// ADDED 2026-10-24 (audit): the rapid-fill alarm and the scratch ETA
+    /// must quote the SAME figure, or they contradict each other on screen.
+    /// The rate is therefore measured once per pass and stored here. The
+    /// background cleanup used to recompute it from a frozen clone of the
+    /// history — a different sample window, taken before the pass's own
+    /// deletions — and so could report "the disk is not filling" while the
+    /// alarm in the same pass reported a rapid fill.
+    pub(crate) disk_fill_rate: DiskFillRate,
     /// ADDED 2026-08-10 (v0.112.35): first-sight timestamps for
     /// zombie processes so alerts can report zombie age.
     pub(crate) zombies_since: HashMap<(i32, u64), Instant>,
@@ -1540,13 +1550,46 @@ pub(crate) fn looks_credential_like(name: &str) -> bool {
     SUBSTR.iter().any(|s| lower.contains(s)) || SUFFIX.iter().any(|s| lower.ends_with(s))
 }
 
-/// Sustained disk fill rate in GiB/hour from a byte-precise df
-/// history. Returns None until at least 3 samples spanning 60s of
-/// wall time exist, or when the disk is not filling.
-pub(crate) fn disk_fill_rate_gbph(history: &[(Instant, u64)]) -> Option<f64> {
+/// What the byte-precise df history can say about the disk's fill rate.
+///
+/// ADDED 2026-10-24 (audit): the three states are kept apart on purpose.
+/// "The rate cannot be measured right now" and "the disk is not filling"
+/// are different facts. The old `Option<f64>` returned None for both, so a
+/// caller could only say "no rate" — and the scratch report turned that
+/// into the claim "the disk is not filling", which is FALSE whenever the
+/// growth window was too young to measure. On the live host the scratch
+/// sweep printed "never (the disk is not filling)" 41 seconds before the
+/// rapid-fill alarm reported the disk growing at 51.3 GiB/h.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) enum DiskFillRate {
+    /// Not measurable right now: too few samples, or the growth window
+    /// restarted too recently (a reclamation resets it).
+    #[default]
+    Unmeasured,
+    /// The measured slope is not positive: the disk genuinely is not filling.
+    NotFilling,
+    /// The sustained fill rate, in GiB/hour.
+    Filling(f64),
+}
+
+impl DiskFillRate {
+    /// The rate in GiB/hour, when there is one.
+    pub(crate) fn rate_gbph(self) -> Option<f64> {
+        match self {
+            DiskFillRate::Filling(rate) => Some(rate),
+            DiskFillRate::Unmeasured | DiskFillRate::NotFilling => None,
+        }
+    }
+}
+
+/// Sustained disk fill rate in GiB/hour from a byte-precise df history.
+///
+/// Returns `Unmeasured` until at least 3 samples spanning 60s of wall time
+/// exist, and `NotFilling` when the measured slope is not positive.
+pub(crate) fn disk_fill_rate(history: &[(Instant, u64)]) -> DiskFillRate {
     let n = history.len().min(30);
     if n < 3 {
-        return None;
+        return DiskFillRate::Unmeasured;
     }
     let recent = &history[history.len() - n..];
     // Reclamation starts a new growth window. Otherwise a large cleanup can
@@ -1557,13 +1600,16 @@ pub(crate) fn disk_fill_rate_gbph(history: &[(Instant, u64)]) -> Option<f64> {
         .map_or(0, |index| index + 1);
     let recent = &recent[start..];
     if recent.len() < 3 {
-        return None;
+        return DiskFillRate::Unmeasured;
     }
     let t0 = recent[0].0;
     let b0 = recent[0].1 as f64;
-    let span = recent.last()?.0.duration_since(t0).as_secs_f64();
+    let Some(&last) = recent.last() else {
+        return DiskFillRate::Unmeasured;
+    };
+    let span = last.0.duration_since(t0).as_secs_f64();
     if span < 60.0 {
-        return None;
+        return DiskFillRate::Unmeasured;
     }
     let mut s_xy = 0.0;
     let mut s_xx = 0.0;
@@ -1574,13 +1620,13 @@ pub(crate) fn disk_fill_rate_gbph(history: &[(Instant, u64)]) -> Option<f64> {
         s_xx += x * x;
     }
     if s_xx <= 0.0 {
-        return None;
+        return DiskFillRate::Unmeasured;
     }
     let slope_bps = s_xy / s_xx;
     if slope_bps <= 0.0 {
-        return None;
+        return DiskFillRate::NotFilling;
     }
-    Some(slope_bps * 3600.0 / (1024.0 * 1024.0 * 1024.0))
+    DiskFillRate::Filling(slope_bps * 3600.0 / (1024.0 * 1024.0 * 1024.0))
 }
 
 async fn disk_use_percent_for(path: &str) -> Result<u8> {
@@ -5433,7 +5479,12 @@ async fn check_rapid_disk_fill(
         let excess = state.disk_bytes_history.len() - 200;
         state.disk_bytes_history.drain(0..excess);
     }
-    let Some(rate) = disk_fill_rate_gbph(&state.disk_bytes_history) else {
+    // The rate is measured ONCE per pass and stored, so that the scratch
+    // ETA quotes the same figure as this alarm. Measuring it twice, from
+    // two different sample windows, is how the two lines came to disagree.
+    let rate = disk_fill_rate(&state.disk_bytes_history);
+    state.disk_fill_rate = rate;
+    let Some(rate) = rate.rate_gbph() else {
         // Re-arm the entry alert after reclamation. An old "rapid" verdict
         // must not suppress notification when a fresh growth window appears.
         report_state_transition(
@@ -7934,22 +7985,31 @@ async fn run_auto_cleanup(
                 // ADDED 2026-10-22: report the scratch the age floor is
                 // holding back. The disk alarms are percent-used and rapid
                 // fill; neither of them sees 144 GiB of deletable litter
-                // waiting for its floor. The hours-until-full figure comes
-                // from the same sustained fill rate the rapid-fill alarm
-                // uses, so the two lines agree.
+                // waiting for its floor.
                 if outcome.age_blocked_bytes > 0 {
-                    // The hours-until-full figure comes from the same
-                    // sustained fill rate the rapid-fill alarm uses, so the
-                    // two lines agree. A disk that is not filling has no
-                    // such figure — that is said plainly rather than
-                    // omitted, because "the scratch is N GiB" without it
-                    // reads like the disk is in trouble when it is not.
-                    let eta = match disk_fill_rate_gbph(&state.disk_bytes_history) {
-                        Some(gbph) if gbph > 0.0 => {
+                    // The hours-until-full figure is the rate THIS pass
+                    // measured — the same one the rapid-fill alarm quotes.
+                    // Recomputing it here would use a different sample
+                    // window (the cleanup runs in the background, and the
+                    // history keeps growing), and the two lines would
+                    // contradict each other on screen.
+                    //
+                    // A disk that is genuinely not filling has no such
+                    // figure, and that is said plainly rather than omitted:
+                    // "the scratch is N GiB" without it reads like the disk
+                    // is in trouble when it is not. A rate that cannot be
+                    // MEASURED is a third thing, and it says so — the old
+                    // wording claimed the disk was not filling at moments
+                    // when the disk was filling at 51.3 GiB/h.
+                    let eta = match state.disk_fill_rate {
+                        DiskFillRate::Filling(gbph) => {
                             let hours = outcome.age_blocked_bytes as f64 / 1_073_741_824.0 / gbph;
                             format!("{hours:.1}")
                         }
-                        _ => "never (the disk is not filling)".to_string(),
+                        DiskFillRate::NotFilling => "never (the disk is not filling)".to_string(),
+                        DiskFillRate::Unmeasured => {
+                            "unknown (the fill rate cannot be measured yet)".to_string()
+                        }
                     };
                     eprintln!(
                         "🧹 Tmp: {} held by the age floor across {} entries — hours until full: {}",
@@ -8525,6 +8585,11 @@ fn spawn_background_cleanup(
     let guard = guard.clone();
     let mut scratch = GuardRuntimeState {
         disk_bytes_history: state.disk_bytes_history.clone(),
+        // The fill rate this pass measured, carried over as-is. The cleanup
+        // runs in its own task, minutes later, and by then the live history
+        // has moved on — recomputing here would quote a different number
+        // from the one the rapid-fill alarm already published.
+        disk_fill_rate: state.disk_fill_rate,
         ..GuardRuntimeState::default()
     };
     tokio::spawn(async move {
