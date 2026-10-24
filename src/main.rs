@@ -7150,78 +7150,103 @@ async fn clean_tmp_paths_with_proc(
                 modified > cutoff
             };
             if fresh {
-                // Fresh content against the GENERAL floor. When the
-                // size-aware floor is active, a large entry may still be
-                // reclaimable: measure it and re-check against the short
-                // floor. Measuring costs a walk, which is why this only
-                // happens in the proactive/action tier.
-                if large_floor_active {
-                    let size = tmp_entry_size(&path, &meta).await;
-                    if size >= large_entry_bytes {
-                        let fresh_short = if meta.is_dir() {
-                            tree_has_fresh_content(&path, large_cutoff).await
-                        } else {
-                            modified > large_cutoff
-                        };
-                        if !fresh_short {
-                            // FIXED 2026-10-24 (audit): the size-aware floor
-                            // removed the entry HERE, before the three
-                            // liveness/protection gates below — so a large
-                            // entry could be deleted while a live process
-                            // held it open, while it carried a bound unix
-                            // socket (the 2026-10-21 codex-daemon failure
-                            // mode), or while it sat under a protected path.
-                            // The size-aware floor only makes the AGE floor
-                            // shorter; it must never make the safety gates
-                            // weaker. `remove_tmp_entry` has no gates of its
-                            // own, so the order here was the whole defence.
-                            //
-                            // This path IS the one that would have deleted
-                            // the entry, so it says why it did not.
-                            match tmp_entry_block(
-                                &path,
-                                root,
-                                protected_paths,
-                                &open_paths,
-                                live_sockets,
-                            ) {
-                                Some(block) => {
-                                    eprintln!(
-                                        "🛡️ keeping tmp entry {}: {}",
-                                        path.display(),
-                                        block.reason()
-                                    );
-                                }
-                                None => {
-                                    remove_tmp_entry(&path, &meta, size, apply, &mut out).await;
-                                }
+                // Fresh content against the GENERAL floor.
+                //
+                // FIXED 2026-10-24 (audit): the size is measured for EVERY
+                // fresh entry, not only when the size-aware floor is
+                // consulted. Two reasons:
+                //
+                //  1. the size-aware floor needs it, and
+                //  2. the held-back report needs it — and that report must
+                //     not depend on the size-aware floor being active. It
+                //     used to: below the proactive threshold, and with the
+                //     size-aware floor disabled, the guard said NOTHING
+                //     about the scratch it was holding back.
+                //
+                // The sweep runs on the proactive/action cadence (every
+                // 30-60 minutes), not once per guard pass, so the extra
+                // walk is affordable here.
+                let size = tmp_entry_size(&path, &meta).await;
+                // The size-aware floor: a large entry may still be
+                // reclaimable — measure it and re-check against the short
+                // floor.
+                if large_floor_active && size >= large_entry_bytes {
+                    let fresh_short = if meta.is_dir() {
+                        tree_has_fresh_content(&path, large_cutoff).await
+                    } else {
+                        modified > large_cutoff
+                    };
+                    if !fresh_short {
+                        // FIXED 2026-10-24 (audit): the size-aware floor
+                        // removed the entry HERE, before the three
+                        // liveness/protection gates below — so a large
+                        // entry could be deleted while a live process
+                        // held it open, while it carried a bound unix
+                        // socket (the 2026-10-21 codex-daemon failure
+                        // mode), or while it sat under a protected path.
+                        // The size-aware floor only makes the AGE floor
+                        // shorter; it must never make the safety gates
+                        // weaker. `remove_tmp_entry` has no gates of its
+                        // own, so the order here was the whole defence.
+                        //
+                        // This path IS the one that would have deleted the
+                        // entry, so it says why it did not.
+                        match tmp_entry_block(
+                            &path,
+                            root,
+                            protected_paths,
+                            &open_paths,
+                            live_sockets,
+                        ) {
+                            Some(block) => {
+                                eprintln!(
+                                    "🛡️ keeping tmp entry {}: {}",
+                                    path.display(),
+                                    block.reason()
+                                );
                             }
-                            continue;
+                            None => {
+                                remove_tmp_entry(&path, &meta, size, apply, &mut out).await;
+                            }
                         }
+                        continue;
                     }
-                    // Held back by the age rule: its content is fresh
-                    // against the general floor. Counted whatever its size —
-                    // the long tail of SMALL entries is where the incident's
-                    // 62.7 GiB actually sat.
-                    //
-                    // FIXED 2026-10-24 (audit): only count the entry when the
-                    // age floor is what is actually holding it back. An entry
-                    // that a live process holds open, that carries a bound
-                    // unix socket, or that sits under a protected path would
-                    // NOT be reclaimed by lowering the floor, so counting it
-                    // here told the operator "lower tmp_min_age_hours to free
-                    // 30 GiB" when lowering it frees nothing.
-                    //
-                    // The gate is asked QUIETLY here: a fresh entry that is
-                    // protected is not news — it is simply not a candidate,
-                    // and the same entry would print the same line every
-                    // pass otherwise.
+                    // Held by the SIZE-AWARE floor: large enough for it,
+                    // but still fresh against the short floor. Counted
+                    // below and named separately, so the advice says which
+                    // knob actually frees these bytes.
                     if tmp_entry_block(&path, root, protected_paths, &open_paths, live_sockets)
                         .is_none()
                     {
+                        out.large_blocked_bytes += size;
+                        out.large_blocked_entries += 1;
                         out.age_blocked_bytes += size;
                         out.age_blocked_entries += 1;
                     }
+                    continue;
+                }
+                // Held back by the age rule: its content is fresh
+                // against the general floor. Counted whatever its size —
+                // the long tail of SMALL entries is where the incident's
+                // 62.7 GiB actually sat.
+                //
+                // FIXED 2026-10-24 (audit): only count the entry when the
+                // age floor is what is actually holding it back. An entry
+                // that a live process holds open, that carries a bound
+                // unix socket, or that sits under a protected path would
+                // NOT be reclaimed by lowering the floor, so counting it
+                // here told the operator "lower tmp_min_age_hours to free
+                // 30 GiB" when lowering it frees nothing.
+                //
+                // The gate is asked QUIETLY here: a fresh entry that is
+                // protected is not news — it is simply not a candidate,
+                // and the same entry would print the same line every
+                // pass otherwise.
+                if tmp_entry_block(&path, root, protected_paths, &open_paths, live_sockets)
+                    .is_none()
+                {
+                    out.age_blocked_bytes += size;
+                    out.age_blocked_entries += 1;
                 }
                 continue; // fresh content
             }
