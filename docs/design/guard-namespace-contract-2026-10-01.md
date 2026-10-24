@@ -15,12 +15,12 @@ outside the sandbox.
 The policy named two storage roots on the second disk:
 
 ```toml
-quarantine_dir     = "/mnt/data/quarantine"
+stash_dir     = "/mnt/data/stash"
 relocate_cold_root = "/mnt/data/cold"
 ```
 
-`clean_quarantine_first = true` routes every auto-reclaimed candidate through
-`quarantine_first_remove()`, which *moves* the tree to `quarantine_dir` with a
+`clean_stash_first = true` routes every auto-reclaimed candidate through
+`stash_first_remove()`, which *moves* the tree to `stash_dir` with a
 manifest. The unit granted `/mnt/data` — not the two subtrees — and
 `ProtectSystem=strict` had made `/mnt/data` itself read-only inside the service
 namespace. So the move target did not exist as writable anywhere in the guard's
@@ -28,12 +28,12 @@ world.
 
 ## Why it was invisible
 
-`auto_cleanup_rust_targets` treats a failed quarantine as a skip, not as a
+`auto_cleanup_rust_targets` treats a failed stash as a skip, not as a
 reason to fall back to a direct delete:
 
 ```rust
 Err(e) => {
-    eprintln!("⚠️ failed to quarantine {}: {}", target.path.display(), e);
+    eprintln!("⚠️ failed to stash {}: {}", target.path.display(), e);
     continue;
 }
 ```
@@ -45,23 +45,23 @@ busy**. The journal for 2026-09-30 23:41, the first pass at the 85% action
 threshold:
 
 ```
-⚠️ failed to quarantine /home/dracon/Dev/folder-auto-banner/target
-⚠️ failed to quarantine /home/dracon/Dev/dracon-log/target
-⚠️ failed to quarantine /home/dracon/Dev/dracon-platform/target
-⚠️ failed to quarantine /home/dracon/Dev/dracon-utilities/target
-⚠️ failed to quarantine /home/dracon/Dev/eve/target
-⚠️ failed to quarantine /home/dracon/Dev/dracon-strategy/ai-auto-video/target
+⚠️ failed to stash /home/dracon/Dev/folder-auto-banner/target
+⚠️ failed to stash /home/dracon/Dev/dracon-log/target
+⚠️ failed to stash /home/dracon/Dev/dracon-platform/target
+⚠️ failed to stash /home/dracon/Dev/dracon-utilities/target
+⚠️ failed to stash /home/dracon/Dev/eve/target
+⚠️ failed to stash /home/dracon/Dev/dracon-strategy/ai-auto-video/target
 ... 11 real trees, all EROFS
 ```
 
-The `📦 Rust quarantined:` line that a working reclaim prints never appeared,
+The `📦 Rust stashd:` line that a working reclaim prints never appeared,
 and `disk/rapid-fill` kept reporting growth — 32.1 GiB/h on 2026-10-01 — because
 nothing was ever moved. The one line that mattered was also competing with
 roughly twenty `⚠️ failed to remove tmp entry … Permission denied` lines per
 30-second pass, most of them systemd-private `/tmp` directories no user can
 remove and nobody expects to.
 
-`/mnt/data/quarantine` stayed empty across those four days. The 12 entries in it
+`/mnt/data/stash` stayed empty across those four days. The 12 entries in it
 now were created on 2026-09-28 by a *manual* run outside the service namespace,
 where `/mnt/data` is writable and the move succeeds.
 
@@ -72,11 +72,11 @@ on. The `-` prefix keeps both entries optional so a host with no second drive
 still starts:
 
 ```
-ReadWritePaths=%h/.dracon %h/.local/state/dracon %h/.local/share -%h/Dev -%h/.local/share/Trash -%h/.cargo -%h/.cache -%h/.npm -%h/.local/state/nix /tmp -/mnt/data/quarantine -/mnt/data/cold
+ReadWritePaths=%h/.dracon %h/.local/state/dracon %h/.local/share -%h/Dev -%h/.local/share/Trash -%h/.cargo -%h/.cache -%h/.npm -%h/.local/state/nix /tmp -/mnt/data/stash -/mnt/data/cold
 ```
 
 Note that `-` only means "ignore this entry if the path is missing". On a host
-where `/mnt/data/quarantine` *does* exist — every host that has configured one —
+where `/mnt/data/stash` *does* exist — every host that has configured one —
 the entry is a real grant, and a read-only parent still wins over a read-write
 superblock.
 
@@ -98,7 +98,7 @@ line shadows the earlier one.
 
 ```
 $ scripts/check-unit-deployment.sh
-  ✓ quarantine_dir=/mnt/data/quarantine is read-write in the running namespace (mount: /mnt/data/quarantine)
+  ✓ stash_dir=/mnt/data/stash is read-write in the running namespace (mount: /mnt/data/stash)
   ✓ relocate_cold_root=/mnt/data/cold is read-write in the running namespace (mount: /mnt/data/cold)
 ✓ OK: deployed unit matches the shipped unit (~/.config/systemd/user/dracon-system-guard.service).
 ```
@@ -110,7 +110,7 @@ read-write, which is what a `ReadWritePaths` entry looks like from inside:
 622 240 259:2 / / ro,nosuid,relatime shared:252 master:1 - ext4 /dev/nvme0n1p2 rw
 650 622 8:2 / /mnt/data ro,nosuid,noatime shared:527 master:129 - ext4 /dev/sda2 rw
 675 650 8:2 /cold /mnt/data/cold rw,nosuid,noatime shared:528 master:129 - ext4 /dev/sda2 rw
-676 650 8:2 /quarantine /mnt/data/quarantine rw,nosuid,noatime shared:529 master:129 - ext4 /dev/sda2 rw
+676 650 8:2 /stash /mnt/data/stash rw,nosuid,noatime shared:529 master:129 - ext4 /dev/sda2 rw
 ```
 
 "Cannot ask" stays a note, never a failure: a stopped service, a pid that exited
@@ -173,15 +173,15 @@ cargo test --locked                     # 397 tests
 
 ## Follow-on (2026-10-02): the TTL was never enforced
 
-The `ReadWritePaths` fix above made quarantine able to write. It did not make
+The `ReadWritePaths` fix above made stash able to write. It did not make
 the TTL mean anything, and the two changes combine into a leak.
 
-`quarantine_expire` had exactly one non-test caller — the CLI `Expire` arm in
-`src/quarantine.rs`. There was no systemd timer, no cron entry, and no daemon
-pass. So `quarantine_ttl_days` (default 30) only ever gated a command a human
+`stash_expire` had exactly one non-test caller — the CLI `Expire` arm in
+`src/stash.rs`. There was no systemd timer, no cron entry, and no daemon
+pass. So `stash_ttl_days` (default 30) only ever gated a command a human
 had to remember to run.
 
-The reason that matters is what a quarantine move actually costs. It copies the
+The reason that matters is what a stash move actually costs. It copies the
 tree to the second disk and deletes the origin, so:
 
 | | `/` | `/mnt/data` |
@@ -201,7 +201,7 @@ usage, unattended, at the 85% action threshold.
 
 ### What the daemon now does
 
-`maybe_expire_quarantine` runs on every guard pass, outside the disk-pressure
+`maybe_expire_stash` runs on every guard pass, outside the disk-pressure
 gate, paced by its own cooldown. Three decisions worth stating:
 
 **Outside the pressure gate.** Every other reclaim path runs at
@@ -211,40 +211,40 @@ backlog only clears during a crisis — exactly backwards.
 
 **Its own cooldown, not `auto_cleanup_interval_secs`.** Sharing the knob would
 mean an operator tuning how often cleanup runs silently changes when a TTL is
-enforced. `quarantine_expire_interval_secs` (default 86400, 0 = opt out) and a
-separate `last_quarantine_expire` keep the two cadences independent. 0 is a
+enforced. `stash_expire_interval_secs` (default 86400, 0 = opt out) and a
+separate `last_stash_expire` keep the two cadences independent. 0 is a
 documented sentinel and is deliberately *not* floored: a floor here would
 re-enable unattended deletion for an operator who explicitly opted out, which
 is the opposite failure from the one a floor guards against.
 
-**Gated on `clean_quarantine_first`.** If quarantine is not armed, anything in
-the directory came from a human running `quarantine move` by hand, and that must
+**Gated on `clean_stash_first`.** If stash is not armed, anything in
+the directory came from a human running `stash move` by hand, and that must
 not silently become an unattended delete.
 
 Every deletion is logged individually with entry name, origin and bytes. Once
 the entry is gone the journal is the only record it existed, so an operator
 cannot review it from a directory listing. Pinned entries — unreadable
 manifest, so no TTL is computable — are reported on every pass for the same
-reason: they need `quarantine purge`, and would otherwise accumulate quietly in
+reason: they need `stash purge`, and would otherwise accumulate quietly in
 a directory whose contract is bounded growth.
 
 ### A pinned invariant, and one thing that is not
 
-A pinned entry is `expired = false` by construction in `quarantine_list`, so it
+A pinned entry is `expired = false` by construction in `stash_list`, so it
 can never reach the removal loop. That single arm in one match expression is
 the only thing standing between a corrupt manifest and an un-datable deletion,
-so it is now pinned by a test (`quarantine_expire_never_removes_a_pinned_entry`)
+so it is now pinned by a test (`stash_expire_never_removes_a_pinned_entry`)
 rather than by this prose.
 
 The same applies to `protected_paths`: the entire protection rests on ONE call,
-`check_safe_to_delete_guard` inside `quarantine_move`. Drop it in a refactor and
+`check_safe_to_delete_guard` inside `stash_move`. Drop it in a refactor and
 the config keeps parsing, the guard keeps listing candidates, and the protected
-tree gets quarantined anyway with nothing failing. That is now pinned too.
+tree gets stashd anyway with nothing failing. That is now pinned too.
 
 But pinning the call was not sufficient, and the first version of this work got
 that wrong in exactly the way this section warns about. `protected_paths` was
 the **only** path-valued guard knob that never expanded `~`. Every sibling —
-`quarantine_dir`, `relocate_cold_root`, `relocate_candidate_roots`,
+`stash_dir`, `relocate_cold_root`, `relocate_candidate_roots`,
 `rust_search_roots`, the guard log path — expands at point of use. This one
 passed the raw string to `canonicalize`, which resolves `~` against the process
 CWD, returned NotFound, and was `continue`d **silently**. So:

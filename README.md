@@ -130,7 +130,7 @@ it performs no I/O of its own, spawns nothing, and never re-registers
 signal handlers.
 
 **Reloaded on SIGHUP** — every `[guard]` setting, including `interval_secs`,
-all disk thresholds, the cleanup and quarantine toggles, the log and
+all disk thresholds, the cleanup and stash toggles, the log and
 notification settings, and `disk_extra_mounts`. Setting `enabled = false`
 stops the guard, which is the documented way to stop it without a restart.
 
@@ -296,17 +296,17 @@ dracon-system link apply
 dracon-system relocate ~/Dev/big-archive --to /mnt/data
 dracon-system relocate ~/Dev/big-archive --to /mnt/data --apply
 
-# Quarantine: hold-then-delete staging with a TTL
-dracon-system quarantine move ~/Dev/stale-stuff --apply
-dracon-system quarantine list
-dracon-system quarantine restore stale-stuff.1729958400000000000
-dracon-system quarantine expire --apply
+# Stash: hold-then-delete staging with a TTL
+dracon-system stash move ~/Dev/stale-stuff --apply
+dracon-system stash list
+dracon-system stash restore stale-stuff.1729958400000000000
+dracon-system stash expire --apply
 # Operator escape hatch for one entry the fail-safe is holding
-dracon-system quarantine purge stale-stuff.1729958400000000000 --apply
+dracon-system stash purge stale-stuff.1729958400000000000 --apply
 
-# Check space-tier setup readiness (cold root, quarantine, mounts)
+# Check space-tier setup readiness (cold root, stash, mounts)
 dracon-system setup
-dracon-system setup --apply   # create missing cold/quarantine dirs
+dracon-system setup --apply   # create missing cold/stash dirs
 
 # Zram stats
 dracon-system zram --status
@@ -483,26 +483,26 @@ The guard tracks disk usage over time and uses linear regression to predict when
 
 ### Safety Boundaries
 
-#### Quarantine entries with an unreadable manifest
+#### Stash entries with an unreadable manifest
 
-Every quarantined entry carries a `.quarantine.json` manifest recording the
+Every stashd entry carries a `.stash.json` manifest recording the
 directory it came from. If that manifest cannot be read, the entry **cannot
-be restored** — there is no record of where it went — so `quarantine expire`
+be restored** — there is no record of where it went — so `stash expire`
 **never deletes it**, at any TTL, including with `--apply`. This is a
 deliberate fail-safe, re-examined 2026-09-29: the manifest is the only thing
 standing between "held, recoverable by hand" and "gone", and nothing is
-gained by risking that on a timer. The quarantine root is written only by
+gained by risking that on a timer. The stash root is written only by
 the guard, so an unreadable manifest means corruption or outside
 interference rather than a routine condition a TTL exists to bound, and a
 genuinely transient read error resolves itself — after which the entry ages
 and expires normally.
 
-**The pin is never silent.** `quarantine list` marks such entries `PINNED`
+**The pin is never silent.** `stash list` marks such entries `PINNED`
 and prints how many are held and how many bytes they occupy;
-`quarantine expire` says so too rather than reporting "no expired entries"
+`stash expire` says so too rather than reporting "no expired entries"
 while holding data. `--json` carries a `pinned` array and `pinned_bytes`.
 
-**The escape hatch** is `quarantine purge <name>` — one entry you have
+**The escape hatch** is `stash purge <name>` — one entry you have
 looked at, dry-run unless `--apply`, reporting what it would reclaim first.
 It is deliberately never a bulk "delete everything unreadable" switch: a
 manifest that is unreadable for one entry is often unreadable because
@@ -573,7 +573,7 @@ protection, so it is now explicit.
 The legal range of each numeric knob is **enforced**, not just documented:
 `normalize_guard_policy` in `src/policy.rs` clamps out-of-range values at the
 policy load boundary, so the daemon, `doctor`, `setup`, `link`, `relocate`,
-`quarantine` and `storage` all receive in-range values by construction. Each
+`stash` and `storage` all receive in-range values by construction. Each
 clamp is reported on stderr as `⚠ policy: out-of-range value(s) clamped
 to their legal range: <fields>` — if you see that, the guard is running on
 the clamped value, not yours, so fix the file. Because the guard re-reads
