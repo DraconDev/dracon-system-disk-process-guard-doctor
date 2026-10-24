@@ -465,6 +465,32 @@ fn member_weight(proc_root: &Path, entry: &ProcEntry) -> (u64, u64) {
     (rss_mb, swap_mb)
 }
 
+/// Whether a member of a BROWSER tree belongs to that browser's own family.
+///
+/// ADDED 2026-10-24. The exempt list names APPLICATIONS, and a browser's
+/// helpers carry the SAME executable name as the browser itself — every
+/// process of a `chrome` tree is `chrome`.
+///
+/// The ROOT was already admitted despite the name exemption, because for a
+/// browser the DESKTOP VETO decides instead of the name. But the exemption
+/// was still applied to the tree's DESCENDANTS while the tree was being
+/// built, and that had two effects, both wrong:
+///
+/// * the tree's AGGREGATE weight was measured as the ROOT'S alone. A
+///   379 MiB, 9-process `chrome` tree weighed **122 MiB** — below the
+///   256 MiB floor, so the guard could not see a leak that was plainly
+///   there, in the very pass that is supposed to see it;
+/// * when such a tree WAS ended, its helpers were never in the tree, so
+///   they were never signalled and survived it.
+///
+/// The browser's own family is decided by the VETO, which has already
+/// classified this whole browser as a test job; the family goes with it.
+/// Anything else in the tree keeps its exemption: a browser that somehow
+/// owns an exempt daemon still does not get to have that daemon killed.
+fn browser_family_member(root: &ProcEntry, member: &ProcEntry) -> bool {
+    browser_decides_by_veto(&root.args) && member.exe == root.exe
+}
+
 /// Build the tree rooted at `root_pid`: the root, its descendants, and the
 /// detached crashpad handler its members name.
 fn build_tree(
@@ -505,7 +531,13 @@ fn build_tree(
         // An exempt member is left alone AND left out of the weight: the
         // exemption means "this is the operator's", so the guard neither
         // ends it nor counts it as reclaimable.
-        if matches_exempt(&entry.exe, &policy.exempt_names) {
+        //
+        // A BROWSER's own helpers are not exempt in that sense: they carry
+        // the browser's executable name, and the desktop veto has already
+        // decided this whole browser is a test job. Excluding them would
+        // weigh the tree as its root alone — and hide the leak — and would
+        // leave them running when the tree is ended.
+        if !browser_family_member(root, entry) && matches_exempt(&entry.exe, &policy.exempt_names) {
             continue;
         }
         if !seen.insert(pid) {
@@ -537,7 +569,8 @@ fn build_tree(
         if !parent_comm_is_systemd(proc_root, handler.ppid) {
             continue;
         }
-        if matches_exempt(&handler.exe, &policy.exempt_names) {
+        if !browser_family_member(root, handler) && matches_exempt(&handler.exe, &policy.exempt_names)
+        {
             continue;
         }
         seen.insert(handler_pid);
