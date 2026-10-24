@@ -124,7 +124,7 @@ members name.
 | property | value |
 |---|---|
 | `forgotten_orphan_footprint_mb` | 2048 MiB — the ROOT's own footprint |
-| `forgotten_orphan_tree_footprint_mb` | 1024 MiB — the tree's AGGREGATE |
+| `forgotten_orphan_tree_footprint_mb` | 256 MiB — the tree's AGGREGATE |
 
 A tree qualifies when **either** its aggregate crosses the tree floor
 **or** its root crosses the per-process floor. The per-process trigger
@@ -132,22 +132,32 @@ keeps its 2026-10-22 meaning exactly; the aggregate trigger is new and is
 separately controllable (`forgotten_orphan_tree_footprint_mb = 0` disables
 it and leaves the old behaviour).
 
-1 GiB is an order of magnitude below what actually cost that day (8.6 GB
-across 792 processes), and a leaked tree holding 1 GiB of RAM+swap is
-unambiguously worth reclaiming.
+The floor was 1 GiB when this was first written and is now 256 MiB: a
+single leaked tree settles at 293–304 MiB once the kernel has swapped it
+out, so a 1 GiB floor misses exactly the thing this pass exists to catch.
+The measurement is in §5.
 
 ### 3.2 The crashpad handler belongs to the tree
 
 Chromium's crashpad handler calls `setsid`: it leaves the browser's
-process group and session, and when the browser dies it is reparented to
-init as a lone orphan. Left alone, it is exactly the residue the tree
-pass exists to remove — and it is invisible on its own, because it has no
-`--user-data-dir` and is therefore vetoed as a "desktop session".
+process group and session, so while its browser is still alive it is
+reparented to init and looks like a lone orphan. On its own it is invisible
+to the rest of the guard, because it has no `--user-data-dir` and is
+therefore vetoed as a "desktop session".
 
 It is tied back to its tree by the `--crashpad-handler-pid=<pid>` its
-siblings carry. A handler is only pulled into a tree when it is itself an
-orphan: a handler that still has a live parent belongs to a LIVE browser
-and is never touched.
+siblings carry, so the tree is ended as a unit and the handler goes with
+the browser that owns it. A handler that still has a live parent belongs to
+a LIVE browser and is never touched.
+
+**It is not a leak of its own.** This section originally claimed that a
+handler whose browser had died is "exactly the residue the tree pass exists
+to remove". A controlled experiment on 2026-10-24 — launch a headless
+Chromium, `kill -9` the browser root only — showed the handler **exiting
+with its browser** rather than lingering. All twelve detached handlers on
+this host (29 MiB in total) are still referenced by a live browser. Tying
+the handler into the tree is about ending the tree as a unit, not about
+cleaning up leftovers.
 
 ### 3.3 The desktop veto protects the tree, not just the root
 
@@ -323,13 +333,14 @@ above is the sum of both, not the RSS alone.
 - **The leak's other 17 files.** The audit found 17 browser-launching files
   across the fleet with a launch/close imbalance. The doomtap one is
   fixed; the rest are still leaking, more slowly.
-- **The crashpad residue.** The crashpad handler is pulled back into its
-  tree by `--crashpad-handler-pid`, but ONLY while the browser that owns it
-  is still alive. A handler whose browser is already gone has nothing left
-  to tie it to: it is a lone orphan of about 2 MiB, it classifies as a
-  desktop session (it carries no `--user-data-dir`), and it is too small
-  to ever cross a floor. This host has eight of them, about 16 MiB in
-  total. It is residue, not a leak, and it is not worth a mechanism.
+- **The crashpad residue — NOT a leak, and this document used to say
+  otherwise.** A controlled experiment on 2026-10-24 (launch a headless
+  Chromium, `kill -9` the browser root only) showed the crashpad handler
+  **exiting with its browser**: it does not linger as an orphan. All
+  twelve detached handlers on this host (29 MiB in total) are still
+  referenced by a live browser through `--crashpad-handler-pid`. The
+  handler is still tied into the tree so that a tree is ended as a unit,
+  but there is no accumulating residue to clean up.
 - **A browser farm's detached browsers.** A browser that was launched days
   ago, detached on purpose, and is still driven over CDP by a client in
   another process tree passes every gate: orphaned, headless, idle,
