@@ -658,17 +658,39 @@ thing off, and the profile goes back to waiting out the tmp age floor.
 ### 10.3 The live proof
 
 A tree was created deliberately for the purpose — a headless Chromium
-launched with `--user-data-dir=/tmp/proof-profile-reclaim-…`, orphaned
-(reparented to systemd), and left alone:
+launched with `--user-data-dir=/tmp/proof-profile-reclaim-1792813146`,
+orphaned (reparented to systemd), and left alone.
+
+The first build of this proof FAILED, and the failure is §9.6: the guard
+did not report the tree at all. It weighed 379 MiB to anything that
+counted its members and **121 MiB** to the guard, which weighed the root
+alone and stopped there. After the fix, the same tree, unremarkably:
 
 ```
-🧹 forgotten orphan tree: chrome pid=3888221 11 processes 880MiB (root 208MiB) age=…s cpu=…s — headless
-🛡️ forgotten-reap: tree 3888221 (11 processes, 880MiB) -> 11 ended, 0 left, 0 skipped
-🧹 reclaimed browser profile: /tmp/proof-profile-reclaim-… (57 MiB)
+🧹 forgotten orphan tree: chrome pid=3888221 10 processes 369MiB (root 120MiB) age=1259s cpu=4s — headless
+🛡️ forgotten-reap: tree 3888221 (10 processes, 369MiB) -> 10 ended, 0 left, 0 skipped
+🧹 reclaimed browser profile: /tmp/proof-profile-reclaim-1792813146 (201.7 MiB)
 ```
 
-Eleven processes ended and the profile went with them — in the same pass,
-instead of six hours later.
+Ten processes ended and the profile went with them — in the same pass,
+instead of six hours later. None survived, none was skipped.
+
+Two things about the shape of that proof are worth recording, because both
+would have looked like "the guard is not working":
+
+- the tree's root had **120 MiB** and its ten members **369 MiB**. A guard
+  that weighs the root sees 120; the floor is 256. The leak sits exactly
+  in the gap between the two measurements, which is why the defect could
+  hide a tree this plain;
+- the reap fired only once the pressure state had been sustained for 120
+  seconds. The daemon had been restarted for this deployment, so its
+  pressure state began at "ok" and had to earn its way to "warn" — four
+  passes of "reported but not ended" before the gate opened. That is the
+  gate working, not the gate failing: the tree was reported on every one
+  of those passes, so the operator could see exactly what was waiting.
+
+The operator's own Chrome (PID 59843) was alive and untouched throughout —
+56 processes, 2.2 GiB RSS, still vetoed as a live desktop session.
 
 ### 9.6 A third defect, found by the proof of the second fix
 
