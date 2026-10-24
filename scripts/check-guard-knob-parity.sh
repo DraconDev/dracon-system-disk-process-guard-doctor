@@ -191,6 +191,48 @@ for knob in "${GUARD_KNOBS[@]}"; do
   echo "  $knob = $crate_val (crate default, NixOS module, example, live)"
 done
 
+# The same four sources for the BOOLEAN knobs.
+echo "• guard boolean knobs: crate defaults vs the NixOS module vs the example policy vs the live policy"
+for knob in "${GUARD_BOOL_KNOBS[@]}"; do
+  crate_val="$(crate_bool_default "$knob" || true)"
+  example_val="$(toml_value "$EXAMPLE_TOML" "$knob" || true)"
+  live_val="$(toml_value "$LIVE_TOML" "$knob" || true)"
+  flake_vals="$(flake_values "$knob" || true)"
+  flake_count="$(printf '%s' "$flake_vals" | grep -c . || true)"
+  flake_val="$(printf '%s' "$flake_vals" | head -n1)"
+  if [ -z "$crate_val" ]; then
+    echo "✗ $knob: no boolean crate default found in src/policy.rs" >&2
+    fail=1
+    continue
+  fi
+  if [ -z "$example_val" ]; then
+    echo "✗ $knob: absent from the example policy" >&2
+    fail=1
+    continue
+  fi
+  if [ -z "$live_val" ]; then
+    echo "✗ $knob: absent from the live policy ($LIVE_TOML)" >&2
+    fail=1
+    continue
+  fi
+  if [ "$flake_count" -eq 0 ]; then
+    echo "✗ $knob: not declared by the NixOS operator module ($PARENT_FLAKE)" >&2
+    fail=1
+    continue
+  fi
+  if [ "$flake_count" -gt 1 ]; then
+    echo "✗ $knob: declared $flake_count times in the NixOS operator module — the module's value would be ambiguous" >&2
+    fail=1
+    continue
+  fi
+  if [ "$crate_val" != "$example_val" ] || [ "$crate_val" != "$live_val" ] || [ "$crate_val" != "$flake_val" ]; then
+    echo "✗ $knob: crate default $crate_val, NixOS module $flake_val, example $example_val, live $live_val" >&2
+    fail=1
+    continue
+  fi
+  echo "  $knob = $crate_val (crate default, NixOS module, example, live)"
+done
+
 # The module DECLARES the knobs but must not WRITE the operator's policy
 # file by default: that file is the operator's own, and a module that
 # overwrote it silently would be exactly the drift this check exists to
