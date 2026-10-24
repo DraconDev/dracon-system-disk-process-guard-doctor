@@ -4118,7 +4118,7 @@ pub(crate) async fn kept_trash_entry_sizes(
         total = total.saturating_add(bytes);
         sizes.push((name.clone(), bytes));
     }
-    sizes.sort_by(|a, b| b.1.cmp(&a.1));
+    sizes.sort_by_key(|b| std::cmp::Reverse(b.1));
     (total, sizes)
 }
 
