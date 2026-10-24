@@ -192,7 +192,6 @@ fn a_recorded_bias_is_only_trusted_when_the_live_value_says_so() {
 fn a_repeated_cap_refusal_is_logged_once_and_a_changed_reason_is_news() {
     let first = CapRefusal {
         reason: "scope contains exempt process chrome".to_string(),
-        at: std::time::Instant::now(),
     };
     assert!(
         cap_refusal_is_new(None, "scope contains exempt process chrome"),
