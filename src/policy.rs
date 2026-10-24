@@ -313,9 +313,18 @@ pub(crate) struct GuardPolicy {
     // is a better discriminator than "matches a name".
     //
     // 0 disables the size-aware floor (the general floor applies to
-    // everything) — the default here, because it changes what gets DELETED
-    // and therefore ships as an explicit opt-in in the live config, exactly
-    // like the e2e fast path.
+    // everything). The DEFAULT IS ON (1 GiB threshold, 2 h floor) — this
+    // used to be documented as "off by default", which contradicted the
+    // default values and the "ON by default" note on the default function.
+    // A knob whose real behaviour differs from its documentation is worse
+    // than no knob at all: the operator reads the file, believes the floor
+    // is inert, and does not set it.
+    //
+    // The large floor must be SHORTER than `tmp_min_age_hours` to have any
+    // effect: it exists to reclaim bulk scratch sooner, not to hold big
+    // scratch longer. A configured value that is not shorter cannot shorten
+    // the general floor, so the guard reports it at policy load instead of
+    // ignoring it silently.
     #[serde(default = "default_tmp_large_entry_bytes")]
     pub(crate) tmp_large_entry_bytes: u64,
     #[serde(default = "default_tmp_large_min_age_hours")]
