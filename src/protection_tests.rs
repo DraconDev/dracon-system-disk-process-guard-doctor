@@ -181,3 +181,29 @@ fn a_recorded_bias_is_only_trusted_when_the_live_value_says_so() {
         "an unreadable live value is not proof that the claim is false"
     );
 }
+
+/// ADDED 2026-10-24 (audit O3): a repeated refusal must not repeat the LOG.
+///
+/// The old code printed the identical refusal on every pass, forever, once
+/// per offending process — for a condition (an exempt process inside the
+/// scope) that no retry can fix. A refusal whose reason CHANGED is news and
+/// is logged.
+#[test]
+fn a_repeated_cap_refusal_is_logged_once_and_a_changed_reason_is_news() {
+    let first = CapRefusal {
+        reason: "scope contains exempt process chrome".to_string(),
+        at: std::time::Instant::now(),
+    };
+    assert!(
+        cap_refusal_is_new(None, "scope contains exempt process chrome"),
+        "the first refusal is news"
+    );
+    assert!(
+        !cap_refusal_is_new(Some(&first), "scope contains exempt process chrome"),
+        "the same refusal repeated is the same news and must not be logged again"
+    );
+    assert!(
+        cap_refusal_is_new(Some(&first), "incomplete CPU lease recovered; retry next pass"),
+        "a refusal whose reason changed is news"
+    );
+}
