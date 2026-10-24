@@ -957,3 +957,45 @@ fn replace_skips_manifest_less_hand_placed_dirs() {
     assert!(!qdir.join(&first.name).exists());
     cleanup(&root);
 }
+
+/// ADDED 2026-10-24 (audit F7): the TTL must BE the TTL.
+///
+/// The expiry test compared TRUNCATED whole days against the TTL, so an
+/// entry only expired once it was a whole day PAST the TTL:
+/// `stash_ttl_days = 7` actually kept entries for 8 days, and the
+/// operator's retention promise was a day longer than the file said on
+/// every single stash.
+#[test]
+fn stash_ttl_expires_at_the_configured_age() {
+    let root = test_root("ttl-exact");
+    let src = fixture_dir(&root);
+    let qdir = root.join("q");
+    let manifest = crate::stash_move(&src, &qdir, &[]).unwrap();
+
+    let ttl_days = 7u64;
+    // One second past the TTL.
+    let aged = crate::StashManifest {
+        name: manifest.name.clone(),
+        origin: manifest.origin.clone(),
+        moved_at_unix: crate::now_unix().saturating_sub(ttl_days * 86_400 + 1),
+        bytes: manifest.bytes,
+        files: manifest.files,
+        auto: manifest.auto,
+    };
+    let entry_dir = qdir.join(&manifest.name);
+    fs::write(
+        entry_dir.join(".stash.json"),
+        serde_json::to_string_pretty(&aged).unwrap(),
+    )
+    .unwrap();
+
+    assert!(
+        crate::stash_list(&qdir, ttl_days).unwrap().entries[0].expired,
+        "an entry one second past its TTL must be expired"
+    );
+    assert!(
+        !crate::stash_list(&qdir, ttl_days + 1).unwrap().entries[0].expired,
+        "an entry inside its TTL must be kept"
+    );
+    cleanup(&root);
+}
