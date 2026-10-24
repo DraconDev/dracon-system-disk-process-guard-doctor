@@ -339,10 +339,10 @@ grep -q 'shipped but not deployed' <<<"$out" ||
 # mountinfo fixtures, so no host with a live service is required.
 
 write_policy() {
-    # $1 = path, $2 = quarantine_dir, $3 = relocate_cold_root
+    # $1 = path, $2 = stash_dir, $3 = relocate_cold_root
     cat > "$1" <<EOF
 [storage]
-quarantine_dir = "$2"
+stash_dir = "$2"
 relocate_cold_root = "$3"
 EOF
 }
@@ -356,19 +356,19 @@ mountinfo_fixed() {
 637 622 0:7 / /dev rw,nosuid shared:374 master:9 - devtmpfs devtmpfs rw
 650 622 8:2 / /mnt/data ro,nosuid,noatime shared:527 master:129 - ext4 /dev/sda2 rw
 675 650 8:2 /cold /mnt/data/cold rw,nosuid,noatime shared:528 master:129 - ext4 /dev/sda2 rw
-676 650 8:2 /quarantine /mnt/data/quarantine rw,nosuid,noatime shared:529 master:129 - ext4 /dev/sda2 rw
+676 650 8:2 /stash /mnt/data/stash rw,nosuid,noatime shared:529 master:129 - ext4 /dev/sda2 rw
 1123 622 259:2 /tmp /tmp rw,nosuid,relatime shared:881 master:1 - ext4 /dev/nvme0n1p2 rw
 EOF
 }
 mountinfo_fixed > "$work/mountinfo-fixed"
 
 # 20. The pre-fix shape: the second disk is read-only and neither subtree has
-#     its own mount, so every quarantine move fails. This is the exact state the
+#     its own mount, so every stash move fails. This is the exact state the
 #     guard ran in for four days, and it MUST be a failure, not a pass.
 pre="$work/mountinfo-prefix-disk-only"
 mountinfo_fixed | grep -v '^67[56] ' > "$pre"
 p_ok="$work/policy-ok.toml"
-write_policy "$p_ok" /mnt/data/quarantine /mnt/data/cold
+write_policy "$p_ok" /mnt/data/stash /mnt/data/cold
 out="$(GUARD_MOUNTINFO="$pre" POLICY_FILE="$p_ok" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
     "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
@@ -376,8 +376,8 @@ out="$(GUARD_MOUNTINFO="$pre" POLICY_FILE="$p_ok" \
 case "$out" in
     *"resolves read-only"*)
         case "$out" in
-            *"/mnt/data/quarantine"*) : ;;
-            *) fail "the read-only report did not name quarantine_dir: $out" ;;
+            *"/mnt/data/stash"*) : ;;
+            *) fail "the read-only report did not name stash_dir: $out" ;;
         esac
         case "$out" in
             *"/mnt/data/cold"*) : ;;
@@ -397,7 +397,7 @@ out="$(GUARD_MOUNTINFO="$one" POLICY_FILE="$p_ok" \
     "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     && fail "a grant on the disk but not on the subtree was accepted: $out"
 case "$out" in
-    *"quarantine_dir=/mnt/data/quarantine resolves read-only"*) : ;;
+    *"stash_dir=/mnt/data/stash resolves read-only"*) : ;;
     *) fail "unexpected verdict for a partially granted subtree: $out" ;;
 esac
 case "$out" in
@@ -411,8 +411,8 @@ out="$(GUARD_MOUNTINFO="$work/mountinfo-fixed" POLICY_FILE="$p_ok" \
     "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
     || fail "the fixed namespace was reported as broken: $out"
 case "$out" in
-    *"✓ quarantine_dir=/mnt/data/quarantine is read-write"*) : ;;
-    *) fail "no pass line for quarantine_dir: $out" ;;
+    *"✓ stash_dir=/mnt/data/stash is read-write"*) : ;;
+    *) fail "no pass line for stash_dir: $out" ;;
 esac
 
 # 23. A later mount at the same point shadows an earlier read-write one, which
@@ -438,7 +438,7 @@ esac
 # 24. A root under an ordinary read-write mount is fine, and a root that no
 #     mount covers at all is reported rather than passed.
 p_tmp="$work/policy-tmp.toml"
-write_policy "$p_tmp" /tmp/quarantine ""
+write_policy "$p_tmp" /tmp/stash ""
 out="$(GUARD_MOUNTINFO="$work/mountinfo-fixed" POLICY_FILE="$p_tmp" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
     "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
@@ -460,7 +460,7 @@ esac
 p_commented="$work/policy-commented.toml"
 cat > "$p_commented" <<'EOF'
 [storage]
-# quarantine_dir = "/mnt/data/quarantine"
+# stash_dir = "/mnt/data/stash"
 # relocate_cold_root = "/mnt/data/cold"
 EOF
 out="$(GUARD_MOUNTINFO="$pre" POLICY_FILE="$p_commented" \
@@ -488,7 +488,7 @@ out="$(GUARD_MOUNTINFO="$work/no-such-mountinfo" POLICY_FILE="$p_ok" \
 #     implementation that only compares prefixes in `case` reports this ordinary
 #     arrangement as "not covered by any mount" — a false failure that would
 #     tell the operator to add a ReadWritePaths entry that changes nothing.
-write_policy "$work/policy-root-mount.toml" /var/tmp/quarantine ""
+write_policy "$work/policy-root-mount.toml" /var/tmp/stash ""
 out="$(GUARD_MOUNTINFO="$bare" POLICY_FILE="$work/policy-root-mount.toml" \
     SYSTEMCTL="$(make_systemctl present)" SYSTEMD_ANALYZE="$analyze_clean" \
     "$SCRIPT_UNDER_TEST" "$repo" "$repo" 2>&1)" \
@@ -591,7 +591,7 @@ cat > "$work/mountinfo-quote" <<'EOF'
 EOF
 cat > "$work/policy-single.toml" <<'EOF'
 [storage]
-quarantine_dir = '/var/readonly'
+stash_dir = '/var/readonly'
 relocate_cold_root = ''
 EOF
 out="$(GUARD_MOUNTINFO="$work/mountinfo-quote" POLICY_FILE="$work/policy-single.toml" \
@@ -608,7 +608,7 @@ esac
 # has no /tmp line, so it resolves through the read-only /.
 cat > "$work/policy-tilde.toml" <<'EOF'
 [storage]
-quarantine_dir = "~"
+stash_dir = "~"
 relocate_cold_root = ''
 EOF
 out="$(GUARD_MOUNTINFO="$work/mountinfo-quote" POLICY_FILE="$work/policy-tilde.toml" \

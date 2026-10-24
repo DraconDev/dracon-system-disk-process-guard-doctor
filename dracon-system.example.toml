@@ -12,11 +12,11 @@
 # moves as this file grows), called from `SystemPolicy::normalize` in the
 # same file, which `parse_system_policy` in src/main.rs invokes at the policy
 # load boundary. Every consumer — daemon, doctor, setup, links, relocate,
-# quarantine, storage — therefore receives in-range values by construction.
+# stash, storage — therefore receives in-range values by construction.
 #
 # ADDED 2026-09-29 (audit DECIDE #8 follow-up): until then the ranges below
 # existed only as comments, and nine of the eleven policy load sites never
-# normalized at all, so a nonsense threshold reached relocate, quarantine and
+# normalized at all, so a nonsense threshold reached relocate, stash and
 # storage raw.
 #
 # Two behaviours, both deliberate:
@@ -39,7 +39,7 @@
 #     was meant to prevent. Those are: trend_warn_hours, zombie_threshold,
 #     log_size_mb, node_modules_max_age_days, tmp_min_age_hours,
 #     trash_min_age_days, rust_target_action_min_age_days,
-#     quarantine_ttl_days,
+#     stash_ttl_days,
 #     reap_report_min_idle_hours, reap_report_max_cpu_seconds,
 #     nix_keep_generations, relocate_min_age_days. The list is pinned by a
 #     test (`sentinel_zero_knobs_are_never_clamped`) so it cannot drift.
@@ -323,11 +323,11 @@ clean_tmp = false
 # this floor OR its root crosses the per-process floor above; 0 disables
 # the aggregate trigger, leaving the per-process one.
 # forgotten_orphan_tree_footprint_mb = 256
-# Per-pass cap on cross-device quarantine-move bytes (default 10240 = 10 GiB;
+# Per-pass cap on cross-device stash-move bytes (default 10240 = 10 GiB;
 # 0 = unlimited). Over-budget candidates defer with an explicit note instead
 # of stalling the desktop mid-pass — the 2026-10-04 incident that disabled
 # auto_cleanup_rust outright. Direct deletes are uncapped (no copy, no stall).
-# quarantine_max_bytes_per_pass_mb = 10240
+# stash_max_bytes_per_pass_mb = 10240
 # Trash recovery window (default 7 — 0 restores empty-everything).
 # trash_min_age_days = 7              # days before trash is purged (0 purges immediately)
 # Refuse to purge trash entries whose names look credential-bearing
@@ -388,35 +388,35 @@ trend_warn_hours = 24
 # decisions still key off the primary mount.
 # disk_extra_mounts = "/mnt/data"
 
-# ADDED 2026-09-26 (space tiers, Phase 1): quarantine root for
-# hold-then-delete staging (`quarantine move/list/restore/expire`).
-# quarantine_dir = "~/.local/share/dracon/quarantine"
-# Quarantine TTL in days; `expire` deletes older entries, 0 disables expiry.
-# quarantine_ttl_days = 30
+# ADDED 2026-09-26 (space tiers, Phase 1): stash root for
+# hold-then-delete staging (`stash move/list/restore/expire`).
+# stash_dir = "~/.local/share/dracon/stash"
+# Stash TTL in days; `expire` deletes older entries, 0 disables expiry.
+# stash_ttl_days = 30
 #
 # Unattended expiry cadence in seconds (code default 86400 = daily; 0 opts
-# out entirely). The daemon pass ALSO requires clean_quarantine_first AND
+# out entirely). The daemon pass ALSO requires clean_stash_first AND
 # auto_cleanup_apply=true to actually delete — with apply=false it only
 # reports what would expire (audit M5, 2026-10-02).
-# quarantine_expire_interval_secs = 86400
+# stash_expire_interval_secs = 86400
 #
-# Every entry carries a `.quarantine.json` manifest recording where it came
+# Every entry carries a `.stash.json` manifest recording where it came
 # from. An entry whose manifest cannot be read is NEVER expired, at any TTL
 # and never with --apply: without the manifest there is no record of where it
 # went, so deleting it turns "held, recoverable by hand" into "gone". The
-# quarantine root is written only by the guard, so an unreadable manifest
+# stash root is written only by the guard, so an unreadable manifest
 # means corruption, not a routine condition a TTL should bound; a genuinely
 # transient read error clears itself and the entry then ages normally.
-# Such entries are marked PINNED in `quarantine list`, counted in
-# `quarantine expire`, and carried in the --json `pinned` array — the pin is
+# Such entries are marked PINNED in `stash list`, counted in
+# `stash expire`, and carried in the --json `pinned` array — the pin is
 # never silent. The operator escape hatch is
-# `quarantine purge <name> --apply` for ONE entry they have inspected; it is
+# `stash purge <name> --apply` for ONE entry they have inspected; it is
 # never a bulk sweep of everything unreadable.
 
 # ADDED 2026-09-27 (space tiers, Phase 2): daemon rust-target and
-# node_modules cleanup moves candidates to quarantine instead of deleting.
+# node_modules cleanup moves candidates to stash instead of deleting.
 # Explicit `guard clean` always deletes. Default off.
-# clean_quarantine_first = false
+# clean_stash_first = false
 
 # ADDED 2026-09-27 (space tiers, Phase 2): automatic cold relocation at
 # action/critical — move big idle dirs to the cold root BEFORE deleting
