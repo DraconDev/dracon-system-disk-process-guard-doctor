@@ -553,9 +553,16 @@ pub(crate) fn scan_forgotten_orphan_trees(
     let table = read_proc_table(proc_root);
     let self_pid = std::process::id() as i32;
 
-    // 1. The orphan roots: owner provably dead, detached, sleeping, idle,
-    //    not on the exempt list, and old enough that "just detached and
-    //    still in use" cannot explain them.
+    // 1. The orphan roots: owner provably dead, detached from any
+    //    terminal, sleeping, and old enough that "just detached and still
+    //    in use" cannot explain them.
+    //
+    //    The lifetime-CPU gate is NOT here any more. It was a PROXY for
+    //    "is anyone still using this?", and it is the wrong proxy: it
+    //    measures what a tree did in its LIFE, not whether anyone is using
+    //    it NOW — so the more real work a leak did, the more certain the
+    //    guard was to ignore it. The usage question is answered per tree
+    //    below, where the tree's weight is known.
     let mut roots: Vec<i32> = Vec::new();
     for entry in table.entries.values() {
         if entry.pid <= 1 || entry.pid == self_pid {
@@ -581,9 +588,6 @@ pub(crate) fn scan_forgotten_orphan_trees(
         {
             continue;
         }
-        if entry.cpu_ticks / ticks_per_sec.max(1) > policy.max_cpu_seconds {
-            continue;
-        }
         // Age: a tree that has only just started cannot be a leak that
         // anybody has had a chance to notice, and a freshly detached
         // browser may still have a client attached to it.
@@ -607,6 +611,14 @@ pub(crate) fn scan_forgotten_orphan_trees(
         let why = match verdict {
             DesktopVerdict::Test { why } => why,
             DesktopVerdict::Desktop { reason } => {
+                // A live desktop session is never a candidate, whatever its
+                // weight. It is only worth REPORTING when it is heavy, and a
+                // busy one is not news on every pass — so the lifetime-CPU
+                // proxy still decides whether a desktop tree is worth
+                // weighing at all.
+                if root.cpu_ticks / ticks_per_sec.max(1) > policy.max_cpu_seconds {
+                    continue;
+                }
                 let tree = build_tree(proc_root, &table, root_pid, policy, boot_time, now, ticks_per_sec);
                 claimed.extend(tree.members.iter().map(|m| m.pid));
                 // A veto is only worth reporting when the tree is actually
@@ -628,16 +640,62 @@ pub(crate) fn scan_forgotten_orphan_trees(
 
         let tree = build_tree(proc_root, &table, root_pid, policy, boot_time, now, ticks_per_sec);
         claimed.extend(tree.members.iter().map(|m| m.pid));
-        if tree.aggregate_footprint_mb >= tree_floor_mb
-            || tree.root_footprint_mb >= per_process_floor_mb
+        if tree.aggregate_footprint_mb < tree_floor_mb
+            && tree.root_footprint_mb < per_process_floor_mb
         {
-            out.candidates.push(ForgottenTree { why, ..tree });
+            continue;
         }
+        // Is anyone still using it? A tree that is being driven is not a
+        // leak, and it is NOT reaped; but it IS reported, because a heavy
+        // orphan that the guard is deliberately leaving alone is exactly
+        // what the operator needs to see. Silence is the one thing this
+        // pass must never do.
+        let usage = tree_usage(&tree);
+        let busy = tree.cpu_seconds > policy.max_cpu_seconds;
+        match usage {
+            Usage::Driven => {
+                out.protected.push(ProtectedTree {
+                    root_pid: tree.root_pid,
+                    root_comm: tree.root_comm.clone(),
+                    aggregate_footprint_mb: tree.aggregate_footprint_mb,
+                    member_count: tree.member_count,
+                    reason: "a client is still connected to it — in use, not reaped".to_string(),
+                });
+                continue;
+            }
+            Usage::Undriven => {
+                // The precise answer: nothing is driving it. The
+                // lifetime-CPU proxy does not apply — a tree nobody drives
+                // is a leak however much work it did in its life.
+                out.candidates.push(ForgottenTree { why, ..tree });
+                continue;
+            }
+            Usage::Unknown => {
+                // No DevTools endpoint, so nobody can be driving it over
+                // one. Fall back to the conservative proxy.
+                if busy {
+                    out.protected.push(ProtectedTree {
+                        root_pid: tree.root_pid,
+                        root_comm: tree.root_comm.clone(),
+                        aggregate_footprint_mb: tree.aggregate_footprint_mb,
+                        member_count: tree.member_count,
+                        reason: format!(
+                            "busy — {}s of CPU and no debugging port to check for a client",
+                            tree.cpu_seconds
+                        ),
+                    });
+                    continue;
+                }
+            }
+        }
+        out.candidates.push(ForgottenTree { why, ..tree });
     }
 
     out.candidates
         .sort_by_key(|c| std::cmp::Reverse(c.aggregate_footprint_mb));
     out.vetoed
+        .sort_by_key(|c| std::cmp::Reverse(c.aggregate_footprint_mb));
+    out.protected
         .sort_by_key(|c| std::cmp::Reverse(c.aggregate_footprint_mb));
     out
 }
