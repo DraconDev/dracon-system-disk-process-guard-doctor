@@ -3525,48 +3525,64 @@ async fn proactive_cleanup_rust_targets(
         }
         let mut stashed = false;
         let mut freed = target.bytes;
-        if apply {
-            if guard.clean_stash_first {
-                let qdir = stash_root(guard);
-                match stash_first_remove(&target.path, &qdir, &guard.protected_paths) {
-                    Ok((manifest, f)) => {
-                        stashed = true;
-                        freed = f;
+        // FIXED 2026-10-24 (audit): the user-protected-path refusal used to
+        // live INSIDE the `if apply` block — exactly the defect that was
+        // fixed in the ACTION tier on 2026-10-02 ("overstating reclaimable
+        // space ... misled the operator twice in one session"). In a dry run
+        // that block is skipped entirely, so the preview listed every
+        // protected tree as reclaimable AND counted its bytes: a protected
+        // workspace of any size inflated the proactive tier's reclaimable
+        // figure by the size of the workspace it was protecting.
+        //
+        // Hoisted so preview and apply go through ONE check and cannot
+        // disagree. It covers the stash-first branch too: the stash move
+        // runs the SAME `check_safe_to_delete_guard` internally
+        // (`stash_move_inner`), so a protected tree is not reclaimable
+        // either way and the preview must say so.
+        match check_safe_to_delete_guard(&target.path, &guard.protected_paths) {
+            Ok(safe_path) => {
+                if apply {
+                    if guard.clean_stash_first {
+                        let qdir = stash_root(guard);
+                        match stash_first_remove(&target.path, &qdir, &guard.protected_paths) {
+                            Ok((manifest, f)) => {
+                                stashed = true;
+                                freed = f;
+                                eprintln!(
+                                    "📦 proactive stashed: {} as {}",
+                                    target.path.display(),
+                                    manifest.name
+                                );
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "⚠️ proactive: failed to stash {}: {}",
+                                    target.path.display(),
+                                    e
+                                );
+                                continue;
+                            }
+                        }
+                    } else if let Err(e) = tokio::fs::remove_dir_all(&safe_path).await {
                         eprintln!(
-                            "📦 proactive stashed: {} as {}",
-                            target.path.display(),
-                            manifest.name
-                        );
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "⚠️ proactive: failed to stash {}: {}",
+                            "⚠️ proactive: failed to remove {}: {}",
                             target.path.display(),
                             e
                         );
                         continue;
                     }
                 }
-            } else {
-                let safe_path =
-                    match check_safe_to_delete_guard(&target.path, &guard.protected_paths) {
-                        Ok(p) => p,
-                        Err(e) => {
-                            eprintln!("⚠️ proactive: skipping {}: {}", target.path.display(), e);
-                            result
-                                .protected_paths
-                                .push(target.path.display().to_string());
-                            continue;
-                        }
-                    };
-                if let Err(e) = tokio::fs::remove_dir_all(&safe_path).await {
-                    eprintln!(
-                        "⚠️ proactive: failed to remove {}: {}",
-                        target.path.display(),
-                        e
-                    );
-                    continue;
+            }
+            Err(e) => {
+                if apply {
+                    eprintln!("⚠️ proactive: skipping {}: {}", target.path.display(), e);
                 }
+                result.protected_paths.push(format!(
+                    "{} ({})",
+                    target.path.display(),
+                    one_line(&e.to_string())
+                ));
+                continue;
             }
         }
 
