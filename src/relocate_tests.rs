@@ -742,7 +742,7 @@ async fn node_modules_dry_run_deletes_nothing_and_leaves_the_tree_intact() {
     std::fs::create_dir_all(&stash).unwrap();
     assert!(nm.exists(), "fixture must exist before the run");
 
-    let (_, cleaned) = clean_old_node_modules(
+    let outcome = clean_old_node_modules(
         std::slice::from_ref(&root),
         30,
         false,
@@ -752,6 +752,7 @@ async fn node_modules_dry_run_deletes_nothing_and_leaves_the_tree_intact() {
     )
     .await
     .expect("dry run must not error");
+    let cleaned = outcome.cleaned;
 
     assert!(
         !cleaned.is_empty(),
@@ -769,7 +770,7 @@ async fn node_modules_stash_first_dry_run_also_deletes_nothing() {
     let stash = root.join("stash");
     std::fs::create_dir_all(&stash).unwrap();
 
-    let (_, cleaned) = clean_old_node_modules(
+    let outcome = clean_old_node_modules(
         std::slice::from_ref(&root),
         30,
         false,
@@ -779,6 +780,7 @@ async fn node_modules_stash_first_dry_run_also_deletes_nothing() {
     )
     .await
     .expect("dry run must not error");
+    let cleaned = outcome.cleaned;
 
     assert!(!cleaned.is_empty(), "must still report candidates");
     assert!(
