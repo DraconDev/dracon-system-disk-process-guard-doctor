@@ -1090,6 +1090,19 @@ pub(crate) struct ReapedTree {
     pub(crate) members_skipped: usize,
     pub(crate) escalated_to_sigkill: bool,
     pub(crate) disposition: ReapDisposition,
+    /// ADDED 2026-10-24: the `--user-data-dir` the tree's root named, when
+    /// the tree was ENDED and every member of it is gone.
+    ///
+    /// A leaked browser leaves two halves: the processes and the profile
+    /// directory they owned. The guard has just proved the browser is dead
+    /// and abandoned, which is a stronger proof of "nobody is using this
+    /// profile" than the tmp age floor can give — so the profile can be
+    /// reclaimed NOW instead of in six hours.
+    ///
+    /// `None` when the tree named no profile, when it was not ended, or
+    /// when any member survived (`members_left > 0`): a tree that partly
+    /// survived is not proof that its profile is abandoned.
+    pub(crate) profile_dir: Option<std::path::PathBuf>,
 }
 
 /// End the forgotten orphan trees, under pressure only.

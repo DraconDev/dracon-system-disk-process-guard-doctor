@@ -35,7 +35,7 @@ use crate::reap::{
     matches_exempt, parent_comm_is_systemd, read_proc_table, ProcEntry, ProcTable, ReapPolicy,
 };
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// What a browser-ish command line is.
 #[derive(Debug, Clone, PartialEq, Eq)]
