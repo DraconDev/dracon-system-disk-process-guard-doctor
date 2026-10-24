@@ -1387,7 +1387,13 @@ fn a_repointed_storage_root_outside_readwritepaths_is_reported() {
     );
 
     // Strip the entry (the state before this fix) and the root must surface.
-    let stripped = shipped_unit().replace(" -/mnt/data/stash -/mnt/data/cold", "");
+    // Each grant is removed on its own: the unit may list several second-disk
+    // roots, and the mutation must not depend on their order or on which
+    // transitional paths happen to be granted beside them.
+    let stripped = shipped_unit()
+        .replace(" -/mnt/data/stash", "")
+        .replace(" -/mnt/data/quarantine", "")
+        .replace(" -/mnt/data/cold", "");
     assert!(
         !stripped.contains("/mnt/data/cold"),
         "the mutation must actually remove the entry"
