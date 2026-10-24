@@ -1173,7 +1173,7 @@ pub(crate) fn reap_verified_candidates(
     // thread and each kill can sleep up to ~7s in grace polls, so an
     // unbounded pass over the 97-process population the design doc
     // describes could hold the blocking pool ~11 minutes and starve every
-    // other blocking task (relocation, quarantine, process collection).
+    // other blocking task (relocation, stash, process collection).
     // Cap the pass: candidates past the budget are left for the next
     // pass, which re-scans and re-verifies them anyway. The ~7s worst
     // case of the one terminate in flight is the only permitted overshoot.

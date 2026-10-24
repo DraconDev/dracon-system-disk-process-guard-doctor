@@ -34,7 +34,7 @@ fn ensure_setup_dir_refuses_file_blocking() {
 #[test]
 fn ensure_setup_dir_refuses_symlinked_path() {
     // Audit MEDIUM: create_dir_all through a symlink builds into the link
-    // target, so a symlinked cold/quarantine root silently manages the
+    // target, so a symlinked cold/stash root silently manages the
     // wrong tree.
     let root = test_root("symlinked");
     let real = root.join("real");
