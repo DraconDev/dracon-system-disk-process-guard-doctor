@@ -345,9 +345,13 @@ above is the sum of both, not the RSS alone.
   ago, detached on purpose, and is still driven over CDP by a client in
   another process tree passes every gate: orphaned, headless, idle,
   heavy, old. The age floor does not catch this one — the browser is old,
-  it was only just detached. This is a theoretical false positive and it
-  is inherent to the shape, not to this implementation; the operator's
-  lever is the exempt list or a higher footprint floor.
+  it was only just detached. §9.2 does: a browser that is still driven
+  over the DevTools protocol holds an ESTABLISHED connection to its
+  debugging port, so it is `Driven` and is left alone. What remains
+  theoretical is a browser driven over `--remote-debugging-pipe`, which has
+  no port to check: there the conservative CPU proxy decides, which is the
+  safe answer but not the precise one. The operator's other levers are the
+  exempt list and a higher footprint floor.
 
 ## 7. The live proof (2026-10-24)
 
@@ -466,3 +470,116 @@ which are reversible without a capability. The processes that were already
 left at a degraded nice by the old one-way ratchet are not restored by this
 change: undoing them needs `CAP_SYS_NICE` in the INITIAL user namespace,
 which is root's to give.
+
+## 9. The audit (2026-10-24): a third defect, and the one that mattered
+
+The two proofs above were the proof of a tree the guard had been built to
+find. An audit of the whole pass, asked the obvious question — *does this
+actually catch what it claims to?* — found that the answer for the worst
+case was no.
+
+### 9.1 The pass decided "is it still in use?" with LIFETIME CPU
+
+The root selection carried a gate that skipped any tree whose root had
+burned more than `reap_report_max_cpu_seconds` (60) of CPU. A tree that
+crossed it was `continue`d: not reported, not weighed, not reaped, and with
+no message saying so.
+
+That is the wrong measurement, and it fails in the worst possible
+direction. The leak that MATTERED is a leak that did real work — a browser
+that rendered pages, ran scripts and was then abandoned. The more work the
+leaked tree did, the more certain the guard was to ignore it. Every tree the
+guard reported on 2026-10-24 had **two seconds** of CPU, because that was
+the only kind of tree it could see.
+
+The audit found the shape it had been hiding: an orphaned, `--headless=new`
+browser tree of **20 processes holding 1523 MiB**, with **216 seconds** of
+lifetime CPU, still burning half a core, whose DevTools port had no client
+attached. The guard had never reported it.
+
+### 9.2 The question that was actually being asked
+
+"Is it still in use?" is not "how much has it done". A browser that a
+client drives over the DevTools protocol holds an **ESTABLISHED
+connection** to its debugging port; a browser nobody drives holds none.
+Chromium keeps LISTENING on that port either way, so the port being open
+proves nothing — only a live connection does.
+
+The port comes from `--remote-debugging-port=`, or from the profile's
+`DevToolsActivePort` file when the flag is `0` and the OS picked it. The
+answer is three-valued:
+
+| verdict | meaning | what the guard does |
+|---|---|---|
+| `Driven` | a client is attached right now | never ends it; REPORTS it |
+| `Undriven` | it exposes a DevTools endpoint and nothing is attached | a candidate |
+| `Unknown` | no DevTools endpoint, or the profile could not be read | the conservative CPU proxy still decides |
+
+`Unknown` keeps the old proxy, because a tree with no debugging port cannot
+be driven over one — there is nothing to check, and the conservative answer
+is the only safe one.
+
+The kill-time gate re-asks the question immediately before the signal,
+because a client can attach between the scan and the reap. A tree with a
+client attached at that moment is not ended at all.
+
+### 9.3 A tree left alone is reported, never silent
+
+The pass used to `continue` past a tree it had decided not to touch, so the
+operator's own Chrome, an in-use browser and a busy tree all looked
+identical to "nothing there". The report now carries a `protected` section
+— the tree, its weight and WHY it was left alone — and the pass log says
+so. Silence is the one thing this pass must never do.
+
+### 9.4 The live proof
+
+The new binary was deployed and the very next pass found the tree the old
+one had never reported:
+
+```
+🧹 forgotten orphan tree: chrome pid=2714042 4 processes 257MiB (root 251MiB) age=11413s cpu=248s — headless
+🛡️ forgotten-reap: tree 2714042 (4 processes, 257MiB) -> 4 ended, 0 left, 0 skipped
+```
+
+**248 seconds** of lifetime CPU — four times the old gate — and it was
+weighed, reported and ended. Under the old binary it would have been
+skipped in silence, forever.
+
+Three minutes later the guard reaped another tree the harness had left
+behind in the meantime:
+
+```
+🧹 forgotten orphan tree: chromium pid=2773863 9 processes 432MiB (root 133MiB) age=315s cpu=1s — headless
+🛡️ forgotten-reap: tree 2773863 (9 processes, 432MiB) -> 9 ended, 0 left, 0 skipped
+```
+
+Thirteen processes ended, none survived, none was skipped. The operator's
+own Chrome (PID 59843) was alive and untouched throughout — 59 processes,
+2.2 GiB RSS, still vetoed as a live desktop session.
+
+**One honest caveat.** The tree was 1523 MiB when the audit measured it
+and 257 MiB when the guard caught it: Chromium shed 16 of its 20
+processes on its own over three hours, and what remained had been swapped
+out. It was caught by **1 MiB** of headroom over the 256 MiB floor. The
+floor is right for the tree's FRESH weight and for its steady state
+together, but a tree that shrinks further would slip under it — which is
+why the age floor, the DevTools answer and the pressure gate all exist
+alongside it. The honest summary is that the floor is a necessary condition
+and not a sufficient one.
+
+### 9.5 The parser that made the answer impossible
+
+The first implementation of the DevTools check read `/proc/net/tcp` wrong,
+and a test caught it. A row begins with the **slot** column (`42:`), which
+is not an address; the implementation took the first whitespace-separated
+fields as the local and remote addresses, so the addresses were never
+compared and **no live client could ever have been detected**. The answer
+would have been a permanent "no".
+
+The port column is also **hexadecimal**, and getting that wrong turns a
+live client into an invisible one: the leaked browser's DevTools port 41549
+appears in `/proc/net/tcp` as `A24D`. An earlier fixture in the test used
+`A2A5` (41637) while asserting the port was 41549 — an assertion that
+could only ever have been satisfied by a bug. The columns are now located by
+shape rather than by position, and a test pins the conversion.
+
