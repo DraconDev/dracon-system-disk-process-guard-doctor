@@ -1185,6 +1185,13 @@ pub(crate) fn reap_forgotten_orphan_trees(
             members_skipped: verified.skipped,
             escalated_to_sigkill: outcome.escalated_to_sigkill,
             disposition: ReapDisposition::Signalled,
+            // The profile is reclaimable ONLY when the tree is provably gone:
+            // a member that survived means the browser may still be running.
+            profile_dir: if outcome.members_left == 0 {
+                crate::forgotten::tree_user_data_dir(tree)
+            } else {
+                None
+            },
         });
     }
     out
