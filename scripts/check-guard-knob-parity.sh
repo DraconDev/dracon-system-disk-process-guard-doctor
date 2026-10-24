@@ -56,6 +56,13 @@ GUARD_KNOBS=(
   forgotten_orphan_tree_footprint_mb
 )
 
+# BOOLEAN knobs: the same four sources, compared as true/false. They need
+# their own pass because the numeric machinery above parses `fn default_x()
+# -> u64` and a `knob = <digits>;` assignment, and a boolean is neither.
+GUARD_BOOL_KNOBS=(
+  reclaim_reaped_browser_profiles
+)
+
 fail=0
 
 note() { printf '  %s\n' "$*"; }
@@ -110,7 +117,8 @@ toml_value() {
 
 # A knob's value in the NixOS operator module: the Nix attribute
 # `services.dracon.system.policy` assigns it, e.g.
-# `tmp_large_entry_bytes = 1073741824;`.
+# `tmp_large_entry_bytes = 1073741824;` or
+# `reclaim_reaped_browser_profiles = true;`.
 #
 # EVERY match is printed: a knob assigned in two places in the module would
 # make "the module's value" ambiguous, and the caller rejects that.
@@ -118,11 +126,27 @@ flake_values() {
   local knob="$1"
   [ -f "$PARENT_FLAKE" ] || return 1
   awk -v knob="$knob" '
-    $0 ~ "^[[:space:]]*" knob "[[:space:]]*=[[:space:]]*[0-9]+[[:space:]]*;" {
+    $0 ~ "^[[:space:]]*" knob "[[:space:]]*=[[:space:]]*([0-9]+|true|false)[[:space:]]*;" {
       line = $0; sub(/^[^=]*=[[:space:]]*/, "", line); gsub(/[[:space:];].*$/, "", line);
       print line
     }
   ' "$PARENT_FLAKE"
+}
+
+# A BOOLEAN knob's crate default: the `default_true` / `default_false`
+# function its serde attribute names.
+crate_bool_default() {
+  local knob="$1"
+  local fn
+  fn="$(awk -v knob="$knob" '
+    /#\[serde\(default = "default_[a-z_]+"\)\]/ { pending = $0 }
+    $0 ~ "pub\\(crate\\) " knob ": bool," { if (pending != "") { print pending; pending = "" } }
+  ' "$POLICY_RS" | grep -oE 'default_[a-z_]+' | head -n1)"
+  case "$fn" in
+    default_true) echo "true" ;;
+    default_false) echo "false" ;;
+    *) return 1 ;;
+  esac
 }
 
 echo "• guard knobs: crate defaults vs the NixOS module vs the example policy vs the live policy"
