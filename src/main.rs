@@ -7232,7 +7232,7 @@ async fn reclaim_reaped_browser_profiles(
             );
             continue;
         }
-        if let Err(e) = check_safe_to_delete_tmp_entry(dir, root, &guard.protected_paths) {
+        if let Err(e) = check_safe_to_delete_tmp_entry(dir, &root, &guard.protected_paths) {
             eprintln!(
                 "🛡️ keeping browser profile {}: {}",
                 dir.display(),
