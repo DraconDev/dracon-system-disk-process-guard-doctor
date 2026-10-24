@@ -1609,6 +1609,24 @@ fn read_proc_identity(root: &Path, pid: i32) -> std::io::Result<ProcessIdentity>
     Ok(ProcessIdentity { comm, starttime })
 }
 
+/// Whether a pid is a zombie — a process that has exited but whose parent
+/// has not reaped it yet.
+///
+/// ADDED 2026-10-24 (audit): a zombie still has a `/proc/<pid>` directory and
+/// a readable stat file, so every identity check treats it as ALIVE. But the
+/// kernel refuses `oom_score_adj` writes for it (it has no address space),
+/// so a restoration can never succeed against one.
+fn process_is_zombie(proc_root: &Path, pid: i32) -> bool {
+    let Ok(stat) = std::fs::read_to_string(proc_root.join(pid.to_string()).join("stat")) else {
+        return false;
+    };
+    // The comm field (2) can contain spaces and parens, so the state (3) is
+    // the first field after the LAST ')'.
+    stat.rsplit_once(')')
+        .and_then(|(_, after_comm)| after_comm.split_whitespace().next())
+        .is_some_and(|state| state == "Z")
+}
+
 /// `/proc/self` is a mount-availability marker: unlike a tracked PID,
 /// it exists whenever the proc filesystem is mounted and readable. A missing
 /// root or marker is therefore indeterminate, not evidence that the tracked
@@ -2186,6 +2204,24 @@ fn restore_pending_oom_descendants(
                 continue;
             }
             ProcessIdentityStatus::Match => {}
+        }
+        // FIXED 2026-10-24 (audit): a zombie has a /proc entry and a matching
+        // identity, so the checks above treat it as alive — but the kernel
+        // refuses oom_score_adj writes for a process with no address space,
+        // so the restoration can NEVER succeed against one. Retrying it
+        // forever kept the pending entry alive, and a live pending entry
+        // blocks the release of the biased parent (see `remove_oom_bias`).
+        //
+        // The debt is discharged by the child's death: there is no
+        // oom_score_adj left to restore, and its children cannot inherit
+        // anything from a process that no longer exists.
+        if process_is_zombie(proc_root, key.0) {
+            state.oom_pending_descendants.remove(&key);
+            eprintln!(
+                "🧹 oom-descendant-restore pid={} parent={} dropped — the process is defunct, so there is nothing to restore",
+                key.0, pending.root_pid
+            );
+            continue;
         }
         let current_identity = match read_proc_identity(proc_root, key.0) {
             Ok(identity) => identity,
