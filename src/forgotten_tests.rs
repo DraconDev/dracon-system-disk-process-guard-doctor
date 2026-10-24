@@ -906,3 +906,141 @@ fn a_recycled_member_is_left_out_of_the_kill_set_not_the_whole_tree() {
     );
     assert_eq!(verified.skipped, 1);
 }
+
+// ---------------------------------------------------------------------------
+// "Is anyone still driving it?" (ADDED 2026-10-24, audit)
+// ---------------------------------------------------------------------------
+//
+// The pass used to decide that with LIFETIME CPU: a tree that had burned
+// more than `max_cpu_seconds` was skipped — not reported, not reaped,
+// forever. That is the wrong measurement, and it fails in the worst
+// direction: the leak that mattered is a leak that DID real work, and the
+// more work it did the more certain the guard was to ignore it. On this
+// host it hid an orphaned 1.5 GB, 20-process headless browser that nothing
+// was driving.
+//
+// The precise question is "is anyone still driving it", and a browser
+// driven over the DevTools protocol holds an ESTABLISHED connection to its
+// debugging port. A browser nobody drives holds none.
+
+#[test]
+fn the_devtools_port_is_read_from_the_command_line() {
+    assert_eq!(
+        devtools_port("chrome --remote-debugging-port=9222 --headless=new"),
+        Some(9222)
+    );
+    // Port 0 means "the OS picks one" — the real port is in the profile.
+    assert_eq!(devtools_port("chrome --remote-debugging-port=0"), None);
+    assert_eq!(devtools_port("chrome --headless=new"), None);
+    assert_eq!(devtools_port("chrome --remote-debugging-port=abc"), None);
+    assert_eq!(devtools_port(""), None);
+}
+
+#[test]
+fn the_devtools_port_is_read_from_the_profile_when_the_flag_is_zero() {
+    let profile = std::env::temp_dir().join(format!("dracon-dtport-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&profile);
+    fs::create_dir_all(&profile).expect("profile dir");
+    fs::write(
+        profile.join("DevToolsActivePort"),
+        "59999\n/devtools/browser/abc-def\n",
+    )
+    .expect("DevToolsActivePort");
+    let args = format!(
+        "chrome --remote-debugging-port=0 --user-data-dir={}",
+        profile.display()
+    );
+    assert_eq!(devtools_port(&args), None);
+    assert_eq!(devtools_port_from_profile(&args), Some(59999));
+    let _ = fs::remove_dir_all(&profile);
+}
+
+#[test]
+fn an_established_connection_is_what_means_a_client_is_attached() {
+    let path = std::env::temp_dir().join(format!("dracon-tcp-{}", std::process::id()));
+    fs::write(
+        &path,
+        "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n\
+         0: 0100007F:1F90 0100007F:A2A5 01 00000000:00000000 00:00000000 00000000  1000        0 12345 1 0000 100 0 0 10 0\n\
+         1: 0100007F:C350 0100007F:2328 0A 00000000:00000000 00:00000000 00000000  1000        0 22222 1 0000 100 0 0 10 0\n",
+    )
+    .expect("tcp table");
+    // A2A5 == 41549, established.
+    assert!(tcp_table_has_established(&path, 41549));
+    // 2328 == 9000, in TIME_WAIT (0A), not established.
+    assert!(!tcp_table_has_established(&path, 9000));
+    // Nothing at all is listening on this one.
+    assert!(!tcp_table_has_established(&path, 1234));
+    let _ = fs::remove_file(&path);
+}
+
+/// THE REGRESSION: a heavy, orphaned, headless tree that did a lot of work
+/// in its life but that NOBODY is driving is a LEAK, and it must be a
+/// candidate. Before this change the lifetime-CPU gate hid it completely.
+#[test]
+fn a_busy_tree_that_nobody_is_driving_is_a_candidate() {
+    let fx = Fixture::new("undriven");
+    fx.fake_parent(1, "systemd");
+    // A profile whose DevToolsActivePort names a port nothing is using.
+    let profile = std::env::temp_dir().join(format!("dracon-undriven-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&profile);
+    fs::create_dir_all(&profile).expect("profile dir");
+    fs::write(profile.join("DevToolsActivePort"), "59997\n").expect("port file");
+    let user_data = format!("--user-data-dir={}", profile.display());
+    fx.proc(
+        7000,
+        1,
+        "chrome",
+        &[
+            "/usr/bin/chrome",
+            "--headless=new",
+            &user_data,
+            "--remote-debugging-port=0",
+        ],
+        'S',
+        0,
+        // 900 s of lifetime CPU: far past the policy's 30 s limit.
+        900,
+        3600,
+        4096,
+    );
+    let scan = fx.scan_with_floors(&policy(), 2048, 64);
+    assert_eq!(
+        scan.candidates.len(),
+        1,
+        "a heavy orphan nobody is driving must be a candidate: {:?}",
+        scan.candidates
+    );
+    assert_eq!(scan.candidates[0].root_pid, 7000);
+    assert!(scan.protected.is_empty(), "{:?}", scan.protected);
+    let _ = fs::remove_dir_all(&profile);
+}
+
+/// A tree with no debugging port cannot be driven over one, so the
+/// conservative CPU proxy still decides — but the tree is REPORTED, not
+/// skipped in silence.
+#[test]
+fn a_busy_tree_with_no_debug_port_is_left_alone_but_reported() {
+    let fx = Fixture::new("busy-noport");
+    fx.fake_parent(1, "systemd");
+    fx.proc(
+        7100,
+        1,
+        "chrome",
+        &["/usr/bin/chrome", "--headless=new"],
+        'S',
+        0,
+        900,
+        3600,
+        4096,
+    );
+    let scan = fx.scan_with_floors(&policy(), 2048, 64);
+    assert!(scan.candidates.is_empty(), "{:?}", scan.candidates);
+    assert_eq!(scan.protected.len(), 1, "{:?}", scan.protected);
+    assert!(
+        scan.protected[0].reason.contains("busy"),
+        "{}",
+        scan.protected[0].reason
+    );
+    let _ = fs::remove_dir_all(&fx.root);
+}
