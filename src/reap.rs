@@ -1152,6 +1152,7 @@ pub(crate) fn reap_forgotten_orphan_trees(
                 members_skipped: 0,
                 escalated_to_sigkill: false,
                 disposition: ReapDisposition::NotVerified,
+                profile_dir: None,
             });
             continue;
         };
