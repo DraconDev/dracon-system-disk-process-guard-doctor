@@ -7283,7 +7283,8 @@ fn reclaim_root_for(dir: &Path, root_paths: &[PathBuf]) -> Option<PathBuf> {
 /// The open-file scan cannot see this: a browser that has just started on a
 /// profile path may not have a file open under it yet, and it is exactly
 /// that moment when deleting the path would break it.
-async fn path_named_by_live_cmdline(proc_root: &Path, path: &Path) -> bool {    let needle = path.to_string_lossy().to_string();
+pub(crate) async fn path_named_by_live_cmdline(proc_root: &Path, path: &Path) -> bool {
+    let needle = path.to_string_lossy().to_string();
     if needle.is_empty() {
         return false;
     }
