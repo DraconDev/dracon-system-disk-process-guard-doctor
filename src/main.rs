@@ -2358,7 +2358,27 @@ fn sweep_stranded_oom_descendants(
             ProcessIdentityStatus::Mismatch | ProcessIdentityStatus::Unavailable => {}
         }
     }
-    let biased_roots: HashSet<i32> = root_values.keys().copied().collect();
+    // FIXED 2026-10-24 (audit O1): a root that has been RELEASED still owns
+    // restoration debts. `remove_oom_bias` no longer refuses to release a
+    // root while a child restoration is pending — the debts are
+    // self-contained in the pending map, which carries its own root pid and
+    // original value — but a child of that root INHERITED the bias target
+    // when it was forked, and the sweep could no longer attribute it to the
+    // root (the root was no longer a biased root), so it stayed pinned at
+    // 250 for the rest of its life.
+    //
+    // The pending entries carry the root's original value, so a released
+    // root's original value is still known: keep sweeping against it for as
+    // long as it owes a restoration.
+    let mut root_original_adj: HashMap<i32, i32> = root_values
+        .iter()
+        .map(|(pid, (adj, _))| (*pid, *adj))
+        .collect();
+    for pending in state.oom_pending_descendants.values() {
+        root_original_adj
+            .entry(pending.root_pid)
+            .or_insert(pending.original_adj);
+    }
     let parent_by_pid: HashMap<i32, i32> = samples
         .iter()
         .map(|sample| (sample.pid, sample.ppid))
@@ -2383,7 +2403,7 @@ fn sweep_stranded_oom_descendants(
         {
             continue;
         }
-        let Some((original_adj, _)) = root_values.get(&root_pid) else {
+        let Some(original_adj) = root_original_adj.get(&root_pid) else {
             continue;
         };
         state.oom_pending_descendants.insert(
