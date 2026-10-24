@@ -5309,3 +5309,84 @@ fn sweep_stranded_oom_descendants_drops_a_defunct_child() {
 
     let _ = fs::remove_dir_all(&tmp);
 }
+
+/// ADDED 2026-10-24 (audit O1): a RELEASED root's children must still be
+/// restored.
+///
+/// The release path restores a root's live `oom_score_adj` and then drops the
+/// root's bias record. A child forked while the root was biased INHERITED the
+/// bias target, and the sweep could no longer attribute it to the root (the
+/// root was no longer a biased root), so it stayed pinned at 250 for the rest
+/// of its life. The pending entries carry the root's original value, so the
+/// root stays in scope for as long as it owes a restoration.
+#[cfg(unix)]
+#[test]
+fn sweep_stranded_oom_descendants_restores_a_released_roots_children() {
+    let tmp = std::env::temp_dir().join(format!(
+        "dracon_system_oom_released_root_test_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&tmp).expect("create temp dir");
+    write_process_fixture(&tmp, 401, "released-root", 61, Some(250), None);
+    // A child whose restoration is still owed.
+    write_process_fixture(&tmp, 402, "pending-child", 62, Some(250), None);
+    // A child forked after the release: it inherited the bias target.
+    write_process_fixture(&tmp, 403, "late-child", 63, Some(250), None);
+
+    let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
+        swap_mb: 0,
+        pid,
+        ppid,
+        cpu_percent: 0.0,
+        rss_mb: 1,
+        nice: 0,
+        command: command.to_string(),
+        args: String::new(),
+        starttime,
+    };
+    let samples = vec![
+        sample(401, 1, 61, "released-root"),
+        sample(402, 401, 62, "pending-child"),
+        sample(403, 401, 63, "late-child"),
+    ];
+
+    let mut state = GuardRuntimeState::default();
+    // The root is NOT a biased root any more: it was released. Its pending
+    // child is what still owes a restoration.
+    state.oom_pending_descendants.insert(
+        (402, 62),
+        OomPendingDescendant {
+            root_pid: 401,
+            original_adj: 200,
+            identity: ProcessIdentity {
+                comm: "pending-child".to_string(),
+                starttime: 62,
+            },
+            attempts: 0,
+        },
+    );
+
+    sweep_stranded_oom_descendants(
+        &tmp,
+        &samples,
+        &mut state,
+        &std::collections::HashSet::new(),
+    );
+
+    assert_eq!(
+        fs::read_to_string(tmp.join("403/oom_score_adj")).unwrap(),
+        "200\n",
+        "a child of a released root must still be restored, not left pinned at the bias target"
+    );
+    assert_eq!(
+        fs::read_to_string(tmp.join("402/oom_score_adj")).unwrap(),
+        "200\n",
+        "the pending child must be restored too"
+    );
+
+    let _ = fs::remove_dir_all(&tmp);
+}
