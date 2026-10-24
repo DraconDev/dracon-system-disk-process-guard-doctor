@@ -7202,7 +7202,12 @@ async fn remove_tmp_entry(
 ///   survived is not proof that its profile is abandoned;
 /// * the profile lives under one of the guard's VALIDATED TMP ROOTS. A
 ///   profile outside them — the operator's real `~/.config/google-chrome`,
-///   say — is never touched, however the tree that named it ended;
+///   say — is never touched, however the tree that named it ended. The
+///   allowlist behind "validated" is not a configuration: `SAFE_TMP_ROOTS`
+///   is hard-coded to `/tmp`, and `check_safe_tmp_root` refuses any
+///   configured root that does not resolve under it. So the operator's
+///   profile directory is not merely "usually" out of reach — it is
+///   unreachable by construction, whatever `tmp_search_paths` says;
 /// * no live process names it in its command line: a browser that started
 ///   on the same path after the old one died;
 /// * nothing holds a file open under it, and no live unix socket lives in
