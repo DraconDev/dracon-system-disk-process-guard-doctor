@@ -5059,3 +5059,253 @@ async fn a_live_process_that_names_the_profile_keeps_it() {
     );
     let _ = fs::remove_dir_all(&root);
 }
+
+// ---------------------------------------------------------------------------
+// ADDED 2026-10-24 (audit): tmp sweep — the size-aware floor, the held-back
+// report, and the OOM ledger's stale root record.
+// ---------------------------------------------------------------------------
+
+/// ADDED 2026-10-24 (audit F1): the size-aware floor may only make the AGE
+/// floor SHORTER — it must never make the safety gates weaker.
+///
+/// Before the fix, a large entry was removed by the size-aware floor BEFORE
+/// the open-file, live-socket and protected-path gates ran, and
+/// `remove_tmp_entry` performs no checks of its own. So a large entry could
+/// be deleted while a live process held it open, while it carried a bound
+/// unix socket, or while it sat under a protected path.
+#[tokio::test]
+async fn clean_tmp_paths_large_floor_respects_the_liveness_gates() {
+    let root = unique_test_tmp_root("tmp_large_gates");
+    fs::create_dir_all(&root).expect("create tmp root");
+
+    // Large (>= the 1 KiB threshold) and three hours old: too young for the
+    // 24-hour general floor, old enough for the 2-hour size-aware one. The
+    // size-aware floor WANTS this entry.
+    let held = root.join("held-large");
+    fs::create_dir_all(&held).expect("create held entry");
+    write_file_with_mtime(&held.join("payload.bin"), &vec![0u8; 4096], 3 * 3_600);
+    set_mtime_old(&held, 3 * 3_600);
+    // Hold it open so the open-file scan sees it.
+    let handle = fs::File::open(held.join("payload.bin")).expect("open held payload");
+
+    // Same age and size, but under a protected path.
+    let protected = root.join("protected-large");
+    fs::create_dir_all(&protected).expect("create protected entry");
+    write_file_with_mtime(&protected.join("payload.bin"), &vec![0u8; 4096], 3 * 3_600);
+    set_mtime_old(&protected, 3 * 3_600);
+
+    let roots = vec![root.display().to_string()];
+    let protected_paths = vec![protected.display().to_string()];
+    // 24h general floor, 1 KiB threshold, 2h size-aware floor, enabled.
+    let outcome = clean_tmp_paths_with_floor(true, &roots, 24, 1024, 2, true, &protected_paths)
+        .await
+        .expect("cleanup");
+
+    assert!(
+        held.exists(),
+        "a large entry held open by a live process must survive the size-aware floor"
+    );
+    assert!(
+        protected.exists(),
+        "a large entry under a protected path must survive the size-aware floor"
+    );
+    assert_eq!(
+        outcome.reclaimed, 0,
+        "neither entry may be reclaimed: the gates decide, not the size"
+    );
+
+    drop(handle);
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ADDED 2026-10-24 (audit F2): the held-back report must count ONLY what the
+/// age floor is actually holding back.
+///
+/// A protected entry (or one a live process holds) is not reclaimed by
+/// lowering the floor, so counting it told the operator "lower
+/// tmp_min_age_hours to free 30 GiB" when lowering it frees nothing — and
+/// the hours-until-full figure is computed from the inflated number.
+#[tokio::test]
+async fn clean_tmp_paths_age_blocked_accounting_ignores_protected_entries() {
+    let root = unique_test_tmp_root("tmp_age_blocked_gates");
+    fs::create_dir_all(&root).expect("create tmp root");
+
+    // Fresh (60 s) — held back by the age floor, and reclaimable by lowering
+    // it. This one COUNTS.
+    let unheld = root.join("unheld-young");
+    fs::create_dir_all(&unheld).expect("create unheld entry");
+    write_file_with_mtime(&unheld.join("payload.bin"), b"young", 60);
+    set_mtime_old(&unheld, 60);
+
+    // Fresh, and protected: lowering the floor would NOT free it.
+    let protected = root.join("protected-young");
+    fs::create_dir_all(&protected).expect("create protected entry");
+    write_file_with_mtime(&protected.join("payload.bin"), b"young", 60);
+    set_mtime_old(&protected, 60);
+
+    let roots = vec![root.display().to_string()];
+    let protected_paths = vec![protected.display().to_string()];
+    let outcome = clean_tmp_paths_with_floor(true, &roots, 24, 1024, 2, true, &protected_paths)
+        .await
+        .expect("cleanup");
+
+    assert_eq!(
+        outcome.age_blocked_entries, 1,
+        "only the entry the age floor is really holding back may be counted"
+    );
+    assert!(
+        outcome.age_blocked_bytes > 0,
+        "the held-back bytes must be reported"
+    );
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ADDED 2026-10-24 (audit F3): the held-back report must not depend on the
+/// size-aware floor being consulted.
+///
+/// It used to: the accounting sat inside `if large_floor_active`, so below
+/// the proactive threshold — and with the size-aware floor disabled — the
+/// guard said NOTHING about the scratch it was holding back.
+#[tokio::test]
+async fn clean_tmp_paths_reports_held_back_scratch_without_the_size_aware_floor() {
+    let root = unique_test_tmp_root("tmp_scratch_no_large_floor");
+    fs::create_dir_all(&root).expect("create tmp root");
+    let young = root.join("young-entry");
+    fs::create_dir_all(&young).expect("create young entry");
+    write_file_with_mtime(&young.join("payload.bin"), &vec![0u8; 2048], 60);
+    set_mtime_old(&young, 60);
+
+    let roots = vec![root.display().to_string()];
+    // The size-aware floor is OFF (the last argument is the "use it" flag).
+    let outcome = clean_tmp_paths_with_floor(true, &roots, 24, 1024, 2, false, &[])
+        .await
+        .expect("cleanup");
+    assert!(young.exists(), "a young entry must be kept");
+    assert_eq!(
+        outcome.age_blocked_entries, 1,
+        "the held-back scratch must be reported even when the size-aware floor is off"
+    );
+    assert!(
+        outcome.age_blocked_bytes > 0,
+        "the held-back bytes must be reported even when the size-aware floor is off"
+    );
+    assert_eq!(
+        outcome.large_blocked_entries, 0,
+        "nothing is held by the size-aware floor when it is off"
+    );
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ADDED 2026-10-24 (audit F3): the size-aware floor's share of the held-back
+/// scratch is counted separately, because the two floors are unlocked by
+/// DIFFERENT knobs — one total cannot give one piece of advice.
+#[tokio::test]
+async fn clean_tmp_paths_separates_the_size_aware_share_of_the_held_back_scratch() {
+    let root = unique_test_tmp_root("tmp_scratch_split");
+    fs::create_dir_all(&root).expect("create tmp root");
+
+    // Large (>= 1 KiB) and one hour old: fresh against the 24h general
+    // floor AND against the 2h size-aware floor, so the size-aware floor is
+    // what holds it.
+    let big = root.join("bulk-clone");
+    fs::create_dir_all(&big).expect("create bulk entry");
+    write_file_with_mtime(&big.join("payload.bin"), &vec![0u8; 4096], 3_600);
+    set_mtime_old(&big, 3_600);
+
+    // Small and one hour old: the general floor holds it.
+    let small = root.join("small-note");
+    write_file_with_mtime(&small, b"note", 3_600);
+    set_mtime_old(&small, 3_600);
+
+    let roots = vec![root.display().to_string()];
+    let outcome = clean_tmp_paths_with_floor(true, &roots, 24, 1024, 2, true, &[])
+        .await
+        .expect("cleanup");
+
+    assert_eq!(
+        outcome.age_blocked_entries, 2,
+        "both entries are held by an age floor"
+    );
+    assert_eq!(
+        outcome.large_blocked_entries, 1,
+        "only the large entry is held by the size-aware floor"
+    );
+    assert!(
+        outcome.large_blocked_bytes > 0,
+        "the size-aware share must carry its own byte count"
+    );
+    assert!(
+        outcome.age_blocked_bytes > outcome.large_blocked_bytes,
+        "the total must cover both floors"
+    );
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// ADDED 2026-10-24 (audit O2): a defunct child cannot be restored, so the
+/// pending obligation must be dropped.
+///
+/// A zombie still has a `/proc/<pid>` directory and a matching identity, so
+/// every identity check treats it as ALIVE — but the kernel refuses
+/// `oom_score_adj` writes for a process with no address space. The pending
+/// entry was retried forever, and a live pending entry blocked the release
+/// of the biased parent.
+#[cfg(unix)]
+#[test]
+fn sweep_stranded_oom_descendants_drops_a_defunct_child() {
+    let tmp = std::env::temp_dir().join(format!(
+        "dracon_system_oom_zombie_test_{}_{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&tmp).expect("create temp dir");
+    write_process_fixture(&tmp, 301, "oom-parent", 71, Some(250), None);
+    // A child that has exited but not been reaped: state Z.
+    write_process_fixture(&tmp, 302, "defunct-child", 72, Some(250), None);
+    fs::write(
+        tmp.join("302/stat"),
+        "302 (defunct-child) Z 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 72\n",
+    )
+    .expect("write zombie stat fixture");
+
+    let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
+        swap_mb: 0,
+        pid,
+        ppid,
+        cpu_percent: 0.0,
+        rss_mb: 1,
+        nice: 0,
+        command: command.to_string(),
+        args: String::new(),
+        starttime,
+    };
+    let samples = vec![
+        sample(301, 1, 71, "oom-parent"),
+        sample(302, 301, 72, "defunct-child"),
+    ];
+    let identity = ProcessIdentity {
+        comm: "oom-parent".to_string(),
+        starttime: 71,
+    };
+    let mut state = GuardRuntimeState::default();
+    state.oom_biased_pids.insert(301, (200, identity));
+
+    sweep_stranded_oom_descendants(
+        &tmp,
+        &samples,
+        &mut state,
+        &std::collections::HashSet::new(),
+    );
+
+    assert!(
+        state.oom_pending_descendants.is_empty(),
+        "a defunct child leaves nothing to restore, so no obligation may be kept"
+    );
+
+    let _ = fs::remove_dir_all(&tmp);
+}
