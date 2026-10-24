@@ -364,7 +364,7 @@ if [ -n "${mountinfo:-}" ]; then
     policy_file="${policy_file:-${HOME:-}/.dracon/utilities/system/dracon-system.toml}"
     storage_rc=0
     for pair in \
-        "quarantine_dir:$(storage_root_for_key quarantine_dir "$policy_file")" \
+        "stash_dir:$(storage_root_for_key stash_dir "$policy_file")" \
         "relocate_cold_root:$(storage_root_for_key relocate_cold_root "$policy_file")"
     do
         check_storage_root_writable "${pair%%:*}" "${pair#*:}" "$mountinfo" ||
