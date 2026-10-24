@@ -2615,14 +2615,37 @@ fn oom_root_has_pending_descendants(state: &GuardRuntimeState, pid: i32) -> bool
         .any(|pending| pending.root_pid == pid)
 }
 
+/// Release a tracked OOM bias.
+///
+/// FIXED 2026-10-24 (audit): this used to REFUSE to drop the root's record
+/// while any pending descendant still referenced it. The refusal was meant to
+/// keep the descendants' restoration debt anchored, but it had a far worse
+/// effect: the caller restores the LIVE value FIRST and only then asks for
+/// the record to be dropped, so a refusal left the ledger saying "biased"
+/// while the process was already back at its original value.
+///
+/// A lying ledger is not a conservative ledger. `apply_oom_bias` skips any
+/// pid it believes is already biased, so the stale record silently disabled
+/// OOM steering for a live top-RSS process under critical pressure — and the
+/// process was never re-biased, because the guard trusted its own
+/// bookkeeping. Two live processes carried that stale record on this host
+/// (2026-10-24): the ledger said "biased", the live `oom_score_adj` was back
+/// at 200, and every pass skipped them.
+///
+/// The descendants' obligations do not need this anchor: every pending entry
+/// carries its own root pid and original value, and the sweep restores them
+/// from the pending map alone. So the root's own bias record is always
+/// dropped here, and the descendants' bookkeeping is kept exactly as long as
+/// the debt lives.
 fn remove_oom_bias(state: &mut GuardRuntimeState, pid: i32) {
-    if oom_root_has_pending_descendants(state, pid) {
-        return;
-    }
     state.oom_biased_pids.remove(&pid);
-    state.oom_known_descendants.remove(&pid);
     state.oom_cooled_since.remove(&pid);
     state.oom_identity_unavailable_attempts.remove(&pid);
+    // The known-descendant set is what stops the sweep from re-adding the
+    // same child as a fresh pending entry. Keep it while the debt is live.
+    if !oom_root_has_pending_descendants(state, pid) {
+        state.oom_known_descendants.remove(&pid);
+    }
 }
 
 fn remove_cpu_cap(state: &mut GuardRuntimeState, pid: i32) {
