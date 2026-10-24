@@ -1065,3 +1065,97 @@ fn a_busy_tree_with_no_debug_port_is_left_alone_but_reported() {
     );
     let _ = fs::remove_dir_all(&fx.root);
 }
+
+// ---------------------------------------------------------------------------
+// The profile a leaked browser leaves behind (ADDED 2026-10-24)
+// ---------------------------------------------------------------------------
+
+/// A leaked browser is TWO halves: the processes and the profile directory
+/// they owned. The profile is read from the ROOT's command line, with its
+/// ORIGINAL case — a directory whose name contains an uppercase letter does
+/// not exist at the lowercased path.
+#[test]
+fn the_profile_directory_is_read_from_the_root_command_line() {
+    let fx = Fixture::new("profile");
+    fx.fake_parent(1, "systemd");
+    fx.proc(
+        7200,
+        1,
+        "chrome",
+        &[
+            "/usr/bin/chrome",
+            "--headless=new",
+            "--user-data-dir=/tmp/CW-Real-Profile-1234",
+        ],
+        'S',
+        0,
+        0,
+        3600,
+        4096,
+    );
+    let scan = fx.scan_with_floors(&policy(), 2048, 64);
+    assert_eq!(scan.candidates.len(), 1, "{:?}", scan.candidates);
+    let tree = &scan.candidates[0];
+    assert_eq!(
+        tree_user_data_dir(tree),
+        Some(PathBuf::from("/tmp/CW-Real-Profile-1234"))
+    );
+    // A tree that named no profile yields none.
+    let fx2 = Fixture::new("noprofile");
+    fx2.fake_parent(1, "systemd");
+    fx2.proc(
+        7201,
+        1,
+        "chrome",
+        &["/usr/bin/chrome", "--headless=new"],
+        'S',
+        0,
+        0,
+        3600,
+        4096,
+    );
+    let scan2 = fx2.scan_with_floors(&policy(), 2048, 64);
+    assert_eq!(
+        tree_user_data_dir(&scan2.candidates[0]),
+        None,
+        "a tree with no --user-data-dir yields no profile"
+    );
+    let _ = fs::remove_dir_all(&fx.root);
+    let _ = fs::remove_dir_all(&fx2.root);
+}
+
+/// A tree yields its profile ONLY when it is provably gone. One surviving
+/// member is enough to make the reclaim wrong.
+#[test]
+fn a_tree_that_partly_survived_yields_no_profile() {
+    let fx = Fixture::new("survivor");
+    fx.fake_parent(1, "systemd");
+    fx.proc(
+        7300,
+        1,
+        "chrome",
+        &[
+            "/usr/bin/chrome",
+            "--headless=new",
+            "--user-data-dir=/tmp/profile-survivor",
+        ],
+        'S',
+        0,
+        0,
+        3600,
+        4096,
+    );
+    let scan = fx.scan_with_floors(&policy(), 2048, 64);
+    let tree = &scan.candidates[0];
+    assert_eq!(
+        tree_yields_profile(tree, 0),
+        Some(PathBuf::from("/tmp/profile-survivor")),
+        "a fully ended tree yields its profile"
+    );
+    assert_eq!(
+        tree_yields_profile(tree, 1),
+        None,
+        "a tree with a surviving member yields nothing"
+    );
+    let _ = fs::remove_dir_all(&fx.root);
+}
