@@ -4096,6 +4096,32 @@ async fn clean_package_caches_at(
     Ok((reclaimed, cleaned))
 }
 
+/// The disk cost of the top-level trash entries the credential guard keeps.
+///
+/// ADDED 2026-10-24. The guard reported "keeping 55 flagged entries" and
+/// nothing else — the entry COUNT looks like a rounding error, and it was
+/// not: on this host those 55 entries held **11 GiB**, and they grew every
+/// time the CI trashed a repository whose test files are named
+/// `…-token-…test.ts` (the operator's own manuscript was in there too,
+/// kept because a chapter is called "borrowed credentials").
+///
+/// A guard that keeps something must say what keeping it COSTS. This
+/// measures it: the total, and the biggest few by name.
+pub(crate) async fn kept_trash_entry_sizes(
+    trash_files: &Path,
+    names: &std::collections::HashSet<String>,
+) -> (u64, Vec<(String, u64)>) {
+    let mut total = 0u64;
+    let mut sizes: Vec<(String, u64)> = Vec::with_capacity(names.len());
+    for name in names {
+        let bytes = get_dir_size(&trash_files.join(name)).await.unwrap_or(0);
+        total = total.saturating_add(bytes);
+        sizes.push((name.clone(), bytes));
+    }
+    sizes.sort_by(|a, b| b.1.cmp(&a.1));
+    (total, sizes)
+}
+
 /// Empty trash. When `credential_guard` is set, the trash is first
 /// scanned for credential-signal filenames (see
 /// looks_credential_like and docs/design/disk-full-credentials-
@@ -4236,14 +4262,8 @@ async fn empty_trash_at(
                         // looks like a rounding error; the size does not.
                         //
                         // Reporting only: no behaviour changes here.
-                        let mut kept_bytes = 0u64;
-                        let mut kept_sizes: Vec<(String, u64)> = Vec::with_capacity(skip_names.len());
-                        for name in &skip_names {
-                            let entry_bytes = get_dir_size(&trash_files.join(name)).await.unwrap_or(0);
-                            kept_bytes = kept_bytes.saturating_add(entry_bytes);
-                            kept_sizes.push((name.clone(), entry_bytes));
-                        }
-                        kept_sizes.sort_by(|a, b| b.1.cmp(&a.1));
+                        let (kept_bytes, kept_sizes) =
+                            kept_trash_entry_sizes(&trash_files, &skip_names).await;
                         let biggest: Vec<String> = kept_sizes
                             .iter()
                             .take(3)
