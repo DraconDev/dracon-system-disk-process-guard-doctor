@@ -771,3 +771,41 @@ veto report was written to do.
 
 This is the whole shape of the audit, once more: the same measurement
 error, in a third place, and each occurrence hid a different thing.
+
+### 9.9 The invariant, pinned
+
+Five individual fixes are five chances to forget the point. So the point
+itself is now a test:
+
+> **No heavy browser tree may be silently dropped.**
+
+Every heavy browser tree the scan looks at must end up in EXACTLY ONE of
+the three lists — candidate, vetoed, protected — and the test says so for
+a fixture containing all the shapes at once: a heavy headless orphan
+nobody is driving (candidate), one with a client attached (protected), a
+heavy busy desktop session (vetoed), a light tree (below the floor, so
+not news) and a young tree (under the age floor, so not yet). The light
+and young trees must appear in NONE of the lists; the heavy ones must
+appear in exactly one each.
+
+The test fails if the lifetime-CPU gate comes back into the veto path, if
+the exempt list starts carving up a tree again, or if any new gate is
+added that drops a heavy tree on the floor. It is the standing answer to
+"what is this pass for", written where a future change cannot quietly
+contradict it.
+
+### 9.10 One more mismatch: the two lists weighed "heavy" differently
+
+The veto report gated the tree's AGGREGATE footprint with
+`forgotten_orphan_footprint_mb` — a knob documented, everywhere else, as
+**the ROOT's own weight floor**. A knob used for something its name does
+not say, and the consequence was that the candidate list and the veto
+list answered "what is heavy?" differently: a 500 MiB desktop tree was
+invisible while a 500 MiB test tree was a candidate.
+
+That is not a defensible difference. "If this had been mine to reclaim,
+would I have reclaimed it?" has to have the same answer whichever answer
+it gives — so the veto list now uses the SAME compound rule as the
+candidate list: the tree's aggregate against the tree floor, OR the
+root's own weight against the per-process floor. Reporting only; nothing
+is ended any differently.
