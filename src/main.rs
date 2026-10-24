@@ -7153,9 +7153,26 @@ async fn clean_tmp_paths_with_proc(
                             // shorter; it must never make the safety gates
                             // weaker. `remove_tmp_entry` has no gates of its
                             // own, so the order here was the whole defence.
-                            if !tmp_entry_is_protected(&path, root, protected_paths, &open_paths, live_sockets)
-                            {
-                                remove_tmp_entry(&path, &meta, size, apply, &mut out).await;
+                            //
+                            // This path IS the one that would have deleted
+                            // the entry, so it says why it did not.
+                            match tmp_entry_block(
+                                &path,
+                                root,
+                                protected_paths,
+                                &open_paths,
+                                live_sockets,
+                            ) {
+                                Some(block) => {
+                                    eprintln!(
+                                        "🛡️ keeping tmp entry {}: {}",
+                                        path.display(),
+                                        block.reason()
+                                    );
+                                }
+                                None => {
+                                    remove_tmp_entry(&path, &meta, size, apply, &mut out).await;
+                                }
                             }
                             continue;
                         }
@@ -7172,7 +7189,13 @@ async fn clean_tmp_paths_with_proc(
                     // NOT be reclaimed by lowering the floor, so counting it
                     // here told the operator "lower tmp_min_age_hours to free
                     // 30 GiB" when lowering it frees nothing.
-                    if !tmp_entry_is_protected(&path, root, protected_paths, &open_paths, live_sockets)
+                    //
+                    // The gate is asked QUIETLY here: a fresh entry that is
+                    // protected is not news — it is simply not a candidate,
+                    // and the same entry would print the same line every
+                    // pass otherwise.
+                    if tmp_entry_block(&path, root, protected_paths, &open_paths, live_sockets)
+                        .is_none()
                     {
                         out.age_blocked_bytes += size;
                         out.age_blocked_entries += 1;
