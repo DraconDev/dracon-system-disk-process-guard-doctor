@@ -279,6 +279,19 @@ pub(crate) fn tree_user_data_dir(tree: &ForgottenTree) -> Option<PathBuf> {
     extract_user_data_dir_raw(&tree.root_args).map(PathBuf::from)
 }
 
+/// The profile directory a REAPED tree may leave behind for reclamation.
+///
+/// ADDED 2026-10-24. A tree yields its profile only when it is provably
+/// gone: `members_left == 0`. A tree that partly survived is not proof
+/// that its profile is abandoned — one live member is enough to make the
+/// reclaim wrong, and the profile is worth far less than the tree.
+pub(crate) fn tree_yields_profile(tree: &ForgottenTree, members_left: usize) -> Option<PathBuf> {
+    if members_left > 0 {
+        return None;
+    }
+    tree_user_data_dir(tree)
+}
+
 /// The `--user-data-dir` value from a command line, if it has one.
 fn extract_user_data_dir(lower_args: &str) -> Option<String> {
     let idx = lower_args.find("--user-data-dir=")?;
