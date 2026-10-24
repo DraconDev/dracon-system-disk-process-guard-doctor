@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > is the canonical record.
 
 ## [Unreleased]
+
+### Fixed
+
+- **A refused CPU-cap is retried on the next pass again.** The 0.112.47 fix remembered a refused CPU cap and retried it only after a ten-minute cooldown, to stop the per-pass retry of a refusal no retry could fix ("scope contains exempt process chrome"). But the cap layer's own refusals ask for the opposite: "incomplete CPU lease recovered; retry next pass" — a lease the guard could not tear down cleanly is REPAIRED by the next attempt, not by waiting — so the cooldown delayed the CPU cap on a memory-critical host by ten minutes, for the one refusal that a retry actually fixes. The attempt runs every pass again, as it did before 0.112.47; what stays fixed is the LOG, which is quiet while the reason is unchanged and says so when the reason changes, and the refusal is still named in the report so the operator can see that the guard TRIED and was refused.
+
+### Tests
+
+- A new regression test pins the log rule: the first refusal is news, the same refusal repeated is not, and a refusal whose reason changed is news again.
+
 ## [0.112.47] - 2026-10-24
 
 ### Fixed

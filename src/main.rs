@@ -746,13 +746,21 @@ pub(crate) struct CapRefusal {
     pub(crate) at: Instant,
 }
 
-/// How long a refused CPU-cap attempt is remembered before it is tried again.
+/// Whether a refusal is worth logging again.
 ///
-/// ADDED 2026-10-24 (audit): a refusal caused by an exempt process inside
-/// the scope cannot be resolved by retrying — it clears when that process
-/// exits. Ten minutes is long enough to stop the per-pass retry storm and
-/// short enough that the cap is applied soon after the scope is clean.
-const CAP_REFUSAL_COOLDOWN_SECS: u64 = 600;
+/// ADDED 2026-10-24 (audit): a refusal that repeats with the SAME reason is
+/// the same news — the old code printed it on every pass, forever, once per
+/// offending process. A refusal whose reason CHANGED is news (the scope
+/// stopped holding an exempt process, or a different obstruction appeared),
+/// so it is logged.
+///
+/// The attempt itself is NOT throttled by this: the cap layer asks for a
+/// retry on the next pass ("incomplete CPU lease recovered; retry next
+/// pass"), and a lease it could not tear down cleanly is repaired by the
+/// next attempt rather than by waiting.
+pub(crate) fn cap_refusal_is_new(previous: Option<&CapRefusal>, reason: &str) -> bool {
+    previous.is_none_or(|r| r.reason != reason)
+}
 
 /// Cap on remembered descendant incarnations per biased root. ADDED
 /// 2026-10-01 (audit): the set grew by one entry per descendant ever seen and
@@ -5674,17 +5682,20 @@ async fn check_memory_pressure(
             if state.capped_pids.contains_key(&p.pid) {
                 continue;
             }
-            // ADDED 2026-10-24 (audit): a refusal is remembered. Retrying it
-            // on every pass produced one identical log line per offending
-            // process per pass, forever, for a condition (an exempt process
-            // inside the scope) that no retry can fix.
-            if state
-                .cap_refusals
-                .get(&p.pid)
-                .is_some_and(|r| r.at.elapsed().as_secs() < CAP_REFUSAL_COOLDOWN_SECS)
-            {
-                continue;
-            }
+            // ADDED 2026-10-24 (audit): the ATTEMPT still runs every pass.
+            // The cap layer's own refusals ask for exactly that — "incomplete
+            // CPU lease recovered; retry next pass" — and a lease the guard
+            // cannot take back cleanly is repaired by the next attempt, not
+            // by waiting. What the old code got wrong was not the retry, it
+            // was the LOG: it printed the identical refusal on every pass,
+            // forever, for a condition (an exempt process inside the scope)
+            // that no retry can fix.
+            //
+            // So the refusal is remembered to keep the LOG quiet while the
+            // reason is unchanged, and the reason is still named in the
+            // report: the operator could otherwise see the guard doing
+            // nothing about a process it was trying to throttle and had no
+            // way to know the attempt had even been made.
             let identity_ok = process_sample_is_current(p);
             if !identity_ok {
                 continue;
@@ -5706,19 +5717,11 @@ async fn check_memory_pressure(
                     ));
                 }
                 Err(e) => {
-                    // The refusal is named in the report, not only in the log:
-                    // the operator could otherwise see the guard doing
-                    // nothing about a process it was trying to throttle and
-                    // had no way to know the attempt had even been made.
                     limited.push(format!("cpu-cap refused {}: {}", p.command, e));
                     // Log the refusal when it is NEW or when it CHANGED. A
                     // refusal that repeats with the same reason is the same
                     // news, and the report line carries it from then on.
-                    let changed = state
-                        .cap_refusals
-                        .get(&p.pid)
-                        .is_none_or(|r| r.reason != e);
-                    if changed {
+                    if cap_refusal_is_new(state.cap_refusals.get(&p.pid), &e) {
                         eprintln!(
                             "⚠️ cpu-cap failed for pid={} cmd={}: {}",
                             p.pid, p.command, e
