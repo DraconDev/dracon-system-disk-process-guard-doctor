@@ -6896,6 +6896,45 @@ fn age_of(hours: u64) -> Duration {
     Duration::from_secs(hours.saturating_mul(3_600))
 }
 
+/// Whether a tmp entry is held by something live or protected, and must
+/// therefore not be deleted.
+///
+/// FIXED 2026-10-24 (audit): the size-aware floor used to remove a large
+/// entry WITHOUT consulting any of these gates, because it ran before them.
+/// `remove_tmp_entry` performs no checks of its own, so the order of the
+/// checks in the caller was the entire defence. This helper makes the three
+/// gates a single named thing that every removal path must pass, so a second
+/// path cannot forget one of them.
+///
+/// The gates, in order:
+///   1. an open file/cwd/exe under the entry — a live process is using it;
+///   2. a bound unix socket inside it — deleting the socket PATH strands a
+///      live daemon (codex app-server, 2026-10-21);
+///   3. the protected-path and tmp-root containment checks.
+fn tmp_entry_is_protected(
+    path: &Path,
+    root: &Path,
+    protected_paths: &[String],
+    open_paths: &HashSet<PathBuf>,
+    live_sockets: &HashSet<PathBuf>,
+) -> bool {
+    if path_has_open_ancestor(path, open_paths) {
+        return true; // held open by a live process
+    }
+    if path_holds_live_unix_socket(path, live_sockets) {
+        eprintln!(
+            "🛡️ keeping tmp entry {}: holds a live unix socket",
+            path.display()
+        );
+        return true;
+    }
+    if let Err(e) = check_safe_to_delete_tmp_entry(path, root, protected_paths) {
+        eprintln!("🛡️ keeping protected tmp entry {}: {}", path.display(), e);
+        return true;
+    }
+    false
+}
+
 /// What one tmp cleanup pass found.
 #[derive(Debug, Default)]
 pub(crate) struct TmpCleanupOutcome {
