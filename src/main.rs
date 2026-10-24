@@ -4811,6 +4811,21 @@ async fn clean_nix_garbage(
     .await
 }
 
+/// What one node_modules cleanup pass found.
+///
+/// ADDED 2026-10-24 (audit): `protected` was missing. Without it the pass
+/// could not say "this tree is protected, so no amount of cleanup frees it",
+/// and a dry run listed protected trees as reclaimable.
+#[derive(Debug, Default)]
+pub(crate) struct NodeCleanupOutcome {
+    /// Bytes removed — or that would be removed, in dry-run.
+    pub(crate) reclaimed: u64,
+    /// The entries that were (or would be) removed.
+    pub(crate) cleaned: Vec<String>,
+    /// The entries that were REFUSED because they are protected.
+    pub(crate) protected: Vec<String>,
+}
+
 /// Clean old node_modules directories
 async fn clean_old_node_modules(
     roots: &[PathBuf],
@@ -4819,13 +4834,20 @@ async fn clean_old_node_modules(
     protected_paths: &[String],
     stash_first: bool,
     stash_dir: &Path,
-) -> Result<(u64, Vec<String>)> {
+) -> Result<NodeCleanupOutcome> {
     use walkdir::WalkDir;
 
     let mut reclaimed = 0u64;
     let mut cleaned = Vec::new();
+    let mut protected = Vec::new();
     let now = SystemTime::now();
-    let max_age_secs = max_age_days * 24 * 3600;
+    // FIXED 2026-10-24 (audit): this was the only non-saturating age
+    // computation in the crate (the others use `saturating_mul`). A large
+    // `node_modules_max_age_days` wrapped in release builds and panicked in
+    // debug ones, which turned a nonsense knob into a wrong age — and in
+    // debug builds, a crash. Saturated, an absurd age simply means "never
+    // old enough", which is the safe direction.
+    let max_age_secs = max_age_days.saturating_mul(24 * 3600);
 
     for root in roots {
         if !root.exists() {
