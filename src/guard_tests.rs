@@ -2093,7 +2093,7 @@ fn a_disabled_rust_cleanup_is_reported_once_and_a_recovery_is_confirmed() {
 ///
 /// A nested function would be indented, so the anchors below can only match
 /// a column-0 item.
-fn top_level_fn_source(source: &str, signature: &str) -> String {
+pub(crate) fn top_level_fn_source(source: &str, signature: &str) -> String {
     let start = source
         .find(signature)
         .unwrap_or_else(|| panic!("{signature} must exist"));
