@@ -1942,10 +1942,15 @@ async fn empty_trash_credential_guard_skips_flagged_purges_rest() {
     // Flagged OLD entry: nested credential-signal filename inside a dir
     // whose own mtime is past the age cutoff (so only the skip set keeps
     // it, not the age gate).
+    //
+    // CHANGED 2026-10-25 (audit, operator decision): the fixture name must
+    // be a credential file BY ITS OWN NAME. It used to be
+    // `example-mint_dev_token`, which only matched the old loose substring
+    // rule and no longer does.
     let flagged = trash_files.join("target");
     fs::create_dir_all(flagged.join("debug/.fingerprint/x")).expect("flagged nest");
     write_file_with_mtime(
-        &flagged.join("debug/.fingerprint/x/example-mint_dev_token"),
+        &flagged.join("debug/.fingerprint/x/example-client.key"),
         b"t",
         30 * 86_400,
     );
