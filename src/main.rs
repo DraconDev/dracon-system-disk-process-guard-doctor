@@ -1560,8 +1560,10 @@ const TRASH_SCAN_MAX_DEPTH: usize = 16;
 /// component, and not merely somewhere in the middle: `credentials_backup`
 /// qualifies, `02-borrowed-credentials` does not.
 ///
-/// Mirrors the pattern list in docs/design/disk-full-credentials-2026-08-10.md
-/// section 5, narrowed per the operator's decision of 2026-10-25.
+/// The 2026-08-10 pattern list this rule came from is recorded in the
+/// parent workspace's `docs/design/disk-full-credentials-2026-08-10.md`
+/// section 5; it has been narrowed per the operator's decision of
+/// 2026-10-25, and the list above is the whole rule.
 pub(crate) fn looks_credential_like(name: &str) -> bool {
     let lower = name.to_lowercase();
     /// A file that IS a credential file, by its extension.
