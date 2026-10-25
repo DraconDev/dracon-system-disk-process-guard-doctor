@@ -9277,13 +9277,16 @@ async fn check_reap_candidates(
     }
     if candidates.is_empty() {
         // The worklist emptied. That IS news: the operator may have cleaned
-        // up, and silence would leave them unsure.
-        emit_event(&DraconEvent::new(
-            "system",
-            EventSeverity::Info,
-            "process/reap-candidates",
-            "No abandoned dev/test processes remain (reap_stale_dev_servers is OFF — report only)",
-        ));
+        // up, and silence would leave them unsure. A first sighting of an
+        // EMPTY worklist is not news — there was nothing to empty.
+        if previous.as_deref().map(|p| !p.is_empty()).unwrap_or(false) {
+            emit_event(&DraconEvent::new(
+                "system",
+                EventSeverity::Info,
+                "process/reap-candidates",
+                "No abandoned dev/test processes remain (reap_stale_dev_servers is OFF — report only)",
+            ));
+        }
         return;
     }
     let listed: Vec<String> = candidates
