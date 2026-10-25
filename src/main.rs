@@ -1526,6 +1526,18 @@ pub(crate) fn parse_proc_stat_zombie(line: &str) -> Option<(i32, String, i32, u6
     Some((pid, comm, ppid, starttime))
 }
 
+/// How deep the trash credential scan descends.
+///
+/// ADDED 2026-10-25 (audit): the cap was 8, and the deepest trash tree on
+/// this host reached 15. Everything below the cap was INVISIBLE, and a
+/// directory sitting AT the cap kept its whole top-level entry — 3,977
+/// such subtrees, holding the bulk of the trash. Raising the cap to 16
+/// covers the measured maximum with a level of margin, and the deeper walk
+/// costs 6 seconds on a 213,000-file trash (the guard's trash purge runs
+/// in the background cleanup tier). A tree deeper than the cap still fails
+/// CLOSED: it is kept.
+const TRASH_SCAN_MAX_DEPTH: usize = 16;
+
 /// Credential-signal filename check for the trash guard (and any
 /// future bulk-delete protection).
 ///
@@ -4540,7 +4552,7 @@ async fn empty_trash_at(
                     // not the old all-or-nothing abort).
                     let mut depth_capped = 0u64;
                     let mut walk_errors = 0u64;
-                    for entry in walkdir::WalkDir::new(&trash_files).max_depth(8) {
+                    for entry in walkdir::WalkDir::new(&trash_files).max_depth(TRASH_SCAN_MAX_DEPTH) {
                         match entry {
                             Ok(e) if e.file_type().is_file() => {
                                 if let Some(name) = e.file_name().to_str() {
@@ -4557,7 +4569,7 @@ async fn empty_trash_at(
                                     }
                                 }
                             }
-                            Ok(e) if e.file_type().is_dir() && e.depth() == 8 => {
+                            Ok(e) if e.file_type().is_dir() && e.depth() == TRASH_SCAN_MAX_DEPTH => {
                                 // AT the cap: children unobservable (files
                                 // AT depth 8 are still yielded and scanned
                                 // above — only descent stops). Keep the
