@@ -1780,7 +1780,7 @@ fn disk_fill_rate_ignores_a_single_burst_inside_the_window() {
         }
         history.push((
             now - Duration::from_secs(step * (29 - i)),
-            (used * gib) as u64,
+            (used * gib as f64) as u64,
         ));
     }
     // The reclamation the guard performs resets the growth window, so the
@@ -1818,7 +1818,7 @@ fn the_published_rate_is_stable_when_a_burst_arrives() {
         used += steady;
         history.push((
             now - Duration::from_secs(step * (29 - i)),
-            (used * gib) as u64,
+            (used * gib as f64) as u64,
         ));
     }
     let before = crate::disk_fill_rate(&history)
@@ -1828,7 +1828,7 @@ fn the_published_rate_is_stable_when_a_burst_arrives() {
 
     // Now a burst lands in the newest interval.
     used += 4.8;
-    history.push((now, (used * gib) as u64));
+    history.push((now, (used * gib as f64) as u64));
     let after = crate::disk_fill_rate(&history)
         .rate_gbph()
         .expect("the window still measures");
