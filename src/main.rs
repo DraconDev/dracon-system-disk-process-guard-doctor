@@ -1809,7 +1809,7 @@ pub(crate) fn disk_fill_rate(history: &[(Instant, u64)]) -> DiskFillRate {
     }
     slopes.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let mid = slopes.len() / 2;
-    let slope_bps = if slopes.len() % 2 == 0 {
+    let slope_bps = if slopes.len().is_multiple_of(2) {
         (slopes[mid - 1] + slopes[mid]) / 2.0
     } else {
         slopes[mid]
