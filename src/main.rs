@@ -1527,27 +1527,104 @@ pub(crate) fn parse_proc_stat_zombie(line: &str) -> Option<(i32, String, i32, u6
 }
 
 /// Credential-signal filename check for the trash guard (and any
-/// future bulk-delete protection). Mirrors the pattern list in
-/// docs/design/disk-full-credentials-2026-08-10.md section 5.
+/// future bulk-delete protection).
+///
+/// ADDED 2026-10-25 (audit): the rule is deliberately NARROW — a name is
+/// credential-like when the file IS a credential file by its own name.
+///
+/// The old rule matched a loose SUBSTRING anywhere in the name, so a Rust
+/// build artefact called `trust_token.o`, a web asset called `chrome.css`
+/// and a chapter called `02-borrowed-credentials.md` each protected an
+/// ENTIRE deleted item: 112 items, 28.0 GiB, on a host whose disk was
+/// filling at over 100 GiB/h. One matching file anywhere inside a deleted
+/// item kept all of it.
+///
+/// The genuine matches are still matched — by suffix (`.env`, `.pem`,
+/// `.key`, `.age`, `.p12`, `.pfx`), by whole name (`id_ed25519`,
+/// `hosts.yml`, `.git-credentials`, `credentials.json`), or by a name whose
+/// whole stem is a credential word (`secrets.yaml`, `client_secret.json`).
+///
+/// A name qualifies on a word that is its WHOLE stem or its FIRST
+/// component, and not merely somewhere in the middle: `credentials_backup`
+/// qualifies, `02-borrowed-credentials` does not.
+///
+/// Mirrors the pattern list in docs/design/disk-full-credentials-2026-08-10.md
+/// section 5, narrowed per the operator's decision of 2026-10-25.
 pub(crate) fn looks_credential_like(name: &str) -> bool {
     let lower = name.to_lowercase();
-    const SUBSTR: &[&str] = &[
-        "chrome",
-        "chromium",
-        "credential",
-        "password",
-        "secret",
-        "token",
-        "keyring",
-        "login data",
-        "hosts.yml",
-        ".git-credentials",
-        ".npmrc",
+    /// A file that IS a credential file, by its extension.
+    const SUFFIX: &[&str] = &[
+        ".env",
+        ".pem",
+        ".key",
+        ".age",
+        ".p12",
+        ".pfx",
+        ".keystore",
+        ".jks",
+        ".ppk",
+        ".asc",
+        ".gpg",
+        ".kdbx",
         ".netrc",
-        "cookie",
+        ".npmrc",
     ];
-    const SUFFIX: &[&str] = &[".env", ".pem", ".key", ".age", ".p12", ".pfx"];
-    SUBSTR.iter().any(|s| lower.contains(s)) || SUFFIX.iter().any(|s| lower.ends_with(s))
+    /// A file whose whole name says what it is.
+    const EXACT: &[&str] = &[
+        ".git-credentials",
+        "hosts.yml",
+        "credentials",
+        "credentials.json",
+        "credentials.xml",
+        "service_account.json",
+        "id_rsa",
+        "id_dsa",
+        "id_ecdsa",
+        "id_ed25519",
+        "htpasswd",
+        "shadow",
+        "password-store",
+        "login data",
+        "login_data",
+    ];
+    /// A file whose name, apart from its extension, says what it is.
+    const STEM: &[&str] = &[
+        "credential",
+        "credentials",
+        "secret",
+        "secrets",
+        "password",
+        "passwords",
+        "token",
+        "apikey",
+        "api_key",
+        "client_secret",
+        "htpasswd",
+        "id_rsa",
+        "id_dsa",
+        "id_ecdsa",
+        "id_ed25519",
+        "keyring",
+        "keychain",
+        "netrc",
+        "npmrc",
+        "shadow",
+    ];
+    if SUFFIX.iter().any(|s| lower.ends_with(s)) || EXACT.iter().any(|s| &lower == s) {
+        return true;
+    }
+    // `.env`, `.env.local`, `.env.production`.
+    if lower == ".env" || lower.starts_with(".env.") {
+        return true;
+    }
+    let stem = lower.rsplit_once('.').map_or(lower.as_str(), |(s, _)| s);
+    if STEM.iter().any(|s| stem == *s) {
+        return true;
+    }
+    // The strong word must LEAD the name: `credentials_backup` qualifies,
+    // `02-borrowed-credentials` does not.
+    let first = stem.split(['-', '_', ' ', '.']).next().unwrap_or(stem);
+    STEM.iter().any(|s| first == *s)
 }
 
 /// What the byte-precise df history can say about the disk's fill rate.
