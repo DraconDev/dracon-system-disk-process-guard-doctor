@@ -930,6 +930,10 @@ pub(crate) struct GuardRuntimeState {
     pub(crate) reniced_pids: HashMap<i32, LegacyReniceState>,
     pub(crate) cooled_since: HashMap<i32, Instant>,
     pub(crate) guard_cycle: u64,
+    /// ADDED 2026-10-25 (audit D11): the signature of the abandoned
+    /// dev/test process worklist as the last pass saw it. The worklist is
+    /// reported when it CHANGES; an unchanged worklist is not news.
+    pub(crate) reap_candidate_signature: Option<String>,
     /// The exact bytes last written to the on-disk mitigation ledger, so an
     /// unchanged pass does not rewrite the file every interval (audit
     /// 2026-10-01).
