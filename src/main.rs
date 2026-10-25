@@ -9200,20 +9200,38 @@ async fn check_large_logs(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
     let min_size = guard.log_size_mb.saturating_mul(1024).saturating_mul(1024);
     match find_large_log_files(&log_dirs, min_size).await {
         Ok(logs) if !logs.is_empty() => {
-            let key = "log-size-warning".to_string();
-            if should_notify(state, &key, guard.notify_cooldown_secs.max(3600)) {
-                let top_logs: Vec<_> = logs.iter().take(3).collect();
-                let msg = format!(
-                    "Found {} large log files (>{:.0} MiB): {}",
-                    logs.len(),
-                    guard.log_size_mb,
-                    top_logs
-                        .iter()
-                        .map(|(p, s)| format!("{} ({})", p.display(), human_bytes(*s)))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
+            // ADDED 2026-10-25 (audit D9): this warning reached only a
+            // desktop popup, on a cooldown, with no state and no record. The
+            // guard now tracks it like every other observation: one
+            // notification on entry, and an event that repeats while the
+            // condition holds.
+            let (previous, event_due) = report_state_transition(
+                state,
+                "log-size-warning",
+                "over-threshold",
+                guard.report_repeat_secs,
+            );
+            let top_logs: Vec<_> = logs.iter().take(3).collect();
+            let msg = format!(
+                "Found {} large log files (>{:.0} MiB): {}",
+                logs.len(),
+                guard.log_size_mb,
+                top_logs
+                    .iter()
+                    .map(|(p, s)| format!("{} ({})", p.display(), human_bytes(*s)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            if previous.as_deref() != Some("over-threshold") {
                 send_notification(guard, "Dracon System Guard - Large Log Files", &msg).await;
+            }
+            if event_due {
+                emit_event(&DraconEvent::new(
+                    "system",
+                    EventSeverity::Warn,
+                    "filesystem/log-size",
+                    msg,
+                ));
             }
 
             if guard.auto_truncate_logs && guard.auto_cleanup_apply {
