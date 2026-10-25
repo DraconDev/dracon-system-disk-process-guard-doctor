@@ -1908,6 +1908,7 @@ async fn a_sighup_reload_is_not_deferred_by_an_unrestorable_nice_adjustment() {
 /// The broad names are now NOT flagged. The genuine ones still are.
 #[test]
 fn the_credential_heuristic_only_flags_names_that_are_credential_files() {
+    // A web asset, not a credential.
     assert!(!crate::looks_credential_like("android-chrome-192x192.png"));
     assert!(!crate::looks_credential_like("chrome.CdV59toY.css"));
     // A test file about a scanner, not a credential.
