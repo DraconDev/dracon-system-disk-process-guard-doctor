@@ -1947,6 +1947,25 @@ fn a_credential_word_in_the_middle_of_a_name_is_not_a_credential_file() {
     assert!(crate::looks_credential_like("token"));
 }
 
+/// `secret` and `token` are credential words, but they also LEAD ordinary
+/// compound names. The cargo artefacts `secret_scan-<hash>` kept a 5.0 GiB
+/// build tree alive on the strength of a test name.
+#[test]
+fn a_credential_word_that_leads_an_ordinary_compound_name_is_not_a_credential_file() {
+    assert!(!crate::looks_credential_like("secret_scan-a5b13cc6b5fee239.d"));
+    assert!(!crate::looks_credential_like("secret_scan"));
+    assert!(!crate::looks_credential_like("token_bucket.rs"));
+    assert!(!crate::looks_credential_like("secrets-scan.rs"));
+    // The unambiguous ones still qualify when they lead the name.
+    assert!(crate::looks_credential_like("credentials_backup"));
+    assert!(crate::looks_credential_like("password-store-backup"));
+    assert!(crate::looks_credential_like("client_secret.json"));
+    // And the whole-stem matches are unaffected.
+    assert!(crate::looks_credential_like("secrets.yaml"));
+    assert!(crate::looks_credential_like("token.json"));
+    assert!(crate::looks_credential_like("password.txt"));
+}
+
 /// A guard that KEEPS something must say what keeping it costs.
 ///
 /// The credential guard reported an entry COUNT ("keeping 55 flagged
