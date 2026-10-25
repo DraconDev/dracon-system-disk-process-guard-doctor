@@ -2014,21 +2014,27 @@ async fn empty_trash_zero_age_with_flagged_keeps_flagged() {
 
 #[tokio::test]
 async fn empty_trash_credential_guard_keeps_depth_capped_subtree() {
-    // 2026-10-02 (audit L6): the scan is capped at max_depth(8) — a
-    // directory AT the cap has unobservable children, so its whole
-    // top-level entry must be kept (fail closed per-entry). The nested
-    // content here is BENIGN: the keep must happen with no credential
-    // signal at all, purely because the depth-9 file cannot be seen.
+    // 2026-10-02 (audit L6): the scan is capped — a directory AT the cap
+    // has unobservable children, so its whole top-level entry must be kept
+    // (fail closed per-entry). The nested content here is BENIGN: the keep
+    // must happen with no credential signal at all, purely because the
+    // file below the cap cannot be seen.
+    //
+    // CHANGED 2026-10-25 (audit): the cap moved from 8 to 16, because the
+    // deepest trash tree on this host reached 15 — every file below depth 8
+    // was invisible, and a directory at the cap kept its whole top-level
+    // entry. 3,977 such subtrees held the bulk of 28.0 GiB of trash that
+    // was never purged. The fixture is rebuilt at the NEW cap.
     let home = unique_test_home("trash_capped");
     let trash_files = home.join(".local/share/Trash/files");
     let trash_info = home.join(".local/share/Trash/info");
     fs::create_dir_all(&trash_files).expect("create trash fixture");
     fs::create_dir_all(&trash_info).expect("create info fixture");
 
-    // deep(1)/d1(2)/d2(3)/d3(4)/d4(5)/d5(6)/d6(7)/d7(8)/notes.txt(9):
-    // d7 sits AT the cap, notes.txt is never yielded.
+    // deep(1)/d1(2)/…/d15(16)/notes.txt(17): d15 sits AT the cap, so
+    // notes.txt is never yielded.
     let mut deep = trash_files.join("deep");
-    for d in ["d1", "d2", "d3", "d4", "d5", "d6", "d7"] {
+    for d in (1..=15).map(|n| format!("d{n}")) {
         deep = deep.join(d);
     }
     fs::create_dir_all(&deep).expect("deep nest");
@@ -2048,6 +2054,46 @@ async fn empty_trash_credential_guard_keeps_depth_capped_subtree() {
     assert!(
         trash_files.join("deep").exists(),
         "depth-capped entry must be kept (children unobservable)"
+    );
+
+    let _ = fs::remove_dir_all(&home);
+}
+
+/// ADDED 2026-10-25 (audit, operator decision): a name that merely
+/// MENTIONS a credential no longer protects a whole deleted item.
+///
+/// This is the exact scenario from the 2026-08-10 incident — a trashed
+/// `target/` tree whose cargo fingerprint files were named
+/// `*mint_dev_token*` — which blocked 46 GiB of unrelated trash every
+/// cycle. It is pinned here so the narrowing cannot be undone silently.
+#[tokio::test]
+async fn a_nested_weak_credential_name_no_longer_keeps_a_whole_deleted_item() {
+    let home = unique_test_home("trash_weak_name");
+    let trash_files = home.join(".local/share/Trash/files");
+    let trash_info = home.join(".local/share/Trash/info");
+    fs::create_dir_all(&trash_files).expect("create trash fixture");
+    fs::create_dir_all(&trash_info).expect("create info fixture");
+
+    let weak = trash_files.join("target");
+    fs::create_dir_all(weak.join("debug/.fingerprint/x")).expect("weak nest");
+    write_file_with_mtime(
+        &weak.join("debug/.fingerprint/x/example-mint_dev_token"),
+        b"t",
+        30 * 86_400,
+    );
+    set_mtime_old(&weak, 30 * 86_400);
+    fs::write(trash_info.join("target.trashinfo"), b"[Trash Info]").expect("info weak");
+
+    let (reclaimed, _cleaned) = empty_trash_at(&home, true, &[], true, 7)
+        .await
+        .expect("purge with a weakly-named nested file");
+    assert!(
+        !weak.exists(),
+        "a nested name that merely mentions a credential must not keep the whole item"
+    );
+    assert!(
+        reclaimed > 0,
+        "the weakly-named item must be reclaimed, not kept"
     );
 
     let _ = fs::remove_dir_all(&home);
