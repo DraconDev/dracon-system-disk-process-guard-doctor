@@ -2009,6 +2009,10 @@ fn the_disabled_rust_cleanup_report_is_not_tied_to_a_cleanup_tier() {
     // The call site is in the guard PASS.
     let pass = top_level_fn_source(SOURCE, "pub(crate) async fn run_guard_once(");
     assert!(
+        pass.contains("disk_details_for"),
+        "the guard pass must have been located — otherwise the assertion below would pass on an empty region"
+    );
+    assert!(
         pass.contains(call),
         "the guard pass must report the rust-cleanup state, so the report appears in every cleanup tier"
     );
