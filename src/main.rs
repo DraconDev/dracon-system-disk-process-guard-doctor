@@ -9913,6 +9913,9 @@ pub(crate) async fn run_guard_once(
     check_inode_usage(guard, state).await;
     let zombies = check_zombie_processes(guard, state).await;
     let reap_candidates = reap_candidates(guard);
+    // ADDED 2026-10-25 (audit D11): the daemon discards the GuardReport, so
+    // the worklist has to be reported from INSIDE the pass to be seen at all.
+    check_reap_candidates(guard, state, &reap_candidates).await;
     // Opt-in auto-reap: terminate what still verifies, on a blocking
     // thread -- each kill can sleep up to ~7s in grace polls, and that
     // must never stall a tokio worker. Default OFF: no candidates are
