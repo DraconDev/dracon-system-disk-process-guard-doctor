@@ -4900,12 +4900,30 @@ async fn storage_cleanup_activity_allows_stale_pidfile() {
     fs::create_dir_all(root.join("dev-stack")).unwrap();
     // PID 1 exists, so use a PID that is guaranteed absent: spawn a
     // short-lived child, wait for it, then reuse its (reaped) PID.
-    let mut child = std::process::Command::new("/bin/sh")
-        .args(["-c", "exit 0"])
-        .spawn()
-        .unwrap();
-    child.wait().unwrap();
-    let dead_pid = child.id();
+    //
+    // FIXED 2026-10-25 (audit): the kernel RECYCLES PIDs quickly, and on a
+    // busy host the reaped PID is often back in use within milliseconds. The
+    // old test then failed on `live_pidfile_under` — for a reason that had
+    // nothing to do with the guard — and this is a RELEASE-GATE test, so the
+    // flake could block a publish. Keep spawning children until one leaves a
+    // PID that is still free.
+    let dead_pid = {
+        let mut dead_pid = None;
+        for _ in 0..64 {
+            let mut child = std::process::Command::new("/bin/sh")
+                .args(["-c", "exit 0"])
+                .spawn()
+                .unwrap();
+            child.wait().unwrap();
+            let pid = child.id();
+            if !Path::new(&format!("/proc/{pid}")).exists() {
+                dead_pid = Some(pid);
+                break;
+            }
+            // The PID was recycled before we could use it; try another.
+        }
+        dead_pid.expect("no free PID found after 64 attempts")
+    };
     fs::write(
         root.join("dev-stack").join("api.pid"),
         format!("{dead_pid}\n"),
