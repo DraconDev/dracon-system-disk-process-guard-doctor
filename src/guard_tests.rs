@@ -1944,7 +1944,6 @@ fn a_credential_word_in_the_middle_of_a_name_is_not_a_credential_file() {
     assert!(!crate::looks_credential_like("02-borrowed-credentials"));
     assert!(!crate::looks_credential_like("04-miras-secrets"));
     assert!(!crate::looks_credential_like("wallet-token-cache"));
-    assert!(!crate::looks_credential_like("token"));
     assert!(crate::looks_credential_like("token"));
 }
 
