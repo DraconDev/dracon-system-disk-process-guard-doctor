@@ -1959,6 +1959,68 @@ fn a_disabled_rust_cleanup_is_reported_once_and_a_recovery_is_confirmed() {
     assert_eq!(proactive_rust_report(Some(true), false), Some("disabled"));
 }
 
+/// The source text of one top-level function, from its signature to the
+/// start of the next top-level item.
+///
+/// A nested function would be indented, so the anchors below can only match
+/// a column-0 item.
+fn top_level_fn_source(source: &str, signature: &str) -> String {
+    let start = source
+        .find(signature)
+        .unwrap_or_else(|| panic!("{signature} must exist"));
+    let rest = &source[start + signature.len()..];
+    let end = rest
+        .find("\nfn ")
+        .or_else(|| rest.find("\npub(crate) fn "))
+        .or_else(|| rest.find("\npub(crate) async fn "))
+        .or_else(|| rest.find("\nimpl "))
+        .unwrap_or(rest.len());
+    rest[..end].to_string()
+}
+
+/// The "the rust cleanup is switched off" report must NOT be tied to a
+/// cleanup TIER.
+///
+/// ADDED 2026-10-25 (audit D7): the report was first emitted from the
+/// proactive cleanup branch. The proactive branch only runs while the disk
+/// is BETWEEN `proactive_cleanup_percent` (80%) and `disk_action_percent`
+/// (85%) — at the action tier the guard takes the pressure branch instead,
+/// so the report went silent at exactly the disk pressure that makes the
+/// unreclaimed build trees matter. Measured live on this host: the disk
+/// crossed to 85% and the warning the audit had just added stopped
+/// appearing.
+///
+/// The pressure tier honours the same knob (`run_auto_cleanup` only scans
+/// the rust targets when `auto_cleanup_rust` is set), so the DISABLED state
+/// is equally true there — and equally worth saying.
+#[test]
+fn the_disabled_rust_cleanup_report_is_not_tied_to_a_cleanup_tier() {
+    const SOURCE: &str = include_str!("main.rs");
+
+    // Exactly ONE call site: a second one inside a tier would reintroduce
+    // the hole this test exists to close.
+    let call = "report_proactive_rust_state(guard.auto_cleanup_rust)";
+    assert_eq!(
+        SOURCE.matches(call).count(),
+        1,
+        "the rust-cleanup report must have exactly one call site — the guard pass — so no cleanup tier can skip it"
+    );
+
+    // The call site is in the guard PASS.
+    let pass = top_level_fn_source(SOURCE, "pub(crate) async fn run_guard_once(");
+    assert!(
+        pass.contains(call),
+        "the guard pass must report the rust-cleanup state, so the report appears in every cleanup tier"
+    );
+
+    // ... and NOT in the cleanup tier dispatch, which the action tier skips.
+    let dispatch = top_level_fn_source(SOURCE, "fn spawn_background_cleanup(");
+    assert!(
+        !dispatch.contains("report_proactive_rust_state("),
+        "the rust-cleanup report must not live in the cleanup tier dispatch: the action tier (85%) takes the pressure branch and skips the proactive one"
+    );
+}
+
 /// A committed `.env` TEMPLATE is not a credential. It ships in every
 /// repository that documents its environment, with placeholder values.
 #[test]
