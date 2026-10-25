@@ -689,7 +689,11 @@ fn looks_credential_like_matches_known_patterns() {
     assert!(crate::looks_credential_like(".npmrc"));
     assert!(crate::looks_credential_like("hosts.yml"));
     assert!(crate::looks_credential_like("password-store"));
-    assert!(crate::looks_credential_like("wallet-token-cache"));
+    // CHANGED 2026-10-25 (audit, operator decision): the loose substring
+    // rule is gone, so a name that merely CONTAINS a credential word no
+    // longer counts. It kept an entire 5 GiB deleted item alive on its
+    // own.
+    assert!(!crate::looks_credential_like("wallet-token-cache"));
 }
 
 #[test]
