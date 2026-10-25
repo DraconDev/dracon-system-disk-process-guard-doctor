@@ -217,6 +217,26 @@ pub fn emit_event(event: &DraconEvent) {
         "[{}] {:?}: {} - {}",
         event.timestamp, event.severity, event.path, event.message
     );
+    // ADDED 2026-10-25 (audit D12): the operator's event stream belongs to
+    // the DAEMON, not to the test suite. The test suite calls
+    // `run_guard_once` and the cleanup paths directly, and every event they
+    // produced was appended to the live `~/.dracon/events.jsonl` — fixture
+    // data mixed in with real observations and indistinguishable from it.
+    // Measured on this host after the audit added new event-backed checks:
+    // the stream held a "/tmp test event", five bogus
+    // "trash purge skipping …" entries, and a "sync frozen at 95%" /
+    // "sync unfrozen at 68%" pair for a disk that was never at 95%. A
+    // reader could not tell those from the real thing.
+    //
+    // The 2026-10-01 audit established the rule for the mitigation ledger
+    // — only the long-running daemon writes into the operator's `~/.dracon`
+    // — and the event stream was never brought under it.
+    //
+    // The eprintln above stays: the test output should still show what the
+    // test observed.
+    if cfg!(test) {
+        return;
+    }
     let events_path = events_path();
     if let Some(json) = serialize_event_for_storage(event) {
         if let Err(error) = persist_event(&events_path, &json) {
