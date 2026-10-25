@@ -9155,6 +9155,89 @@ pub(crate) fn parse_extra_mounts(csv: &str) -> Vec<String> {
         .collect()
 }
 
+/// Report the state of the SECONDARY mounts — the disks the guard leans on.
+///
+/// ADDED 2026-10-25 (audit D10): `disk_extra_mounts` was read on every pass
+/// and the result was THROWN AWAY. The daemon discards the `GuardReport`
+/// (only the one-shot table uses it), so the extra mounts were visible to
+/// `dracon-system guard once` and to nobody else — and the daemon never said
+/// a word about them.
+///
+/// That matters because the guard's reclaim strategy depends on that disk.
+/// The stash lives on it (`stash_dir = "/mnt/data/stash"` on this host, 66 GiB
+/// parked as of 2026-10-25), and a stash move to a full disk FAILS: the
+/// cleanup logs "failed to stash …" and skips the candidate, so the guard
+/// cannot reclaim anything at all — while the reason (the second disk is
+/// full) is reported nowhere.
+///
+/// Still visibility-only, as documented: no cleanup, freeze or threshold
+/// decision keys off these mounts. This only makes the guard say what it can
+/// already see.
+async fn check_extra_mounts(
+    guard: &GuardPolicy,
+    state: &mut GuardRuntimeState,
+    mounts: &[MountStatus],
+    unreadable: &[String],
+) {
+    for m in mounts {
+        // The state is tracked for EVERY mount, so a mount that leaves the
+        // "ok" band and comes back is reported as a transition, not as a
+        // first sighting.
+        let key = format!("disk-extra-{}", m.mount);
+        let (previous, event_due) =
+            report_state_transition(state, &key, &m.state, guard.report_repeat_secs);
+        if m.state == "ok" {
+            continue;
+        }
+        let detail = format!(
+            "{} is at {}% ({}) — the guard's stash and relocated bulk live here, so a full secondary disk stops cleanup from reclaiming anything",
+            m.mount, m.use_percent, m.state
+        );
+        if previous.as_deref() != Some(m.state.as_str()) {
+            send_notification(guard, "Dracon System Guard - Secondary Disk", &detail).await;
+        }
+        if event_due {
+            emit_event(&DraconEvent::new(
+                "system",
+                if m.state == "critical" {
+                    EventSeverity::Error
+                } else {
+                    EventSeverity::Warn
+                },
+                "disk/extra-mount",
+                detail,
+            ));
+        }
+    }
+    // A mount that cannot be READ is not a mount that is fine. The old code
+    // dropped the error at verbosity 1, which the daemon never prints.
+    if unreadable.is_empty() {
+        return;
+    }
+    let detail = format!(
+        "{} secondary mount(s) could not be read: {}",
+        unreadable.len(),
+        unreadable.join("; ")
+    );
+    let (previous, event_due) = report_state_transition(
+        state,
+        "disk-extra-unreadable",
+        "unreadable",
+        guard.report_repeat_secs,
+    );
+    if previous.as_deref() != Some("unreadable") {
+        eprintln!("⚠️ {detail}");
+    }
+    if event_due {
+        emit_event(&DraconEvent::new(
+            "system",
+            EventSeverity::Warn,
+            "disk/extra-mount",
+            detail,
+        ));
+    }
+}
+
 async fn check_large_logs(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
     if !guard.monitor_logs {
         return;
