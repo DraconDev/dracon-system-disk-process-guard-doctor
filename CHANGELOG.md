@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every monitoring capability is pinned to record an event under a named path: the disk pressure transition, the disk early warning, the rapid-fill alarm, the trend warning, memory pressure, heavy processes, zombies, inode usage, large logs, the secondary mounts and link drift. A capability that only raises a desktop popup is a capability whose observation is erased when the operator is away.
 - The secondary mounts are pinned to be reported FROM THE GUARD PASS: the daemon discards the `GuardReport`, so a check outside the pass is invisible, and an unreadable secondary mount must be COLLECTED rather than dropped at a verbosity the daemon never prints.
 - The abandoned dev/test worklist is pinned to be reported FROM THE GUARD PASS as well — the same reason. The guard still signals nothing there; it is the report half only.
+- The event stream is pinned to be off under test: `emit_event` must carry the `cfg!(test)` guard, so the operator's live `~/.dracon/events.jsonl` can never hold a fixture event that reads like a real observation.
 
 ## [0.112.49] - 2026-10-24
 
