@@ -1936,6 +1936,21 @@ fn the_credential_heuristic_only_flags_names_that_are_credential_files() {
     assert!(crate::looks_credential_like("id_ed25519"));
 }
 
+/// A committed `.env` TEMPLATE is not a credential. It ships in every
+/// repository that documents its environment, with placeholder values.
+#[test]
+fn an_env_template_is_not_a_credential_file() {
+    assert!(!crate::looks_credential_like(".env.example"));
+    assert!(!crate::looks_credential_like(".env.ovh.example"));
+    assert!(!crate::looks_credential_like(".env.sample"));
+    assert!(!crate::looks_credential_like(".env.template"));
+    assert!(!crate::looks_credential_like(".env.dist"));
+    // The real ones still match.
+    assert!(crate::looks_credential_like(".env"));
+    assert!(crate::looks_credential_like(".env.local"));
+    assert!(crate::looks_credential_like(".env.production"));
+}
+
 /// The strong word must LEAD the name. `credentials_backup` is a
 /// credentials file; `02-borrowed-credentials` is a chapter.
 #[test]
