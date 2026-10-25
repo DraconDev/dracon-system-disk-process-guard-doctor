@@ -1936,6 +1936,29 @@ fn the_credential_heuristic_only_flags_names_that_are_credential_files() {
     assert!(crate::looks_credential_like("id_ed25519"));
 }
 
+/// A capability that is switched OFF must not look identical to one that
+/// has nothing to do.
+///
+/// ADDED 2026-10-25 (audit): with `auto_cleanup_rust = false` the stale
+/// `target/` trees are not reclaimed — on this host 78.2 GiB of rust-build
+/// sat on a disk at 84% — and the disk report said nothing at all.
+#[test]
+fn a_disabled_rust_cleanup_is_reported_once_and_a_recovery_is_confirmed() {
+    use crate::proactive_rust_report;
+    // The first sighting of "off" is news.
+    assert_eq!(proactive_rust_report(None, false), Some("disabled"));
+    // Unchanged "off" is not: the guard re-reads the policy on every pass,
+    // and an unconditional warning would print thousands of times a day.
+    assert_eq!(proactive_rust_report(Some(false), false), None);
+    // "off" -> "on" is news: silence would leave the operator unsure.
+    assert_eq!(proactive_rust_report(Some(false), true), Some("enabled"));
+    // Unchanged "on" is not, and "on" on the first sighting is not either.
+    assert_eq!(proactive_rust_report(Some(true), true), None);
+    assert_eq!(proactive_rust_report(None, true), None);
+    // "on" -> "off" is news.
+    assert_eq!(proactive_rust_report(Some(true), false), Some("disabled"));
+}
+
 /// A committed `.env` TEMPLATE is not a credential. It ships in every
 /// repository that documents its environment, with placeholder values.
 #[test]
