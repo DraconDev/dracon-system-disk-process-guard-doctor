@@ -523,46 +523,73 @@ fn memory_pressure_requires_persistence_before_transition() {
 }
 
 // ---------------------------------------------------------------------------
-// prediction
+// disk-trend warning
 // ---------------------------------------------------------------------------
 
+/// The disk-trend warning must fire for a SLOW fill — the case the
+/// rapid-fill threshold misses.
+///
+/// ADDED 2026-10-25 (audit D8): the prediction used to regress the PERCENT
+/// history over a ten-minute window. Below roughly 50 GiB/h the disk does
+/// not move a whole percent inside that window (1% of a 907 GiB disk is
+/// ~9 GiB), so the predictor found no growth and reported "not filling". The
+/// guard therefore stayed silent about a disk that was hours from full.
 #[test]
-fn predict_fill_time_requires_minimum_samples() {
-    // Empty history → none
-    let history: Vec<(Instant, u8)> = vec![];
-    assert!(crate::predict_fill_time(&history).is_none());
-
-    // Only 1 sample → none (need at least 2)
-    let history = vec![(Instant::now(), 70)];
-    assert!(crate::predict_fill_time(&history).is_none());
+fn a_slow_fill_warns_even_though_it_is_below_the_rapid_fill_threshold() {
+    use crate::{disk_trend_warning, DiskFillRate};
+    let gib = 1_073_741_824u64;
+    // 138 GiB free, filling at 10 GiB/h → 13.8 hours to full, inside the
+    // 24-hour horizon, and BELOW the 20 GiB/h rapid-fill threshold.
+    let warning = disk_trend_warning(
+        DiskFillRate::Filling(10.0),
+        138 * gib,
+        24,
+        20.0,
+    )
+    .expect("a disk 13.8 hours from full must warn");
+    assert!(
+        (warning.hours - 13.8).abs() < 0.05,
+        "the figure must be the honest one: {}",
+        warning.hours
+    );
+    assert_eq!(warning.gbph, 10.0);
 }
 
+/// The rapid-fill alarm owns the fast case: the trend warning must not
+/// raise a second alarm saying the same thing.
 #[test]
-fn predict_fill_time_returns_none_for_stable_disk() {
-    // Stable disk (no change) → infinite fill time → none
-    let now = Instant::now();
-    let history: Vec<(Instant, u8)> = vec![
-        (now - std::time::Duration::from_secs(3600), 50u8),
-        (now - std::time::Duration::from_secs(1800), 50u8),
-        (now, 50u8),
-    ];
-    assert!(crate::predict_fill_time(&history).is_none());
+fn the_rapid_fill_alarm_owns_the_fast_case() {
+    use crate::{disk_trend_warning, DiskFillRate};
+    let gib = 1_073_741_824u64;
+    // 138 GiB free at 55.8 GiB/h → 2.5 hours. The rapid-fill alarm (>= 20
+    // GiB/h) already says this, with the same figure.
+    assert!(
+        disk_trend_warning(DiskFillRate::Filling(55.8), 138 * gib, 24, 20.0).is_none(),
+        "a fast fill is the rapid-fill alarm's job — two alarms saying one thing is noise"
+    );
 }
 
+/// A rate that was not measured must never become a deadline.
 #[test]
-fn predict_fill_time_estimates_for_filling_disk() {
-    // predict_fill_time requires at least 3 samples
-    let now = Instant::now();
-    let history: Vec<(Instant, u8)> = vec![
-        (now - std::time::Duration::from_secs(7200), 30u8), // 2 hours ago: 30%
-        (now - std::time::Duration::from_secs(3600), 60u8), // 1 hour ago: 60%
-        (now, 90u8),                                        // now: 90%
-    ];
-    let result = crate::predict_fill_time(&history);
-    assert!(result.is_some());
-    // 30% in 2 hours → 15%/hour → 10% remaining → ~40 minutes
-    let hours = result.unwrap();
-    assert!(hours > 0.0 && hours < 5.0); // Should be roughly 0.67 hours (40 min)
+fn an_unmeasured_rate_never_produces_a_deadline() {
+    use crate::{disk_trend_warning, DiskFillRate};
+    let gib = 1_073_741_824u64;
+    // "Unmeasured" is not "not filling" and not "hours until full" (the D1
+    // rule): the guard states nothing it has not measured.
+    assert!(disk_trend_warning(DiskFillRate::Unmeasured, 138 * gib, 24, 20.0).is_none());
+    // A disk that is genuinely not filling has no deadline either.
+    assert!(disk_trend_warning(DiskFillRate::NotFilling, 138 * gib, 24, 20.0).is_none());
+}
+
+/// The horizon and the "never alert" sentinel both silence the warning.
+#[test]
+fn the_trend_horizon_bounds_the_warning() {
+    use crate::{disk_trend_warning, DiskFillRate};
+    let gib = 1_073_741_824u64;
+    // 138 GiB free at 10 GiB/h → 13.8 h. Outside a 12-hour horizon → quiet.
+    assert!(disk_trend_warning(DiskFillRate::Filling(10.0), 138 * gib, 12, 20.0).is_none());
+    // `trend_warn_hours = 0` is the documented "never alert" sentinel.
+    assert!(disk_trend_warning(DiskFillRate::Filling(10.0), 138 * gib, 0, 20.0).is_none());
 }
 
 // ---------------------------------------------------------------------------
