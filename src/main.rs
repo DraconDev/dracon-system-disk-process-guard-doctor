@@ -8602,32 +8602,40 @@ async fn check_heavy_processes(
         }
 
         let alert_state = if stuck { "stuck" } else { "heavy" };
-        let (previous, _) =
+        let (previous, event_due) =
             report_state_transition(state, &report_key, alert_state, guard.report_repeat_secs);
+        let detail = format!(
+            "Heavy process {} (pid={} cpu={:.1}% rss={}MiB) sustained {}s{}{}{}",
+            p.command,
+            p.pid,
+            p.cpu_percent,
+            p.rss_mb,
+            sustained,
+            if nice_applied > 0 {
+                format!(" reniced={}", nice_applied)
+            } else {
+                String::new()
+            },
+            if stuck {
+                " — POSSIBLY STUCK (still heavy after {}s)".to_string()
+            } else {
+                String::new()
+            }
+        );
         if previous.as_deref() != Some(alert_state) {
-            send_notification(
-                guard,
-                "Dracon System Guard",
-                &format!(
-                    "Heavy process {} (pid={} cpu={:.1}% rss={}MiB) sustained {}s{}{}",
-                    p.command,
-                    p.pid,
-                    p.cpu_percent,
-                    p.rss_mb,
-                    sustained,
-                    if nice_applied > 0 {
-                        format!(" reniced={}", nice_applied)
-                    } else {
-                        String::new()
-                    },
-                    if stuck {
-                        " — POSSIBLY STUCK (still heavy after {}s)".to_string()
-                    } else {
-                        String::new()
-                    }
-                ),
-            )
-            .await;
+            send_notification(guard, "Dracon System Guard", &detail).await;
+        }
+        // ADDED 2026-10-25 (audit D9): this check already tracked its state
+        // and computed the event flag — and then DISCARDED it, so a heavy
+        // process reached only a desktop popup and left no record of how long
+        // it had been heavy, or of when it stopped being heavy.
+        if event_due {
+            emit_event(&DraconEvent::new(
+                "system",
+                EventSeverity::Warn,
+                "process/heavy",
+                detail,
+            ));
         }
         if stuck {
             action = format!("{} stuck-candidate", action);
@@ -9000,21 +9008,68 @@ async fn check_inode_usage(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
     if !guard.monitor_inodes {
         return;
     }
-    if let Ok(inode_percent) = inode_use_percent(&guard.disk_mount_path).await {
-        if inode_percent >= guard.inode_warn_percent {
-            let key = "inode-warning".to_string();
-            if should_notify(state, &key, guard.notify_cooldown_secs.max(1800)) {
-                send_notification(
-                    guard,
-                    "Dracon System Guard - Inode Warning",
-                    &format!(
-                        "Inode usage at {}% (threshold: {}%) - disk may have space but no file slots",
-                        inode_percent, guard.inode_warn_percent
-                    ),
-                )
-                .await;
+    // ADDED 2026-10-25 (audit D9): a read that FAILS is not the same as a
+    // filesystem that is fine. The old code dropped the error on the floor,
+    // so a monitor that could not see anything looked exactly like a
+    // monitor that had nothing to report — the guard's own rule: "a silent
+    // skip is exactly how a monitoring feature disappears without anyone
+    // noticing".
+    let inode_percent = match inode_use_percent(&guard.disk_mount_path).await {
+        Ok(percent) => percent,
+        Err(e) => {
+            let (previous, event_due) = report_state_transition(
+                state,
+                "inode-warning",
+                "unreadable",
+                guard.report_repeat_secs,
+            );
+            if event_due {
+                let detail = format!("Inode usage could not be read: {e:#}");
+                if previous.as_deref() != Some("unreadable") {
+                    eprintln!("⚠️ {detail}");
+                }
+                emit_event(&DraconEvent::new(
+                    "system",
+                    EventSeverity::Warn,
+                    "filesystem/inode-warning",
+                    detail,
+                ));
             }
+            return;
         }
+    };
+    let over_threshold = inode_percent >= guard.inode_warn_percent;
+    let (previous, event_due) = report_state_transition(
+        state,
+        "inode-warning",
+        if over_threshold {
+            "over-threshold"
+        } else {
+            "ok"
+        },
+        guard.report_repeat_secs,
+    );
+    if !over_threshold {
+        return;
+    }
+    let detail = format!(
+        "Inode usage at {}% (threshold: {}%) - disk may have space but no file slots",
+        inode_percent, guard.inode_warn_percent
+    );
+    if previous.as_deref() != Some("over-threshold") {
+        send_notification(guard, "Dracon System Guard - Inode Warning", &detail).await;
+    }
+    // ADDED 2026-10-25 (audit D9): the inode warning reached only a desktop
+    // popup. "The disk has space but no file slots" is the one disk failure
+    // that `df` does not show, and it left no record in the journal or in
+    // the event stream.
+    if event_due {
+        emit_event(&DraconEvent::new(
+            "system",
+            EventSeverity::Warn,
+            "filesystem/inode-warning",
+            detail,
+        ));
     }
 }
 
