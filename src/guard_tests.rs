@@ -619,6 +619,7 @@ fn every_monitoring_capability_records_an_event() {
         ("fn check_zombie_processes(", "process/zombies"),
         ("fn check_inode_usage(", "filesystem/inode-warning"),
         ("fn check_large_logs(", "filesystem/log-size"),
+        ("fn check_extra_mounts(", "disk/extra-mount"),
         ("fn check_link_drift(", "links-drifted"),
     ];
     for (signature, event_path) in CHECKS {
@@ -635,6 +636,39 @@ fn every_monitoring_capability_records_an_event() {
             event_path
         );
     }
+}
+
+/// The SECONDARY disks must be reported by the DAEMON, not only by the
+/// one-shot table.
+///
+/// ADDED 2026-10-25 (audit D10): `disk_extra_mounts` was read on every pass
+/// and the result was thrown away — the daemon discards the `GuardReport`,
+/// so the extra mounts were visible to `dracon-system guard once` and to
+/// nobody else. It matters because the guard's reclaim strategy leans on
+/// that disk: the stash lives on it, and a stash move to a full disk FAILS,
+/// so the guard stops reclaiming anything while the reason goes unmentioned.
+#[test]
+fn the_daemon_reports_the_secondary_mounts() {
+    const SOURCE: &str = include_str!("main.rs");
+
+    // The guard PASS calls the reporter — the daemon discards the report, so
+    // the check has to be inside the pass to be seen at all.
+    let pass = top_level_fn_source(SOURCE, "pub(crate) async fn run_guard_once(");
+    assert!(
+        pass.contains("disk_details_for(&mount)"),
+        "the guard pass must have been located — otherwise the assertion below would pass on an empty region"
+    );
+    assert!(
+        pass.contains("check_extra_mounts("),
+        "the guard pass must report the secondary mounts: the daemon discards the GuardReport, so a check outside the pass is invisible"
+    );
+
+    // An unreadable mount is collected, not dropped at a verbosity the daemon
+    // never prints.
+    assert!(
+        !pass.contains("veprintln!(1, \"extra mount"),
+        "an unreadable secondary mount must be COLLECTED and reported, not dropped at verbosity 1"
+    );
 }
 
 // ---------------------------------------------------------------------------
