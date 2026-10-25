@@ -8605,7 +8605,7 @@ async fn check_heavy_processes(
         let (previous, event_due) =
             report_state_transition(state, &report_key, alert_state, guard.report_repeat_secs);
         let detail = format!(
-            "Heavy process {} (pid={} cpu={:.1}% rss={}MiB) sustained {}s{}{}{}",
+            "Heavy process {} (pid={} cpu={:.1}% rss={}MiB) sustained {}s{}{}",
             p.command,
             p.pid,
             p.cpu_percent,
