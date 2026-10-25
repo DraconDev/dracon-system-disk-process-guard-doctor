@@ -592,6 +592,51 @@ fn the_trend_horizon_bounds_the_warning() {
     assert!(disk_trend_warning(DiskFillRate::Filling(10.0), 138 * gib, 0, 20.0).is_none());
 }
 
+/// Every MONITORING capability must leave a RECORD, not just a popup.
+///
+/// ADDED 2026-10-25 (audit D9): five of the guard's observations reached
+/// only a desktop notification — the disk pressure transition, the disk
+/// early warning, the heavy-process alert, the inode warning and the
+/// large-log warning. A popup is transient and belongs to the desktop: if
+/// the operator was away, or the session had no display, the observation
+/// was erased completely — the guard had noticed something and there was no
+/// way to find out what. The guard's own rule (from the log-directory
+/// check) is that "a silent skip is exactly how a monitoring feature
+/// disappears without anyone noticing".
+///
+/// This pins the list: each check must emit an event under a named path, so
+/// `dracon-system events` shows what the guard saw.
+#[test]
+fn every_monitoring_capability_records_an_event() {
+    const SOURCE: &str = include_str!("main.rs");
+    const CHECKS: &[(&str, &str)] = &[
+        ("fn check_disk_state_change(", "disk/state-change"),
+        ("fn check_disk_early_warning(", "disk/early-warning"),
+        ("fn check_rapid_disk_fill(", "disk/rapid-fill"),
+        ("fn check_disk_trends(", "disk/trend-warning"),
+        ("fn check_memory_pressure(", "memory/pressure"),
+        ("fn check_heavy_processes(", "process/heavy"),
+        ("fn check_zombie_processes(", "process/zombies"),
+        ("fn check_inode_usage(", "filesystem/inode-warning"),
+        ("fn check_large_logs(", "filesystem/log-size"),
+        ("fn check_link_drift(", "links-drifted"),
+    ];
+    for (signature, event_path) in CHECKS {
+        let body = top_level_fn_source(SOURCE, signature);
+        assert!(
+            body.contains("emit_event("),
+            "{} must record what it observed — a desktop popup is transient and is erased when the operator is away",
+            signature
+        );
+        assert!(
+            body.contains(event_path),
+            "{} must record it as `{}` so it can be found in the event stream",
+            signature,
+            event_path
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // AutoCleanupResult
 // ---------------------------------------------------------------------------
