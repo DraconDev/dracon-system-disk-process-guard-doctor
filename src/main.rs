@@ -838,10 +838,14 @@ pub(crate) struct GuardRuntimeState {
     /// retained for on-demand inspection but are not emitted every cycle.
     pub(crate) report_states: HashMap<String, ReportState>,
     pub(crate) last_disk_state: String,
-    pub(crate) disk_history: Vec<(Instant, u8)>,
     /// ADDED 2026-08-10 (v0.112.35): byte-precise df history for
     /// rapid-fill rate detection (percent deltas are too coarse on
     /// large disks: 1% of 907 GiB is ~9 GiB).
+    ///
+    /// REMOVED 2026-10-25 (audit D8): the percent history it used to sit
+    /// beside is gone. The trend warning was its only reader, and that
+    /// warning now uses the rate measured from these byte samples — one
+    /// measurement, one number, one meaning.
     pub(crate) disk_bytes_history: Vec<(Instant, u64)>,
     /// The fill rate measured in the most recent pass.
     ///
