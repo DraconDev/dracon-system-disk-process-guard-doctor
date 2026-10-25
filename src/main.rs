@@ -9531,10 +9531,14 @@ pub(crate) async fn run_guard_once(
         }
     }
 
-    check_disk_trends(guard, state, used).await;
     check_disk_early_warning(guard, state, used).await;
     let fill_gbph =
         check_rapid_disk_fill(guard, state, details.used_bytes, used, details.avail_bytes).await;
+    // ADDED 2026-10-25 (audit D8): the trend warning uses the rate this
+    // pass measured, so it runs AFTER the rapid-fill check that measures it.
+    // The two were separate estimators of one quantity, and they disagreed.
+    let measured_rate = state.disk_fill_rate;
+    check_disk_trends(guard, state, used, details.avail_bytes, measured_rate).await;
     manage_sync_freeze(guard, used, &dstate, &mut sync_frozen);
 
     let mut relocate_candidates: Vec<ColdCandidate> = Vec::new();
