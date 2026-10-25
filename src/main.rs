@@ -8420,12 +8420,22 @@ async fn check_disk_state_change(
     // otherwise wait for a real transition.
     let initial_critical = previous.is_empty() && dstate == "critical";
     if transitioned || initial_critical {
-        send_notification(
-            guard,
-            "Dracon System Guard",
-            &format!("Disk pressure state changed to {} (used={}%)", dstate, used),
-        )
-        .await;
+        let detail = format!("Disk pressure state changed to {} (used={}%)", dstate, used);
+        send_notification(guard, "Dracon System Guard", &detail).await;
+        // ADDED 2026-10-25 (audit D9): the transition reached only a desktop
+        // popup. A disk moving from "warn" to "action" is one of the guard's
+        // headline observations, and it left no record in the journal or in
+        // the event stream — so a missed popup erased it completely.
+        emit_event(&DraconEvent::new(
+            "system",
+            if dstate == "critical" {
+                EventSeverity::Error
+            } else {
+                EventSeverity::Warn
+            },
+            "disk/state-change",
+            detail,
+        ));
     }
 }
 
