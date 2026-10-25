@@ -1747,6 +1747,25 @@ fn scratch_eta_text(blocked_bytes: u64, rate: DiskFillRate) -> String {
 ///
 /// Returns `Unmeasured` until at least 3 samples spanning 60s of wall time
 /// exist, and `NotFilling` when the measured slope is not positive.
+///
+/// ADDED 2026-10-25 (audit D13): the slope is the MEDIAN of the pairwise
+/// slopes (Theil–Sen), not a least-squares fit. A least-squares fit is
+/// dominated by the steepest segment of the window, and this window is
+/// routinely only 60–90 seconds long — because the guard's OWN cleanup
+/// truncates it (a reclamation starts a new growth window). On the live
+/// host that combination published "Disk growing at 184.5 GiB/h ...
+/// estimated 0.5 hours until full" for a disk that was measurably FLAT:
+/// an independent 10-second sampling of the same window found a peak
+/// drawdown of 1.91 GiB in 180 s (38 GiB/h) and a net change of +0.03 GiB.
+/// The alarm then contradicted the trend warning — the same quantity, two
+/// figures, a minute apart (11.2 GiB/h against 42.9 GiB/h) — which is the
+/// exact defect class this audit forbids.
+///
+/// The median of the pairwise slopes is unmoved by one burst or one
+/// reclamation: each outlier touches only a minority of the pairs. The
+/// reclamation rule above is unchanged, and every rate published from
+/// here on is the disk's SUSTAINED fill — which is what "hours until
+/// full" is a statement about.
 pub(crate) fn disk_fill_rate(history: &[(Instant, u64)]) -> DiskFillRate {
     let n = history.len().min(30);
     if n < 3 {
@@ -1764,7 +1783,6 @@ pub(crate) fn disk_fill_rate(history: &[(Instant, u64)]) -> DiskFillRate {
         return DiskFillRate::Unmeasured;
     }
     let t0 = recent[0].0;
-    let b0 = recent[0].1 as f64;
     let Some(&last) = recent.last() else {
         return DiskFillRate::Unmeasured;
     };
@@ -1772,18 +1790,30 @@ pub(crate) fn disk_fill_rate(history: &[(Instant, u64)]) -> DiskFillRate {
     if span < 60.0 {
         return DiskFillRate::Unmeasured;
     }
-    let mut s_xy = 0.0;
-    let mut s_xx = 0.0;
-    for &(t, b) in recent {
-        let x = t.duration_since(t0).as_secs_f64();
-        let y = b as f64 - b0;
-        s_xy += x * y;
-        s_xx += x * x;
+    // Theil–Sen: the median of every pairwise slope. A single burst, or a
+    // single reclamation step, moves only a minority of the pairs and so
+    // cannot drag the published rate with it.
+    let mut slopes: Vec<f64> = Vec::with_capacity(recent.len() * recent.len() / 2);
+    for i in 0..recent.len() {
+        for j in (i + 1)..recent.len() {
+            let dt = recent[j].0.duration_since(recent[i].0).as_secs_f64();
+            if dt <= 0.0 {
+                continue;
+            }
+            let db = recent[j].1 as f64 - recent[i].1 as f64;
+            slopes.push(db / dt);
+        }
     }
-    if s_xx <= 0.0 {
+    if slopes.is_empty() {
         return DiskFillRate::Unmeasured;
     }
-    let slope_bps = s_xy / s_xx;
+    slopes.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = slopes.len() / 2;
+    let slope_bps = if slopes.len() % 2 == 0 {
+        (slopes[mid - 1] + slopes[mid]) / 2.0
+    } else {
+        slopes[mid]
+    };
     if slope_bps <= 0.0 {
         return DiskFillRate::NotFilling;
     }
