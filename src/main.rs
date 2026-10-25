@@ -9629,9 +9629,12 @@ pub(crate) async fn run_guard_once(
 
     // ADDED 2026-09-26 (space tiers): extra mounts are visibility-only;
     // cleanup and freeze decisions still key off the primary mount.
-    // Unreadable extras are skipped (verbose only) so one bad mount
-    // cannot fail the whole guard pass.
+    // Unreadable extras are skipped so one bad mount cannot fail the whole
+    // guard pass — but they are COLLECTED, not dropped: the daemon discards
+    // the `GuardReport`, so a mount that could not be read would otherwise
+    // leave no trace at all (audit D10).
     let mut extra_mounts = Vec::new();
+    let mut unreadable_mounts = Vec::new();
     for mount in parse_extra_mounts(&guard.disk_extra_mounts) {
         match disk_details_for(&mount).await {
             Ok(d) => extra_mounts.push(MountStatus {
@@ -9639,9 +9642,12 @@ pub(crate) async fn run_guard_once(
                 use_percent: d.use_percent,
                 state: disk_state(d.use_percent, guard).to_string(),
             }),
-            Err(e) => veprintln!(1, "extra mount {mount}: {e:#}"),
+            Err(e) => {
+                unreadable_mounts.push(format!("{mount}: {e:#}"));
+            }
         }
     }
+    check_extra_mounts(guard, state, &extra_mounts, &unreadable_mounts).await;
 
     check_disk_early_warning(guard, state, used).await;
     let fill_gbph =
