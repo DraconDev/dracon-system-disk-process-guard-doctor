@@ -1739,44 +1739,36 @@ fn should_notify_respects_cooldown() {
     );
 }
 
+/// The disk-trend warning and the rapid-fill alarm must agree on ONE
+/// number: the hours until the disk is full.
+///
+/// ADDED 2026-10-25 (audit D8): the trend warning used to predict from the
+/// PERCENT history while the rapid-fill alarm measured bytes, so the two
+/// could say 2.4 hours and 6.8 hours about the same disk. The trend
+/// warning now uses the rate the rapid-fill alarm measures.
 #[test]
-fn predict_fill_time_requires_minimum_samples() {
-    let history: Vec<(Instant, u8)> = vec![(Instant::now(), 50), (Instant::now(), 51)];
-    assert!(
-        predict_fill_time(&history).is_none(),
-        "needs at least 3 samples"
-    );
-}
+fn the_trend_warning_and_the_rapid_fill_alarm_quote_the_same_figure() {
+    let gib = 1_073_741_824u64;
+    let avail_bytes = 138 * gib;
+    let rate = 10.0_f64;
 
-#[test]
-fn predict_fill_time_returns_none_for_stable_disk() {
-    let base = Instant::now();
-    let history: Vec<(Instant, u8)> = vec![
-        (base, 50),
-        (base + Duration::from_secs(10), 50),
-        (base + Duration::from_secs(20), 50),
-    ];
-    assert!(
-        predict_fill_time(&history).is_none(),
-        "stable disk should not predict fill"
-    );
-}
+    // The rapid-fill message's figure: free space / rate.
+    let alarm_hours = avail_bytes as f64 / gib as f64 / rate;
 
-#[test]
-fn predict_fill_time_estimates_for_filling_disk() {
-    let base = Instant::now();
-    let history: Vec<(Instant, u8)> = vec![
-        (base, 50),
-        (base + Duration::from_secs(3600), 60),
-        (base + Duration::from_secs(7200), 70),
-    ];
-    let hours = predict_fill_time(&history);
-    assert!(hours.is_some(), "should predict fill time for rising disk");
-    let h = hours.unwrap();
-    assert!(h > 0.0, "predicted hours should be positive");
+    // The trend warning's figure: the same free space, the same rate.
+    let warning = disk_trend_warning(DiskFillRate::Filling(rate), avail_bytes, 24, 20.0)
+        .expect("a disk 13.8 hours from full must warn");
+
     assert!(
-        h < 100.0,
-        "predicted hours should be reasonable for 10%/hr rate"
+        (warning.hours - alarm_hours).abs() < 0.01,
+        "the two alarms must not disagree about one disk: {} vs {}",
+        warning.hours,
+        alarm_hours
+    );
+    assert!(
+        (alarm_hours - 13.8).abs() < 0.05,
+        "the shared figure must be the honest one: {}",
+        alarm_hours
     );
 }
 
