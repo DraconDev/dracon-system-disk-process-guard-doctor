@@ -5640,7 +5640,7 @@ async fn check_disk_trends(
 
 async fn check_disk_early_warning(guard: &GuardPolicy, state: &mut GuardRuntimeState, used: u8) {
     let early = used >= guard.disk_early_warn_percent && used < guard.disk_warn_percent;
-    let (previous, _) = report_state_transition(
+    let (previous, event_due) = report_state_transition(
         state,
         "disk-early-warning",
         if early { "early" } else { "ok" },
@@ -5656,6 +5656,20 @@ async fn check_disk_early_warning(guard: &GuardPolicy, state: &mut GuardRuntimeS
             ),
         )
         .await;
+    }
+    // ADDED 2026-10-25 (audit D9): the early warning reached only a desktop
+    // popup. It is the FIRST sign that the disk is filling — the one band
+    // where there is still time to act — and it left no record.
+    if early && event_due {
+        emit_event(&DraconEvent::new(
+            "system",
+            EventSeverity::Warn,
+            "disk/early-warning",
+            format!(
+                "Disk usage at {}% (early warning threshold: {}%)",
+                used, guard.disk_early_warn_percent
+            ),
+        ));
     }
 }
 
