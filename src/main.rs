@@ -8762,6 +8762,10 @@ fn spawn_background_cleanup(
         let outcome = match mode {
             CleanupMode::Pressure => run_auto_cleanup(&guard, &mut scratch, used, true).await,
             CleanupMode::Proactive => async {
+                // ADDED 2026-10-25 (audit): a capability that is switched off
+                // must not look identical to one that has nothing to do. The
+                // state is reported whether or not the cleanup runs.
+                report_proactive_rust_state(guard.auto_cleanup_rust);
                 if guard.auto_cleanup_rust {
                     run_proactive_cleanup(&guard, &mut scratch).await?;
                 }
