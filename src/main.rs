@@ -9180,6 +9180,13 @@ static LAST_REPORTED_RUST_CLEANUP: std::sync::OnceLock<std::sync::Mutex<Option<b
 /// set the knob deliberately — the report does not second-guess that — but
 /// the guard must say "this is why your build trees survive", once, and
 /// confirm when it is enabled again.
+///
+/// CHANGED 2026-10-25 (audit D7): called from the guard PASS, not from a
+/// cleanup tier. It was first placed in the proactive tier, which runs only
+/// between 80% and 85% — at the action tier the guard takes the pressure
+/// branch, and the report went silent at exactly the disk pressure that
+/// makes the unreclaimed build trees matter. The pressure tier honours the
+/// same knob, so the state is equally true there.
 fn report_proactive_rust_state(enabled: bool) {
     let cell = LAST_REPORTED_RUST_CLEANUP.get_or_init(|| std::sync::Mutex::new(None));
     let mut last = cell.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
