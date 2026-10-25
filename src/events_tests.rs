@@ -81,7 +81,7 @@ fn the_test_suite_never_writes_to_the_operators_event_stream() {
     const SOURCE: &str = include_str!("events.rs");
     let emit = crate::guard_tests::top_level_fn_source(SOURCE, "pub fn emit_event(");
     assert!(
-        emit.contains("emit_event("),
+        emit.contains("persist_event("),
         "emit_event must have been located — otherwise the assertion below would pass on an empty region"
     );
     assert!(
