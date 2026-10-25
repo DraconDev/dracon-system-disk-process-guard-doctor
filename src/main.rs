@@ -1628,7 +1628,17 @@ pub(crate) fn looks_credential_like(name: &str) -> bool {
         return true;
     }
     // `.env`, `.env.local`, `.env.production`.
-    if lower == ".env" || lower.starts_with(".env.") {
+    //
+    // NOT the templates. `.env.example`, `.env.sample`, `.env.template` and
+    // `.env.dist` are the conventional names for a COMMITTED file of
+    // placeholder values, and they ship in every repository that documents
+    // its environment. On this host they held six deleted projects of
+    // 0.84 GiB each — 5 GiB of build trees kept alive by a template file
+    // that contains no secret at all.
+    const TEMPLATE: &[&str] = &[".example", ".sample", ".template", ".dist", ".default", ".tpl"];
+    if (lower == ".env" || lower.starts_with(".env."))
+        && !TEMPLATE.iter().any(|s| lower.ends_with(s))
+    {
         return true;
     }
     let stem = lower.rsplit_once('.').map_or(lower.as_str(), |(s, _)| s);
