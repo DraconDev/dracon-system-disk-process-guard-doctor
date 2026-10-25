@@ -1892,22 +1892,56 @@ async fn a_sighup_reload_is_not_deferred_by_an_unrestorable_nice_adjustment() {
 /// consciously rather than by accident in a refactor. If this test starts
 /// failing, the heuristic was narrowed — which is a good outcome, but it
 /// must be a deliberate one.
+///
+/// CHANGED 2026-10-25 (audit, operator decision): the heuristic was
+/// narrowed from "a loose substring anywhere in the name" to "the file IS
+/// a credential file by its own name". The broad rule protected an ENTIRE
+/// deleted item from one matching file anywhere inside it: a Rust build
+/// artefact called `trust_token.o` kept 5.0 GiB of `dg-verify`, and a
+/// chapter called `02-borrowed-credentials.md` kept 1.8 GiB of `books`.
+/// 112 items, 28.0 GiB, on a disk filling at over 100 GiB/h.
+///
+/// The broad names are now NOT flagged. The genuine ones still are.
 #[test]
-fn the_credential_heuristic_also_flags_names_that_only_mention_credentials() {
+fn the_credential_heuristic_only_flags_names_that_are_credential_files() {
     // A web asset, not a credential.
-    assert!(crate::looks_credential_like("android-chrome-192x192.png"));
-    assert!(crate::looks_credential_like("chrome.CdV59toY.css"));
+    assert!(!crate::looks_credential_like("android-chrome-192x192.png"));
+    assert!(!crate::looks_credential_like("chrome.CdV59toY.css"));
     // A test file about a scanner, not a credential.
-    assert!(crate::looks_credential_like("artifact-secret-scan-2026-10-01.test.ts"));
-    assert!(crate::looks_credential_like(
+    assert!(!crate::looks_credential_like(
+        "artifact-secret-scan-2026-10-01.test.ts"
+    ));
+    assert!(!crate::looks_credential_like(
         "aud-271-premium-token-validity-2026-08-05.test.ts"
     ));
-    // A chapter title.
-    assert!(crate::looks_credential_like("02-borrowed-credentials.md"));
-    assert!(crate::looks_credential_like("01-the-archivists-secret.md"));
+    // A chapter title: the strong word is in the MIDDLE of the name.
+    assert!(!crate::looks_credential_like("02-borrowed-credentials.md"));
+    assert!(!crate::looks_credential_like("01-the-archivists-secret.md"));
+    // A compiled build artefact.
+    assert!(!crate::looks_credential_like("trust_token.o"));
+    assert!(!crate::looks_credential_like("pmbtoken.o"));
     // The genuine ones must keep matching.
     assert!(crate::looks_credential_like("Login Data"));
     assert!(crate::looks_credential_like("id_ed25519.key"));
+    assert!(crate::looks_credential_like("cli.key"));
+    assert!(crate::looks_credential_like(".env"));
+    assert!(crate::looks_credential_like(".env.production"));
+    assert!(crate::looks_credential_like("client_secret.json"));
+    assert!(crate::looks_credential_like("secrets.yaml"));
+    assert!(crate::looks_credential_like("credentials_backup"));
+    assert!(crate::looks_credential_like("id_ed25519"));
+}
+
+/// The strong word must LEAD the name. `credentials_backup` is a
+/// credentials file; `02-borrowed-credentials` is a chapter.
+#[test]
+fn a_credential_word_in_the_middle_of_a_name_is_not_a_credential_file() {
+    assert!(crate::looks_credential_like("credentials_backup"));
+    assert!(!crate::looks_credential_like("02-borrowed-credentials"));
+    assert!(!crate::looks_credential_like("04-miras-secrets"));
+    assert!(!crate::looks_credential_like("wallet-token-cache"));
+    assert!(!crate::looks_credential_like("token"));
+    assert!(crate::looks_credential_like("token"));
 }
 
 /// A guard that KEEPS something must say what keeping it costs.
