@@ -65,6 +65,31 @@ fn emit_event_does_not_panic() {
     crate::emit_event(&event);
 }
 
+/// The test suite must never append to the OPERATOR's live event stream.
+///
+/// ADDED 2026-10-25 (audit D12): the test suite calls `run_guard_once` and
+/// the cleanup paths directly, and every event they produced was appended to
+/// the live `~/.dracon/events.jsonl`. Fixture data mixed in with real
+/// observations and was indistinguishable from it: the stream held a
+/// "/tmp test event" and a "sync frozen at 95%" for a disk that was never at
+/// 95%.
+///
+/// The persistence logic itself stays covered — `events.rs`'s own tests call
+/// `persist_event` against a temporary path.
+#[test]
+fn the_test_suite_never_writes_to_the_operators_event_stream() {
+    const SOURCE: &str = include_str!("events.rs");
+    let emit = crate::guard_tests::top_level_fn_source(SOURCE, "pub fn emit_event(");
+    assert!(
+        emit.contains("emit_event("),
+        "emit_event must have been located — otherwise the assertion below would pass on an empty region"
+    );
+    assert!(
+        emit.contains("cfg!(test)"),
+        "the test suite must not append to the operator's live event stream: fixture events are indistinguishable from real ones"
+    );
+}
+
 #[test]
 fn shorten_event_time_relative() {
     use crate::shorten_event_time;
