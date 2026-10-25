@@ -9963,6 +9963,23 @@ async fn cmd_storage(
         anyhow::bail!("storage --json cannot be combined with --cleanup (JSON mode is report-only); run without --json to clean");
     }
 
+    // ADDED 2026-10-25 (audit): the analysis walks EVERY project under the
+    // root with a `du` per project, and the report is printed only when it
+    // has FINISHED. Measured on this host: `dracon-system storage` produced
+    // no output at all — stdout and stderr both empty — for 5m45s, and then
+    // printed the report in one go.
+    //
+    // That matters because the rapid-fill alarm names this exact command:
+    // "inspect recent writes with dracon-system storage". The operator was
+    // told to run a diagnostic that looked hung, with nothing to show the
+    // work was progressing. Say what is happening, and how long it can
+    // take, BEFORE the wait. The line goes to stderr so that `--json`
+    // stdout stays machine-readable.
+    eprintln!(
+        "🔎 Scanning {} for storage hotspots — this walks every project and \
+         can take several minutes on a busy filesystem…",
+        root.display()
+    );
     let report = analyze_workspace_storage(&root, 15, 25).await?;
 
     if json {
