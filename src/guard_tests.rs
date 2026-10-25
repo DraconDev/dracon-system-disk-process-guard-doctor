@@ -1770,23 +1770,27 @@ fn disk_fill_rate_ignores_a_single_burst_inside_the_window() {
     let step = 30u64;
     // 20 GiB/h = 0.16667 GiB per 30 s.
     let steady = 20.0 / 120.0;
-    let mut history: Vec<(Instant, u64)> = Vec::new();
+    // Match the actual append-ordered, latest-30-sample history. Older
+    // pre-cleanup samples must precede the drop, not be appended after now.
+    let mut history: Vec<(Instant, u64)> = vec![
+        (now - Duration::from_secs(step * 29), 300 * gib),
+        (now - Duration::from_secs(step * 28), 301 * gib),
+    ];
     let mut used = 100.0f64;
-    for i in 0..30u64 {
+    for i in 0..28u64 {
         used += steady;
         // A 2.4 GiB burst across the last two sample intervals.
-        if i == 28 || i == 29 {
+        if i == 26 || i == 27 {
             used += 2.4;
         }
         history.push((
-            now - Duration::from_secs(step * (29 - i)),
+            now - Duration::from_secs(step * (27 - i)),
             (used * gib as f64) as u64,
         ));
     }
-    // The reclamation the guard performs resets the growth window, so the
-    // burst sits in a window that is otherwise a steady 20 GiB/h fill.
-    history.push((now - Duration::from_secs(step * 30), 300 * gib));
-    history.push((now - Duration::from_secs(step * 29), 301 * gib));
+    // Cleanup resets the window; the sustained-fill and burst assertions
+    // below are unchanged, with both bursts inside the actual 30 samples.
+    assert!(history.windows(2).all(|pair| pair[0].0 < pair[1].0));
 
     let rate = crate::disk_fill_rate(&history)
         .rate_gbph()
