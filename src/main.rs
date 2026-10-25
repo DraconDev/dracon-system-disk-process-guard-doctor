@@ -9140,6 +9140,25 @@ async fn check_large_logs(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
     }
 }
 
+/// What to report about the proactive rust cleanup, given the last reported
+/// state and the current one.
+///
+/// Modelled as a pure decision rather than read out of the process-global
+/// inside the production wrapper — the same discipline as the clamp
+/// reporter: the decision is what the tests need, and the wrapper only
+/// keeps the bookkeeping.
+pub(crate) fn proactive_rust_report(previous: Option<bool>, enabled: bool) -> Option<&'static str> {
+    match (previous, enabled) {
+        // It was off and is now on: confirm the recovery, because silence
+        // would leave the operator unsure whether the change took effect.
+        (Some(false), true) => Some("enabled"),
+        // It is off: either the first sighting, or a change from on.
+        (None, false) | (Some(true), false) => Some("disabled"),
+        // Unchanged, and "enabled" on the first sighting is not news.
+        _ => None,
+    }
+}
+
 /// The last proactive-rust cleanup state reported in this process.
 static LAST_REPORTED_RUST_CLEANUP: std::sync::OnceLock<std::sync::Mutex<Option<bool>>> =
     std::sync::OnceLock::new();
@@ -9159,21 +9178,19 @@ static LAST_REPORTED_RUST_CLEANUP: std::sync::OnceLock<std::sync::Mutex<Option<b
 fn report_proactive_rust_state(enabled: bool) {
     let cell = LAST_REPORTED_RUST_CLEANUP.get_or_init(|| std::sync::Mutex::new(None));
     let mut last = cell.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    if last.as_ref() == Some(&enabled) {
+    let previous = *last;
+    let Some(report) = proactive_rust_report(previous, enabled) else {
         return;
-    }
-    let previous = last.replace(enabled);
-    if enabled {
-        if previous == Some(false) {
-            eprintln!(
-                "✓ policy: the proactive rust-target cleanup is enabled again — stale `target/` trees can be reclaimed"
-            );
-        }
-    } else {
-        eprintln!(
+    };
+    *last = Some(enabled);
+    match report {
+        "enabled" => eprintln!(
+            "✓ policy: the proactive rust-target cleanup is enabled again — stale `target/` trees can be reclaimed"
+        ),
+        _ => eprintln!(
             "⚠ policy: auto_cleanup_rust is false — the guard will NOT reclaim stale rust `target/` trees; \
              they stay on disk until you remove them or enable the knob (`dracon-system storage` shows how much)"
-        );
+        ),
     }
 }
 
