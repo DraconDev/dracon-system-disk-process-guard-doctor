@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The exact 2026-08-10 scenario is pinned as a REGRESSION: a nested `example-mint_dev_token` inside a deleted `target/` tree no longer keeps that tree alive.
 - The depth-capped fixture is rebuilt at the new cap, so the fail-closed rule is still tested.
 - The rust-cleanup report has exactly ONE call site, and it is the guard pass: the cleanup tier dispatch must not grow one, so the action tier cannot silence the warning again.
+- The trend warning's contract is pinned in both directions: a disk 13.8 hours from full at 10 GiB/h MUST warn (the case the old percent predictor was blind to), a disk filling faster than the rapid-fill threshold must NOT warn (that alarm owns it), an unmeasured or not-filling rate must never produce a deadline, and the horizon and the "never alert" sentinel both silence it. The trend warning and the rapid-fill alarm are pinned to quote the SAME hours-until-full figure.
+- A release-gate test that assumed a reaped PID stays free is no longer allowed to fail on PID RECYCLATION: it now keeps spawning short-lived children until it gets a PID that is still unused. The old test failed on a busy host for a reason that had nothing to do with the guard, and this test runs in the release gate.
 
 ## [0.112.49] - 2026-10-24
 
