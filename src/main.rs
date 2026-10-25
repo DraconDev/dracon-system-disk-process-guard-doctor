@@ -1637,8 +1637,35 @@ pub(crate) fn looks_credential_like(name: &str) -> bool {
     }
     // The strong word must LEAD the name: `credentials_backup` qualifies,
     // `02-borrowed-credentials` does not.
+    //
+    // The LEADING set is deliberately smaller than the STEM set. `secret`
+    // and `token` are credential words, but they also LEAD ordinary compound
+    // names — the cargo artefacts `secret_scan-<hash>` and `token_bucket.rs`
+    // — and admitting them here kept a 5.0 GiB build tree alive on the
+    // strength of a test name. A word that names a credential file
+    // unambiguously (`credentials`, `password`, `client_secret`, `id_rsa`)
+    // still qualifies when it leads the name.
+    const LEADING: &[&str] = &[
+        "credential",
+        "credentials",
+        "password",
+        "passwords",
+        "apikey",
+        "api_key",
+        "client_secret",
+        "htpasswd",
+        "id_rsa",
+        "id_dsa",
+        "id_ecdsa",
+        "id_ed25519",
+        "keyring",
+        "keychain",
+        "netrc",
+        "npmrc",
+        "shadow",
+    ];
     let first = stem.split(['-', '_', ' ', '.']).next().unwrap_or(stem);
-    STEM.contains(&first)
+    LEADING.contains(&first)
 }
 
 /// What the byte-precise df history can say about the disk's fill rate.
