@@ -9136,6 +9136,43 @@ async fn check_large_logs(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
     }
 }
 
+/// The last proactive-rust cleanup state reported in this process.
+static LAST_REPORTED_RUST_CLEANUP: std::sync::OnceLock<std::sync::Mutex<Option<bool>>> =
+    std::sync::OnceLock::new();
+
+/// Report that the proactive rust-target cleanup is switched off, once per
+/// change of state.
+///
+/// ADDED 2026-10-25 (audit): the guard's own convention is that "a silent
+/// skip is exactly how a monitoring feature disappears without anyone
+/// noticing" — see the log-directory check in `check_large_logs`. With
+/// `auto_cleanup_rust = false` the stale `target/` trees are NOT reclaimed:
+/// on this host 78.2 GiB of rust-build sat on a disk at 84% filling at over
+/// 100 GiB/h, and the disk report said NOTHING about it. The operator had
+/// set the knob deliberately — the report does not second-guess that — but
+/// the guard must say "this is why your build trees survive", once, and
+/// confirm when it is enabled again.
+fn report_proactive_rust_state(enabled: bool) {
+    let cell = LAST_REPORTED_RUST_CLEANUP.get_or_init(|| std::sync::Mutex::new(None));
+    let mut last = cell.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if last.as_ref() == Some(&enabled) {
+        return;
+    }
+    let previous = last.replace(enabled);
+    if enabled {
+        if previous == Some(false) {
+            eprintln!(
+                "✓ policy: the proactive rust-target cleanup is enabled again — stale `target/` trees can be reclaimed"
+            );
+        }
+    } else {
+        eprintln!(
+            "⚠ policy: auto_cleanup_rust is false — the guard will NOT reclaim stale rust `target/` trees; \
+             they stay on disk until you remove them or enable the knob (`dracon-system storage` shows how much)"
+        );
+    }
+}
+
 async fn run_proactive_cleanup(guard: &GuardPolicy, state: &mut GuardRuntimeState) -> Result<()> {
     let apply = guard.auto_cleanup_apply;
     let mut total_reclaimed = 0u64;
