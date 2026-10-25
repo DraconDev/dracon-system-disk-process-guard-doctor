@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > is the canonical record.
 
 ## [Unreleased]
+
+### Fixed
+
+- **The rapid-fill alarm no longer invents a fill rate out of a single burst.** The published rate was a least-squares slope over the last 30 byte-precise `df` samples — and that window is routinely only **60–90 seconds long**, because the guard's own cleanup truncates it (a reclamation starts a new growth window). A least-squares slope over such a window is decided by its steepest segment, so one burst became the disk's rate. Measured live on this host: the alarm published "Disk growing at **184.5 GiB/h** … estimated **0.5 hours** until full" while an independent 10-second sampling of the SAME window found the disk essentially flat — a peak drawdown of 1.91 GiB in 180 s (38 GiB/h) and a net change of +0.03 GiB. Within one hour the same disk was reported as 25.1, 36.3, 57.7, 42.9, 124.6, 107.2, 36.9 and 184.5 GiB/h, and the trend warning quoted a different figure for the same quantity a minute later (11.2 GiB/h against 42.9 GiB/h). That contradicted figure is a false deadline on every pass and the exact defect class the audit forbids. The slope is now the **median of the pairwise slopes** (Theil–Sen): a single burst, or a single reclamation step, touches only a minority of the pairs and so cannot move the published rate. The reclamation rule is unchanged, and what the alarm publishes is now unambiguously the disk's SUSTAINED fill — which is what "hours until full" is a statement about.
+
+### Tests
+
+- The burst scenario is pinned as a REGRESSION in both directions: a 2.4 GiB burst inside the newest sample intervals of an otherwise steady 20 GiB/h fill must not become the published rate (and must not push it past 45 GiB/h), and the rate must not change value merely because a burst arrived (`disk_fill_rate_ignores_a_single_burst_inside_the_window`, `the_published_rate_is_stable_when_a_burst_arrives`).
+- The fixture is built in the history's real append order — older pre-cleanup samples precede the drop rather than being appended after `now` — and asserts strictly increasing sample timestamps, so the test cannot pass on a history the guard would never produce.
+
 ## [0.112.50] - 2026-10-25
 
 ### Fixed
