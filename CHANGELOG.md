@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The heuristic's contract is pinned in both directions: `cli.key`, `.env`, `id_ed25519.key`, `client_secret.json`, `secrets.yaml` and `credentials_backup` are credential files; `chrome.css`, `trust_token.o`, `02-borrowed-credentials.md` and `wallet-token-cache` are not.
 - The exact 2026-08-10 scenario is pinned as a REGRESSION: a nested `example-mint_dev_token` inside a deleted `target/` tree no longer keeps that tree alive.
 - The depth-capped fixture is rebuilt at the new cap, so the fail-closed rule is still tested.
+- The rust-cleanup report has exactly ONE call site, and it is the guard pass: the cleanup tier dispatch must not grow one, so the action tier cannot silence the warning again.
 
 ## [0.112.49] - 2026-10-24
 
