@@ -1754,6 +1754,90 @@ fn disk_fill_rate_recovers_after_large_reclamation() {
     );
 }
 
+/// ADDED 2026-10-25 (audit D13): the live host published "Disk growing at
+/// 184.5 GiB/h ... estimated 0.5 hours until full" for a disk an independent
+/// 10-second sampling found FLAT (peak 1.91 GiB in 180 s; net +0.03 GiB).
+/// The cause: the guard's own cleanup truncates the measurement window to
+/// 60-90 s, and a least-squares slope over such a window is decided by the
+/// steepest segment — one burst.
+///
+/// The sustained fill is 20 GiB/h. A burst of 2.4 GiB inside a single
+/// 30-second sample interval must not be published as the disk's rate.
+#[test]
+fn disk_fill_rate_ignores_a_single_burst_inside_the_window() {
+    let now = Instant::now();
+    let gib = 1024u64 * 1024 * 1024;
+    let step = 30u64;
+    // 20 GiB/h = 0.16667 GiB per 30 s.
+    let steady = 20.0 / 120.0;
+    let mut history: Vec<(Instant, u64)> = Vec::new();
+    let mut used = 100.0f64;
+    for i in 0..30u64 {
+        used += steady;
+        // A 2.4 GiB burst across the last two sample intervals.
+        if i == 28 || i == 29 {
+            used += 2.4;
+        }
+        history.push((
+            now - Duration::from_secs(step * (29 - i)),
+            (used * gib) as u64,
+        ));
+    }
+    // The reclamation the guard performs resets the growth window, so the
+    // burst sits in a window that is otherwise a steady 20 GiB/h fill.
+    history.push((now - Duration::from_secs(step * 30), 300 * gib));
+    history.push((now - Duration::from_secs(step * 29), 301 * gib));
+
+    let rate = crate::disk_fill_rate(&history)
+        .rate_gbph()
+        .expect("the window has a measurable rate");
+    assert!(
+        (rate - 20.0).abs() < 2.0,
+        "a single burst must not become the published rate: expected ~20 GiB/h, got {rate}"
+    );
+    assert!(
+        rate < 45.0,
+        "the published rate ({rate} GiB/h) must not track the burst"
+    );
+}
+
+/// ADDED 2026-10-25 (audit D13): the same quantity must not change value
+/// because a burst arrived. Before the fix the live guard published 25.1,
+/// 36.3, 57.7, 42.9, 124.6, 107.2, 36.9 and 184.5 GiB/h within one hour
+/// for a disk whose fill never changed — and contradicted the trend
+/// warning's figure for the same quantity a minute later.
+#[test]
+fn the_published_rate_is_stable_when_a_burst_arrives() {
+    let now = Instant::now();
+    let gib = 1024u64 * 1024 * 1024;
+    let step = 30u64;
+    let steady = 20.0 / 120.0;
+    let mut history: Vec<(Instant, u64)> = Vec::new();
+    let mut used = 100.0f64;
+    for i in 0..30u64 {
+        used += steady;
+        history.push((
+            now - Duration::from_secs(step * (29 - i)),
+            (used * gib) as u64,
+        ));
+    }
+    let before = crate::disk_fill_rate(&history)
+        .rate_gbph()
+        .expect("a steady fill measures");
+    assert!((before - 20.0).abs() < 2.0, "expected ~20 GiB/h, got {before}");
+
+    // Now a burst lands in the newest interval.
+    used += 4.8;
+    history.push((now, (used * gib) as u64));
+    let after = crate::disk_fill_rate(&history)
+        .rate_gbph()
+        .expect("the window still measures");
+    assert!(
+        (after - before).abs() < 5.0,
+        "one burst moved the published rate from {before} to {after} GiB/h"
+    );
+}
+
 #[test]
 fn rapid_fill_warning_reports_user_available_runway() {
     let message = crate::rapid_disk_fill_message(40.0, 90, 20 * 1024 * 1024 * 1024);
