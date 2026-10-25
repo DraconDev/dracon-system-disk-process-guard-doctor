@@ -9587,6 +9587,17 @@ async fn check_link_drift(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
             "links-drifted",
             &format!("drifted={} detail={}", report.drifted, detail),
         );
+        // ADDED 2026-10-25 (audit D9): the drift was recorded in the guard
+        // LOG only. The event stream is where the operator looks for what
+        // the guard noticed (`dracon-system events`), so a capability that
+        // records only in a second file is a capability that is easy to
+        // miss entirely.
+        emit_event(&DraconEvent::new(
+            "system",
+            EventSeverity::Warn,
+            "links-drifted",
+            format!("{} managed link(s) drifted: {}", report.drifted, detail),
+        ));
     }
 }
 
