@@ -672,6 +672,28 @@ fn the_daemon_reports_the_secondary_mounts() {
     );
 }
 
+/// The abandoned dev/test process WORKLIST must be reported by the daemon.
+///
+/// ADDED 2026-10-25 (audit D11): the candidates went into the `GuardReport`
+/// and the daemon DISCARDS the `GuardReport`, so the worklist was visible
+/// only to `dracon-system guard once` — a worklist the operator has to ask
+/// for is a worklist nobody acts on. The candidates are dev servers that
+/// have been alive 24+ hours with almost no CPU, on a host that runs at
+/// 1–3% available memory.
+#[test]
+fn the_daemon_reports_the_abandoned_dev_server_worklist() {
+    const SOURCE: &str = include_str!("main.rs");
+    let pass = top_level_fn_source(SOURCE, "pub(crate) async fn run_guard_once(");
+    assert!(
+        pass.contains("reap_candidates(guard)"),
+        "the guard pass must have been located — otherwise the assertion below would pass on an empty region"
+    );
+    assert!(
+        pass.contains("check_reap_candidates("),
+        "the guard pass must report the abandoned dev/test worklist: the daemon discards the GuardReport, so a check outside the pass is invisible"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // AutoCleanupResult
 // ---------------------------------------------------------------------------
