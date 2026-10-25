@@ -8762,10 +8762,15 @@ fn spawn_background_cleanup(
         let outcome = match mode {
             CleanupMode::Pressure => run_auto_cleanup(&guard, &mut scratch, used, true).await,
             CleanupMode::Proactive => async {
-                // ADDED 2026-10-25 (audit): a capability that is switched off
-                // must not look identical to one that has nothing to do. The
-                // state is reported whether or not the cleanup runs.
-                report_proactive_rust_state(guard.auto_cleanup_rust);
+                // ADDED 2026-10-25 (audit D7): the "the rust cleanup is
+                // switched off" report used to live HERE, inside the
+                // proactive tier. The proactive tier only runs while the
+                // disk is between `proactive_cleanup_percent` (80%) and
+                // `disk_action_percent` (85%) — at the action tier the guard
+                // takes the pressure branch instead, so the report went
+                // silent at exactly the disk pressure that makes the
+                // unreclaimed build trees matter. It is now emitted by the
+                // guard PASS (see `run_guard_once`), so every tier says it.
                 if guard.auto_cleanup_rust {
                     run_proactive_cleanup(&guard, &mut scratch).await?;
                 }
@@ -9431,6 +9436,22 @@ pub(crate) async fn run_guard_once(
     guard: &GuardPolicy,
     state: &mut GuardRuntimeState,
 ) -> Result<GuardReport> {
+    // ADDED 2026-10-25 (audit D7): the state of the proactive rust cleanup
+    // is reported from the guard PASS, not from a cleanup tier.
+    //
+    // A capability that is switched off must not look identical to one that
+    // has nothing to do — and the tier is not a safe place to say so. The
+    // proactive tier only runs between `proactive_cleanup_percent` (80%)
+    // and `disk_action_percent` (85%); at the action tier the guard takes
+    // the pressure branch, and the report would go silent exactly when the
+    // unreclaimed `target/` trees matter most. The pressure tier honours the
+    // same knob (`run_auto_cleanup` only scans the rust targets when
+    // `auto_cleanup_rust` is set), so the DISABLED state is equally true
+    // there — and equally worth saying.
+    //
+    // It is reported BEFORE the first fallible step of the pass, so a
+    // failing disk probe cannot swallow it.
+    report_proactive_rust_state(guard.auto_cleanup_rust);
     let details = disk_details_for(&guard.disk_mount_path).await?;
     let used = details.use_percent;
     let dstate = disk_state(used, guard).to_string();
