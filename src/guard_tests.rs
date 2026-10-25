@@ -620,6 +620,7 @@ fn every_monitoring_capability_records_an_event() {
         ("fn check_inode_usage(", "filesystem/inode-warning"),
         ("fn check_large_logs(", "filesystem/log-size"),
         ("fn check_extra_mounts(", "disk/extra-mount"),
+        ("fn check_reap_candidates(", "process/reap-candidates"),
         ("fn check_link_drift(", "links-drifted"),
     ];
     for (signature, event_path) in CHECKS {
