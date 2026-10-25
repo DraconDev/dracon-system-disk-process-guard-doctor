@@ -2016,6 +2016,10 @@ fn the_disabled_rust_cleanup_report_is_not_tied_to_a_cleanup_tier() {
     // ... and NOT in the cleanup tier dispatch, which the action tier skips.
     let dispatch = top_level_fn_source(SOURCE, "fn spawn_background_cleanup(");
     assert!(
+        dispatch.contains("CleanupMode::Proactive"),
+        "the tier dispatch must have been located — otherwise the assertion below would pass on an empty region"
+    );
+    assert!(
         !dispatch.contains("report_proactive_rust_state("),
         "the rust-cleanup report must not live in the cleanup tier dispatch: the action tier (85%) takes the pressure branch and skips the proactive one"
     );
