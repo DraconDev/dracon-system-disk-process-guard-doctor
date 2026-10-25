@@ -1632,13 +1632,13 @@ pub(crate) fn looks_credential_like(name: &str) -> bool {
         return true;
     }
     let stem = lower.rsplit_once('.').map_or(lower.as_str(), |(s, _)| s);
-    if STEM.iter().any(|s| stem == *s) {
+    if STEM.contains(&stem) {
         return true;
     }
     // The strong word must LEAD the name: `credentials_backup` qualifies,
     // `02-borrowed-credentials` does not.
     let first = stem.split(['-', '_', ' ', '.']).next().unwrap_or(stem);
-    STEM.iter().any(|s| first == *s)
+    STEM.contains(&first)
 }
 
 /// What the byte-precise df history can say about the disk's fill rate.
