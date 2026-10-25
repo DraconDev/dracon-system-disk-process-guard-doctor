@@ -9238,6 +9238,89 @@ async fn check_extra_mounts(
     }
 }
 
+/// Report the abandoned dev/test process WORKLIST — a list the daemon finds
+/// every pass and then throws away.
+///
+/// ADDED 2026-10-25 (audit D11): the candidates went into the `GuardReport`,
+/// and the daemon DISCARDS the `GuardReport` — so the only place the worklist
+/// was ever visible was `dracon-system guard once`. A worklist the operator
+/// has to ask for is a worklist nobody acts on.
+///
+/// It matters here more than elsewhere: the candidates are dev servers that
+/// have been alive for 24+ hours and have burned almost no CPU, and this host
+/// runs at 1–3% available memory. The guard has already proved they are
+/// abandoned; the operator was never told.
+///
+/// Reported on CHANGE, not on a timer: the guard's own rule (2026-10-24) is
+/// that the log stays quiet while the reason is unchanged. Two different
+/// candidates at the same count are different news, so the signature is the
+/// SET, not the count.
+async fn check_reap_candidates(
+    guard: &GuardPolicy,
+    state: &mut GuardRuntimeState,
+    candidates: &[ReapCandidate],
+) {
+    let mut signature_parts: Vec<String> = candidates
+        .iter()
+        .map(|c| format!("{}:{}", c.pid, c.comm))
+        .collect();
+    signature_parts.sort();
+    let signature = signature_parts.join(",");
+    let previous = state.reap_candidate_signature.replace(signature.clone());
+    if previous.as_deref() == Some(signature.as_str()) {
+        // Unchanged: not news.
+        return;
+    }
+    if candidates.is_empty() {
+        // The worklist emptied. That IS news: the operator may have cleaned
+        // up, and silence would leave them unsure.
+        emit_event(&DraconEvent::new(
+            "system",
+            EventSeverity::Info,
+            "process/reap-candidates",
+            "No abandoned dev/test processes remain (reap_stale_dev_servers is OFF — report only)",
+        ));
+        return;
+    }
+    let listed: Vec<String> = candidates
+        .iter()
+        .take(5)
+        .map(|c| {
+            format!(
+                "{} pid={} {}h idle {}MiB",
+                c.comm, c.pid, c.idle_hours, c.rss_mb
+            )
+        })
+        .collect();
+    let mut detail = format!(
+        "{} abandoned dev/test process(es) (reap_stale_dev_servers is OFF — report only): {}",
+        candidates.len(),
+        listed.join("; ")
+    );
+    if candidates.len() > listed.len() {
+        detail.push_str(&format!(" … and {} more", candidates.len() - listed.len()));
+    }
+    let grew = previous
+        .as_deref()
+        .map(|p| p.is_empty())
+        .unwrap_or(false)
+        || candidates.len()
+            > previous
+                .as_deref()
+                .map(|p| p.split(',').filter(|s| !s.is_empty()).count())
+                .unwrap_or(0);
+    if grew {
+        // New abandoned servers appeared: the operator should know promptly.
+        send_notification(guard, "Dracon System Guard - Abandoned Dev Servers", &detail).await;
+    }
+    emit_event(&DraconEvent::new(
+        "system",
+        EventSeverity::Warn,
+        "process/reap-candidates",
+        detail,
+    ));
+}
+
 async fn check_large_logs(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
     if !guard.monitor_logs {
         return;
