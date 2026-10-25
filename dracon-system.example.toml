@@ -117,7 +117,7 @@ process_rss_mb = 4096           # Alert if RSS > 4GB
 process_sustain_secs = 30       # Alert after 30s sustained
 
 # Processes to exclude from monitoring (comma-separated)
-process_exempt_names = "systemd,dbus-daemon,Xorg,kwin_wayland,plasmashell,dracon-code"
+process_exempt_names = "systemd,dbus-daemon,Xorg,kwin_wayland,plasmashell,minimax-code"
 
 # Auto-renice heavy processes (graduated: higher CPU/memory = higher nice value)
 # CPU tiers: >=180% → nice 5, >=300% → nice 10, >=500% → nice 15
