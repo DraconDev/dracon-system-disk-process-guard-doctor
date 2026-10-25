@@ -5509,78 +5509,128 @@ fn truncate_log_file(
     Ok(original_size.saturating_sub(new_size))
 }
 
-/// Predict when disk will fill based on trend
-pub(crate) fn predict_fill_time(history: &[(Instant, u8)]) -> Option<f64> {
-    if history.len() < 3 {
-        return None;
-    }
-
-    // Simple linear regression on the last N samples
-    let n = history.len().min(20); // Use up to 20 samples
-    let recent = &history[history.len().saturating_sub(n)..];
-
-    if recent.len() < 3 {
-        return None;
-    }
-
-    // Calculate rate of change (percent per second)
-    let mut total_rate = 0.0;
-    let mut count = 0;
-
-    for i in 1..recent.len() {
-        let dt = recent[i].0.duration_since(recent[i - 1].0).as_secs_f64();
-        if dt <= 0.0 {
-            continue;
-        }
-        let dp = (recent[i].1 as f64) - (recent[i - 1].1 as f64);
-        total_rate += dp / dt;
-        count += 1;
-    }
-
-    if count == 0 {
-        return None;
-    }
-
-    let avg_rate = total_rate / count as f64;
-
-    // If rate is negative or zero, disk isn't filling
-    if avg_rate <= 0.0 {
-        return None;
-    }
-
-    // Time until 100% from current
-    let current = recent.last()?.1 as f64;
-    let remaining_percent = 100.0 - current;
-    let seconds_until_full = remaining_percent / avg_rate;
-
-    Some(seconds_until_full / 3600.0) // Return hours
+/// The disk-trend warning: the disk will be full within the warning horizon.
+///
+/// ADDED 2026-10-25 (audit D8): the prediction used to come from the PERCENT
+/// history (`predict_fill_time`), and it was blind exactly where it mattered.
+///
+/// The predictor regressed the last 20 percent samples — ten minutes on this
+/// host — and 1% of a 907 GiB disk is about 9 GiB. Below roughly 50 GiB/h the
+/// disk does not move a whole percent inside that window, so the regression
+/// found no growth at all and returned "not filling". The warning therefore
+/// never fired for a SLOW fill: measured on this host at 29.7 GiB/h, the disk
+/// was 4.5 hours from full — well inside the 24-hour horizon — and the guard
+/// said nothing. Above that rate it fired, but with a figure that disagreed
+/// with the rapid-fill alarm by a factor of three (2.4 hours against 6.8).
+///
+/// Two defects in one: the predictor could not see the rate it was supposed
+/// to warn about, and it was a SECOND, disagreeing estimate of a quantity the
+/// guard already measures byte-precisely. The rate is now the SAME measured
+/// rate the rapid-fill alarm uses (the D1 rule: one measurement, one number,
+/// one meaning), and the warning covers the case the rapid-fill threshold
+/// misses — a disk that will be full before it looks dangerous.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct DiskTrendWarning {
+    /// Hours until the disk is full at the measured rate.
+    pub(crate) hours: f64,
+    /// The measured fill rate the hours were computed from, in GiB/hour.
+    pub(crate) gbph: f64,
 }
 
-async fn check_disk_trends(guard: &GuardPolicy, state: &mut GuardRuntimeState, used: u8) {
+/// Whether the disk-trend warning should fire, and what it should say.
+///
+/// `rate` is the rate the guard measured THIS pass, in GiB/hour. `avail_bytes`
+/// is the free space the same pass saw. `warn_hours` is the horizon
+/// (`trend_warn_hours`; 0 is the documented "never alert" sentinel).
+/// `rapid_gbph` is the rapid-fill threshold (`disk_rapid_fill_gbph`).
+///
+/// The rapid-fill alarm owns the FAST case and states the same
+/// hours-until-full figure, so this warning stays quiet there: two alarms
+/// saying one thing is noise, and the guard's own rule is one number with
+/// one meaning.
+pub(crate) fn disk_trend_warning(
+    rate: DiskFillRate,
+    avail_bytes: u64,
+    warn_hours: u64,
+    rapid_gbph: f64,
+) -> Option<DiskTrendWarning> {
+    let DiskFillRate::Filling(gbph) = rate else {
+        // Nothing measured, or the disk is genuinely not filling: there is no
+        // deadline to report, and the guard must not state one it cannot
+        // support (the D1 rule — "unmeasured" is not "not filling").
+        return None;
+    };
+    if gbph >= rapid_gbph {
+        // The rapid-fill alarm already speaks for this disk.
+        return None;
+    }
+    let hours = avail_bytes as f64 / 1_073_741_824.0 / gbph;
+    if hours <= 0.0 || hours > warn_hours as f64 {
+        return None;
+    }
+    Some(DiskTrendWarning { hours, gbph })
+}
+
+/// The disk-trend warning, computed from the rate this pass measured.
+///
+/// ADDED 2026-08-10. REWRITTEN 2026-10-25 (audit D8) — see
+/// `disk_trend_warning` for why the percent-based prediction could not work.
+async fn check_disk_trends(
+    guard: &GuardPolicy,
+    state: &mut GuardRuntimeState,
+    used: u8,
+    avail_bytes: u64,
+    rate: DiskFillRate,
+) {
     if !guard.track_trends {
         return;
     }
-    let now = Instant::now();
-    state.disk_history.push((now, used));
-    if state.disk_history.len() > 100 {
-        let excess = state.disk_history.len() - 100;
-        state.disk_history.drain(0..excess);
+    let warning = disk_trend_warning(
+        rate,
+        avail_bytes,
+        guard.trend_warn_hours,
+        guard.disk_rapid_fill_gbph,
+    );
+    // The state is tracked whether or not the warning fires, so the ENTRY
+    // into the warning condition is what triggers the notification — not a
+    // per-pass repetition of it.
+    let (previous, event_due) = report_state_transition(
+        state,
+        "disk-trend",
+        if warning.is_some() { "soon" } else { "ok" },
+        guard.report_repeat_secs,
+    );
+    let Some(warning) = warning else {
+        return;
+    };
+    let detail = format!(
+        "Disk predicted to fill in {:.1} hours at {:.1} GiB/h ({}% used, {:.1} GiB available) — \
+         the rate is below the rapid-fill threshold, so the disk will be full before it looks dangerous",
+        warning.hours,
+        warning.gbph,
+        used,
+        avail_bytes as f64 / 1_073_741_824.0
+    );
+    if previous.as_deref() != Some("soon") {
+        send_notification(
+            guard,
+            "Dracon System Guard - Disk Trend Warning",
+            &detail,
+        )
+        .await;
     }
-    if let Some(hours_until_full) = predict_fill_time(&state.disk_history) {
-        if hours_until_full > 0.0 && hours_until_full <= guard.trend_warn_hours as f64 {
-            let key = "disk-trend-warning".to_string();
-            if should_notify(state, &key, guard.notify_cooldown_secs.max(3600)) {
-                send_notification(
-                    guard,
-                    "Dracon System Guard - Disk Trend Warning",
-                    &format!(
-                        "Disk predicted to fill in {:.1} hours (currently {}%)",
-                        hours_until_full, used
-                    ),
-                )
-                .await;
-            }
-        }
+    if event_due {
+        // ADDED 2026-10-25 (audit D8): the warning used to reach only a
+        // desktop notification — nothing in the journal, nothing in the
+        // event stream. A monitoring feature that says nothing to the
+        // operator's tooling is a feature that disappears without anyone
+        // noticing (the guard's own rule, from the log-directory check).
+        emit_event(&DraconEvent::new(
+            "system",
+            EventSeverity::Warn,
+            "disk/trend-warning",
+            detail,
+        ));
     }
 }
 
