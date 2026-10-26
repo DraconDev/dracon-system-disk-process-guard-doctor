@@ -5,20 +5,20 @@ Analysis only: **nothing was deleted in this pass.** Measurements below are allo
 ## Current state
 
 ```
-/dev/nvme0n1p2 ext4 907G 666G 195G 78% /        (root disk — the one that filled)
+/dev/nvme0n1p2 ext4 907G 673G 192G 79% /        (root disk — the one that filled)
 /dev/nvme0n1p1 vfat 1022M 26M 997M 3% /boot
 /dev/sda2     ext4 440G 301G 117G 73% /mnt/data (second disk, not part of the problem)
 ```
 Inodes: `60407808 total, 5852491 used (10%)` — inode exhaustion is **not** a risk.
 Health: `dracon-sync` healthy, freeze off, policy valid.
 
-Free space moved 1.3G → 167G → 195G during this analysis, driven mostly by the sync daemon's own `auto_gc` reclaiming git garbage (see "Live reclaim" below), not by anything in this goal.
+**Measurements drift while you read this.** Free space moved 1.3G → 167G → 195G → 192G during the analysis, and `/home/dracon/Dev` itself shrank 392G → 319G mid-scan, driven by the sync daemon's own `auto_gc` reclaiming git garbage (see "Live reclaim"). Rows below were taken at slightly different moments; they are consistent with each other but are not a single atomic snapshot. Treat exact percentages as approximate and re-measure before acting on any specific-path decision.
 
-## Where the 666G actually is
+## Where the space is
 
 | Area | Size | Notes |
 | --- | ---: | --- |
-| /home/dracon/Dev | 392G | 59% of used space |
+| /home/dracon/Dev | 319–392G | the dominant consumer; shrinking live via daemon gc |
 | /nix/store | 45G | NixOS packages; `nix-store --gc --print-dead` reports **0 dead paths** — nothing reclaimable without removing generations |
 | /var/lib | 34G | dominated by a 32G swapfile (see below) |
 | /var/lib/swapfile | 32G | **inactive** orphan |
@@ -29,17 +29,17 @@ Free space moved 1.3G → 167G → 195G during this analysis, driven mostly by t
 | hegemon-pre-filterrepo-backup…git | 5.2G | standalone bare repo backup |
 | ci-runner + ci-runner-doomtap | 6.6G | |
 
-### Dev breakdown (392G)
+### Dev breakdown (last full scan; values drift downward as gc runs)
 
 | Repo | Size | Largest known components |
 | --- | ---: | --- |
-| dracon-platform | 240G | `web/music/out` **144G** (26,140 mp3 + covers); `.git` 32.8G; `web/games` 43G; `web/books` 12G |
-| dracon-strategy | 78G | `ai-auto-writer/.git` 12G; `authors` ~6.4G; `market-research` 6G; `ai-auto-video` 3.9G |
-| dracon-utilities | 15.4G | rebuilt `target/` trees |
-| browser-extensions-shared | 14.7G | `.git` 4.9G; `node_modules` 3.2G |
-| db-gateway | 3.6G | rebuilt cargo target |
-| pi-plugins | 3.3G | |
-| eve | 1.1G | rebuilt target (was 11G before cleanup + rebuild) |
+| dracon-platform | 239–240G | `web/music/out` **144G** (26,140 mp3 + covers); `.git` 32.8G; `web/games` 43G; `web/books` 12G |
+| dracon-strategy | 38–78G | `ai-auto-writer/.git` was 45G at peak, then 12G after gc |
+| dracon-utilities | 15–16G | rebuilt `target/` trees |
+| browser-extensions-shared | 15–16G | `.git` 4.9G; `node_modules` 3.2G |
+| eve | 1.1–10.6G | target rebuilt after the cleanup (regrows on build) |
+| db-gateway | 3.6–4.9G | rebuilt cargo target |
+| pi-plugins | 3.0–3.3G | |
 
 ## Live findings worth acting on
 
@@ -60,9 +60,9 @@ It is dead weight occupying 32G on the filesystem that just filled up. Swap is a
 
 ### 3. Git garbage churn was the real cause of the 100% incident
 
-At the peak of this analysis, `ai-auto-writer/.git` contained **11 `tmp_pack_*` files totalling 33.0G** — orphaned packs from interrupted/parallel `git gc`/`repack` runs. They were reclaimed **by the daemon's own auto-gc** during the session (the repo's `.git` went 45G → 12G, and free space jumped 167G → 195G). Two remain, near zero bytes.
+At the peak of this analysis, `ai-auto-writer/.git` contained **11 `tmp_pack_*` files totalling 33.0G** — orphaned packs from interrupted/parallel `git gc`/`repack` runs (largest single files on the box: 4.37G, 4.13G, 4.05G, 3.93G, 3.81G, 3.65G, 3.59G, 3.30G, 3.23G, 3.08G, 3.05G, 3.01G). They were reclaimed **by the daemon's own auto-gc** during the session: the repo's `.git` went 45G → 12G, `dracon-strategy` went 78G → 38G, `dracon/conv-work` 7G → 2.4G, and free space jumped 167G → 195G. Within minutes only 2 near-zero `tmp_pack_*` files remained.
 
-This matches the documented failure class in `AGENTS.md` (`auto_gc_garbage_threshold_bytes`, default 2 GiB, added v0.113.0 to self-heal exactly this `tmp_pack_*` bloat). The mechanism worked — but only after the disk had already hit 100%, because auto-gc needs headroom to run. That ordering is the actual defect: **gc cannot rescue a full disk because a full disk prevents gc.**
+This matches the documented failure class in `AGENTS.md` (`auto_gc_garbage_threshold_bytes`, default 2 GiB, added v0.113.0 to self-heal exactly this `tmp_pack_*` bloat). The mechanism worked — but only after the disk had already hit 100%, because auto-gc needs headroom to run. That ordering is the actual defect: **gc cannot rescue a full disk because a full disk prevents gc.** The useful follow-up is a lower gc threshold or a periodic gc, not more emergency deletion.
 
 ### 4. `/nix/store` 45G with zero dead paths
 
