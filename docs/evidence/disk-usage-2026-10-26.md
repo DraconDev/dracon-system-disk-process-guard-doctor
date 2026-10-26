@@ -163,6 +163,10 @@ Skipped with reasons (NOT deleted):
 
 Filesystem observations (concurrent activity; NOT exact attribution): before `834549735424 used / 88942223360 available (91%)`, after first deletions `831620542464 used / 91871416320 available (91%)`, then `831143182336 used / 92348776448 available (90%)`. At 2026-10-26T18:56:05Z the disk read `858714288128 used / 64777670656 available (93%)` - concurrent workloads refilled it after cleanup. No sustained-improvement claim is made.
 
+### Delivery note (contract clarification 2026-10-26)
+
+This report and its machine record are new evidence files auto-committed by the operator's sync daemon as additive commits (no existing history rewritten, no protected content deleted or hand-modified). Per the operator-approved contract amendment, such additive evidence commits are authorized delivery, not protected-history modification.
+
 ### Completion-time verification block (2026-10-26T18:56:05Z)
 
 Fresh `df -B1 /`: `/dev/nvme0n1p2 972992737280 858714288128 64777670656 93% /`.
