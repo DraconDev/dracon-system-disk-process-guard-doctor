@@ -73,8 +73,14 @@ Pre-delete state can never be reconstructed after the fact, so the raw output mu
 
 ## Completion-time verification block
 
-Fresh `df -B1 /`: `/dev/nvme0n1p2 972992737280 906510802944 16981155840 99% /` — ~17G available, up from 88M at trigger.
+At 19:56:11Z (immediately after deletion): `df -B1 /` = `972992737280 906510802944 16981155840 99% /` — ~17G available, up from the 88,711,168-byte trigger.
 
-Fresh `dracon-sync health`: healthy, daemon running, freeze off, policy valid.
+Fresh re-check at 2026-10-26T21:38:35Z: `df -B1 /` = `972992737280 756036993024 167454965760 82% /`. That later recovery is **not claimed by this goal** — the two deletions here account for 17,116,229,632 bytes, and the additional space came from other activity after this goal's window closed. Reported only to keep the record current.
 
-Fresh per-repo dirty-entry counts: system 0, platform 35, strategy 0, eve 7, terhub 0, empire 0, db-gateway 0. Unrelated edits preserved; nothing reset, staged, or discarded by this goal. Eve count includes files whose target/ outputs were deleted (source tree untouched — only the regenerable `target/` build dir was removed, which `cargo build` recreates).
+`dracon-sync health`: healthy, daemon running, freeze off, policy valid.
+
+Per-repo dirty-entry counts at close: system 0, platform 36, strategy 0, eve 9, terhub 0, empire 0, db-gateway 0. Counts drifted upward from the deletion-time snapshot (35/7) through concurrent unrelated work in article slates, games WIP, and eve crate sources; all those edits are still present. Nothing was reset, staged, or discarded by this goal.
+
+Protected content re-verified present and unmodified after the cleanup: `/home/dracon/Backups` 23G, `/home/dracon/dracon/backups` 19G, `web/music/out` 145G with 26,140 mp3s, `web/books` 12G.
+
+Eve rebuild confirmed: `/home/dracon/Dev/eve/target` was recreated at 20:15 and `cargo metadata --offline` resolves all 36 workspace members, so the deletion cost no permanently lost artifact.
