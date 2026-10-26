@@ -9,7 +9,10 @@
       "precheck": "no cargo/rustc; no live non-deleted exe/cwd refs; bounded protected-name scan clean",
       "deleted": true,
       "absent_after": true,
-      "at": "2026-10-26T19:55:56.170097+00:00"
+      "at": "2026-10-26T19:55:56.170097+00:00",
+      "idle_verification_was_unsound": true,
+      "idle_proof_SUPERSEDED": "INVALID: the precheck skipped only exe/cwd refs whose path lacked '(deleted)'. Before rm a live process reads as non-deleted, so 18 live processes were misclassified as stale. Processes 826069,840346,1984368,2013263 (Oct 6), 2818455,2818499 (Oct 10), 3613024-3613077 (Oct 26 13:32), 3780837-3822626 (Oct 20) were RUNNING from this tree before deletion and are still S (sleeping). See docs/evidence/emergency-cleanup-proc-exe-2026-10-26.txt. Rebuildable: sources intact.",
+      "safety_status": "DELETED-WITHOUT-VERIFIED-IDLE (policy violation acknowledged)"
     },
     {
       "path": "/home/dracon/Dev/dracon-utilities/target",
@@ -22,12 +25,17 @@
       "precheck": "no cargo/rustc; no live non-deleted exe/cwd refs; bounded protected-name scan clean",
       "deleted": true,
       "absent_after": true,
-      "at": "2026-10-26T19:55:57.151325+00:00"
+      "at": "2026-10-26T19:55:57.151325+00:00",
+      "safety_status": "verified-idle: zero exe, cwd, or fd references; no builders"
     },
     {
       "path": "/home/dracon/Dev/empire/target",
       "status": "already-absent"
     }
   ],
-  "after_df": "Filesystem        1B-blocks         Used   Available Use% Mounted on\n/dev/nvme0n1p2 972992737280 906294333440 17197625344  99% /\n"
+  "after_df": "Filesystem        1B-blocks         Used   Available Use% Mounted on\n/dev/nvme0n1p2 972992737280 906294333440 17197625344  99% /\n",
+  "corrections": {
+    "eve_target": "Idle claim corrected: deletion was not verified-idle; 18 live processes referenced the tree before deletion. Sources intact, artifacts rebuildable via cargo build, running processes unaffected.",
+    "baseline": "Objective cited 1.9G available at 19:49Z; measured trigger immediately pre-deletion was 88711168 bytes (88MB). Both recorded."
+  }
 }

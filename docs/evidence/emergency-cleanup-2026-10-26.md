@@ -37,6 +37,8 @@ Impact assessment (observed, not assumed): the deleted tree contained build outp
 
 ## Follow-up candidates (LISTED, NOT deleted — need per-path operator approval)
 
+Note: `ai-auto-writer/target` (4.1G) is an in-use tree, not an approval candidate — pid 1385303 has a live, non-deleted exe under it. It is skipped by the four-check rule above.
+
 | Candidate | Size | Why gated |
 | --- | --- | --- |
 | /home/dracon/dracon/backups (bundles: 4.4G, 4.4G, 3.2G, 2.7G, 1.8G…) | ~26G | operator backups |
@@ -47,7 +49,16 @@ Impact assessment (observed, not assumed): the deleted tree contained build outp
 | hegemon-pre-filterrepo-backup | 5.2G | operator backup |
 | Rebuilt target/ trees when builders idle | varies | re-verify idle at that time |
 
-## Completion-time verification block (2026-10-26T19:56:11Z)
+## Permanent guard against this class of error
+
+The idle test that failed here must never be "path lacks `(deleted)`". A correct idle check runs BEFORE deletion and disqualifies a tree when any of these is true, regardless of `(deleted)`:
+
+1. any `cargo`/`rustc`/`npm`/`bun`/`pip`/`playwright` process is running;
+2. any `/proc/*/exe` link resolves under the tree (`readlink -f`, before removal, where `(deleted)` cannot yet appear);
+3. any `/proc/*/cwd` resolves under the tree;
+4. any process holds an open file descriptor under the tree (`/proc/*/fd/*`).
+
+This goal did not run checks 2–4 correctly for `eve/target`: check 2 was evaluated with the unsound `(deleted)` filter, and checks 3–4 were not run. `db-gateway/.cargo/target` passes all four (verified by the empty reference sets captured in this record). Future deletions under this policy must run all four and record the raw output before `rm`. (2026-10-26T19:56:11Z)
 
 Fresh `df -B1 /`: `/dev/nvme0n1p2 972992737280 906510802944 16981155840 99% /` — ~17G available, up from 88M at trigger.
 
