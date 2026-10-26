@@ -1,0 +1,29 @@
+{
+  "time": "2026-10-26T18:39Z (approx, deletion window)",
+  "before_df": "/dev/nvme0n1p2 972992737280 834549735424 88942223360 91% /",
+  "paths": [
+    {
+      "path": "/home/dracon/.npm/_cacache",
+      "allocated_bytes_before": 2933747712,
+      "absent_after": true,
+      "provenance": "npm package cache; regenerates on next npm install/fetch",
+      "precheck": "no npm install/ci in process list (one npm start only); name-scan for protected files: 0 hits"
+    },
+    {
+      "path": "/home/dracon/.cache/pip",
+      "allocated_bytes_before": 352985088,
+      "absent_after": true,
+      "provenance": "pip wheel/http cache; regenerates on next pip install",
+      "precheck": "no pip/pip3 processes; name-scan: 0 hits"
+    },
+    {
+      "path": "/tmp/node-compile-cache",
+      "allocated_bytes_before": 462786560,
+      "absent_after": false,
+      "provenance": "V8 compile cache; would regenerate",
+      "precheck": "rmtree failed ENOTEMPTY (concurrent writers); SKIPPED, left intact"
+    }
+  ],
+  "after_df": "/dev/nvme0n1p2 972992737280 831620542464 91871416320 91% /",
+  "note": "Available-bytes delta is a filesystem observation during concurrent activity, not exact freed-byte attribution."
+}
