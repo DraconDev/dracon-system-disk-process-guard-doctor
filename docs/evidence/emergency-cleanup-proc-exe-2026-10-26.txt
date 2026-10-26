@@ -1,0 +1,43 @@
+2026-10-26T19:59:32+00:00
+--- raw /proc exe links referencing eve/target or ai-auto-writer/target (POST-deletion state) ---
+/proc/1385303/exe -> /home/dracon/Dev/dracon-strategy/ai-auto-writer/target/debug/ai-auto-writer
+/proc/1984368/exe -> /home/dracon/Dev/eve/target/debug/fixture-mcp (deleted)
+/proc/2013263/exe -> /home/dracon/Dev/eve/target/debug/fixture-mcp (deleted)
+/proc/2818455/exe -> /home/dracon/Dev/eve/target/debug/fixture-plugin (deleted)
+/proc/2818499/exe -> /home/dracon/Dev/eve/target/debug/fixture-plugin (deleted)
+/proc/3613024/exe -> /home/dracon/Dev/eve/target/debug/eve (deleted)
+/proc/3613065/exe -> /home/dracon/Dev/eve/target/debug/eve-fs (deleted)
+/proc/3613071/exe -> /home/dracon/Dev/eve/target/debug/eve-bash (deleted)
+/proc/3613077/exe -> /home/dracon/Dev/eve/target/debug/eve-git (deleted)
+/proc/3780837/exe -> /home/dracon/Dev/eve/target/debug/eve (deleted)
+/proc/3781100/exe -> /home/dracon/Dev/eve/target/debug/eve-fs (deleted)
+/proc/3781110/exe -> /home/dracon/Dev/eve/target/debug/eve-bash (deleted)
+/proc/3781128/exe -> /home/dracon/Dev/eve/target/debug/eve-git (deleted)
+/proc/3822588/exe -> /home/dracon/Dev/eve/target/debug/eve (deleted)
+/proc/3822619/exe -> /home/dracon/Dev/eve/target/debug/eve-fs (deleted)
+/proc/3822622/exe -> /home/dracon/Dev/eve/target/debug/eve-bash (deleted)
+/proc/3822626/exe -> /home/dracon/Dev/eve/target/debug/eve-git (deleted)
+/proc/826069/exe -> /home/dracon/Dev/eve/target/debug/fixture-mcp (deleted)
+/proc/840346/exe -> /home/dracon/Dev/eve/target/debug/fixture-mcp (deleted)
+--- raw cwd links under deleted trees ---
+--- states+starts of referenced pids ---
+    PID                  STARTED STAT COMMAND
+ 826069 Tue Oct  6 21:03:58 2026 S    /home/dracon/Dev/eve/target/debug/fixture-mcp stall-stdin
+ 840346 Tue Oct  6 21:04:56 2026 S    /home/dracon/Dev/eve/target/debug/fixture-mcp stall-stdin
+1385303 Mon Oct 26 19:35:46 2026 Sl   /home/dracon/Dev/dracon-strategy/ai-auto-writer/target/debug/ai-auto-writer resume wren-abend the-ashen-toll-a-dystopian-novel --series The Ashfall Ledger: A Dystopian Series --series-number 5
+1984368 Tue Oct  6 18:02:16 2026 S    /home/dracon/Dev/eve/target/debug/fixture-mcp stall-stdin
+2013263 Tue Oct  6 18:03:41 2026 S    /home/dracon/Dev/eve/target/debug/fixture-mcp stall-stdin
+2818455 Sat Oct 10 16:38:48 2026 S    /home/dracon/Dev/eve/target/debug/fixture-plugin hang-handshake
+2818499 Sat Oct 10 16:38:48 2026 S    /home/dracon/Dev/eve/target/debug/fixture-plugin ignore-eof
+3613024 Mon Oct 26 13:32:19 2026 Ssl+ /home/dracon/Dev/eve/target/debug/eve
+3613065 Mon Oct 26 13:32:20 2026 S    /home/dracon/Dev/eve/target/debug/eve-fs /tmp/eve-regular-KVIPQ6/home/project
+3613071 Mon Oct 26 13:32:20 2026 Sl   /home/dracon/Dev/eve/target/debug/eve-bash
+3613077 Mon Oct 26 13:32:20 2026 S    /home/dracon/Dev/eve/target/debug/eve-git /run/current-system/sw/bin/git
+3780837 Tue Oct 20 22:36:10 2026 Ssl+ /home/dracon/Dev/eve/target/debug/eve chat /tmp/eve-default-surface-3780803-0/sess
+3781100 Tue Oct 20 22:36:11 2026 S    /home/dracon/Dev/eve/target/debug/eve-fs /tmp/eve-default-surface-3780803-0
+3781110 Tue Oct 20 22:36:11 2026 Sl   /home/dracon/Dev/eve/target/debug/eve-bash
+3781128 Tue Oct 20 22:36:11 2026 S    /home/dracon/Dev/eve/target/debug/eve-git /run/current-system/sw/bin/git
+3822588 Tue Oct 20 22:38:51 2026 Ssl+ /home/dracon/Dev/eve/target/debug/eve chat /tmp/eve-default-surface-3822582-0/sess
+3822619 Tue Oct 20 22:38:52 2026 S    /home/dracon/Dev/eve/target/debug/eve-fs /tmp/eve-default-surface-3822582-0
+3822622 Tue Oct 20 22:38:52 2026 Sl   /home/dracon/Dev/eve/target/debug/eve-bash
+3822626 Tue Oct 20 22:38:52 2026 S    /home/dracon/Dev/eve/target/debug/eve-git /run/current-system/sw/bin/git
