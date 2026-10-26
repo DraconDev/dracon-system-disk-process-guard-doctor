@@ -37,6 +37,10 @@ Not deleted by this goal: `dracon-utilities/target` and `empire/target` were alr
 | hegemon-pre-filterrepo-backup | 5.2G | operator backup |
 | Rebuilt target/ trees when builders idle | varies | re-verify idle at that time |
 
-## Completion-time verification block
+## Completion-time verification block (2026-10-26T19:56:11Z)
 
-(To be filled with fresh `df -B1 /`, `dracon-sync health`, per-repo dirty counts.)
+Fresh `df -B1 /`: `/dev/nvme0n1p2 972992737280 906510802944 16981155840 99% /` — ~17G available, up from 88M at trigger.
+
+Fresh `dracon-sync health`: healthy, daemon running, freeze off, policy valid.
+
+Fresh per-repo dirty-entry counts: system 0, platform 35, strategy 0, eve 7, terhub 0, empire 0, db-gateway 0. Unrelated edits preserved; nothing reset, staged, or discarded by this goal. Eve count includes files whose target/ outputs were deleted (source tree untouched — only the regenerable `target/` build dir was removed, which `cargo build` recreates).
