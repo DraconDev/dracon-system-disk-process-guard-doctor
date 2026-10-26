@@ -1,3 +1,11 @@
 fd/exe/cwd reference scan — executed 2026-10-26T21:37:39+00:00 (POST-deletion; cannot retroactively validate pre-delete state)
 
 --- fd links under the deleted trees (any process holding an open file) ---
+fd_refs_total=0
+
+--- exe links under the deleted trees ---
+db_gateway_exe_refs=0
+
+--- do the deleted trees exist now? ---
+ABSENT  /home/dracon/Dev/db-gateway/.cargo/target
+PRESENT /home/dracon/Dev/eve/target (2026-10-26 20:15:10.246554577 +0000)
