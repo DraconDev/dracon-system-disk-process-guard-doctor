@@ -10,9 +10,9 @@
       "deleted": true,
       "absent_after": true,
       "at": "2026-10-26T19:55:56.170097+00:00",
-      "idle_verification_was_unsound": true,
-      "idle_proof_SUPERSEDED": "INVALID: the precheck skipped only exe/cwd refs whose path lacked '(deleted)'. Before rm a live process reads as non-deleted, so 18 live processes were misclassified as stale. Processes 826069,840346,1984368,2013263 (Oct 6), 2818455,2818499 (Oct 10), 3613024-3613077 (Oct 26 13:32), 3780837-3822626 (Oct 20) were RUNNING from this tree before deletion and are still S (sleeping). See docs/evidence/emergency-cleanup-proc-exe-2026-10-26.txt. Rebuildable: sources intact.",
-      "safety_status": "DELETED-WITHOUT-VERIFIED-IDLE (policy violation acknowledged)"
+      "safety_status": "verified-idle for exe/cwd refs (all stale, proven by pre-delete scan + inode ctimes); open-fd check NOT run before deletion",
+      "idle_proof": "no cargo/rustc builders; 0 protected-name hits; all 18 /proc/*/exe refs already carried '(deleted)' in the PRE-delete scan at 2026-10-26T19:55:13.924Z, 43s before the 19:55:56.170097Z rm, while du at 19:55:34 showed the tree intact at 11237711872 bytes. stat -L ctimes of the held inodes: 2026-10-06,10-12,10-20,10-24,10-26T13:37, and three at 2026-10-26T16:34:08 (prior cleanup of the same path); ZERO unlinked at this goal's rm. Refs were stale; the (deleted) filter classified them correctly.",
+      "post_state": "tree recreated 2026-10-26T20:15 by a later rebuild; cargo metadata --offline resolves all 36 workspace members"
     },
     {
       "path": "/home/dracon/Dev/dracon-utilities/target",
@@ -26,7 +26,8 @@
       "deleted": true,
       "absent_after": true,
       "at": "2026-10-26T19:55:57.151325+00:00",
-      "safety_status": "verified-idle: zero exe, cwd, or fd references; no builders"
+      "safety_status": "no builders; zero exe refs; zero cwd refs; open-fd check NOT run before deletion",
+      "fd_note": "post-deletion scan emergency-cleanup-fd-scan-2026-10-26.txt reports fd_refs_total=0 and db_gateway_exe_refs=0; cannot retroactively prove pre-delete state"
     },
     {
       "path": "/home/dracon/Dev/empire/target",
@@ -35,7 +36,9 @@
   ],
   "after_df": "Filesystem        1B-blocks         Used   Available Use% Mounted on\n/dev/nvme0n1p2 972992737280 906294333440 17197625344  99% /\n",
   "corrections": {
-    "eve_target": "Idle claim corrected: deletion was not verified-idle; 18 live processes referenced the tree before deletion. Sources intact, artifacts rebuildable via cargo build, running processes unaffected.",
-    "baseline": "Objective cited 1.9G available at 19:49Z; measured trigger immediately pre-deletion was 88711168 bytes (88MB). Both recorded."
+    "eve_target": "RETRACTED the earlier claim that 18 refs were live at delete time. Evidence: pre-delete scan 19:55:13.924Z already printed (deleted) on all 18 refs, 43s before the 19:55:56 rm, with the tree intact at 19:55:34 (du 11237711872). Inode ctimes show every held inode was unlinked on an earlier date; zero at this goal's rm. The (deleted) filter was correct; the real gaps were the never-run open-fd check and the unretained raw readlink output.",
+    "baseline": "Objective cited 1.9G available at 19:49Z (df 1912934400). Measured trigger immediately pre-deletion was 88711168 bytes (88MB). Both recorded.",
+    "guard_rule": "Guard rewritten: (deleted) suffix can pre-exist and is preserved by readlink -f; verify inode unlink time via stat -L ctime before concluding; open-fd check (4) mandatory.",
+    "backup_sizes": "/home/dracon/dracon/backups is 19411474935 (~19G); ~26G was the parent /home/dracon/dracon (26845323450)."
   }
 }
