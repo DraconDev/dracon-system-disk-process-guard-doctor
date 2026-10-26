@@ -53,6 +53,10 @@ The historical transcript `/home/dracon/.minimax/transcript-exports/mvs_6cff89ca
 
 The operator subsequently explicitly accepted the lost UI screenshots, required retaining this disclosure, and authorized revised cleanup acceptance using available evidence without claiming restoration. Both Agnes pictures and the historical UI screenshots remain deleted; neither is described as restored or proven regenerable. This is acceptance of the incident, not retrospective authorization for the deletion.
 
+**Future-deletion safety policy remains unchanged:** the revised accounting checks do not weaken the regenerable-only requirement for any future deletion. Delete only content with established regeneration provenance, after checking protected content and active users; an unknown provenance is a reason to skip, not permission to delete. Audit evidence, `.pi-glla`, Git objects/modules/history, strategy media/authors/data, credentials, and canonical checkouts remain protected. Accepting these historical losses grants no future deletion exemption.
+
+For closing this incident account only, the operator-approved revised checks replace the original sustained free-space, clean-git-status, retrospective protected-path find/diff, and regenerable-only-result certification checks. They do not certify the original cleanup as compliant.
+
 The revised checks are: retain captured available-byte batch deltas and a current full df row; account for all deletion categories including zero/skips; verify current sync health and report dirty repositories without discarding edits; retain the exact deletion allowlist and disclose that no historical protected-path baseline exists; record the operator-accepted losses without claiming recovery. The result is a historical cleanup and honest handoff, not a guarantee that concurrent workloads keep disk use below 93% indefinitely.
 
 ### Per-path target allocation inventory
