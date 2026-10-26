@@ -57,7 +57,7 @@ The revised checks are: retain captured available-byte batch deltas and a curren
 
 ### Per-path target allocation inventory
 
-The original `du -xs` output recorded KiB. The byte equivalents below are pre-cleanup allocated sizes, NOT exact bytes freed; there were concurrent writers and nested target paths inside the utilities target, so nested inventories must not be added again.
+The original `du -xs` output recorded KiB. The byte equivalents below are pre-cleanup allocated sizes, NOT exact bytes freed; there were concurrent writers. No resolved-path or allocation-overlap analysis was captured, so this inventory is not a substitute for measured reclamation.
 
 | Path under /home/dracon/Dev | Recorded KiB | Byte equivalent |
 | --- | ---: | ---: |
