@@ -74,8 +74,52 @@ A `(deleted)` suffix on a `/proc/*/exe` link does **not** mean the process is de
 
 ## Recommended order, if more space is needed
 
-1. **32G orphaned swapfile** — safest large win, root action, no data loss.
+1. **32G orphaned swapfile** — safest large win, but needs root; see blocking note below.
 2. **`Videos/youtube` 15G** — user content; only the owner can say.
 3. **`Backups` 24G + `dracon/backups` 19G + hegemon backup 5.2G = 48G of bundles** — per-path approval needed; several are pre-slim safety copies of history that is now published.
 4. **`music/out` 144G** — the decisive item; needs a product decision about whether generated tracks are reproducible.
 5. Rebuilt `target/` trees — free but temporary; they regrow on the next build.
+
+## What was actually done in this pass
+
+### Auto-gc threshold lowered to 512 MiB (applied)
+
+`~/.dracon/utilities/sync/dracon-sync.toml` now sets `auto_gc_garbage_threshold_bytes = 536870912` (was the 2 GiB code default), with a comment recording the incident. Backup of the prior config: `dracon-sync.toml.bak-<timestamp>` beside it.
+
+Verified: `dracon-sync config validate` → `✅ Policy is valid`; `dracon-sync health` → healthy, policy valid.
+
+**Mechanism verified by measurement, not assumption:** `git count-objects -v` in ai-auto-writer reported `size-garbage: 824288` (KiB ≈ 805 MiB across 5 `tmp_pack_*` files) at a moment when `objects/pack` held 7.9G. So the garbage ledger does include tmp_pack bytes and the knob sees this failure class. The old 2 GiB threshold required the garbage to pass 2 GiB before any gc ran; with real temp packs at 3–4.4 GiB each that was routinely exceeded *at the same time* the disk was already full, so the self-heal could never get the headroom it needed. 512 MiB triggers the existing one-hour-cooldown gc well before that point.
+
+### Swapfile deletion attempted — BLOCKED on sudo password
+
+The user approved deleting the 32G orphan. All four safety checks passed (not in `/proc/swaps`, not in `/etc/fstab`, not in NixOS config, zero exe/cwd/fd references, file dated 2026-01-11). The command `sudo rm -f /var/lib/swapfile` **failed**: `sudo: a terminal is required to read the password`. `sudo -n true` also fails, so there is no passwordless path. The file is unchanged at 34,359,738,368 bytes.
+
+To complete it, run:
+
+```
+sudo rm -f /var/lib/swapfile
+```
+
+Or configure an askpass helper / NOPASSWD entry for the specific command. Nothing else in this analysis needs root.
+
+## Second finding: two repos have pushing permanently broken, and that is what grows `.git`
+
+While verifying the gc behaviour, the live journal showed reproductions distinct from disk size. Both are **warden-gate refusals**, not network faults:
+
+**`/home/dracon/.dracon`** — `main` is **ahead 485 commits** and growing by ~1 commit/second; every push is refused with:
+
+```
+⚠️  Possible plaintext secrets detected in push.
+   The warden filter may have been bypassed.
+   Run: dracon-warden once /home/dracon/.dracon
+```
+
+Journal confirmation: `⏸️ /home/dracon/.dracon committed; push paused (commit-only mode)` on every pulse. Logged as `stuck repos (expire after 24h): … /home/dracon/.dracon (2h ago, 6 consecutive failures)`.
+
+**`/home/dracon/Dev/browser-extensions-shared`** — **ahead 287 commits**, `.git` 9.2G with `size-garbage: 3.34 GiB`; push is blocked by repeated `dracon-warden: malformed or undecryptable secret tag … left as-is — the clean filter may have been bypassed` warnings.
+
+Why this matters for disk: a repo that commits but never pushes accumulates history forever, and every failed push attempt leaves new `tmp_pack_*` garbage behind. That is the same bloat class that filled the disk. Fixing the push gate is a **safer, higher-leverage** action than deleting space, and it is also the only way to stop the growth from recurring.
+
+Not actioned here because it is a credentials/secret-handling decision, not a disk decision: the suggested remedy is the one the daemon already prints (`dracon-warden once <repo>`), and for browser-extensions-shared the malformed tags need an owner decision about re-encrypting or rewriting those blobs. Neither should be attempted by an agent without approval.
+
+Current git footprint for context: `dracon-platform/.git` 34.3G, `browser-extensions-shared/.git` 9.2G, `dracon-strategy/.git` 2.1G — **46G total**, versus 144G for `music/out` alone.
