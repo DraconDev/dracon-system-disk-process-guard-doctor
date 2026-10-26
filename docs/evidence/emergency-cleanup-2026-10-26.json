@@ -1,0 +1,33 @@
+{
+  "time": "2026-10-26T19:55:55.935107+00:00",
+  "before_df": "Filesystem        1B-blocks         Used Available Use% Mounted on\n/dev/nvme0n1p2 972992737280 923410542592  81416192 100% /\n",
+  "paths": [
+    {
+      "path": "/home/dracon/Dev/eve/target",
+      "allocated_bytes_before": 11237711872,
+      "provenance": "cargo build output; rebuilds via cargo build",
+      "precheck": "no cargo/rustc; no live non-deleted exe/cwd refs; bounded protected-name scan clean",
+      "deleted": true,
+      "absent_after": true,
+      "at": "2026-10-26T19:55:56.170097+00:00"
+    },
+    {
+      "path": "/home/dracon/Dev/dracon-utilities/target",
+      "status": "already-absent"
+    },
+    {
+      "path": "/home/dracon/Dev/db-gateway/.cargo/target",
+      "allocated_bytes_before": 5878517760,
+      "provenance": "cargo build output; rebuilds via cargo build",
+      "precheck": "no cargo/rustc; no live non-deleted exe/cwd refs; bounded protected-name scan clean",
+      "deleted": true,
+      "absent_after": true,
+      "at": "2026-10-26T19:55:57.151325+00:00"
+    },
+    {
+      "path": "/home/dracon/Dev/empire/target",
+      "status": "already-absent"
+    }
+  ],
+  "after_df": "Filesystem        1B-blocks         Used   Available Use% Mounted on\n/dev/nvme0n1p2 972992737280 906294333440 17197625344  99% /\n"
+}
