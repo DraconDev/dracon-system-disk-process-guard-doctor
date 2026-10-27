@@ -246,14 +246,28 @@ pub(crate) fn nixos_swap_devices(config: &str) -> Vec<PathBuf> {
 /// such assignment or the brackets never balance.
 fn swap_devices_block(config: &str) -> Option<String> {
     let key = "swapDevices";
-    let key_pos = config.find(key)?;
-    // The character before the key must not be part of a longer identifier.
-    if let Some(before) = config[..key_pos].chars().next_back() {
-        if before.is_alphanumeric() || before == '_' || before == '.' {
-            return None;
+    // Try every occurrence: the first may be a longer identifier or an
+    // attribute path (`x.swapDevices`), a later one the real assignment.
+    let mut search_from = 0;
+    while let Some(rel) = config[search_from..].find(key) {
+        let key_pos = search_from + rel;
+        search_from = key_pos + key.len();
+        // The character before the key must not be part of a longer identifier.
+        if let Some(before) = config[..key_pos].chars().next_back() {
+            if before.is_alphanumeric() || before == '_' || before == '.' {
+                continue;
+            }
+        }
+        if let Some(block) = block_after(config, key_pos + key.len()) {
+            return Some(block);
         }
     }
-    let after_key = &config[key_pos + key.len()..];
+    None
+}
+
+/// The bracket-matched `[ ... ]` value after an `=` following `key_end`.
+fn block_after(config: &str, key_end: usize) -> Option<String> {
+    let after_key = &config[key_end..];
     let eq = after_key.find('=')?;
     let after_eq = &after_key[eq + 1..];
     let open = after_eq.find('[')?;
