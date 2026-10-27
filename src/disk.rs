@@ -419,6 +419,10 @@ pub(crate) fn describe_cache_users(users: &[CacheUser]) -> Option<String> {
     )
 }
 
+/// A dot-prefixed `/tmp` entry is reported (never auto-deleted) above this
+/// size, so a real space hog cannot hide behind a leading dot.
+pub(crate) const HIDDEN_TMP_REPORT_BYTES: u64 = 256 * 1024 * 1024;
+
 /// Knobs the disk cleaner reads from the guard policy.
 #[derive(Debug, Clone)]
 pub(crate) struct DiskOptions {
@@ -516,6 +520,18 @@ pub(crate) fn audit(
     // --- class 2: /tmp, /var/tmp, logs, dead swapfiles ----------------------
     let mut tmp_found = 0usize;
     for entry in find_temp_cruft(&TEMP_ROOTS, options.tmp_min_age_hours, now) {
+        // A dot-prefixed top-level entry in /tmp is an application's private
+        // runtime state (`/tmp/.X11-unix`, sockets, lock dirs), not build
+        // litter. Deleting it breaks the owning application, so it is excluded
+        // by default and only reported when it is genuinely large.
+        let hidden = entry
+            .path
+            .file_name()
+            .map(|name| name.to_string_lossy().starts_with('.'))
+            .unwrap_or(false);
+        if hidden && entry.bytes < HIDDEN_TMP_REPORT_BYTES {
+            continue;
+        }
         tmp_found += 1;
         let references = snapshot.capture(&entry.path);
         let finding = if let Some(reason) = references.blocking_reason(&entry.path) {
@@ -531,7 +547,16 @@ pub(crate) fn audit(
                 TrashClass::TempAndLogs,
                 entry.path.clone(),
                 entry.bytes,
-                Disposition::Apply,
+                if entry
+                    .path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().starts_with('.'))
+                    .unwrap_or(false)
+                {
+                    Disposition::Report
+                } else {
+                    Disposition::Apply
+                },
                 format!(
                     "{} untouched for {}h (tmp_min_age_hours={})",
                     entry.label(),
