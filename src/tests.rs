@@ -258,21 +258,15 @@ exit 0"#
         lines.contains(&"nix-env:--list-generations -p /nix/var/nix/profiles/default"),
         "the system profile is counted before it is pruned"
     );
-    // The system profile's delete call is recorded argument-by-argument too:
-    // (--delete-generations, +5, -p, /nix/var/nix/profiles/default).
-    let system_at = lines
-        .iter()
-        .position(|line| *line == "nix-env-argv:4")
-        .expect("the system-profile prune passes four arguments");
-    assert_eq!(lines[system_at + 1], "nix-env-arg:--delete-generations");
-    assert_eq!(
-        lines[system_at + 2], "nix-env-arg:+5",
-        "the system profile keeps the documented +N retain spec"
-    );
-    assert_eq!(lines[system_at + 3], "nix-env-arg:-p");
-    assert_eq!(
-        lines[system_at + 4],
-        "nix-env-arg:/nix/var/nix/profiles/default"
+    // CHANGED 2026-10-27 (audit MED): the system profile is no longer pruned
+    // with `+N` — that is the newest-N shape the objective rejects. It is now
+    // pruned with a closure-safe spread plan read from
+    // /nix/var/nix/profiles/system-<n>-link, protecting the booted generation.
+    // This fixture provides no system links, so no plan exists and the run must
+    // report the privileged path instead of deleting anything.
+    assert!(
+        lines.iter().all(|line| !line.contains("+5")),
+        "the system profile must not be pruned with the newest-N form; got {lines:?}"
     );
     let gc_line = lines.last().expect("gc call");
     assert_eq!(*gc_line, "nix-gc:");
