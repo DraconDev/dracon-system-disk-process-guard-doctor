@@ -301,6 +301,13 @@ pub(crate) struct GuardPolicy {
     // only.
     #[serde(default = "default_stray_scan_roots")]
     pub(crate) stray_scan_roots: String,
+    /// Age floor (hours) before a `/tmp` or `/var/tmp` entry counts as cruft.
+    ///
+    /// ADDED 2026-10-27: the guard daemon already owned `tmp_e2e_min_age_hours`
+    /// for its own `/tmp` sweep, but the one-shot `disk` cleaner had no way to
+    /// read it, so the 9.8 GiB sitting in `/tmp` was invisible to it.
+    #[serde(default = "default_tmp_cruft_min_age_hours")]
+    pub(crate) tmp_cruft_min_age_hours: u64,
     #[serde(default = "default_node_modules_max_age_days")]
     pub(crate) node_modules_max_age_days: u64,
     // ADDED 2026-08-25 (v0.112.39): /tmp hygiene — the 2026-08-25 disk
@@ -567,6 +574,7 @@ impl Default for GuardPolicy {
             git_temp_min_age_hours: default_git_temp_min_age_hours(),
             dead_swapfile_candidates: default_dead_swapfile_candidates(),
             stray_scan_roots: default_stray_scan_roots(),
+            tmp_cruft_min_age_hours: default_tmp_cruft_min_age_hours(),
             node_modules_max_age_days: default_node_modules_max_age_days(),
             clean_tmp: default_true(),
             tmp_search_paths: default_tmp_search_paths(),
@@ -1196,6 +1204,13 @@ pub(crate) fn default_stray_scan_roots() -> String {
     "~".to_string()
 }
 
+/// Hours a `/tmp` entry must sit untouched before the disk cleaner calls it
+/// cruft. Deliberately generous: a build or test run legitimately keeps files
+/// in `/tmp` for hours, and deleting an active one breaks the running job.
+pub(crate) fn default_tmp_cruft_min_age_hours() -> u64 {
+    24
+}
+
 pub(crate) fn default_proactive_cleanup_percent() -> u8 {
     80
 }
@@ -1296,6 +1311,9 @@ pub(crate) const SENTINEL_ZERO_KNOBS: &[&str] = &[
     // opposite of `clean_tmp_paths_with_proc`'s `min_age_hours == 0`
     // early return; the example file agrees 0 disables).
     "tmp_min_age_hours",
+    // 0 = disable the disk cleaner's /tmp age gate (same posture as
+    // tmp_min_age_hours: 0 must never mean "delete everything now").
+    "tmp_cruft_min_age_hours",
     // 0 = disable the e2e-litter fast path (general tmp gate unaffected).
     "tmp_e2e_min_age_hours",
     // 0 = disable the size-aware tmp floor (general tmp gate unaffected).
