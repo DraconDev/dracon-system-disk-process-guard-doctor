@@ -365,87 +365,52 @@ fn swap_devices_block(code: &str) -> Option<(usize, usize)> {
     let key = "swapDevices";
     // Try every occurrence: the first may be a longer identifier or an
     // attribute path (`x.swapDevices`), a later one the real assignment.
+    // (Comment/string occurrences are already blanked away by `code_only`.)
     let mut search_from = 0;
-    while let Some(rel) = config[search_from..].find(key) {
+    while let Some(rel) = code[search_from..].find(key) {
         let key_pos = search_from + rel;
         search_from = key_pos + key.len();
         // The character before the key must not be part of a longer identifier.
-        if let Some(before) = config[..key_pos].chars().next_back() {
+        if let Some(before) = code[..key_pos].chars().next_back() {
             if before.is_alphanumeric() || before == '_' || before == '.' {
                 continue;
             }
         }
-        if let Some(block) = block_after(config, key_pos + key.len()) {
-            return Some(block);
+        if let Some(range) = block_after(code, key_pos + key.len()) {
+            return Some(range);
         }
     }
     None
 }
 
-/// The bracket-matched `[ ... ]` value after an `=` following `key_end`.
-fn block_after(config: &str, key_end: usize) -> Option<String> {
+/// The byte range of the bracket-matched `[ ... ]` list value after the
+/// `=` following `key_end` (offsets relative to `config`, which must be
+/// BLANKED text). A `;` before the `[` means this `=` belongs to a different
+/// construct (not a list assignment) — bail instead of grabbing an
+/// unrelated later bracket.
+fn block_after(config: &str, key_end: usize) -> Option<(usize, usize)> {
     let after_key = &config[key_end..];
     let eq = after_key.find('=')?;
     let after_eq = &after_key[eq + 1..];
-    let open = after_eq.find('[')?;
-    // Bracket-match from the opening `[`. String contents are PRESERVED
-    // (the device scanner needs them) but never counted as brackets;
-    // comments are DROPPED so a commented-out device entry cannot match.
+    let base = key_end + eq + 1;
+    let open_rel = after_eq.find('[')?;
+    if after_eq[..open_rel].contains(';') {
+        return None;
+    }
+    // Bracket-match from the opening `[`. The text is already blanked, so
+    // no string/comment state is needed — every bracket here is structural.
     let mut depth = 0;
-    let mut in_string = false;
-    let mut in_comment = false;
-    let mut buf = String::new();
-    let chars: Vec<char> = after_eq[open..].chars().collect();
-    let mut k = 0;
-    while k < chars.len() {
-        let c = chars[k];
-        if in_comment {
-            if c == '\n' {
-                in_comment = false;
-            }
-            k += 1;
-            continue;
-        }
-        // Nix `/* ... */` block comments are dropped like `#` ones.
-        if !in_string && c == '/' && k + 1 < chars.len() && chars[k + 1] == '*' {
-            k += 2;
-            while k + 1 < chars.len() && !(chars[k] == '*' && chars[k + 1] == '/') {
-                k += 1;
-            }
-            k += 2;
-            continue;
-        }
-        if in_string {
-            buf.push(c);
-            if c == '\\' && k + 1 < chars.len() {
-                k += 1;
-                buf.push(chars[k]);
-            } else if c == '"' {
-                in_string = false;
-            }
-            k += 1;
-            continue;
-        }
+    for (offset, c) in after_eq[open_rel..].char_indices() {
         match c {
-            '#' => in_comment = true,
-            '"' => {
-                in_string = true;
-                buf.push(c);
-            }
-            '[' => {
-                depth += 1;
-                buf.push(c);
-            }
+            '[' => depth += 1,
             ']' => {
                 depth -= 1;
-                buf.push(c);
                 if depth == 0 {
-                    return Some(buf);
+                    return Some((base + open_rel, base + open_rel + offset + 1));
                 }
             }
-            _ => buf.push(c),
+            _ => {}
         }
-        k += 1;
     }
     None
 }
