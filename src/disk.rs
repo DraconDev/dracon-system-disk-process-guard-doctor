@@ -298,6 +298,14 @@ pub(crate) enum CacheFamily {
     Playwright,
     Puppeteer,
     Chrome,
+    /// ADDED 2026-10-27 (leftover-audit follow-up): agent-tool caches are
+    /// scoped to their cache SUBDIRECTORIES, never the whole dotdir —
+    /// `.codex` holds auth and plugin state, `.hermes` holds backups, cron
+    /// and hooks. Unowned families REPORT with the manager's own purge
+    /// command, exactly like the other families; live-held paths SKIP.
+    CodexCache,
+    CodexPluginsCache,
+    HermesCache,
 }
 
 impl CacheFamily {
@@ -311,6 +319,9 @@ impl CacheFamily {
             Self::Playwright => "playwright",
             Self::Puppeteer => "puppeteer",
             Self::Chrome => "chrome",
+            Self::CodexCache => "codex cache",
+            Self::CodexPluginsCache => "codex plugins cache",
+            Self::HermesCache => "hermes cache",
         }
     }
 
@@ -325,6 +336,9 @@ impl CacheFamily {
             Self::Playwright => ".cache/ms-playwright",
             Self::Puppeteer => ".cache/puppeteer",
             Self::Chrome => ".cache/google-chrome",
+            Self::CodexCache => ".codex/cache",
+            Self::CodexPluginsCache => ".codex/plugins/cache",
+            Self::HermesCache => ".hermes/cache",
         }
     }
 
@@ -339,10 +353,17 @@ impl CacheFamily {
             Self::Playwright => &["playwright", "node", "chrome", "chromium"],
             Self::Puppeteer => &["puppeteer", "node", "chrome", "chromium"],
             Self::Chrome => &["chrome", "chromium", "google-chrome"],
+            // A process literally named `codex` (the TUI/daemon binary) or
+            // `hermes`/`hermes-agent`. A python-hosted agent shows comm
+            // `python` and will NOT match — the family then reports as
+            // unowned (still protected by the live-fd SKIP), which is the
+            // safe degradation, not a false "in use".
+            Self::CodexCache | Self::CodexPluginsCache => &["codex"],
+            Self::HermesCache => &["hermes", "hermes-agent"],
         }
     }
 
-    pub(crate) const ALL: [CacheFamily; 8] = [
+    pub(crate) const ALL: [CacheFamily; 11] = [
         Self::CargoRegistry,
         Self::Npm,
         Self::Bun,
@@ -351,6 +372,9 @@ impl CacheFamily {
         Self::Playwright,
         Self::Puppeteer,
         Self::Chrome,
+        Self::CodexCache,
+        Self::CodexPluginsCache,
+        Self::HermesCache,
     ];
 }
 
@@ -1246,7 +1270,7 @@ mod disk_tests {
 
     #[test]
     fn every_named_cache_family_has_a_path_and_process_list() {
-        assert_eq!(CacheFamily::ALL.len(), 8);
+        assert_eq!(CacheFamily::ALL.len(), 11);
         for family in CacheFamily::ALL {
             assert!(!family.relative_path().is_empty());
             assert!(
