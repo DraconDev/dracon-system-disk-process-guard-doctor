@@ -1293,6 +1293,85 @@ mod disk_tests {
     }
 
     #[test]
+    fn e2e_names_use_the_short_floor_while_plain_names_use_the_general_floor() {
+        let patterns =
+            crate::parse_tmp_e2e_patterns(&crate::policy::default_tmp_e2e_patterns());
+        // e2e litter between the two floors is cruft under the short floor.
+        assert_eq!(
+            tmp_cruft_floor("ai-tts-pro-eval-InAhom", 7, &patterns, 24, 6),
+            Some(6)
+        );
+        assert_eq!(tmp_cruft_floor("iso-route", 7, &patterns, 24, 6), Some(6));
+        // Younger than even the short floor: not yet cruft.
+        assert_eq!(tmp_cruft_floor("iso-route", 5, &patterns, 24, 6), None);
+        // A plain name between the floors is held back by the general floor.
+        assert_eq!(tmp_cruft_floor("my-notes.md", 7, &patterns, 24, 6), None);
+        assert_eq!(
+            tmp_cruft_floor("my-notes.md", 25, &patterns, 24, 6),
+            Some(24)
+        );
+        // Disabled fast path (empty patterns): the general floor governs all.
+        assert_eq!(tmp_cruft_floor("iso-route", 7, &[], 24, 6), None);
+        assert_eq!(tmp_cruft_floor("iso-route", 25, &[], 24, 6), Some(24));
+    }
+
+    #[test]
+    fn the_audit_observed_families_match_the_fast_path_patterns() {
+        let patterns =
+            crate::parse_tmp_e2e_patterns(&crate::policy::default_tmp_e2e_patterns());
+        // Every family the 2026-10-27 whole-system sweep found in /tmp.
+        for name in [
+            "ai-tts-decide-D6HJnh",
+            "ai-tts-pro-eval-InAhom",
+            "iso-route",
+            "base-copy",
+            "synth4",
+            "junk-runner-e2e.qVEdrH",
+            "node-compile-cache",
+            "cw-browser-test-UUCxMS",
+        ] {
+            assert!(
+                crate::tmp_e2e_match(name, &patterns),
+                "{name} must take the fast path"
+            );
+        }
+        // The DOT in junk-runner-e2e.* is load-bearing: a dash suffix must
+        // not match, and unrelated names stay on the general floor.
+        assert!(!crate::tmp_e2e_match("junk-runner-e2e-qVEdrH", &patterns));
+        assert!(!crate::tmp_e2e_match("my-notes.md", &patterns));
+        assert!(!crate::tmp_e2e_match("node_modules", &patterns));
+    }
+
+    #[test]
+    fn agent_tool_caches_are_scoped_to_cache_subdirs_never_the_dotdir() {
+        assert_eq!(
+            CacheFamily::CodexCache.relative_path(),
+            ".codex/cache"
+        );
+        assert_eq!(
+            CacheFamily::CodexPluginsCache.relative_path(),
+            ".codex/plugins/cache"
+        );
+        assert_eq!(
+            CacheFamily::HermesCache.relative_path(),
+            ".hermes/cache"
+        );
+        // Scoping proof: none of the new families may point at a bare
+        // dotdir, which would put auth, backups, cron and hooks in range.
+        for family in [
+            CacheFamily::CodexCache,
+            CacheFamily::CodexPluginsCache,
+            CacheFamily::HermesCache,
+        ] {
+            assert!(
+                family.relative_path().contains('/'),
+                "{} must stay inside a cache subdir",
+                family.label()
+            );
+        }
+    }
+
+    #[test]
     fn apply_only_touches_apply_class_findings() {
         let dir = tempfile::tempdir().expect("tempdir");
         let doomed = dir.path().join("doomed.bin");
