@@ -12492,9 +12492,10 @@ async fn cmd_guard_clean(
     }
 
     if do_report_only {
-        // REPORT-ONLY by design: dead swapfiles and stray dirs/bundles are
-        // surfaced with sizes and an exact command, never deleted. See
-        // space_report.rs for why neither class is safe to automate.
+        // REPORT-ONLY by design: dead swapfiles, wrong-swap placement and
+        // unreferenced swapfiles, plus stray dirs/bundles, are surfaced
+        // with sizes and an exact command, never deleted. See
+        // space_report.rs for why none of these classes is safe to automate.
         let active = std::fs::read_to_string("/proc/swaps")
             .map(|contents| active_swap_paths(&contents))
             .unwrap_or_default();
@@ -12518,6 +12519,27 @@ async fn cmd_guard_clean(
                     dead.removal_command()
                 ));
             }
+        }
+        // ADDED 2026-10-27 (wrong-swap check): active swap outside the
+        // expected devices, and on-disk swapfiles with no NixOS
+        // swapDevices entry. Same shared pass the disk audit uses.
+        let expected: Vec<String> = guard_clone
+            .expected_swap_prefixes
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect();
+        let swap_config = expand_tilde(&guard_clone.nixos_swap_config);
+        let swap_health = check_swap_health(&expected, &swap_candidates, &swap_config);
+        for line in swap_health.describe() {
+            actions.push(format!("REPORT-ONLY {line}"));
+        }
+        if !swap_health.config_known {
+            actions.push(format!(
+                "REPORT-ONLY swap reference check skipped (NixOS config unreadable or no swapDevices block: {})",
+                swap_config.display()
+            ));
         }
         let stray_roots: Vec<PathBuf> = guard_clone
             .stray_scan_roots
