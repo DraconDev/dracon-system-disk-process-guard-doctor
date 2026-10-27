@@ -396,6 +396,9 @@ fn sentinel_zero_knob_list_matches_the_policy_fields() {
         // ADDED 2026-10-27: 0 = git scratch files eligible immediately (the
         // live-git-process check still blocks every deletion).
         "git_temp_min_age_hours",
+        // ADDED 2026-10-27: 0 = disable the disk cleaner's /tmp age gate
+        // (matching tmp_min_age_hours, where 0 also disables the sweep).
+        "tmp_cruft_min_age_hours",
     ];
     let mut listed: Vec<&&str> = SENTINEL_ZERO_KNOBS.iter().collect();
     listed.sort();
