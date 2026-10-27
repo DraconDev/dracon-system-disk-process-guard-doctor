@@ -443,7 +443,14 @@ pub(crate) fn audit(
     proc_root: &Path,
     now: SystemTime,
     report_only: bool,
+    selection: Option<&[TrashClass]>,
 ) -> DiskReport {
+    // Only walk the classes actually asked for. Filtering findings AFTER a full
+    // scan made `--class git` slower than the whole audit, because the three
+    // skipped classes were still walked.
+    let wanted = |class: TrashClass| {
+        selection.is_none_or(|selected| selected.contains(&class))
+    };
     let mut report = DiskReport::default();
     // One /proc pass for the whole run: per-finding walks took >15 minutes on
     // a host with thousands of /tmp entries.
@@ -453,7 +460,7 @@ pub(crate) fn audit(
     let git_roots: Vec<PathBuf> = split_roots(&options.rust_search_roots);
     let owners = live_git_owners(proc_root);
     let mut git_found = 0usize;
-    for root in &git_roots {
+    for root in git_roots.iter().filter(|_| wanted(TrashClass::GitTemp)) {
         for candidate in find_git_temp_files(root, 4) {
             git_found += 1;
             let references = snapshot.capture(&candidate.path);
@@ -519,7 +526,12 @@ pub(crate) fn audit(
 
     // --- class 2: /tmp, /var/tmp, logs, dead swapfiles ----------------------
     let mut tmp_found = 0usize;
-    for entry in find_temp_cruft(&TEMP_ROOTS, options.tmp_min_age_hours, now) {
+    let tmp_entries = if wanted(TrashClass::TempAndLogs) {
+        find_temp_cruft(&TEMP_ROOTS, options.tmp_min_age_hours, now)
+    } else {
+        Vec::new()
+    };
+    for entry in tmp_entries {
         // A dot-prefixed top-level entry in /tmp is an application's private
         // runtime state (`/tmp/.X11-unix`, sockets, lock dirs), not build
         // litter. Deleting it breaks the owning application, so it is excluded
@@ -567,7 +579,12 @@ pub(crate) fn audit(
         };
         report.findings.push(finding.with_references(references));
     }
-    for log in find_oversized_logs(&LOG_ROOTS, options.tmp_min_age_hours, now) {
+    let logs = if wanted(TrashClass::TempAndLogs) {
+        find_oversized_logs(&LOG_ROOTS, options.tmp_min_age_hours, now)
+    } else {
+        Vec::new()
+    };
+    for log in logs {
         tmp_found += 1;
         let references = snapshot.capture(&log.path);
         let finding = if let Some(reason) = references.blocking_reason(&log.path) {
@@ -591,7 +608,12 @@ pub(crate) fn audit(
     }
     let swaps = std::fs::read_to_string("/proc/swaps").unwrap_or_default();
     let active = active_swap_paths(&swaps);
-    for path in split_roots(&options.dead_swapfile_candidates) {
+    let swap_candidates = if wanted(TrashClass::TempAndLogs) {
+        split_roots(&options.dead_swapfile_candidates)
+    } else {
+        Vec::new()
+    };
+    for path in swap_candidates {
         let Ok(metadata) = std::fs::metadata(&path) else {
             continue;
         };
@@ -606,7 +628,9 @@ pub(crate) fn audit(
 
     // --- class 3: caches and nix generations -------------------------------
     let mut cache_found = 0usize;
-    if let Some(home) = dirs::home_dir() {
+    if !wanted(TrashClass::CachesAndNix) {
+        // skipped entirely
+    } else if let Some(home) = dirs::home_dir() {
         let users = cache_users(proc_root);
         for family in CacheFamily::ALL {
             let path = home.join(family.relative_path());
@@ -656,7 +680,11 @@ pub(crate) fn audit(
     }
 
     // --- class 4: stray dirs and backup bundles ----------------------------
-    let stray_roots = split_roots(&options.stray_scan_roots);
+    let stray_roots = if wanted(TrashClass::Strays) {
+        split_roots(&options.stray_scan_roots)
+    } else {
+        Vec::new()
+    };
     let mut stray_found = 0usize;
     for root in &stray_roots {
         let Ok(entries) = std::fs::read_dir(root) else {
@@ -674,14 +702,18 @@ pub(crate) fn audit(
                 continue;
             }
             let name = entry.file_name().to_string_lossy().into_owned();
+            // Classify FIRST: sizing every entry under `~` walked `~/Dev`
+            // (hundreds of thousands of files) just to discard it, which made
+            // the stray scan slower than the whole rest of the audit.
+            let Some(stray) = classify_stray(&path, &name, 0, metadata.is_dir()) else {
+                continue;
+            };
             let bytes = if metadata.is_dir() {
                 crate::disk_tmp::directory_bytes(&path)
             } else {
                 metadata.len()
             };
-            let Some(stray) = classify_stray(&path, &name, bytes, metadata.is_dir()) else {
-                continue;
-            };
+            let stray = StrayItem { bytes, ..stray };
             stray_found += 1;
             let references = snapshot.capture(&path);
             report

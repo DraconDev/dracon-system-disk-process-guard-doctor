@@ -10821,22 +10821,15 @@ async fn cmd_disk(
     }
 
     let selected = parse_disk_classes(&class)?;
+    // The selection is applied DURING the scan: filtering afterwards still paid
+    // for every skipped class's walk.
     let mut report_data = disk::audit(
         &options,
         Path::new("/proc"),
         SystemTime::now(),
         report,
+        selected.as_deref(),
     );
-    // Restrict to the requested classes, keeping the full picture when none
-    // were named (the objective's "every trash class" default).
-    if let Some(selected) = selected {
-        report_data
-            .findings
-            .retain(|finding| selected.contains(&finding.class));
-        report_data
-            .empty_classes
-            .retain(|class| selected.contains(class));
-    }
 
     let before = available_bytes(Path::new("/"))?;
     let (freed, records) = if report {
