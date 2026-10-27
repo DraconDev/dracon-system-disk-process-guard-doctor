@@ -319,9 +319,12 @@ impl CacheFamily {
             Self::Playwright => "playwright",
             Self::Puppeteer => "puppeteer",
             Self::Chrome => "chrome",
-            Self::CodexCache => "codex cache",
-            Self::CodexPluginsCache => "codex plugins cache",
-            Self::HermesCache => "hermes cache",
+            // Labels stay cache-FREE: the report message already appends
+            // " cache; no owning process", so `hermes cache` here would
+            // render as "hermes cache cache".
+            Self::CodexCache => "codex",
+            Self::CodexPluginsCache => "codex plugins",
+            Self::HermesCache => "hermes",
         }
     }
 
