@@ -201,6 +201,19 @@ inode_warn_percent = 85
 monitor_zombies = true
 zombie_threshold = 20
 
+# Wrong-swap check (REPORT-only; the guard/doctor/disk-audit never delete
+# swap). Every ACTIVE swap device must live under one of these comma-
+# separated prefixes (plain string-prefix match: /dev/zram covers zram0..N).
+# An active swapfile anywhere else — e.g. a forgotten /var/lib/swapfile on
+# the nvme root — is flagged, as is any on-disk swapfile with no NixOS
+# swapDevices entry. A host with a legitimate swap partition extends this
+# list (e.g. "/dev/zram,/mnt/data,/dev/sda2") instead of weakening the check.
+# expected_swap_prefixes = "/dev/zram,/mnt/data"
+# NixOS configuration whose `swapDevices` block the reference check parses.
+# Unreadable (or block-less) means UNKNOWN: the reference half is skipped,
+# never failed.
+# nixos_swap_config = "~/.dracon/nixos/configuration.nix"
+
 # Memory pressure requires persistence and active pressure signals.
 monitor_memory = true
 mem_available_warn_percent = 10
