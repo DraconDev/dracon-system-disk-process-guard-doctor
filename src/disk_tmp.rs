@@ -20,6 +20,18 @@ pub(crate) struct TempEntry {
     pub(crate) bytes: u64,
     pub(crate) is_dir: bool,
     pub(crate) age_hours: u64,
+    /// Whole hours since the newest entry ANYWHERE in this tree, or `None`
+    /// when the walk could not be completed. Directories are NOT aged by
+    /// their own mtime: a test-copy tree's directory mtime stops moving
+    /// while its contents keep being rewritten (measured 2026-10-27 on
+    /// `/tmp/node-compile-cache`: top mtime 17h old, 317 files newer than
+    /// 6h, newest seconds earlier). Deleting on the top mtime alone would
+    /// remove a tree under active use, which is exactly what the daemon's
+    /// `tree_has_fresh_content` guard exists to prevent.
+    ///
+    /// `None` = unknown, and callers must treat unknown as FRESH (fail
+    /// closed), matching the daemon's walk-error behavior.
+    pub(crate) newest_content_age_hours: Option<u64>,
 }
 
 impl TempEntry {
@@ -138,20 +150,31 @@ pub(crate) fn find_temp_cruft(
                 bytes: if metadata.is_dir() { 0 } else { metadata.len() },
                 is_dir: metadata.is_dir(),
                 age_hours: hours,
+                // Filled in below for directories; a file IS its own content.
+                newest_content_age_hours: if metadata.is_dir() {
+                    // Placeholder, replaced by the real walk below. `None`
+                    // here would read as "fresh" if the walk were skipped,
+                    // which is the safe direction.
+                    None
+                } else {
+                    Some(hours)
+                },
             });
         }
     }
-    // Size the directories in parallel: serial lstat over 33k entries was the
-    // single largest cost of the whole audit.
+    // Size the directories AND age their contents in parallel — one walk each.
+    // Serial lstat over 33k entries was the single largest cost of the audit.
     let dir_paths: Vec<PathBuf> = found
         .iter()
         .filter(|entry| entry.is_dir)
         .map(|entry| entry.path.clone())
         .collect();
-    let sizes = directory_bytes_parallel(&dir_paths);
-    let mut sizes = sizes.into_iter();
+    let measured = directory_bytes_and_age_parallel(&dir_paths, now);
+    let mut measured = measured.into_iter();
     for entry in found.iter_mut().filter(|entry| entry.is_dir) {
-        entry.bytes = sizes.next().unwrap_or(0);
+        let (bytes, age) = measured.next().unwrap_or((0, None));
+        entry.bytes = bytes;
+        entry.newest_content_age_hours = age;
     }
     found.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.path.cmp(&b.path)));
     found
@@ -243,6 +266,61 @@ pub(crate) fn directory_bytes_parallel(roots: &[PathBuf]) -> Vec<u64> {
         }
     });
     out
+}
+
+/// Total allocated bytes of a directory tree, plus the age of its newest
+/// content — both from ONE walk, because a second walk over 200k entries was
+/// the single most expensive thing in the audit.
+///
+/// Returns `(bytes, newest_age_hours)`. The age is `None` when any metadata
+/// could not be read, which callers must treat as FRESH (fail closed) — the
+/// same contract as the daemon's `tree_has_fresh_content`.
+pub(crate) fn directory_bytes_and_age(root: &Path, now: SystemTime) -> (u64, Option<u64>) {
+    const LIMIT: usize = 200_000;
+    let mut total = 0u64;
+    let mut seen = 0usize;
+    // Newest mtime seen anywhere in the tree; `None` means "no readable mtime".
+    let mut newest: Option<SystemTime> = None;
+    let mut unreadable = false;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            unreadable = true;
+            continue;
+        };
+        for entry in entries.flatten() {
+            seen += 1;
+            if seen > LIMIT {
+                // Truncated walk: the age is unknown, not provably old.
+                return (total, None);
+            }
+            let Ok(metadata) = std::fs::symlink_metadata(entry.path()) else {
+                unreadable = true;
+                continue;
+            };
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            match metadata.modified() {
+                Ok(modified) => {
+                    if newest.is_none_or(|current| modified > current) {
+                        newest = Some(modified);
+                    }
+                }
+                Err(_) => unreadable = true,
+            }
+            if metadata.is_dir() {
+                stack.push(entry.path());
+            } else {
+                total += metadata.len();
+            }
+        }
+    }
+    if unreadable {
+        return (total, None);
+    }
+    let age = newest.and_then(|modified| age_hours(modified, now));
+    (total, age)
 }
 
 /// Total allocated bytes of a directory tree, without following symlinks.
