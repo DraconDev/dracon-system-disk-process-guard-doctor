@@ -269,13 +269,6 @@ pub(crate) fn directory_bytes_and_age_parallel(
     out
 }
 
-/// Bytes only, for callers that do not need the age (stray dirs, caches).
-pub(crate) fn directory_bytes_parallel(roots: &[PathBuf]) -> Vec<u64> {
-    directory_bytes_and_age_parallel(roots, SystemTime::now())
-        .into_iter()
-        .map(|(bytes, _)| bytes)
-        .collect()
-}
 
 /// Total allocated bytes of a directory tree, plus the age of its newest
 /// content — both from ONE walk, because a second walk over 200k entries was
