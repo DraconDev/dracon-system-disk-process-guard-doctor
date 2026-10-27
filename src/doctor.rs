@@ -115,6 +115,8 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
         freeze_watchdog_timer_active: is_user_service_active(FREEZE_WATCHDOG_TIMER).await,
         guard_watchdog_timer_active: is_user_service_active(GUARD_WATCHDOG_TIMER).await,
         service_probe_available,
+        swap_probe_available: swap_outcome.probe_ok,
+        swap_ok: !swap_outcome.has_findings(),
     }
 }
 
@@ -273,6 +275,24 @@ fn doctor_checks(report: &crate::DoctorReport) -> Vec<DoctorCheck> {
             state: service_state(report.guard_watchdog_timer_active),
             required: true,
             hint: "systemctl --user enable --now dracon-system-guard-watchdog.timer",
+        },
+        // ADDED 2026-10-27 (wrong-swap check): every ACTIVE swap device
+        // must live on an expected device (zram + /mnt/data by default)
+        // and every on-disk swapfile must be referenced by the NixOS
+        // `swapDevices` config. Unreadable /proc/swaps is n/a (Skipped),
+        // never a failure; unknown config only withholds the reference
+        // half, it never fails the check.
+        DoctorCheck {
+            label: "swap devices",
+            state: if !report.swap_probe_available {
+                CheckState::Skipped
+            } else if report.swap_ok {
+                yes
+            } else {
+                no
+            },
+            required: true,
+            hint: "run `dracon-system disk audit` for the offending paths; move the swap under /mnt/data or zram, add the missing NixOS swapDevices entry, or extend expected_swap_prefixes in the guard policy",
         },
     ]
 }
