@@ -228,22 +228,25 @@ pub(crate) fn find_oversized_logs(
     found
 }
 
-/// Size many directories in parallel.
+/// Size many directories in parallel, returning `(bytes, newest_age_hours)`.
 ///
 /// ADDED 2026-10-27: a serial walk of `/var/tmp` (33k entries, ~2 GiB) took 96
 /// seconds on this host even though `du -sb` needs similar time — the cost is
 /// per-entry `lstat`, not bytes. Parallelising across directories is the only
 /// lever that helps a stat-bound walk, and it cut the full audit from 244s to
-/// interactive territory.
-pub(crate) fn directory_bytes_parallel(roots: &[PathBuf]) -> Vec<u64> {
+/// interactive territory. The content age comes from the SAME walk, so adding
+/// live-churn awareness costs no extra `lstat`.
+pub(crate) fn directory_bytes_and_age_parallel(
+    roots: &[PathBuf],
+    now: SystemTime,
+) -> Vec<(u64, Option<u64>)> {
     if roots.is_empty() {
         return Vec::new();
     }
     let workers = std::thread::available_parallelism()
         .map(|n| n.get().min(8))
         .unwrap_or(4);
-    let next = std::sync::atomic::AtomicUsize::new(0);
-    let mut out = vec![0u64; roots.len()];
+    let mut out = vec![(0u64, None); roots.len()];
     // Each worker writes only its own slots, so the result vector can be split
     // into disjoint chunks per worker without locking.
     let chunk_size = roots.len().div_ceil(workers).max(1);
@@ -254,18 +257,24 @@ pub(crate) fn directory_bytes_parallel(roots: &[PathBuf]) -> Vec<u64> {
             let take = chunk_size.min(rest.len());
             let (mine, tail) = rest.split_at_mut(take);
             let (roots_mine, roots_tail) = remaining.split_at(take);
-            let next = &next;
             scope.spawn(move || {
                 for (slot, root) in mine.iter_mut().zip(roots_mine.iter()) {
-                    *slot = directory_bytes(root);
+                    *slot = directory_bytes_and_age(root, now);
                 }
-                let _ = next;
             });
             rest = tail;
             remaining = roots_tail;
         }
     });
     out
+}
+
+/// Bytes only, for callers that do not need the age (stray dirs, caches).
+pub(crate) fn directory_bytes_parallel(roots: &[PathBuf]) -> Vec<u64> {
+    directory_bytes_and_age_parallel(roots, SystemTime::now())
+        .into_iter()
+        .map(|(bytes, _)| bytes)
+        .collect()
 }
 
 /// Total allocated bytes of a directory tree, plus the age of its newest
