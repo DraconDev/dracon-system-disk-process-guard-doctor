@@ -1441,6 +1441,8 @@ mod disk_tests {
             CacheFamily::CodexCache,
             CacheFamily::CodexPluginsCache,
             CacheFamily::HermesCache,
+            CacheFamily::HermesAudioCache,
+            CacheFamily::HermesImageCache,
         ] {
             assert!(
                 family.relative_path().contains('/'),
