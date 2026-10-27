@@ -10965,9 +10965,10 @@ async fn cmd_disk(
         }
         println!();
         println!(
-            "df -B1 / : {} available before, {} available after. Note: available-byte\
-movement on a busy filesystem is not exact per-path attribution.",
-            before, after
+            "df -B1 / : {before} available before, {after} available after."
+        );
+        println!(
+            "Note: available-byte movement on a busy filesystem is not exact per-path attribution."
         );
     }
     Ok(())
