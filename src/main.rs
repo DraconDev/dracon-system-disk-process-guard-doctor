@@ -458,9 +458,6 @@ enum GuardCommands {
         #[arg(long)]
         apply: bool,
     },
-    /// Clean all reclaimable space (rust, trash, nix, caches, node_modules, docker).
-    /// A bare invocation selects every target; use target flags for a subset.
-
     /// Nitpicky disk cleaner: every known trash class in one report.
     ///
     /// Default mode frees space and auto-applies ONLY the SAFE classes
@@ -484,6 +481,8 @@ enum GuardCommands {
         #[arg(long)]
         tmp_min_age_hours: Option<u64>,
     },
+    /// Clean all reclaimable space (rust, trash, nix, caches, node_modules, docker).
+    /// A bare invocation selects every target; use target flags for a subset.
     Clean {
         #[arg(long)]
         json: bool,
