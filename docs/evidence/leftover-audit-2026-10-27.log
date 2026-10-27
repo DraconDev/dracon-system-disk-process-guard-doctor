@@ -1,0 +1,75 @@
+dracon-system disk — audit (report mode — frees nothing)
+  58 finding(s), 24.9 GiB total
+
+### 1 orphaned git temp
+  16 path(s), 12.5 GiB — 12.5 GiB SAFE/reclaimable, 0 needing a decision, 0 skipped
+  • APPLY  /home/dracon/Dev/dracon-strategy/ai-auto-writer/.git/objects/pack/tmp_pack_L3FplV (2.6 GiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+  • APPLY  /home/dracon/Dev/dracon-strategy/ai-auto-writer/.git/objects/pack/tmp_pack_dZwz1D (1.7 GiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+  • APPLY  /home/dracon/Dev/dracon-strategy/ai-auto-writer/.git/objects/pack/tmp_pack_KqaMB5 (1.6 GiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+  • APPLY  /home/dracon/Dev/dracon-strategy/ai-auto-writer/.git/objects/pack/tmp_pack_ee1st4 (1.1 GiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+  • APPLY  /home/dracon/Dev/browser-extensions-shared/.git/objects/pack/tmp_pack_9DWW9O (871.8 MiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+  • APPLY  /home/dracon/Dev/browser-extensions-shared/.git/objects/pack/tmp_pack_ykOoBZ (850.5 MiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+  • APPLY  /home/dracon/Dev/browser-extensions-shared/.git/objects/pack/tmp_pack_8YFR5r (799.0 MiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+  • APPLY  /home/dracon/Dev/browser-extensions-shared/.git/objects/pack/tmp_pack_6OkbxK (686.9 MiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+  • APPLY  /home/dracon/Dev/browser-extensions-shared/.git/objects/pack/tmp_pack_xcBykv (591.2 MiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+  • APPLY  /home/dracon/Dev/browser-extensions-shared/.git/objects/pack/tmp_pack_YNCaTs (558.0 MiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+  • APPLY  /home/dracon/Dev/browser-extensions-shared/.git/objects/pack/tmp_pack_vZ3SX9 (553.0 MiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+  • APPLY  /home/dracon/Dev/dracon-strategy/ai-auto-writer/.git/objects/pack/tmp_pack_McqlNU (334.5 MiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+  • APPLY  /home/dracon/Dev/dracon-strategy/ai-auto-writer/.git/objects/pack/tmp_pack_g5Sj3N (217.6 MiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+  • APPLY  /home/dracon/Dev/dracon-strategy/ai-auto-writer/.git/objects/pack/tmp_pack_lsqUQx (178.4 MiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+  • APPLY  /home/dracon/Dev/dracon-strategy/ai-auto-writer/.git/objects/pack/tmp_pack_0IFrf5 (43.4 MiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+  • APPLY  /home/dracon/Dev/dracon-strategy/ai-auto-writer/.git/objects/pack/tmp_pack_e9XYq1 (31.1 MiB) — orphaned scratch, older than 6h, no owning git process — report mode frees nothing
+
+### 2 tmp + logs
+  31 path(s), 63.5 MiB — 12.9 MiB SAFE/reclaimable, 0 needing a decision, 2 skipped
+  • APPLY  /tmp/k2 (5.7 MiB) — tmp-dir untouched for 158h (tmp_min_age_hours=24)
+  • APPLY  /tmp/mcode-install-test-6r5wDV (3.6 MiB) — tmp-dir untouched for 187h (tmp_min_age_hours=24)
+  • APPLY  /tmp/mcode-install-dbg-rOedX9 (3.6 MiB) — tmp-dir untouched for 187h (tmp_min_age_hours=24)
+  • APPLY  /tmp/eve-install-backup-cleanup-1897637-1792137438351935114 (850.0 B) — tmp-dir untouched for 270h (tmp_min_age_hours=24)
+  • APPLY  /tmp/eve10-readonly-replay-3085601-1790790071511169641 (776.0 B) — tmp-dir untouched for 620h (tmp_min_age_hours=24)
+  • APPLY  /tmp/audit-sandbox-home (59.0 B) — tmp-dir untouched for 581h (tmp_min_age_hours=24)
+  • APPLY  /tmp/fNguO13r (0.0 B) — tmp-dir untouched for 4869h (tmp_min_age_hours=24)
+  • APPLY  /tmp/nb-probe-logs (0.0 B) — tmp-dir untouched for 736h (tmp_min_age_hours=24)
+  • APPLY  /tmp/sddm-auth-14ad0f27-5e27-488d-a0be-2c559b916d32 (0.0 B) — tmp-file untouched for 782h (tmp_min_age_hours=24)
+  • APPLY  /tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-ModemManager.service-0tvuBG (0.0 B) — tmp-dir untouched for 627h (tmp_min_age_hours=24)
+  • APPLY  /tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-bluetooth.service-nybf28 (0.0 B) — tmp-dir untouched for 782h (tmp_min_age_hours=24)
+  • APPLY  /tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-cups.service-wQS7ij (0.0 B) — tmp-dir untouched for 782h (tmp_min_age_hours=24)
+  • APPLY  /tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-fwupd.service-z7LS2r (0.0 B) — tmp-dir untouched for 781h (tmp_min_age_hours=24)
+  • APPLY  /tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-nscd.service-q2KvHs (0.0 B) — tmp-dir untouched for 782h (tmp_min_age_hours=24)
+  • APPLY  /tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-polkit.service-Dynjg9 (0.0 B) — tmp-dir untouched for 627h (tmp_min_age_hours=24)
+  • APPLY  /tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-postgresql.service-pZGn8y (0.0 B) — tmp-dir untouched for 782h (tmp_min_age_hours=24)
+  • APPLY  /tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-power-profiles-daemon.service-mFATo9 (0.0 B) — tmp-dir untouched for 782h (tmp_min_age_hours=24)
+  • APPLY  /tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-systemd-logind.service-nMOrf6 (0.0 B) — tmp-dir untouched for 782h (tmp_min_age_hours=24)
+  • APPLY  /tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-upower.service-OkcmtH (0.0 B) — tmp-dir untouched for 782h (tmp_min_age_hours=24)
+  • APPLY  /var/tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-ModemManager.service-5V3KPP (0.0 B) — tmp-dir untouched for 627h (tmp_min_age_hours=24)
+  • APPLY  /var/tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-bluetooth.service-6c94ZO (0.0 B) — tmp-dir untouched for 782h (tmp_min_age_hours=24)
+  • APPLY  /var/tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-cups.service-t1scfs (0.0 B) — tmp-dir untouched for 782h (tmp_min_age_hours=24)
+  • APPLY  /var/tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-fwupd.service-GLKyV6 (0.0 B) — tmp-dir untouched for 781h (tmp_min_age_hours=24)
+  • APPLY  /var/tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-nscd.service-H7kclL (0.0 B) — tmp-dir untouched for 782h (tmp_min_age_hours=24)
+  • APPLY  /var/tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-polkit.service-4kfVoH (0.0 B) — tmp-dir untouched for 627h (tmp_min_age_hours=24)
+  • APPLY  /var/tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-postgresql.service-aFWB0z (0.0 B) — tmp-dir untouched for 782h (tmp_min_age_hours=24)
+  • APPLY  /var/tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-power-profiles-daemon.service-yaQJrU (0.0 B) — tmp-dir untouched for 782h (tmp_min_age_hours=24)
+  • APPLY  /var/tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-systemd-logind.service-FVeJUN (0.0 B) — tmp-dir untouched for 782h (tmp_min_age_hours=24)
+  • APPLY  /var/tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-upower.service-i35m2Z (0.0 B) — tmp-dir untouched for 782h (tmp_min_age_hours=24)
+  • SKIP   /tmp/mvs-audit (50.6 MiB) — in use — pid 2363634 (exe=/nix/store/hqkszxk2c0cxvd04xa4gsaqs182dw8l2-coreutils-9.8/bin/coreutils, cwd=/home/dracon/Dev/dracon-platform/web/games/wip/endless-td, fds=[1,2]); pid 2377840 (exe=/nix/store/lfbzxs5wyqd2122mpbj5azkxhxspw9cd-bash-interactive-5.3p3/bin/bash, cwd=/home/dracon/Dev/dracon-platform/web/games/wip/endless-td, fds=[1,2,255])
+  • SKIP   /tmp/codex-daemon-1000 (0.0 B) — in use — pid 250296 (exe=/home/dracon/.codex/packages/app-server-daemon/releases/0.164.0-x86_64-unknown-linux-musl/bin/codex, cwd=/home/dracon/Dev/pi-plugins/pi-goal-list-loop-audit, fds=[10]); pid 2846975 (exe=/home/dracon/.codex/packages/app-server-daemon/releases/0.164.0-x86_64-unknown-linux-musl/bin/codex, cwd=/home/dracon/Dev/pi-plugins/pi-goal-list-loop-audit, fds=[32])
+
+### 3 caches + nix
+  7 path(s), 12.3 GiB — 0.0 B SAFE/reclaimable, 2 needing a decision, 5 skipped
+  • REPORT /home/dracon/go/pkg/mod/cache/download (276.9 MiB) — go modules cache; no owning process. Purge with the manager's own command so the cache index stays consistent (no --apply path)
+  • REPORT /home/dracon/.cargo/registry/cache (186.6 MiB) — cargo registry cache; no owning process. Purge with the manager's own command so the cache index stays consistent (no --apply path)
+  • SKIP   /home/dracon/.cache/ms-playwright (3.7 GiB) — owned by chrome (68 processes; pid 615274, pid 615528); chromium (10 processes; pid 2365018, pid 2365031); purge from within playwright after it exits
+  • SKIP   /home/dracon/.npm (3.5 GiB) — in use — pid 1673631 (exe=/nix/store/3f4w5y9w0m06wxrym612gxv3v2kar0wv-nodejs-24.18.0/bin/node, cwd=/home/dracon/.local/share/Trash/files/rehearse (deleted), fds=[20])
+  • SKIP   /home/dracon/.bun/install/cache (2.3 GiB) — owned by bun (5 processes; pid 453748, pid 453751); purge from within bun after it exits
+  • SKIP   /home/dracon/.cache/google-chrome (1.5 GiB) — in use — pid 630791 (exe=/nix/store/769izbmqib1my1013aglw1yq5fp51hj9-google-chrome-149.0.7827.200/share/google/chrome/chrome, cwd=/home/dracon, fds=[23,80])
+  • SKIP   /home/dracon/.cache/puppeteer (906.9 MiB) — owned by chrome (68 processes; pid 615274, pid 615528); chromium (10 processes; pid 2365018, pid 2365031); purge from within puppeteer after it exits
+
+### 4 stray dirs/bundles
+  4 path(s), 129.3 MiB — 0.0 B SAFE/reclaimable, 4 needing a decision, 0 skipped
+  • REPORT /home/dracon/dracon-lfs-proof (122.2 MiB) — scratch-dir: never auto-deleted, needs explicit per-path approval
+  • REPORT /home/dracon/tmp-shield (7.0 MiB) — scratch-dir: never auto-deleted, needs explicit per-path approval
+  • REPORT /home/dracon/.dracon-git-recovery-20260831-1610 (26.2 KiB) — scratch-dir: never auto-deleted, needs explicit per-path approval
+  • REPORT /home/dracon/eve-audit-new (667.0 B) — scratch-dir: never auto-deleted, needs explicit per-path approval
+
+SAFE classes reclaimable now: 12.5 GiB
+REPORT-ONLY (needs a human decision): 592.8 MiB
