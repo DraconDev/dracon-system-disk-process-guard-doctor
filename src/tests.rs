@@ -179,10 +179,11 @@ elif [ "$1" = "--delete-generations" ]; then
     # passed the single argument "3 6" and nix rejects it with
     # "invalid generation number '3 6'".
     echo "nix-env-argv:$#" >> {quoted_log}
-    shift
-    while [ "$#" -gt 0 ]; do
-        echo "nix-env-arg:$1" >> {quoted_log}
-        shift
+    # Keep the flag: nix's real argv is (--delete-generations, id, id, ...), so
+    # the test must see --delete-generations as an ARGUMENT, not just as the
+    # branch selector.
+    for arg in "$@"; do
+        echo "nix-env-arg:$arg" >> {quoted_log}
     done
 fi
 exit 0"#
