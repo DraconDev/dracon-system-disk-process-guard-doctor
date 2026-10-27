@@ -12025,11 +12025,19 @@ async fn cmd_guard_clean(
         for root in roots {
             candidates.extend(find_git_temp_files(root, 4));
         }
-        let owner = git_activity_present(&process_command_names());
+        // Per-repo ownership: only a git process working inside THIS repository
+        // can be writing its scratch files. A host-wide "any git is running"
+        // rule would block every pass forever, since the sync daemon commits
+        // continuously.
+        let owners = live_git_owners(Path::new("/proc"));
+        let owner_of = |candidate: &Path| -> Option<String> {
+            let repo = repo_root_for_git_path(candidate)?;
+            git_owner_for(&owners, &repo).map(|owner| format!("{}(pid {})", owner.name, owner.pid))
+        };
         let outcome = clean_git_temp_files(
             candidates,
             guard_clone.git_temp_min_age_hours,
-            owner.clone(),
+            owner_of,
             apply,
         );
         total_reclaimed += outcome.reclaimed_bytes;
