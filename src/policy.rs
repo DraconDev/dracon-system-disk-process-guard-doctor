@@ -301,6 +301,23 @@ pub(crate) struct GuardPolicy {
     // only.
     #[serde(default = "default_stray_scan_roots")]
     pub(crate) stray_scan_roots: String,
+    // ADDED 2026-10-27 (wrong-swap check): path prefixes an ACTIVE swap
+    // device must live under, comma-separated. The 2026-10-26 incident
+    // deleted a 32 GiB swapfile only after proving it was inactive; an
+    // active swapfile in the wrong place is the same hazard in reverse,
+    // so the guard/doctor/disk-audit flag any active device outside this
+    // list. Plain string-prefix matching (documented in space_report.rs):
+    // `/dev/zram` covers zram0..zramN. A host with a legitimate swap
+    // partition extends this list instead of weakening the check.
+    #[serde(default = "default_expected_swap_prefixes")]
+    pub(crate) expected_swap_prefixes: String,
+    // ADDED 2026-10-27 (wrong-swap check): the NixOS configuration whose
+    // `swapDevices` block the reference check parses. Tilde-expanded at
+    // each use. When this file is unreadable (or has no swapDevices
+    // block), the reference half reports UNKNOWN instead of flagging
+    // everything — unknown is never failure.
+    #[serde(default = "default_nixos_swap_config")]
+    pub(crate) nixos_swap_config: String,
     /// Age floor (hours) before a `/tmp` or `/var/tmp` entry counts as cruft.
     ///
     /// ADDED 2026-10-27: the guard daemon already owned `tmp_e2e_min_age_hours`
