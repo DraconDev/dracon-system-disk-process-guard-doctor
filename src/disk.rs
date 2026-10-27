@@ -24,7 +24,7 @@
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::disk_refs::{capture_references, ReferenceCapture};
+use crate::disk_refs::{ProcSnapshot, ReferenceCapture};
 use crate::disk_tmp::{
     find_oversized_logs, find_temp_cruft, LOG_ROOTS, OVERSIZED_LOG_BYTES, TEMP_ROOTS,
 };
@@ -381,6 +381,9 @@ pub(crate) fn audit(
     report_only: bool,
 ) -> DiskReport {
     let mut report = DiskReport::default();
+    // One /proc pass for the whole run: per-finding walks took >15 minutes on
+    // a host with thousands of /tmp entries.
+    let snapshot = ProcSnapshot::read(proc_root);
 
     // --- class 1: orphaned git temp -----------------------------------------
     let git_roots: Vec<PathBuf> = split_roots(&options.rust_search_roots);
@@ -389,7 +392,7 @@ pub(crate) fn audit(
     for root in &git_roots {
         for candidate in find_git_temp_files(root, 4) {
             git_found += 1;
-            let references = capture_references(proc_root, &candidate.path);
+            let references = snapshot.capture(&candidate.path);
             let owner = repo_root_for_git_path(&candidate.path)
                 .and_then(|repo| git_owner_for(&owners, &repo).map(|o| format!("{}(pid {})", o.name, o.pid)));
             let finding = if let Some(reason) = references.blocking_reason(&candidate.path) {
@@ -454,7 +457,7 @@ pub(crate) fn audit(
     let mut tmp_found = 0usize;
     for entry in find_temp_cruft(&TEMP_ROOTS, options.tmp_min_age_hours, now) {
         tmp_found += 1;
-        let references = capture_references(proc_root, &entry.path);
+        let references = snapshot.capture(&entry.path);
         let finding = if let Some(reason) = references.blocking_reason(&entry.path) {
             Finding::new(
                 TrashClass::TempAndLogs,
@@ -481,7 +484,7 @@ pub(crate) fn audit(
     }
     for log in find_oversized_logs(&LOG_ROOTS, options.tmp_min_age_hours, now) {
         tmp_found += 1;
-        let references = capture_references(proc_root, &log.path);
+        let references = snapshot.capture(&log.path);
         let finding = if let Some(reason) = references.blocking_reason(&log.path) {
             Finding::new(
                 TrashClass::TempAndLogs,
@@ -530,7 +533,7 @@ pub(crate) fn audit(
             }
             cache_found += 1;
             let bytes = crate::disk_tmp::directory_bytes(&path);
-            let references = capture_references(proc_root, &path);
+            let references = snapshot.capture(&path);
             let in_use = describe_cache_users(users.get(&family).map(Vec::as_slice).unwrap_or(&[]));
             let finding = match (references.blocking_reason(&path), in_use) {
                 (Some(reason), _) => Finding::new(
@@ -595,7 +598,7 @@ pub(crate) fn audit(
                 continue;
             };
             stray_found += 1;
-            let references = capture_references(proc_root, &path);
+            let references = snapshot.capture(&path);
             report
                 .findings
                 .push(stray_finding(stray).with_references(references));
@@ -655,6 +658,7 @@ pub(crate) fn apply(
     let mut freed = 0u64;
     let mut records = Vec::new();
     let owners = live_git_owners(proc_root);
+    let snapshot = ProcSnapshot::read(proc_root);
 
     // Group git-temp findings so the battle-tested cleaner (age floor, symlink
     // refusal, per-repo ownership) keeps doing the actual unlink.
@@ -715,7 +719,7 @@ pub(crate) fn apply(
             remaining.push(finding);
             continue;
         }
-        let fresh = capture_references(proc_root, &finding.path);
+        let fresh = snapshot.capture(&finding.path);
         if let Some(reason) = fresh.blocking_reason(&finding.path) {
             let mut skipped = finding.clone();
             skipped.disposition = Disposition::Skip;
