@@ -479,6 +479,12 @@ enum GuardCommands {
         all: bool,
         #[arg(long)]
         min_size_mb: Option<u64>,
+        /// Orphaned git temp packs (tmp_pack_*/tmp_idx_*/tmp_obj_*).
+        #[arg(long)]
+        git_temp: bool,
+        /// Report dead swapfiles and stray dirs/backup bundles (never deletes).
+        #[arg(long)]
+        report_only: bool,
     },
 }
 
@@ -11652,6 +11658,11 @@ struct CleanTargets {
     caches: bool,
     node_modules: bool,
     docker: bool,
+    /// ADDED 2026-10-27: orphaned git temp packs (the 33 GiB class).
+    git_temp: bool,
+    /// ADDED 2026-10-27: dead swapfiles + stray dirs/bundles. Report-only by
+    /// design; these are never deleted by this tool.
+    report_only: bool,
 }
 
 impl CleanTargets {
@@ -11663,12 +11674,21 @@ impl CleanTargets {
             caches: true,
             node_modules: true,
             docker: true,
+            git_temp: true,
+            report_only: true,
         }
     }
 
     /// Returns true if no targets are enabled.
     fn is_empty(&self) -> bool {
-        !self.rust && !self.trash && !self.nix && !self.caches && !self.node_modules && !self.docker
+        !self.rust
+            && !self.trash
+            && !self.nix
+            && !self.caches
+            && !self.node_modules
+            && !self.docker
+            && !self.git_temp
+            && !self.report_only
     }
 }
 
@@ -11958,6 +11978,8 @@ async fn cmd_guard(cmd: GuardCommands) -> Result<()> {
             docker,
             all,
             min_size_mb,
+            git_temp,
+            report_only,
         } => {
             let targets = CleanTargets {
                 rust,
@@ -11966,6 +11988,8 @@ async fn cmd_guard(cmd: GuardCommands) -> Result<()> {
                 caches,
                 node_modules,
                 docker,
+                git_temp,
+                report_only,
             };
             cmd_guard_clean(&guard, json, apply, all, targets, min_size_mb).await
         }
