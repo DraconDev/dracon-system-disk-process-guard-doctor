@@ -196,21 +196,34 @@ exit 0"#
     let lines: Vec<&str> = calls.lines().collect();
     assert_eq!(
         lines.len(),
-        4,
-        "the generation count, two profile prunes and one store GC expected"
+        5,
+        "the generation listing, one profile prune, the system-profile count and prune, and one store GC expected"
     );
-    assert_eq!(lines[0], "nix-env:--delete-generations +5");
+    // CHANGED 2026-10-27: the user profile is now thinned by SPREADING the
+    // survivors across the range instead of `+5`. With generations 1..=7 and
+    // keep=5 the survivors are 1, 2, 4, 6, 7, so the deletions are 3 and 5 —
+    // note the OLDEST generation survives as a rollback anchor, which `+5`
+    // (keep 3..=7) would have destroyed.
     assert_eq!(
-        lines[1], "nix-env:--list-generations -p /nix/var/nix/profiles/default",
+        lines[0], "nix-env:--list-generations -p default",
+        "the generation list is read before choosing what to prune"
+    );
+    assert_eq!(
+        lines[1], "nix-env:--delete-generations 3 5",
+        "spread pruning keeps the oldest anchor and the current generation"
+    );
+    assert_eq!(
+        lines[2], "nix-env:--list-generations -p /nix/var/nix/profiles/default",
         "the system profile is counted before it is pruned"
     );
+    // The root-owned system profile cannot be enumerated for a spread plan by
+    // an unprivileged guard, so it keeps the documented `+N` form.
     assert_eq!(
-        lines[2],
-        "nix-env:--delete-generations +5 -p /nix/var/nix/profiles/default"
+        lines[3], "nix-env:--delete-generations +5 -p /nix/var/nix/profiles/default"
     );
-    assert_eq!(lines[3], "nix-gc:");
+    assert_eq!(lines[4], "nix-gc:");
     assert!(
-        !lines[3].contains("-d"),
+        !lines[4].contains("-d"),
         "apply must not use nix-collect-garbage -d, which discards retained generations"
     );
     let _ = fs::remove_dir_all(&root);
