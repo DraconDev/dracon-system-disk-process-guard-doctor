@@ -1,0 +1,18 @@
+┌────┬───────────────────────────┬────────┬──────────┐
+│    ┆ CHECK                     ┆ STATUS ┆ REQUIRED │
+╞════╪═══════════════════════════╪════════╪══════════╡
+│ ✅ ┆ ~/.dracon                 ┆ ok     ┆ yes      │
+│ ✅ ┆ ~/.dracon/nixos           ┆ ok     ┆ yes      │
+│ ❌ ┆ dracon-libs (dev sibling) ┆ fail   ┆ no       │
+│ ✅ ┆ dracon-utilities (self)   ┆ ok     ┆ yes      │
+│ ✅ ┆ sync policy               ┆ ok     ┆ yes      │
+│ ✅ ┆ system policy (guard)     ┆ ok     ┆ yes      │
+│ ✅ ┆ guard service             ┆ ok     ┆ yes      │
+│ ✅ ┆ legacy config absent      ┆ ok     ┆ yes      │
+│ ✅ ┆ sync service              ┆ ok     ┆ yes      │
+│ ✅ ┆ sync watchdog timer       ┆ ok     ┆ yes      │
+│ ✅ ┆ freeze watchdog timer     ┆ ok     ┆ yes      │
+│ ✅ ┆ guard watchdog timer      ┆ ok     ┆ yes      │
+│ ✅ ┆ swap devices              ┆ ok     ┆ yes      │
+└────┴───────────────────────────┴────────┴──────────┘
+✅  All required checks passed.
