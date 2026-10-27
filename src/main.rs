@@ -12060,7 +12060,7 @@ async fn cmd_guard_clean(
     if do_git_temp {
         let roots = &scan_roots;
         let mut candidates = Vec::new();
-        for root in &roots {
+        for root in roots {
             candidates.extend(find_git_temp_files(root, 4));
         }
         let owner = git_activity_present(&process_command_names());
