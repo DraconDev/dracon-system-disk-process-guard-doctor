@@ -260,7 +260,7 @@ exit 0"#
     );
     assert!(
         lines.contains(&"nix-env:--delete-generations +5 -p /nix/var/nix/profiles/default"),
-        "the system profile keeps the +N retain spec"
+        "the system profile keeps the +N retain spec; recorded lines were: {lines:?}"
     );
     let gc_line = lines.last().expect("gc call");
     assert_eq!(*gc_line, "nix-gc:");
