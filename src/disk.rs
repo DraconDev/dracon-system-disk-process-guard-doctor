@@ -1042,17 +1042,6 @@ pub(crate) fn stray_finding(stray: StrayItem) -> Finding {
 ///
 /// Every deleted path carries the pre-delete reference capture and the owner
 /// check the objective requires, so the evidence file can record it verbatim.
-pub(crate) fn apply(
-    report: &mut DiskReport,
-    proc_root: &Path,
-    git_temp_min_age_hours: u64,
-) -> (u64, Vec<DeletedRecord>) {
-    apply_with_floors(report, proc_root, git_temp_min_age_hours, 0, 0)
-}
-
-/// `apply` with the tmp floors, so the delete-time live-churn re-check knows
-/// which window qualified each finding. `0` disables the re-check (both
-/// floors zero = the caller has no tmp policy in play).
 pub(crate) fn apply_with_floors(
     report: &mut DiskReport,
     proc_root: &Path,
