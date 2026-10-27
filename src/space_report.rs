@@ -407,20 +407,11 @@ pub(crate) fn check_swap_health(
     candidates: &[PathBuf],
     config_path: &Path,
 ) -> SwapCheckOutcome {
-    let mut outcome = SwapCheckOutcome {
-        config_path: config_path.to_path_buf(),
-        ..SwapCheckOutcome::default()
-    };
-    let Ok(swaps) = std::fs::read_to_string("/proc/swaps") else {
-        return outcome;
-    };
-    outcome.probe_ok = true;
-    let table = active_swap_table(&swaps);
-    outcome.wrong = check_active_swap_placement(&table, expected_prefixes);
-    let active_paths: Vec<PathBuf> = table.iter().map(|e| e.path.clone()).collect();
+    let swaps = std::fs::read_to_string("/proc/swaps").ok();
     // On-disk universe for the reference check: every candidate that
     // exists, plus every active swap entry (a file active now but absent
     // from the config is the sharpest unreferenced case).
+    let table = swaps.as_deref().map(active_swap_table).unwrap_or_default();
     let mut on_disk: Vec<(PathBuf, u64)> = Vec::new();
     for candidate in candidates {
         if let Ok(metadata) = std::fs::metadata(candidate) {
@@ -439,19 +430,50 @@ pub(crate) fn check_swap_health(
             on_disk.push((entry.path.clone(), bytes));
         }
     }
-    let Ok(config_text) = std::fs::read_to_string(config_path) else {
+    let config = std::fs::read_to_string(config_path).ok();
+    evaluate_swap_health(
+        swaps.as_deref(),
+        config.as_deref(),
+        expected_prefixes,
+        &on_disk,
+        config_path,
+    )
+}
+
+/// The pure core of [`check_swap_health`]: `/proc/swaps` contents (or `None
+/// when unreadable), the NixOS config text (or `None`), the already-statted
+/// on-disk universe. Fully fixture-testable; the fs wrapper above feeds it.
+pub(crate) fn evaluate_swap_health(
+    swaps_contents: Option<&str>,
+    config_text: Option<&str>,
+    expected_prefixes: &[String],
+    on_disk: &[(PathBuf, u64)],
+    config_path: &Path,
+) -> SwapCheckOutcome {
+    let mut outcome = SwapCheckOutcome {
+        config_path: config_path.to_path_buf(),
+        ..SwapCheckOutcome::default()
+    };
+    let Some(swaps) = swaps_contents else {
+        return outcome;
+    };
+    outcome.probe_ok = true;
+    let table = active_swap_table(swaps);
+    outcome.wrong = check_active_swap_placement(&table, expected_prefixes);
+    let active_paths: Vec<PathBuf> = table.iter().map(|e| e.path.clone()).collect();
+    let Some(config) = config_text else {
         return outcome;
     };
     // A config with no swapDevices block at all is UNKNOWN: flagging every
     // swapfile as unreferenced would be pure noise. An explicitly EMPTY
     // block (`swapDevices = [ ];`) is KNOWN — the operator declared no
     // swapfiles, so everything on disk is unreferenced.
-    if swap_devices_block(&config_text).is_none() {
+    if swap_devices_block(config).is_none() {
         return outcome;
     }
     outcome.config_known = true;
-    let devices = nixos_swap_devices(&config_text);
-    outcome.unreferenced = check_swap_references(&on_disk, &devices, &active_paths);
+    let devices = nixos_swap_devices(config);
+    outcome.unreferenced = check_swap_references(on_disk, &devices, &active_paths);
     outcome
 }
 
