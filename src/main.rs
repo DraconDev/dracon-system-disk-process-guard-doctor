@@ -5145,7 +5145,11 @@ fn nix_delete_generations_arg(keep_generations: u32) -> Option<String> {
 ///   always including both ends.
 ///
 /// Returns the generations to DELETE, sorted ascending.
-#[cfg(test)]
+/// Highest-generation-protection variant, kept because the pre-existing
+/// spread tests are written against it. Production calls
+/// `nix_generations_to_delete_protecting` with the real `(current)` marker and
+/// the running closure instead of inferring "current == highest".
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn nix_generations_to_delete(generations: &[u32], keep: usize) -> Vec<u32> {
     // Highest-generation protection is the documented legacy semantic (no
     // (current) marker available); production uses
