@@ -12006,44 +12006,6 @@ async fn cmd_guard_clean(
         }
     }
 
-    if json {
-        #[derive(Serialize)]
-        struct CleanReport {
-            reclaimed_bytes: u64,
-            reclaimed_human: String,
-            actions: Vec<String>,
-            failures: Vec<String>,
-            apply: bool,
-        }
-        let report = CleanReport {
-            reclaimed_bytes: total_reclaimed,
-            reclaimed_human: human_bytes(total_reclaimed),
-            actions,
-            failures,
-            apply,
-        };
-        println!("{}", serde_json::to_string_pretty(&report)?);
-    // FIXED 2026-09-27 (audit rework round 4, F84): the two nested
-    // `else { if .. }` wrappers are `collapsible_else_if` on the pinned
-    // MSRV toolchain. Both collapsed; behaviour is identical.
-    } else if actions.is_empty() && failures.is_empty() {
-        println!("Nothing to clean.");
-    } else {
-        if !failures.is_empty() {
-            eprintln!("⚠️ {} cleanup step(s) failed:", failures.len());
-            for f in &failures {
-                eprintln!("  • {}", f);
-            }
-            println!();
-        }
-        println!(
-            "Cleanup {}:",
-            if apply {
-                "results"
-            } else {
-                "preview (dry-run)"
-            }
-        );
     // Every scan root goes through expand_tilde: the live policy stores
     // "~/Dev", and PathBuf::from("~/Dev") is a literal directory named "~".
     // The first version of this block skipped that step and reported "Nothing
@@ -12155,6 +12117,45 @@ async fn cmd_guard_clean(
             }
         }
     }
+
+    if json {
+        #[derive(Serialize)]
+        struct CleanReport {
+            reclaimed_bytes: u64,
+            reclaimed_human: String,
+            actions: Vec<String>,
+            failures: Vec<String>,
+            apply: bool,
+        }
+        let report = CleanReport {
+            reclaimed_bytes: total_reclaimed,
+            reclaimed_human: human_bytes(total_reclaimed),
+            actions,
+            failures,
+            apply,
+        };
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    // FIXED 2026-09-27 (audit rework round 4, F84): the two nested
+    // `else { if .. }` wrappers are `collapsible_else_if` on the pinned
+    // MSRV toolchain. Both collapsed; behaviour is identical.
+    } else if actions.is_empty() && failures.is_empty() {
+        println!("Nothing to clean.");
+    } else {
+        if !failures.is_empty() {
+            eprintln!("⚠️ {} cleanup step(s) failed:", failures.len());
+            for f in &failures {
+                eprintln!("  • {}", f);
+            }
+            println!();
+        }
+        println!(
+            "Cleanup {}:",
+            if apply {
+                "results"
+            } else {
+                "preview (dry-run)"
+            }
+        );
 
         for a in &actions {
             println!("  • {}", a);
