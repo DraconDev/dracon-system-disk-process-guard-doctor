@@ -249,8 +249,12 @@ mod tests {
         assert!(!is_git_temp_name("tmp_pack_"));
         // Real packs and ordinary files must never match.
         assert!(!is_git_temp_name("pack-6a804519.pack"));
-        assert!(!is_git_temp_name("tmp_pack_g5Sj3N.pack"));
         assert!(!is_git_temp_name("main"));
+        // DELIBERATE (2026-10-27): matching is by git's own prefix glob, so a
+        // decorated scratch name is still treated as scratch. Git never writes
+        // one, but anything carrying these prefixes inside objects/ is scratch
+        // by definition, and a narrower rule risks missing a real variant.
+        assert!(is_git_temp_name("tmp_pack_g5Sj3N.pack"));
     }
 
     #[test]
