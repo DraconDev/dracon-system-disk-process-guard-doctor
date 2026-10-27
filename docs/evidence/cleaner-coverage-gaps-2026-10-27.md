@@ -123,3 +123,33 @@ Live checks:
 - `disk audit --class tmp` → 32 findings, 211.6 MiB, with
   `/tmp/node-compile-cache` correctly REPORTed as live churn instead of APPLY.
 - `disk audit --class caches` → the new families report real bytes (above).
+
+## Delete-time re-check (TOCTOU)
+
+The audit refusing to mark a live tree APPLY is not sufficient on its own: a
+tree idle during the scan can be written to before `disk clean`'s delete loop
+runs. `disk::apply` therefore re-walks every directory candidate immediately
+before `remove_dir_all` and keeps the tree if any nested content is newer than
+the floor that qualified it. Test:
+`a_tree_that_became_live_churn_after_the_audit_is_kept_at_delete_time`
+(finding already marked APPLY, live content present → 0 bytes freed, tree
+survives, disposition downgraded to REPORT with the reason recorded).
+
+## Final observed numbers (last run on this tree)
+
+- `cargo test --workspace --locked` — **exit 0, 44 suites ok**.
+- `cargo clippy --workspace --locked --all-targets -- -D warnings` — exit 0.
+- `cargo deny check` — exit 0.
+- `cargo build --release --locked` — exit 0.
+- `disk audit --class tmp` — 37 findings, 211.7 MiB, with
+  `/tmp/node-compile-cache (146.6 MiB)` REPORTed: *top-level mtime 19h old but
+  newest nested content is 0h old — live churn, under the 6h floor; never
+  auto-deleted*.
+- `disk audit --class caches` — `.codex/cache` 46.3 MiB and
+  `.codex/plugins/cache` 27.5 MiB both SKIP as codex-owned; hermes audio/image
+  caches REPORT as unowned.
+
+Counts differ between runs because `/tmp` is live: the audit-observed trees
+(`iso-route`, `ai-tts-*`, `junk-runner-e2e.*`) were reaped by their owning test
+runs between observations. The finding count is therefore not a contract — the
+behaviour (which disposal each entry receives) is.
