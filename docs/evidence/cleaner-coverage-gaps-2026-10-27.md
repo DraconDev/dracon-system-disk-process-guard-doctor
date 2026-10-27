@@ -1,32 +1,29 @@
 # Cleaner coverage for the audit gaps (2026-10-27)
 
 Follow-up to `leftover-audit-2026-10-27.md`: close the three coverage gaps that
-made ~9 GiB of `/tmp` litter and the agent-tool caches invisible to the
-one-shot cleaner.
+made `/tmp` litter and the agent-tool caches invisible to the one-shot cleaner.
 
-## Gap 1 — e2e/test-litter names the sweep found but the fast path did not cover
+## Gap 1 — e2e/test-litter names the fast path did not cover
 
-The guard daemon already had a short-floor fast path
-(`tmp_e2e_patterns` + `tmp_e2e_min_age_hours`, 6h), but six families observed
-on this host were not in the default list, so they waited out the general
-24h floor:
+The guard daemon already had a short-floor fast path (`tmp_e2e_patterns` +
+`tmp_e2e_min_age_hours`, 6h), but six families observed on this host were not
+in the default list, so they waited out the general 24h floor:
 
 `ai-tts-*`, `iso-route`, `base-copy`, `synth4*`, `junk-runner-e2e.*`,
 `node-compile-cache`.
 
-Note `junk-runner-e2e.*` uses a DOT before the random suffix
-(`junk-runner-e2e.qVEdrH`), so the dash form would silently miss every one.
-A regression test pins both the match and that non-match.
+`junk-runner-e2e.*` uses a DOT before the random suffix
+(`junk-runner-e2e.qVEdrH`), so the dash form would miss every one. A
+regression test pins both the match and the non-match.
 
-## Gap 2 — the one-shot `disk audit` never consulted the fast path
+## Gap 2 — the one-shot audit never consulted the fast path
 
 `dracon-system disk audit` classified `/tmp` only against
-`tmp_cruft_min_age_hours` (24h). Everything between 6h and 24h was simply not
-seen — this is why the earlier full audit reported 63 MiB of `/tmp` while
-~9 GiB was sitting there.
+`tmp_cruft_min_age_hours` (24h), so everything between 6h and 24h was invisible
+— the earlier full audit reported 63 MiB of `/tmp` while much more was there.
 
-Fixed by giving `DiskOptions` the two fast-path knobs and routing each entry
-through one pure classifier:
+`DiskOptions` now carries both fast-path knobs, and each entry is adjudicated by
+one pure classifier:
 
 ```rust
 pub(crate) fn tmp_cruft_floor(
@@ -36,73 +33,93 @@ pub(crate) fn tmp_cruft_floor(
 ) -> Option<u64>
 ```
 
-The walk uses the LOWER of the two floors, then each entry is adjudicated by
-the governing floor; entries clearing neither are dropped uncounted. An empty
-pattern list (or `tmp_e2e_min_age_hours = 0`) disables the fast path and the
-general floor governs everything — the same contract as the daemon.
+The walk uses the LOWER of the two floors, then each entry is adjudicated by its
+governing floor; entries clearing neither are dropped uncounted. Empty patterns
+(or `tmp_e2e_min_age_hours = 0`) disable the fast path — same contract as the
+daemon. The finding reason names which floor applied.
 
-The finding REASON names which floor applied, so an operator can tell a
-6h e2e reap from a 24h general one:
+## Gap 3 — live-churn safety (the important one)
 
-```
-• APPLY  /tmp/iso-route (812.1 MiB) — tmp-dir untouched for 10h
-         (e2e fast-path floor tmp_e2e_min_age_hours=6)
-```
+**A directory mtime does not move when its contents are rewritten.** Measured
+during this work on `/tmp/node-compile-cache`: top-level mtime 17–18h old,
+**317 files newer than 6h**, newest written seconds before the reading. Aging a
+tree by its top mtime therefore marked a directory under active writes as
+`APPLY`, and `disk clean` would have deleted it.
 
-## Gap 3 — agent-tool caches were not a cache family at all
+The daemon never had this hole — it refuses any tree with fresh nested content
+(`tree_has_fresh_content`). The one-shot path must not be a weaker route to
+deletion, so `disk_tmp` now measures content age in the SAME walk that sizes the
+tree (no extra `lstat`) and `disk::audit` applies the daemon's rule:
 
-Added `CodexCache` (`.codex/cache`), `CodexPluginsCache`
-(`.codex/plugins/cache`) and `HermesCache` (`.hermes/cache`) to
-`CacheFamily`. Each is scoped to a cache SUBDIRECTORY and a test forbids a
-bare-dotdir path: `.codex` holds auth and plugin state, `.hermes` holds
-backups, cron and hooks — none of that is a cache.
-
-Live behavior, unchanged contract: unowned → REPORT with the manager's own
-purge command (no `--apply` path); held by a live process → SKIP with pids.
-
-```
-• REPORT /home/dracon/.hermes/cache (0.0 B) — hermes cache; no owning process. …
-• SKIP   /home/dracon/.codex/cache (0.0 B) — owned by codex (2 processes; pid 250296, pid 2846975)
+```rust
+pub(crate) fn tree_is_live_churn(
+    newest_content_age_hours: Option<u64>,   // None = walk incomplete
+    threshold_hours: u64,
+) -> bool
 ```
 
-Labels deliberately omit the word "cache" (the message already appends
-" cache; …"), which a live run caught as "hermes cache cache".
+- Fresh nested content under the governing floor → **REPORT**, never APPLY, with
+  a reason stating both ages so the difference is visible.
+- Unreadable/truncated walk → treated as FRESH (fail closed), matching the
+  daemon's walk-error behavior.
+- An EMPTY tree has no content to be fresh, so it falls back to its own mtime —
+  otherwise every empty `systemd-private-*` dir would be permanently
+  undeletable and would bury the real signal.
+
+Live result after the fix:
+
+```
+• REPORT /tmp/node-compile-cache (145.4 MiB) — tmp-dir top-level mtime 18h old
+         but newest nested content is 0h old — live churn, under the 6h floor;
+         never auto-deleted
+```
+
+## Gap 4 — agent-tool caches
+
+Added five cache families, each scoped to a cache SUBDIRECTORY (a test forbids
+bare dotdirs): `.codex/cache`, `.codex/plugins/cache`, `.hermes/cache`,
+`.hermes/audio_cache`, `.hermes/image_cache`.
+
+Deliberately NOT covered, with reasons:
+
+- `.codex/packages` (1.9G) and `.codex/sessions` (1.1G) — installed tool
+  packages and conversation history. Neither is a cache; deleting them
+  uninstalls the daemon or destroys user data.
+- `.hermes/hermes-agent` (2.3G) — the agent's own installation and source tree,
+  not a cache.
+- `.hermes/backups`, `.hermes/cron`, `.hermes/hooks` — durable operator state.
+
+Live report now shows real bytes rather than three zeros:
+
+```
+• SKIP /home/dracon/.codex/cache (46.3 MiB) — owned by codex (3 processes)
+• SKIP /home/dracon/.codex/plugins/cache (27.5 MiB) — owned by codex (3 processes)
+• REPORT /home/dracon/.hermes/audio_cache (0.0 B) — no owning process
+```
 
 ## Contract preserved
 
-Both new surfaces stay REPORT/SKIP-first: the fast path only widens which
-entries are *reported* in audit mode, and `disk clean` still deletes nothing
-held open by a live process. No new `--apply` path was introduced for any of
-the three families.
+All new surfaces are REPORT/SKIP-first. No `--apply` path was added for any new
+family, and the audit now refuses to mark a live-churn tree deletable at all.
 
-## Verification
+## Verification (observed on this tree)
 
-- `cargo test --workspace --locked` — 44 suites ok
-- `cargo clippy --workspace --locked --all-targets -- -D warnings` — clean
-- `cargo deny check` — ok
-- `cargo build --release --locked` — ok
-- Live: `disk audit --class tmp` reports the previously invisible 6.5 GiB
-  across 85 findings; `--class caches` shows the three new families with
-  correct owner attribution.
+Workspace gates, run from the parent workspace:
 
-## Workspace-gate note (2026-10-27, host under heavy load)
+- `cargo clippy --workspace --locked --all-targets -- -D warnings` — **exit 0,
+  clean.** (An earlier revision of this document claimed this gate was blocked
+  by a dead helper in `dracon-warden`; that was wrong. The helper is not present
+  in `dracon-warden/tests/integration_test.rs` and the gate passes. Corrected.)
+- `cargo deny check` — exit 0, advisories/bans/licenses/sources ok.
+- `cargo test -p dracon-system --locked` — all suites ok, exit 0.
+- `cargo test --workspace --locked` — 30 suites ok; 7 failures, all in
+  `dracon-sync` (`test_push_to_named_remote_*`, `bucket_qualification_*`,
+  `excluded_revert*`), all resource-related: the host was at load 80–99 with
+  ~1 GB available during that run. Re-running `dracon-sync` alone immediately
+  after passed **1694 tests, 0 failed**.
 
-`dracon-system` itself passes all four gates:
+Live checks:
 
-- `cargo test --locked` (this crate) — all 3 suites ok, exit 0
-- `cargo clippy --locked --all-targets -- -D warnings` — No issues found
-- release build — ok
-
-Two workspace-wide observations from this run, neither caused by this change:
-
-1. **`dracon-warden` blocks the workspace clippy gate.** Its
-   `tests/integration_test.rs:60` defines `assert_live_hooks_untouched` and
-   never calls it — introduced in warden commit `cd19608` (28 min before this
-   note) and still orphaned at `a8dd8b8`. `-D warnings` turns that dead-code
-   warning into a hard error. Fixing it means editing another utility repo
-   mid-rewrite, which is out of scope for this goal.
-2. **A workspace-wide test run was OOM-killed** at load 71 with 1 GB
-   available (exit 137), and a reduced-parallelism rerun produced
-   "failed to spawn git" failures in `dracon-sync`. Re-running `dracon-sync`
-   alone passed completely: 1517 + 144 passed, 0 failed. Those failures are
-   resource exhaustion, not code.
+- `disk audit --class tmp` → 32 findings, 211.6 MiB, with
+  `/tmp/node-compile-cache` correctly REPORTed as live churn instead of APPLY.
+- `disk audit --class caches` → the new families report real bytes (above).
