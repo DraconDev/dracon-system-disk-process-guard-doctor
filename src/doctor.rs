@@ -436,6 +436,8 @@ mod tests {
             freeze_watchdog_timer_active: true,
             guard_watchdog_timer_active: true,
             service_probe_available: true,
+            swap_probe_available: true,
+            swap_ok: true,
         }
     }
 
