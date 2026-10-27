@@ -328,6 +328,16 @@ pub(crate) fn directory_bytes_and_age(root: &Path, now: SystemTime) -> (u64, Opt
     if unreadable {
         return (total, None);
     }
+    // An EMPTY tree has no content to be fresh, so it falls back to its own
+    // mtime — reporting "unknown" for every empty systemd-private dir would
+    // bury the real signal and make those dirs permanently undeletable.
+    let newest = match newest {
+        Some(modified) => Some(modified),
+        None if seen == 0 => std::fs::symlink_metadata(root)
+            .ok()
+            .and_then(|metadata| metadata.modified().ok()),
+        None => None,
+    };
     let age = newest.and_then(|modified| age_hours(modified, now));
     (total, age)
 }

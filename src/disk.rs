@@ -714,10 +714,10 @@ pub(crate) fn audit(
                     let content = entry
                         .newest_content_age_hours
                         .map(|age| format!("{age}h"))
-                        .unwrap_or_else(|| "unknown (walk incomplete)".to_string());
+                        .unwrap_or_else(|| "unreadable".to_string());
                     format!(
-                        "{} top-level mtime {}h old but newest nested content {content} old — live churn, under the {}h floor; never auto-deleted",
-                        entry.label(), entry.age_hours, floor
+                        "{} top-level mtime {}h old but newest nested content is {} old — live churn, under the {}h floor; never auto-deleted",
+                        entry.label(), entry.age_hours, content, floor
                     )
                 } else if fast_path {
                     format!(
