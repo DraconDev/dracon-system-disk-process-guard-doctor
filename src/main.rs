@@ -458,6 +458,29 @@ enum GuardCommands {
         #[arg(long)]
         apply: bool,
     },
+    /// Nitpicky disk cleaner: every known trash class in one report.
+    ///
+    /// Default mode frees space and auto-applies ONLY the SAFE classes
+    /// (orphaned git scratch, aged /tmp + rotated logs); everything else is
+    /// printed with an explicit disposition and its reason. `--report` is the
+    /// dry run and frees nothing.
+    Disk {
+        /// Scan and classify only; frees nothing (dry run).
+        #[arg(long)]
+        report: bool,
+        /// Accepted as an explicit synonym for the default freeing mode.
+        #[arg(long)]
+        apply: bool,
+        /// Restrict the run to one or more classes: git, tmp, caches, strays.
+        #[arg(long, value_delimiter = ',')]
+        class: Vec<String>,
+        /// Emit machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+        /// Override the /tmp age floor (hours) for this run.
+        #[arg(long)]
+        tmp_min_age_hours: Option<u64>,
+    },
     /// Clean all reclaimable space (rust, trash, nix, caches, node_modules, docker).
     /// A bare invocation selects every target; use target flags for a subset.
     Clean {
