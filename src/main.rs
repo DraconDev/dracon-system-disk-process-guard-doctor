@@ -365,22 +365,22 @@ enum Commands {
         #[command(subcommand)]
         action: Option<DiskCommands>,
         /// Scan and classify only; frees nothing (dry run).
-        #[arg(long)]
+        #[arg(long, global = true)]
         report: bool,
         /// Accepted as an explicit synonym for the default freeing mode.
-        #[arg(long)]
+        #[arg(long, global = true)]
         apply: bool,
         /// Restrict the run to one or more classes: git, tmp, caches, strays.
-        #[arg(long, value_delimiter = ',')]
+        #[arg(long, global = true, value_delimiter = ',')]
         class: Vec<String>,
         /// Emit machine-readable JSON.
-        #[arg(long)]
+        #[arg(long, global = true)]
         json: bool,
         /// Override the /tmp age floor (hours) for this run.
-        #[arg(long)]
+        #[arg(long, global = true)]
         tmp_min_age_hours: Option<u64>,
         /// Per-path lines printed per class (default 15; 0 prints all).
-        #[arg(long, default_value_t = 15)]
+        #[arg(long, global = true, default_value_t = 15)]
         detail: usize,
     },
 }
