@@ -7763,7 +7763,7 @@ fn resolve_safe_tmp_roots(roots: &[String]) -> Result<Vec<PathBuf>> {
 ///
 /// Returns `(reclaimed_bytes, cleaned, denied)` where `denied` holds entries
 /// that could not be removed (typically root-owned leftovers needing sudo).
-fn parse_tmp_e2e_patterns(csv: &str) -> Vec<String> {
+pub(crate) fn parse_tmp_e2e_patterns(csv: &str) -> Vec<String> {
     csv.split(',')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
@@ -10956,6 +10956,8 @@ async fn cmd_disk(
         nixos_swap_config: guard.nixos_swap_config.clone(),
         git_temp_min_age_hours: guard.git_temp_min_age_hours,
         tmp_min_age_hours: tmp_min_age_hours.unwrap_or(guard.tmp_cruft_min_age_hours),
+        tmp_e2e_patterns: guard.tmp_e2e_patterns.clone(),
+        tmp_e2e_min_age_hours: guard.tmp_e2e_min_age_hours,
     };
 
     // A zero age floor would make every /tmp entry instantly deletable, which
