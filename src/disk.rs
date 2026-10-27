@@ -923,16 +923,6 @@ impl DeletedRecord {
 mod disk_tests {
     use super::*;
 
-    fn options() -> DiskOptions {
-        DiskOptions {
-            rust_search_roots: String::new(),
-            stray_scan_roots: String::new(),
-            dead_swapfile_candidates: String::new(),
-            git_temp_min_age_hours: 6,
-            tmp_min_age_hours: 24,
-        }
-    }
-
     #[test]
     fn every_objective_trash_class_has_a_label() {
         let labels: Vec<&str> = TrashClass::ALL.iter().map(|c| c.label()).collect();
@@ -950,8 +940,10 @@ mod disk_tests {
 
     #[test]
     fn a_report_names_all_four_classes_even_when_nothing_is_found() {
-        let mut report = DiskReport::default();
-        report.empty_classes = TrashClass::ALL.to_vec();
+        let report = DiskReport {
+            empty_classes: TrashClass::ALL.to_vec(),
+            ..DiskReport::default()
+        };
         let text = report.render("audit", 0);
         for class in TrashClass::ALL {
             assert!(
