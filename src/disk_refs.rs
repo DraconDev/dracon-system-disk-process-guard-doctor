@@ -139,6 +139,7 @@ impl ReferenceCapture {
 /// `target`. A symlink target that has already been unlinked ends in
 /// " (deleted)" — that is exactly the suffix the objective says not to trust,
 /// so it is stripped and the remaining path compared plainly.
+#[cfg(test)]
 pub(crate) fn fds_for(path: &Path, target: &Path) -> Vec<u32> {
     let Ok(entries) = std::fs::read_dir(path.join("fd")) else {
         return Vec::new();
@@ -333,6 +334,7 @@ fn strip_deleted(path: &Path) -> PathBuf {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn capture_references(proc_root: &Path, target: &Path) -> ReferenceCapture {
     let Ok(entries) = std::fs::read_dir(proc_root) else {
         return ReferenceCapture {
