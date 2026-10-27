@@ -302,6 +302,8 @@ fn guard_clean_bare_command_selects_all_targets() {
             caches,
             node_modules,
             docker,
+            git_temp: false,
+            report_only: false,
         },
     );
     assert!(
@@ -310,8 +312,11 @@ fn guard_clean_bare_command_selects_all_targets() {
             && targets.nix
             && targets.caches
             && targets.node_modules
-            && targets.docker,
-        "bare guard clean must resolve every cleanup target"
+            && targets.docker
+            && targets.git_temp
+            && targets.report_only,
+        "bare guard clean must resolve every cleanup target, including the \
+         2026-10-27 git-temp and report-only classes"
     );
 }
 
