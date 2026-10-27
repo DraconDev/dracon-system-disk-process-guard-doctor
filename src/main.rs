@@ -5149,11 +5149,8 @@ pub(crate) fn nix_generations_to_delete(generations: &[u32], keep: usize) -> Vec
         [sorted.len() - 1].into_iter().collect()
     } else {
         (0..keep)
-            .map(|i| {
-                // Even spacing across the whole range, inclusive of both ends.
-                let position = i * (sorted.len() - 1) / (keep - 1);
-                position
-            })
+            // Even spacing across the whole range, inclusive of both ends.
+            .map(|i| i * (sorted.len() - 1) / (keep - 1))
             .chain(std::iter::once(sorted.len() - 1))
             .collect()
     };
