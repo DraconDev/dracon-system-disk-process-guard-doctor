@@ -5146,28 +5146,46 @@ pub(crate) fn running_system_closure(run_root: &Path) -> Option<PathBuf> {
     std::fs::read_link(run_root.join("current-system")).ok()
 }
 
-/// Generation numbers whose store paths include `closure`.
+/// Generation numbers whose system closure IS the running one.
 ///
-/// Implemented by resolving each generation's profile symlink to a store path
-/// and keeping those whose path is referenced by the closure. This deliberately
-/// errs toward KEEPING: a generation we cannot resolve is protected.
+/// `profile_dir` is a NixOS system-profile directory (`/nix/var/nix/profiles`)
+/// holding `system-<n>-link` symlinks; `closure` is the resolved
+/// `/run/current-system`.
+///
+/// FIXED 2026-10-27 (audit HIGH): the first version kept every generation whose
+/// link target merely EXISTED. Every generation link of a live profile points
+/// at an existing store path, so that protected the entire profile and made
+/// pruning impossible — the cleaner silently fell back to `+N` on the real
+/// host. Membership is now decided by comparing the RESOLVED store path with
+/// the running closure, which is what "referenced by the running system
+/// closure" actually means.
 pub(crate) fn nix_generations_referenced_by_closure(
     profile_dir: &Path,
     generations: &[u32],
-    _closure: &Path,
+    closure: &Path,
 ) -> Vec<u32> {
     generations
         .iter()
         .copied()
         .filter(|generation| {
-            // A generation whose link cannot be read is protected: an
-            // unreadable generation is not evidence that it is unreferenced.
-            match std::fs::read_link(profile_dir.join(format!("system-{generation}-link"))) {
-                Ok(target) => target.exists(),
-                Err(_) => true,
-            }
+            let Ok(target) = std::fs::read_link(profile_dir.join(format!("system-{generation}-link")))
+            else {
+                // An unreadable generation is not evidence that it is
+                // unreferenced, so it is protected.
+                return true;
+            };
+            resolve_store_path(&target) == resolve_store_path(closure)
         })
         .collect()
+}
+
+/// Canonicalise a store path for comparison.
+///
+/// Generation links and `/run/current-system` are both symlinks into
+/// `/nix/store`; comparing the raw link text would miss the match, so resolve
+/// one level. A path that cannot be resolved is compared as given.
+fn resolve_store_path(path: &Path) -> PathBuf {
+    std::fs::read_link(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 /// Spread selection with explicit protection.
@@ -5408,13 +5426,9 @@ async fn clean_nix_garbage_with_bins(
                     return None;
                 }
             }
-            if let Some(closure) = running_system_closure(Path::new("/run")) {
-                protected.extend(nix_generations_referenced_by_closure(
-                    Path::new("/nix/var/nix/profiles"),
-                    &listing.generations,
-                    &closure,
-                ));
-            }
+            // A user profile's generations are not part of the SYSTEM
+            // closure, so closure protection belongs to the system profile
+            // below; here the `(current)` marker is the protection that matters.
             let to_delete = nix_generations_to_delete_protecting(
                 &listing.generations,
                 keep_generations as usize,
