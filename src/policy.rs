@@ -591,6 +591,8 @@ impl Default for GuardPolicy {
             git_temp_min_age_hours: default_git_temp_min_age_hours(),
             dead_swapfile_candidates: default_dead_swapfile_candidates(),
             stray_scan_roots: default_stray_scan_roots(),
+            expected_swap_prefixes: default_expected_swap_prefixes(),
+            nixos_swap_config: default_nixos_swap_config(),
             tmp_cruft_min_age_hours: default_tmp_cruft_min_age_hours(),
             node_modules_max_age_days: default_node_modules_max_age_days(),
             clean_tmp: default_true(),
@@ -1219,6 +1221,16 @@ pub(crate) fn default_dead_swapfile_candidates() -> String {
 /// Directories scanned (one level deep) for report-only strays.
 pub(crate) fn default_stray_scan_roots() -> String {
     "~".to_string()
+}
+
+/// Prefixes an active swap device must live under (zram + the SATA disk).
+pub(crate) fn default_expected_swap_prefixes() -> String {
+    "/dev/zram,/mnt/data".to_string()
+}
+
+/// NixOS configuration parsed for the `swapDevices` reference check.
+pub(crate) fn default_nixos_swap_config() -> String {
+    "~/.dracon/nixos/configuration.nix".to_string()
 }
 
 /// Hours a `/tmp` entry must sit untouched before the disk cleaner calls it
