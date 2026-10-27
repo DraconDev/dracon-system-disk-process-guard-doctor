@@ -12932,6 +12932,87 @@ mod nix_current_generation_tests {
 }
 
 #[cfg(test)]
+mod system_profile_spread_tests {
+    use super::{
+        nix_delete_generations_argv_with_profile, system_profile_generations,
+        system_profile_spread_plan,
+    };
+
+    #[test]
+    fn system_generations_are_read_from_link_names() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        for generation in [3, 1, 12] {
+            std::fs::write(
+                dir.path().join(format!("system-{generation}-link")),
+                b"",
+            )
+            .expect("write link");
+        }
+        // Not generation links: must be ignored rather than misparsed.
+        std::fs::write(dir.path().join("default"), b"").expect("write");
+        std::fs::write(dir.path().join("system-link"), b"").expect("write");
+
+        let generations = system_profile_generations(dir.path()).expect("readable");
+        assert_eq!(generations, vec![1, 3, 12]);
+    }
+
+    #[test]
+    fn a_missing_profile_directory_yields_no_plan() {
+        assert!(system_profile_generations(std::path::Path::new("/definitely/not/here")).is_none());
+    }
+
+    #[test]
+    fn the_system_profile_prune_passes_one_argument_per_generation() {
+        let argv = nix_delete_generations_argv_with_profile(&[2, 7], "/nix/var/nix/profiles/default");
+        assert_eq!(
+            argv,
+            vec![
+                "--delete-generations".to_string(),
+                "2".to_string(),
+                "7".to_string(),
+                "-p".to_string(),
+                "/nix/var/nix/profiles/default".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn the_live_system_profile_is_never_asked_to_delete_the_booted_generation() {
+        // Runs against the real profile directory. If it is unreadable this
+        // host has no NixOS system profile, and there is nothing to assert.
+        let Some(generations) = system_profile_generations(std::path::Path::new("/nix/var/nix/profiles"))
+        else {
+            return;
+        };
+        let Some(plan) = system_profile_spread_plan(std::path::Path::new("nix-env"), 1) else {
+            return;
+        };
+        // The booted generation resolves through /run/current-system.
+        if let Ok(running) = std::fs::read_link("/run/current-system") {
+            let profile_dir = std::path::Path::new("/nix/var/nix/profiles");
+            let booted: Vec<u32> = generations
+                .iter()
+                .copied()
+                .filter(|generation| {
+                    std::fs::read_link(profile_dir.join(format!("system-{generation}-link")))
+                        .map(|target| target == running)
+                        .unwrap_or(false)
+                })
+                .collect();
+            for generation in &booted {
+                assert!(
+                    !plan.contains(generation),
+                    "the booted generation {generation} must never be in the delete plan {plan:?}"
+                );
+            }
+            assert!(
+                !plan.contains(&generations.last().copied().expect("non-empty")),
+                "the highest generation is always protected"
+            );
+        }
+    }
+}
+
 mod nix_spread_tests {
     use super::nix_generations_to_delete_highest_protected as nix_generations_to_delete;
 
