@@ -147,18 +147,61 @@ pub(crate) struct WrongSwap {
 
 /// True when `path` lives under `prefix`.
 ///
-/// Plain string-prefix matching, deliberately: the expected entries are
-/// device families (`/dev/zram` must accept `/dev/zram0`) as well as
-/// directories (`/mnt/data` must accept `/mnt/data/swapfile`), and no single
-/// component-wise rule covers both. Documented so the operator can reason
-/// about it: a prefix also accepts a sibling whose name merely starts the
-/// same way (`/mnt/database` would satisfy `/mnt/data`). That fails OPEN,
-/// so keep prefixes specific.
+/// Three cases, deliberately narrow (2026-10-27 falsification: plain
+/// `starts_with` accepted `/mnt/database/swapfile` and `/mnt/data2` under
+/// `/mnt/data`, failing OPEN on exactly the contract this checks):
+///
+/// 1. exact match;
+/// 2. directory containment — `path` starts with `prefix` at a `/`
+///    component boundary (`/mnt/data` covers `/mnt/data/swapfile`);
+/// 3. kernel device enumeration — same parent directory, the file name
+///    extends the prefix's final component with ASCII digits only
+///    (`/dev/zram` covers `zram0..zramN`). Restricted to paths under
+///    `/dev/`: enumeration suffixes belong to device nodes, and a regular
+///    sibling like `/mnt/data2` must never satisfy `/mnt/data`.
+///
+/// A trailing slash on the prefix is tolerated (`/mnt/data/` behaves as
+/// `/mnt/data`); a bare `/` prefix matches everything.
 fn under_prefix(path: &Path, prefix: &str) -> bool {
     if prefix.is_empty() {
         return false;
     }
-    path.to_string_lossy().starts_with(prefix)
+    let trimmed = prefix.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return true; // the prefix was all slashes: the filesystem root
+    }
+    let path_str = path.to_string_lossy();
+    if path_str == trimmed {
+        return true;
+    }
+    if path_str.starts_with(trimmed)
+        && path_str.as_bytes().get(trimmed.len()) == Some(&b'/')
+    {
+        return true;
+    }
+    // Byte indexing above is safe: `starts_with` guarantees a char boundary.
+    if !path_str.starts_with("/dev/") {
+        return false;
+    }
+    let (Some(prefix_parent), Some(prefix_name)) = (
+        Path::new(trimmed).parent().and_then(|p| p.to_str()),
+        Path::new(trimmed).file_name().and_then(|n| n.to_str()),
+    ) else {
+        return false;
+    };
+    let (Some(path_parent), Some(path_name)) = (
+        path.parent().and_then(|p| p.to_str()),
+        path.file_name().and_then(|n| n.to_str()),
+    ) else {
+        return false;
+    };
+    if prefix_parent != path_parent {
+        return false;
+    }
+    match path_name.strip_prefix(prefix_name) {
+        Some(rest) => !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit()),
+        None => false,
+    }
 }
 
 /// Every active swap device must live under one of `expected` (comma-split
@@ -805,6 +848,31 @@ mod tests {
         assert_eq!(wrong.len(), 1);
         assert_eq!(wrong[0].path, PathBuf::from("/var/lib/swapfile"));
         assert_eq!(wrong[0].bytes, 33554432 * 1024);
+    }
+
+    /// 2026-10-27 falsification: plain string-prefix matching accepted
+    /// sibling paths (`/mnt/database`, `/mnt/data2`) under `/mnt/data`.
+    /// The boundary rules must reject them while keeping device families.
+    #[test]
+    fn prefix_matching_respects_component_boundaries() {
+        // Directory containment still works.
+        assert!(under_prefix(Path::new("/mnt/data/swapfile"), "/mnt/data"));
+        assert!(under_prefix(Path::new("/mnt/data/swapfile"), "/mnt/data/"));
+        assert!(under_prefix(Path::new("/mnt/data"), "/mnt/data"));
+        // ...but siblings that merely start the same way do not satisfy it.
+        assert!(!under_prefix(
+            Path::new("/mnt/database/swapfile"),
+            "/mnt/data"
+        ));
+        assert!(!under_prefix(Path::new("/mnt/data2"), "/mnt/data"));
+        assert!(!under_prefix(Path::new("/mnt/data2/swapfile"), "/mnt/data"));
+        // Kernel device enumeration under /dev still works.
+        assert!(under_prefix(Path::new("/dev/zram0"), "/dev/zram"));
+        assert!(under_prefix(Path::new("/dev/zram11"), "/dev/zram"));
+        assert!(!under_prefix(Path::new("/dev/zram-control"), "/dev/zram"));
+        assert!(!under_prefix(Path::new("/dev/sda"), "/dev/zram"));
+        // The enumeration rule does not leak to regular paths.
+        assert!(!under_prefix(Path::new("/home/u/data2"), "/home/u/data"));
     }
 
     #[test]
