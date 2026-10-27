@@ -187,11 +187,105 @@ pub(crate) fn check_active_swap_placement(
 /// — is out of scope: an unparsed config yields an empty list, and the
 /// caller treats the reference check as UNKNOWN (skipped), never as
 /// "everything is unreferenced".
+/// The config with comments and string CONTENTS blanked (same length, so
+/// offsets transfer to the original). Structural parsing — key search and
+/// bracket matching — runs on this, so a `swapDevices` mentioned in a
+/// comment (the 2026-10-27 false positive: `# ... swapDevices below` latched
+/// onto `boot.kernelParams = [ ... ]`) or brackets inside a string can never
+/// unbalance it. Handles `#`, `/* */`, `"..."` and `''...''` strings.
+fn code_only(config: &str) -> String {
+    let chars: Vec<char> = config.chars().collect();
+    let mut out = String::with_capacity(config.len());
+    let mut k = 0;
+    while k < chars.len() {
+        let c = chars[k];
+        if c == '#' {
+            while k < chars.len() && chars[k] != '\n' {
+                out.push(' ');
+                k += 1;
+            }
+            continue;
+        }
+        if c == '/' && k + 1 < chars.len() && chars[k + 1] == '*' {
+            out.push(' ');
+            out.push(' ');
+            k += 2;
+            while k + 1 < chars.len() && !(chars[k] == '*' && chars[k + 1] == '/') {
+                out.push(if chars[k] == '\n' { '\n' } else { ' ' });
+                k += 1;
+            }
+            out.push(' ');
+            out.push(' ');
+            k += 2;
+            continue;
+        }
+        if c == '"' {
+            out.push(c);
+            k += 1;
+            while k < chars.len() && chars[k] != '"' {
+                if chars[k] == '\\' && k + 1 < chars.len() {
+                    out.push(' ');
+                    out.push(' ');
+                    k += 2;
+                } else {
+                    out.push(if chars[k] == '\n' { '\n' } else { ' ' });
+                    k += 1;
+                }
+            }
+            if k < chars.len() {
+                out.push('"');
+                k += 1;
+            }
+            continue;
+        }
+        // Nix indented string: ends at `''` except for the `'''` / `''$` /
+        // `''\` / `'''` escapes, which are consumed as content.
+        if c == '\'' && k + 1 < chars.len() && chars[k + 1] == '\'' {
+            out.push(' ');
+            out.push(' ');
+            k += 2;
+            loop {
+                if k >= chars.len() {
+                    break;
+                }
+                if chars[k] == '\''
+                    && k + 1 < chars.len()
+                    && chars[k + 1] == '\''
+                    && k + 2 < chars.len()
+                    && (chars[k + 2] == '\'' || chars[k + 2] == '$' || chars[k + 2] == '\\')
+                {
+                    out.push(' ');
+                    out.push(' ');
+                    out.push(' ');
+                    k += 3;
+                    continue;
+                }
+                if chars[k] == '\'' && k + 1 < chars.len() && chars[k + 1] == '\'' {
+                    out.push(' ');
+                    out.push(' ');
+                    k += 2;
+                    break;
+                }
+                out.push(if chars[k] == '\n' { '\n' } else { ' ' });
+                k += 1;
+            }
+            continue;
+        }
+        out.push(c);
+        k += 1;
+    }
+    out
+}
+
 pub(crate) fn nixos_swap_devices(config: &str) -> Vec<PathBuf> {
-    let block = match swap_devices_block(config) {
-        Some(block) => block,
+    // Structure on the blanked text, values on the original: same length,
+    // so the block offsets transfer directly.
+    let code = code_only(config);
+    let (start, end) = match swap_devices_block(&code) {
+        Some(range) => range,
         None => return Vec::new(),
     };
+    let block = &config[start..end];
     let mut devices = Vec::new();
     let bytes = block.as_bytes();
     let mut i = 0;
@@ -207,6 +301,21 @@ pub(crate) fn nixos_swap_devices(config: &str) -> Vec<PathBuf> {
                 i += 1;
             }
             i += 1;
+            continue;
+        }
+        // Skip comments so a commented-out device entry cannot match.
+        if bytes[i] == b'#' {
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+            i += 2;
+            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            i += 2;
             continue;
         }
         if block[i..].starts_with("device")
