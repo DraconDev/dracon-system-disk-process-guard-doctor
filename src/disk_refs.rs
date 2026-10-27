@@ -157,6 +157,128 @@ fn fds_for(path: &Path, target: &Path) -> Vec<u32> {
 /// Deliberately walks the WHOLE process table rather than only the owners a
 /// detector already knows about: the point of the check is to catch a process
 /// the detector did not anticipate.
+/// A single-pass snapshot of every `/proc` reference, queried per target.
+///
+/// ADDED 2026-10-27: `capture_references` re-walked the whole process table for
+/// EVERY finding. The first live `disk audit` therefore hung past 15 minutes on
+/// a host with thousands of `/tmp` entries — each one re-reading every pid's
+/// `exe`, `cwd` and every fd. The snapshot reads `/proc` once and answers every
+/// query from memory, which is both correct and linear.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ProcSnapshot {
+    refs: BTreeMap<PathBuf, Vec<ProcessRef>>,
+    pub(crate) scan_failed: bool,
+}
+
+impl ProcSnapshot {
+    /// Read `/proc` once, indexing every exe/cwd/fd target.
+    pub(crate) fn read(proc_root: &Path) -> Self {
+        let Ok(entries) = std::fs::read_dir(proc_root) else {
+            return Self {
+                refs: BTreeMap::new(),
+                scan_failed: true,
+            };
+        };
+        let mut index: BTreeMap<PathBuf, Vec<ProcessRef>> = BTreeMap::new();
+        for entry in entries.flatten() {
+            let Some(pid) = entry
+                .file_name()
+                .to_str()
+                .and_then(|name| name.parse::<u32>().ok())
+            else {
+                continue;
+            };
+            let dir = entry.path();
+            let exe = std::fs::read_link(dir.join("exe")).ok();
+            let cwd = std::fs::read_link(dir.join("cwd")).ok();
+            if let Some(exe) = &exe {
+                index.entry(strip_deleted(exe)).or_default().push(ProcessRef {
+                    pid,
+                    exe: exe.clone(),
+                    cwd: cwd.clone(),
+                    fds: Vec::new(),
+                });
+            }
+            if let Some(cwd) = &cwd {
+                index.entry(strip_deleted(cwd)).or_default().push(ProcessRef {
+                    pid,
+                    exe: exe.clone(),
+                    cwd: Some(cwd.clone()),
+                    fds: Vec::new(),
+                });
+            }
+            let Ok(fd_entries) = std::fs::read_dir(dir.join("fd")) else {
+                continue;
+            };
+            for fd_entry in fd_entries.flatten() {
+                let Some(fd) = fd_entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|name| name.parse::<u32>().ok())
+                else {
+                    continue;
+                };
+                let Ok(link) = std::fs::read_link(fd_entry.path()) else {
+                    continue;
+                };
+                index
+                    .entry(strip_deleted(&link))
+                    .or_default()
+                    .push(ProcessRef {
+                        pid,
+                        exe: exe.clone(),
+                        cwd: cwd.clone(),
+                        fds: vec![fd],
+                    });
+            }
+        }
+        for refs in index.values_mut() {
+            refs.sort();
+        }
+        Self {
+            refs: index,
+            scan_failed: false,
+        }
+    }
+
+    /// References to `target` and to anything inside it (a directory).
+    pub(crate) fn capture(&self, target: &Path) -> ReferenceCapture {
+        if self.scan_failed {
+            return ReferenceCapture {
+                refs: Vec::new(),
+                scan_failed: true,
+            };
+        }
+        let mut refs: Vec<ProcessRef> = Vec::new();
+        // Exact hits.
+        if let Some(exact) = self.refs.get(target) {
+            refs.extend(exact.iter().cloned());
+        }
+        // Anything strictly inside the target (a directory being removed).
+        let prefix = target.to_path_buf();
+        for (path, entries) in self.refs.range(prefix.clone()..) {
+            if path == &prefix || !path.starts_with(&prefix) {
+                continue;
+            }
+            refs.extend(entries.iter().cloned());
+        }
+        refs.sort();
+        ReferenceCapture {
+            refs,
+            scan_failed: false,
+        }
+    }
+}
+
+/// Drop a trailing " (deleted)" so a live fd still matches its path.
+fn strip_deleted(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    match text.strip_suffix(" (deleted)") {
+        Some(plain) => PathBuf::from(plain),
+        None => path.to_path_buf(),
+    }
+}
+
 pub(crate) fn capture_references(proc_root: &Path, target: &Path) -> ReferenceCapture {
     let Ok(entries) = std::fs::read_dir(proc_root) else {
         return ReferenceCapture {
