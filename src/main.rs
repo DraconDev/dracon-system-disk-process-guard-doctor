@@ -5268,7 +5268,39 @@ async fn clean_nix_garbage_with_bins(
     // can also never prune /nix/var/nix/profiles/default (root-owned),
     // so that failure is expected, not exceptional; the per-profile note
     // keeps it visible without failing the pass.
-    if let Some(gen_arg) = nix_delete_generations_arg(keep_generations).filter(|_| apply) {
+    // CHANGED 2026-10-27 (operator request): thin the profile by SPREADING the
+    // survivors across the whole generation range instead of using `+N`, which
+    // keeps only the newest N and throws away all older rollback anchors. With
+    // 18 generations and keep=5, `+5` retains 14..=18; the spread form retains
+    // roughly 1, 5, 10, 14, 18 — same reclaim, far more useful rollback.
+    //
+    // `+N` is still used as the fallback when the generation list cannot be
+    // read: it is the documented, safe-by-construction form (it never deletes
+    // the current generation), and falling back to "delete nothing" would
+    // silently disable Nix pruning on any host where the listing format
+    // changes.
+    let spread_delete_arg: Option<String> = if keep_generations > 0 {
+        nix_env_generation_numbers(nix_env, "default")
+            .filter(|generations| !generations.is_empty())
+            .map(|generations| {
+                nix_generations_to_delete(&generations, keep_generations as usize)
+            })
+            .filter(|to_delete| !to_delete.is_empty())
+            .map(|to_delete| {
+                to_delete
+                    .iter()
+                    .map(|g| g.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+    } else {
+        None
+    };
+
+    if let Some(gen_arg) = spread_delete_arg
+        .or_else(|| nix_delete_generations_arg(keep_generations))
+        .filter(|_| apply)
+    {
         match Command::new(nix_env)
             .args(["--delete-generations", &gen_arg])
             .output()
