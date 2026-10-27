@@ -7,6 +7,8 @@ use crate::{
     canonical_system_root, effective_system_policy_path, is_system_service_active,
     is_user_service_active, resolve_bin_for_readonly_probe,
 };
+use crate::policy::{default_expected_swap_prefixes, default_nixos_swap_config, expand_tilde};
+use crate::space_report::check_swap_health;
 
 /// The service this repo ships, and the one a `dracon-system` installation
 /// actually depends on.
@@ -61,6 +63,46 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
     // consults NixOS store dirs, which Skipped every service check on
     // non-NixOS systemd hosts.
     let service_probe_available = resolve_bin_for_readonly_probe("systemctl").is_ok();
+
+    // ADDED 2026-10-27 (wrong-swap check): the same shared pass the disk
+    // audit and the guard's periodic check use. A policy that cannot be
+    // loaded falls back to the compiled-in defaults (documented in
+    // policy.rs) rather than failing every check on a host whose only
+    // problem is a missing policy file.
+    let (expected_prefixes, swap_config_path) = crate::load_system_policy()
+        .map(|(_, policy)| {
+            (
+                policy
+                    .guard
+                    .expected_swap_prefixes
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>(),
+                expand_tilde(&policy.guard.nixos_swap_config),
+            )
+        })
+        .unwrap_or_else(|_| {
+            (
+                vec!["/dev/zram".to_string(), "/mnt/data".to_string()],
+                expand_tilde(&default_nixos_swap_config()),
+            )
+        });
+    let _ = default_expected_swap_prefixes; // referenced for API stability; defaults mirror it
+    let swap_candidates: Vec<PathBuf> = crate::load_system_policy()
+        .map(|(_, policy)| {
+            policy
+                .guard
+                .dead_swapfile_candidates
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(expand_tilde)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let swap_outcome = check_swap_health(&expected_prefixes, &swap_candidates, &swap_config_path);
 
     crate::DoctorReport {
         system_root_exists: root.exists(),

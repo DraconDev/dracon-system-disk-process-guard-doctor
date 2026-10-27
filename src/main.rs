@@ -573,6 +573,14 @@ pub(crate) struct DoctorReport {
     /// field existed that was indistinguishable from "the service is down":
     //  a host without systemd was told to run `systemctl --user enable`.
     pub(crate) service_probe_available: bool,
+    /// False when `/proc/swaps` could not be read (non-Linux): the swap
+    /// check below is Skipped, never failed, on such hosts.
+    pub(crate) swap_probe_available: bool,
+    /// True when the wrong-swap pass found nothing: every ACTIVE swap
+    /// device lives on an expected device and every on-disk swapfile is
+    /// referenced by the NixOS `swapDevices` config. Unknown (unreadable
+    /// config) never fails this — it only fails on concrete findings.
+    pub(crate) swap_ok: bool,
 }
 
 #[derive(Debug, Clone)]
