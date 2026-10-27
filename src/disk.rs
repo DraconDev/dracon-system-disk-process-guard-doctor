@@ -1438,6 +1438,67 @@ mod disk_tests {
     }
 
     #[test]
+    fn a_tree_with_fresh_nested_content_is_never_apply() {
+        // Regression for the 2026-10-27 audit HIGH: `/tmp/node-compile-cache`
+        // had a 17h-old top mtime while 317 files inside were newer than 6h.
+        // Aging a directory by its own mtime made that tree APPLY, so `disk
+        // clean` would have deleted a directory under live writes.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let tree = dir.path().join("node-compile-cache");
+        std::fs::create_dir_all(&tree).expect("mkdir");
+        // Old top-level mtime...
+        let old = SystemTime::now() - std::time::Duration::from_secs(17 * 3600);
+        std::fs::File::options()
+            .read(true)
+            .open(&tree)
+            .expect("open dir")
+            .set_modified(old)
+            .expect("set dir mtime");
+        // ...but content written just now.
+        std::fs::write(tree.join("fresh.bin"), b"live write").expect("write");
+
+        let (bytes, newest) =
+            crate::disk_tmp::directory_bytes_and_age(&tree, SystemTime::now());
+        assert!(bytes > 0);
+        assert_eq!(
+            newest,
+            Some(0),
+            "the walk must report the NEWEST nested mtime, not the dir mtime"
+        );
+        // The gate that decides disposition: 0h content under a 6h floor is
+        // live churn, therefore REPORT and never APPLY.
+        assert!(tree_is_live_churn(newest, 6));
+
+        // And an untouched tree of the same shape is genuinely deletable.
+        let stale = dir.path().join("stale-tree");
+        std::fs::create_dir_all(&stale).expect("mkdir");
+        std::fs::write(stale.join("old.bin"), b"stale").expect("write");
+        let old_file = SystemTime::now() - std::time::Duration::from_secs(17 * 3600);
+        std::fs::File::options()
+            .write(true)
+            .open(stale.join("old.bin"))
+            .expect("open")
+            .set_modified(old_file)
+            .expect("set mtime");
+        let (_, stale_newest) =
+            crate::disk_tmp::directory_bytes_and_age(&stale, SystemTime::now());
+        assert_eq!(stale_newest, Some(17));
+        assert!(!tree_is_live_churn(stale_newest, 6));
+    }
+
+    #[test]
+    fn an_unreadable_tree_counts_as_live_churn_not_as_deletable() {
+        // Fail-closed contract, mirroring the daemon's walk-error behavior.
+        assert!(
+            tree_is_live_churn(None, 6),
+            "unknown content age must keep the tree, never authorize deletion"
+        );
+        assert!(!tree_is_live_churn(Some(6), 6), "exactly at the floor is old");
+        assert!(tree_is_live_churn(Some(5), 6));
+        assert!(!tree_is_live_churn(Some(0), 0), "a zero floor disables the gate");
+    }
+
+    #[test]
     fn apply_only_touches_apply_class_findings() {
         let dir = tempfile::tempdir().expect("tempdir");
         let doomed = dir.path().join("doomed.bin");
