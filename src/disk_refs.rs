@@ -313,12 +313,52 @@ mod capture_tests {
     }
 
     #[test]
-    fn current_process_holds_its_own_executable_open() {
-        // A real /proc capture: pid 1 has a readable exe, and capturing a path
-        // the current process holds open must find this process.
-        let capture = capture_references(Path::new("/proc"), Path::new("/proc/self/exe"));
-        assert!(!capture.scan_failed);
-        let rows = audit_rows(&capture);
-        assert!(!rows.is_empty(), "expected at least one live fd/exe row");
+    fn a_real_proc_scan_finds_a_live_reference_to_a_file_this_process_holds() {
+        // Hold a real file open in THIS process, then capture it from /proc.
+        // A checked-in fixture cannot prove the exe/cwd/fd walk works; only a
+        // live descriptor can.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let held = dir.path().join("held.bin");
+        std::fs::write(&held, b"held").expect("write");
+        let file = std::fs::File::open(&held).expect("open held file");
+
+        let capture = capture_references(Path::new("/proc"), &held);
+        assert!(!capture.scan_failed, "a live /proc must be readable");
+        let own_pid = std::process::id();
+        assert!(
+            blocking_pids(&capture, &held).contains(&own_pid),
+            "the process holding the file must be reported: {}",
+            capture.describe()
+        );
+        assert!(
+            capture
+                .blocking_reason(&held)
+                .expect("a held file must block")
+                .contains(&format!("pid {own_pid}")),
+            "the reason must name the holding pid"
+        );
+        drop(file);
+    }
+
+    #[test]
+    fn a_released_reference_stops_blocking() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let held = dir.path().join("released.bin");
+        std::fs::write(&held, b"x").expect("write");
+        {
+            let _file = std::fs::File::open(&held).expect("open");
+            assert!(capture_references(Path::new("/proc"), &held)
+                .blocking_reason(&held)
+                .is_some());
+        }
+        // After the drop the only remaining refs are transient; a file nobody
+        // holds must be deletable (that is the whole point of capturing first).
+        let capture = capture_references(Path::new("/proc"), &held);
+        let own = std::process::id();
+        assert!(
+            !blocking_pids(&capture, &held).contains(&own),
+            "this process no longer holds the file: {}",
+            capture.describe()
+        );
     }
 }
