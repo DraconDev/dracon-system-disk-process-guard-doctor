@@ -1319,6 +1319,27 @@ mod disk_tests {
     }
 
     #[test]
+    fn an_e2e_floor_above_the_general_floor_is_not_treated_as_a_fast_path() {
+        // Operator corner: general lowered below the e2e floor. A pattern
+        // match then governs with the LONGER e2e floor, exactly as the daemon
+        // does — the classifier reports that floor so the reason string can
+        // never claim "fast path" for an entry that was actually held back.
+        let patterns = crate::parse_tmp_e2e_patterns("iso-route");
+        assert_eq!(tmp_cruft_floor("iso-route", 7, &patterns, 6, 24), None);
+        assert_eq!(
+            tmp_cruft_floor("iso-route", 25, &patterns, 6, 24),
+            Some(24)
+        );
+        // A non-matching name still follows the (lower) general floor.
+        assert_eq!(tmp_cruft_floor("plain", 7, &patterns, 6, 24), Some(6));
+        // And equal floors never render as a distinct fast path.
+        assert_eq!(
+            tmp_cruft_floor("iso-route", 7, &patterns, 6, 6),
+            Some(6)
+        );
+    }
+
+    #[test]
     fn the_audit_observed_families_match_the_fast_path_patterns() {
         let patterns =
             crate::parse_tmp_e2e_patterns(&crate::policy::default_tmp_e2e_patterns());
