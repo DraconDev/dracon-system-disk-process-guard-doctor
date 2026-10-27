@@ -12049,15 +12049,16 @@ async fn cmd_guard_clean(
                 human_bytes(f.bytes)
             ));
         }
-        if let Some(owner) = &owner {
-            for f in &outcome.skipped_owned {
-                actions.push(format!(
-                    "Skipped (live {} owns repo): {} ({})",
-                    owner,
-                    f.path.display(),
-                    human_bytes(f.bytes)
-                ));
-            }
+        for f in &outcome.skipped_owned {
+            let owner = repo_root_for_git_path(&f.path)
+                .and_then(|repo| git_owner_for(&owners, &repo).map(|o| format!("{}(pid {})", o.name, o.pid)))
+                .unwrap_or_else(|| "a live git process".to_string());
+            actions.push(format!(
+                "Skipped (live {} is working in this repo): {} ({})",
+                owner,
+                f.path.display(),
+                human_bytes(f.bytes)
+            ));
         }
         for f in &outcome.skipped_fresh {
             actions.push(format!(
