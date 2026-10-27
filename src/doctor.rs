@@ -66,12 +66,12 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
 
     // ADDED 2026-10-27 (wrong-swap check): the same shared pass the disk
     // audit and the guard's periodic check use. A policy that cannot be
-    // loaded falls back to the compiled-in defaults (documented in
-    // policy.rs) rather than failing every check on a host whose only
-    // problem is a missing policy file.
-    let (expected_prefixes, swap_config_path) = crate::load_system_policy()
-        .map(|(_, policy)| {
-            (
+    // loaded falls back to the compiled-in defaults (policy.rs) rather
+    // than failing the check on a host whose only problem is a missing
+    // policy file — that problem already has its own REQUIRED check above.
+    let (expected_prefixes, swap_candidates, swap_config_path) =
+        match crate::load_system_policy() {
+            Ok((_, policy)) => (
                 policy
                     .guard
                     .expected_swap_prefixes
@@ -80,28 +80,25 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
                     .filter(|s| !s.is_empty())
                     .map(str::to_string)
                     .collect::<Vec<_>>(),
+                policy
+                    .guard
+                    .dead_swapfile_candidates
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(expand_tilde)
+                    .collect::<Vec<_>>(),
                 expand_tilde(&policy.guard.nixos_swap_config),
-            )
-        })
-        .unwrap_or_else(|_| {
-            (
-                vec!["/dev/zram".to_string(), "/mnt/data".to_string()],
+            ),
+            Err(_) => (
+                default_expected_swap_prefixes()
+                    .split(',')
+                    .map(str::to_string)
+                    .collect::<Vec<_>>(),
+                Vec::new(),
                 expand_tilde(&default_nixos_swap_config()),
-            )
-        });
-    let _ = default_expected_swap_prefixes; // referenced for API stability; defaults mirror it
-    let swap_candidates: Vec<PathBuf> = crate::load_system_policy()
-        .map(|(_, policy)| {
-            policy
-                .guard
-                .dead_swapfile_candidates
-                .split(',')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(expand_tilde)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+            ),
+        };
     let swap_outcome = check_swap_health(&expected_prefixes, &swap_candidates, &swap_config_path);
 
     crate::DoctorReport {
