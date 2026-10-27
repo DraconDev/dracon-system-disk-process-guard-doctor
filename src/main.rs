@@ -44,6 +44,8 @@ pub(crate) use forgotten::*;
 mod forgotten_tests;
 mod git_temp;
 pub(crate) use git_temp::*;
+mod space_report;
+pub(crate) use space_report::*;
 mod links;
 pub(crate) use links::*;
 mod policy;
