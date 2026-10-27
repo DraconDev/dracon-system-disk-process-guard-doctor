@@ -205,6 +205,7 @@ fn guard_report_can_be_created_with_alerts() {
         reap_candidates: Vec::new(),
         reaped: Vec::new(),
         disk_fill_gbph: None,
+        swap_issues: Vec::new(),
     };
     assert!(report.enabled);
     assert_eq!(report.disk_use_percent, 72);
