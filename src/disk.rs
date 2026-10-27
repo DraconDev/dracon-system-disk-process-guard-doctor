@@ -662,21 +662,25 @@ pub(crate) fn apply(
     let mut others: Vec<Finding> = Vec::new();
     for finding in report.findings.drain(..) {
         if finding.disposition != Disposition::Apply {
-            records.retain(|r: &DeletedRecord| r.path != finding.path);
             others.push(finding);
             continue;
         }
         if finding.class == TrashClass::GitTemp {
+            // The audit already ran the age floor; re-read the mtime so the
+            // cleaner re-checks it rather than trusting the audit's snapshot.
+            let age_hours = std::fs::metadata(&finding.path)
+                .and_then(|metadata| metadata.modified())
+                .ok()
+                .and_then(|modified| {
+                    SystemTime::now()
+                        .duration_since(modified)
+                        .ok()
+                        .map(|delta| delta.as_secs() / 3600)
+                });
             git_candidates.push(crate::git_temp::GitTempFile {
                 path: finding.path.clone(),
                 bytes: finding.bytes,
-                age_hours: finding
-                    .references
-                    .refs
-                    .first()
-                    .map(|_| git_temp_min_age_hours)
-                    .unwrap_or(git_temp_min_age_hours),
-                modified: SystemTime::UNIX_EPOCH,
+                age_hours,
             });
             others.push(finding);
         } else {
