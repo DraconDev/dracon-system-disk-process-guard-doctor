@@ -568,8 +568,26 @@ pub(crate) fn audit(
 
     // --- class 2: /tmp, /var/tmp, logs, dead swapfiles ----------------------
     let mut tmp_found = 0usize;
+    // ADDED 2026-10-27 (leftover-audit follow-up): e2e/test-litter names
+    // are judged against the SHORT floor even here, so the one-shot sweep
+    // REPORTs them instead of staying blind until the general floor. The
+    // walk uses the lower of the two floors; entries that clear neither
+    // floor are dropped below. Empty patterns = fast path disabled
+    // (mirrors the guard daemon's e2e_min_age_hours == 0 early return).
+    let e2e_patterns: Vec<String> = if options.tmp_e2e_min_age_hours == 0 {
+        Vec::new()
+    } else {
+        crate::parse_tmp_e2e_patterns(&options.tmp_e2e_patterns)
+    };
+    let walk_floor = if e2e_patterns.is_empty() {
+        options.tmp_min_age_hours
+    } else {
+        options
+            .tmp_min_age_hours
+            .min(options.tmp_e2e_min_age_hours)
+    };
     let tmp_entries = if wanted(TrashClass::TempAndLogs) {
-        find_temp_cruft(&TEMP_ROOTS, options.tmp_min_age_hours, now)
+        find_temp_cruft(&TEMP_ROOTS, walk_floor, now)
     } else {
         Vec::new()
     };
@@ -586,6 +604,27 @@ pub(crate) fn audit(
         if hidden && entry.bytes < HIDDEN_TMP_REPORT_BYTES {
             continue;
         }
+        // Fast-path floor decision: a machine-generated test-copy name only
+        // needs the short floor; anything clearing neither floor was picked
+        // up by the lowered walk floor and is dropped here, uncounted.
+        let basename = entry
+            .path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let floor = match tmp_cruft_floor(
+            &basename,
+            entry.age_hours,
+            &e2e_patterns,
+            options.tmp_min_age_hours,
+            options.tmp_e2e_min_age_hours,
+        ) {
+            Some(floor) => floor,
+            None => continue,
+        };
+        let fast_path = floor == options.tmp_e2e_min_age_hours
+            && floor != options.tmp_min_age_hours
+            && !e2e_patterns.is_empty();
         tmp_found += 1;
         let references = snapshot.capture(&entry.path);
         let finding = if let Some(reason) = references.blocking_reason(&entry.path) {
@@ -611,12 +650,21 @@ pub(crate) fn audit(
                 } else {
                     Disposition::Apply
                 },
-                format!(
-                    "{} untouched for {}h (tmp_min_age_hours={})",
-                    entry.label(),
-                    entry.age_hours,
-                    options.tmp_min_age_hours
-                ),
+                if fast_path {
+                    format!(
+                        "{} untouched for {}h (e2e fast-path floor tmp_e2e_min_age_hours={})",
+                        entry.label(),
+                        entry.age_hours,
+                        options.tmp_e2e_min_age_hours
+                    )
+                } else {
+                    format!(
+                        "{} untouched for {}h (tmp_min_age_hours={})",
+                        entry.label(),
+                        entry.age_hours,
+                        options.tmp_min_age_hours
+                    )
+                },
             )
         };
         report.findings.push(finding.with_references(references));
