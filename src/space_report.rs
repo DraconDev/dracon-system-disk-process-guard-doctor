@@ -90,17 +90,355 @@ const SCRATCH_DIR_MARKERS: [&str; 6] = [
 
 const BACKUP_ARCHIVE_SUFFIXES: [&str; 3] = [".bundle", ".tar.gz", ".tar.zst"];
 
+/// One active swap device: its path plus the configured size.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SwapEntry {
+    pub(crate) path: PathBuf,
+    /// The `Size` column of `/proc/swaps`, in KiB.
+    pub(crate) size_kib: u64,
+}
+
+/// Parse `/proc/swaps` into active swap entries (path + size).
+///
+/// The first line is a header (`Filename Type Size Used Priority`). A file
+/// that is not in this list is inactive — which is exactly the condition
+/// that makes it a dead-swapfile candidate.
+pub(crate) fn active_swap_table(swaps_contents: &str) -> Vec<SwapEntry> {
+    swaps_contents
+        .lines()
+        .skip(1)
+        .filter_map(|line| {
+            let mut cols = line.split_whitespace();
+            let path = cols.next()?;
+            // Skip the `Type` column, take `Size`.
+            let size_kib = cols.nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+            Some(SwapEntry {
+                path: PathBuf::from(path),
+                size_kib,
+            })
+        })
+        .collect()
+}
+
 /// Parse `/proc/swaps` into the set of active swap paths.
 ///
 /// The first line is a header. A file that is not in this list is inactive —
 /// which is exactly the condition that makes it a candidate.
 pub(crate) fn active_swap_paths(swaps_contents: &str) -> Vec<PathBuf> {
-    swaps_contents
-        .lines()
-        .skip(1)
-        .filter_map(|line| line.split_whitespace().next())
-        .map(PathBuf::from)
+    active_swap_table(swaps_contents)
+        .into_iter()
+        .map(|entry| entry.path)
         .collect()
+}
+
+/// An ACTIVE swap device that lives on an unexpected device.
+///
+/// This is the dangerous direction: the 2026-10-26 incident deleted a 32 GiB
+/// `/var/lib/swapfile` only after proving it was inactive. An active swapfile
+/// on the wrong device must never be touched automatically — but it must be
+/// LOUD, because the next cleanup pass (or operator) could mistake it for
+/// the dead one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct WrongSwap {
+    pub(crate) path: PathBuf,
+    /// Configured size in bytes (`size_kib * 1024` from `/proc/swaps`).
+    pub(crate) bytes: u64,
+}
+
+/// True when `path` lives under `prefix`.
+///
+/// Plain string-prefix matching, deliberately: the expected entries are
+/// device families (`/dev/zram` must accept `/dev/zram0`) as well as
+/// directories (`/mnt/data` must accept `/mnt/data/swapfile`), and no single
+/// component-wise rule covers both. Documented so the operator can reason
+/// about it: a prefix also accepts a sibling whose name merely starts the
+/// same way (`/mnt/database` would satisfy `/mnt/data`). That fails OPEN,
+/// so keep prefixes specific.
+fn under_prefix(path: &Path, prefix: &str) -> bool {
+    if prefix.is_empty() {
+        return false;
+    }
+    path.to_string_lossy().starts_with(prefix)
+}
+
+/// Every active swap device must live under one of `expected` (comma-split
+/// policy prefixes, default `/dev/zram` + `/mnt/data`). Returns the active
+/// devices that do not, with their configured sizes.
+pub(crate) fn check_active_swap_placement(
+    active: &[SwapEntry],
+    expected: &[String],
+) -> Vec<WrongSwap> {
+    active
+        .iter()
+        .filter(|entry| !expected.iter().any(|p| under_prefix(&entry.path, p)))
+        .map(|entry| WrongSwap {
+            path: entry.path.clone(),
+            bytes: entry.size_kib.saturating_mul(1024),
+        })
+        .collect()
+}
+
+/// Best-effort extraction of `swapDevices` device paths from NixOS
+/// configuration text.
+///
+/// Finds `swapDevices = [ ... ];` with bracket matching (so nested attribute
+/// sets don't cut the block short) and collects every `device = "...";`
+/// inside it. Anything fancier — conditionals, `lib.mkIf`, generated configs
+/// — is out of scope: an unparsed config yields an empty list, and the
+/// caller treats the reference check as UNKNOWN (skipped), never as
+/// "everything is unreferenced".
+pub(crate) fn nixos_swap_devices(config: &str) -> Vec<PathBuf> {
+    let block = match swap_devices_block(config) {
+        Some(block) => block,
+        None => return Vec::new(),
+    };
+    let mut devices = Vec::new();
+    let bytes = block.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            // Skip quoted strings so a `device = "..."` inside a string
+            // literal cannot match.
+            i += 1;
+            while i < bytes.len() && bytes[i] != b'"' {
+                if bytes[i] == b'\\' {
+                    i += 1;
+                }
+                i += 1;
+            }
+            i += 1;
+            continue;
+        }
+        if block[i..].starts_with("device")
+            && {
+                let before = block[..i].chars().next_back();
+                before.map(|c| !(c.is_alphanumeric() || c == '_' || c == '.')).unwrap_or(true)
+            }
+        {
+            let mut j = i + "device".len();
+            while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t' || bytes[j] == b'\n') {
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b'=' {
+                j += 1;
+                while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t' || bytes[j] == b'\n') {
+                    j += 1;
+                }
+                if j < bytes.len() && bytes[j] == b'"' {
+                    j += 1;
+                    let start = j;
+                    while j < bytes.len() && bytes[j] != b'"' {
+                        j += 1;
+                    }
+                    devices.push(PathBuf::from(&block[start..j]));
+                    i = j + 1;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+    devices
+}
+
+/// The `[ ... ]` block of the first `swapDevices = [` assignment, with
+/// comments stripped and quotes/brackets respected. `None` when there is no
+/// such assignment or the brackets never balance.
+fn swap_devices_block(config: &str) -> Option<String> {
+    let key = "swapDevices";
+    let key_pos = config.find(key)?;
+    // The character before the key must not be part of a longer identifier.
+    if let Some(before) = config[..key_pos].chars().next_back() {
+        if before.is_alphanumeric() || before == '_' || before == '.' {
+            return None;
+        }
+    }
+    let after_key = &config[key_pos + key.len()..];
+    let eq = after_key.find('=')?;
+    let after_eq = &after_key[eq + 1..];
+    let open = after_eq.find('[')?;
+    // Bracket-match from the opening `[`, skipping `#` comments and
+    // `"..."` strings so neither can unbalance the count.
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut in_comment = false;
+    let mut buf = String::new();
+    for c in after_eq[open..].chars() {
+        if in_comment {
+            if c == '\n' {
+                in_comment = false;
+            }
+            continue;
+        }
+        if in_string {
+            if c == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match c {
+            '#' => in_comment = true,
+            '"' => in_string = true,
+            '[' => {
+                depth += 1;
+                buf.push(c);
+            }
+            ']' => {
+                depth -= 1;
+                buf.push(c);
+                if depth == 0 {
+                    return Some(buf);
+                }
+            }
+            _ => buf.push(c),
+        }
+    }
+    None
+}
+
+/// A swapfile that exists on disk (candidate, or active file swap) but has
+/// no entry in the NixOS `swapDevices` list: nothing will recreate or
+/// activate it after a rebuild/reboot, so it is either stale or unmanaged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct UnreferencedSwap {
+    pub(crate) path: PathBuf,
+    pub(crate) bytes: u64,
+    /// True when the file is ACTIVE swap right now — losing it on reboot
+    /// is the sharper edge, so the reason text says so.
+    pub(crate) is_active: bool,
+}
+
+/// Flag on-disk file-swap paths missing from the parsed NixOS `swapDevices`.
+///
+/// `on_disk` is `(path, bytes)` for every candidate that exists plus every
+/// active swap entry. `/dev/*` entries (zram, partitions) are skipped:
+/// they are not files and NixOS manages them through `zramSwap` /
+/// hardware config, not `swapDevices`. Only call this when the config
+/// actually parsed — an unreadable config is UNKNOWN, not "unreferenced".
+pub(crate) fn check_swap_references(
+    on_disk: &[(PathBuf, u64)],
+    config_devices: &[PathBuf],
+    active: &[PathBuf],
+) -> Vec<UnreferencedSwap> {
+    on_disk
+        .iter()
+        .filter(|(path, _)| {
+            // Device nodes are managed outside swapDevices.
+            !under_prefix(path, "/dev/")
+                && !config_devices.iter().any(|d| d == path)
+        })
+        .map(|(path, bytes)| UnreferencedSwap {
+            path: path.clone(),
+            bytes: *bytes,
+            is_active: active.iter().any(|a| a == path),
+        })
+        .collect()
+}
+
+/// The outcome of one wrong-swap pass, shared by `doctor`, the disk audit
+/// REPORT section, and the guard's periodic pass so all three agree.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SwapCheckOutcome {
+    /// False when `/proc/swaps` could not be read: nothing below is known.
+    pub(crate) probe_ok: bool,
+    /// Active swap on unexpected devices.
+    pub(crate) wrong: Vec<WrongSwap>,
+    /// On-disk swapfiles with no NixOS `swapDevices` entry.
+    pub(crate) unreferenced: Vec<UnreferencedSwap>,
+    /// False when the NixOS config was unreadable or had no parseable
+    /// `swapDevices` block: `unreferenced` is then empty AND meaningless.
+    pub(crate) config_known: bool,
+    /// The config path that was attempted (for reason text).
+    pub(crate) config_path: PathBuf,
+}
+
+impl SwapCheckOutcome {
+    /// True when the pass proved something is wrong (never when the probe
+    /// or the config was unanswerable — unknown is not failure).
+    pub(crate) fn has_findings(&self) -> bool {
+        !self.wrong.is_empty() || !self.unreferenced.is_empty()
+    }
+
+    /// One human-readable line per finding, for guard-once/doctor detail.
+    pub(crate) fn describe(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+        for w in &self.wrong {
+            lines.push(format!(
+                "ACTIVE swap on unexpected device: {} ({} configured)",
+                w.path.display(),
+                crate::policy::human_bytes(w.bytes),
+            ));
+        }
+        for u in &self.unreferenced {
+            lines.push(format!(
+                "swapfile not in NixOS swapDevices: {} ({}){}",
+                u.path.display(),
+                crate::policy::human_bytes(u.bytes),
+                if u.is_active {
+                    " — ACTIVE now, will not survive a rebuild/reboot"
+                } else {
+                    ""
+                },
+            ));
+        }
+        lines
+    }
+}
+
+/// Run the full wrong-swap pass: placement of active swap plus NixOS
+/// references for every on-disk candidate. Pure filesystem reads, no
+/// deletes, safe on every guard pass.
+pub(crate) fn check_swap_health(
+    expected_prefixes: &[String],
+    candidates: &[PathBuf],
+    config_path: &Path,
+) -> SwapCheckOutcome {
+    let mut outcome = SwapCheckOutcome {
+        config_path: config_path.to_path_buf(),
+        ..SwapCheckOutcome::default()
+    };
+    let Ok(swaps) = std::fs::read_to_string("/proc/swaps") else {
+        return outcome;
+    };
+    outcome.probe_ok = true;
+    let table = active_swap_table(&swaps);
+    outcome.wrong = check_active_swap_placement(&table, expected_prefixes);
+    let active_paths: Vec<PathBuf> = table.iter().map(|e| e.path.clone()).collect();
+    // On-disk universe for the reference check: every candidate that
+    // exists, plus every active swap entry (a file active now but absent
+    // from the config is the sharpest unreferenced case).
+    let mut on_disk: Vec<(PathBuf, u64)> = Vec::new();
+    for candidate in candidates {
+        if let Ok(metadata) = std::fs::metadata(candidate) {
+            if !metadata.is_dir() && !on_disk.iter().any(|(p, _)| p == candidate) {
+                on_disk.push((candidate.clone(), metadata.len()));
+            }
+        }
+    }
+    for entry in &table {
+        if !under_prefix(&entry.path, "/dev/")
+            && !on_disk.iter().any(|(p, _)| p == &entry.path)
+        {
+            let bytes = std::fs::metadata(&entry.path)
+                .map(|m| m.len())
+                .unwrap_or_else(|_| entry.size_kib.saturating_mul(1024));
+            on_disk.push((entry.path.clone(), bytes));
+        }
+    }
+    let Ok(config_text) = std::fs::read_to_string(config_path) else {
+        return outcome;
+    };
+    // A config with no swapDevices block at all is UNKNOWN: flagging every
+    // swapfile as unreferenced would be pure noise. An explicitly EMPTY
+    // block (`swapDevices = [ ];`) is KNOWN — the operator declared no
+    // swapfiles, so everything on disk is unreferenced.
+    if swap_devices_block(&config_text).is_none() {
+        return outcome;
+    }
+    outcome.config_known = true;
+    let devices = nixos_swap_devices(&config_text);
+    outcome.unreferenced = check_swap_references(&on_disk, &devices, &active_paths);
+    outcome
 }
 
 /// Decide whether `path` is a dead swapfile worth reporting.
