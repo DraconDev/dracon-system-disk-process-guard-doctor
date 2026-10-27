@@ -26,7 +26,7 @@ use std::time::SystemTime;
 
 use crate::disk_refs::{ProcSnapshot, ReferenceCapture};
 use crate::disk_tmp::{
-    find_oversized_logs, find_temp_cruft, LOG_ROOTS, OVERSIZED_LOG_BYTES, TEMP_ROOTS,
+    find_oversized_logs, find_temp_cruft, LOG_ROOTS, TEMP_ROOTS,
 };
 use crate::git_temp::{
     clean_git_temp_files, find_git_temp_files, git_owner_for, live_git_owners,

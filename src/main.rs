@@ -5145,6 +5145,16 @@ fn nix_delete_generations_arg(keep_generations: u32) -> Option<String> {
 ///   always including both ends.
 ///
 /// Returns the generations to DELETE, sorted ascending.
+/// Legacy semantic (protect only the highest generation), used by the
+/// pre-existing spread tests.
+pub(crate) fn nix_generations_to_delete_highest_protected(
+    generations: &[u32],
+    keep: usize,
+) -> Vec<u32> {
+    let highest = generations.iter().copied().max().into_iter().collect::<Vec<_>>();
+    nix_generations_to_delete_protecting(generations, keep, &highest)
+}
+
 /// Highest-generation-protection variant, kept because the pre-existing
 /// spread tests are written against it. Production calls
 /// `nix_generations_to_delete_protecting` with the real `(current)` marker and
@@ -5414,20 +5424,6 @@ pub(crate) fn nix_delete_generations_argv(generations: &[u32]) -> Vec<String> {
     let mut argv = vec!["--delete-generations".to_string()];
     argv.extend(generations.iter().map(u32::to_string));
     argv
-}
-
-/// Read a profile's generation numbers, or `None` when they cannot be listed.
-pub(crate) fn nix_env_generation_numbers(nix_env: &Path, profile: &str) -> Option<Vec<u32>> {
-    let output = std::process::Command::new(nix_env)
-        .args(["--list-generations", "-p", profile])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    Some(parse_nix_generation_numbers(&String::from_utf8_lossy(
-        &output.stdout,
-    )))
 }
 
 fn nix_env_generation_count(nix_env: &Path, profile: &str) -> Option<usize> {
@@ -12936,7 +12932,7 @@ mod nix_current_generation_tests {
 }
 
 mod nix_spread_tests {
-    use super::nix_generations_to_delete;
+    use super::nix_generations_to_delete_highest_protected as nix_generations_to_delete;
 
     #[test]
     fn keeps_everything_when_keep_exceeds_count() {
