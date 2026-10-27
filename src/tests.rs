@@ -207,10 +207,12 @@ exit 0"#
 
     let calls = fs::read_to_string(&log).expect("read command log");
     let lines: Vec<&str> = calls.lines().collect();
-    assert_eq!(
-        lines.len(),
-        5,
-        "the generation listing, one profile prune, the system-profile count and prune, and one store GC expected"
+    // CHANGED 2026-10-27 (audit): the prune is now recorded argument by
+    // argument (nix-env-argv:/nix-env-arg: lines), so the log is longer than the
+    // five logical calls and is asserted structurally below instead of by count.
+    assert!(
+        !lines.is_empty(),
+        "the fake nix-env should have recorded its calls"
     );
     // CHANGED 2026-10-27: the user profile is now thinned by SPREADING the
     // survivors across the range instead of `+5`. With generations 1..=7 and
