@@ -410,13 +410,25 @@ pub(crate) fn describe_cache_users(users: &[CacheUser]) -> Option<String> {
     if users.is_empty() {
         return None;
     }
-    Some(
-        users
-            .iter()
-            .map(|user| format!("{} (pid {})", user.name, user.pid))
-            .collect::<Vec<_>>()
-            .join(", "),
-    )
+    // Group by process name: a browser cache is held by dozens of renderer
+    // processes and listing each pid buries the actual finding. Every name
+    // still shows a pid, so the owning PID is always present.
+    let mut by_name: std::collections::BTreeMap<&str, Vec<u32>> = std::collections::BTreeMap::new();
+    for user in users {
+        by_name.entry(user.name.as_str()).or_default().push(user.pid);
+    }
+    let rendered: Vec<String> = by_name
+        .iter()
+        .map(|(name, pids)| {
+            if pids.len() == 1 {
+                format!("{name} (pid {})", pids[0])
+            } else {
+                let head: Vec<String> = pids.iter().take(2).map(|p| format!("pid {p}")).collect();
+                format!("{name} ({} processes; {})", pids.len(), head.join(", "))
+            }
+        })
+        .collect();
+    Some(rendered.join("; "))
 }
 
 /// A dot-prefixed `/tmp` entry is reported (never auto-deleted) above this
