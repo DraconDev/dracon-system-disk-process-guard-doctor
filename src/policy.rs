@@ -657,7 +657,12 @@ pub(crate) fn default_tmp_min_age_hours() -> u64 {
 }
 
 pub(crate) fn default_tmp_e2e_patterns() -> String {
-    "reconcile-*,reconcile-batch*,deathrun-shield-*,dr-audit-*,cw-browser-test-*,hh-base,jr-audit,nb-run,nb-fresh,.tmp*,pi-subagents-uid-*,puppeteer_dev_chrome_profile-*,playwright_chromiumdev_profile-*".to_string()
+    // ADDED 2026-10-27 (leftover-audit follow-up): ai-tts-*, iso-route,
+    // base-copy, synth4*, junk-runner-e2e.* and node-compile-cache are the
+    // browser-profile/test-copy families the 2026-10-27 whole-system sweep
+    // found holding ~9 GiB in /tmp. Note the DOT in junk-runner-e2e.*: those
+    // trees use `name.<rand>` suffixes, which `junk-runner-e2e-*` would miss.
+    "reconcile-*,reconcile-batch*,deathrun-shield-*,dr-audit-*,cw-browser-test-*,ai-tts-*,iso-route,base-copy,synth4*,junk-runner-e2e.*,node-compile-cache,hh-base,jr-audit,nb-run,nb-fresh,.tmp*,pi-subagents-uid-*,puppeteer_dev_chrome_profile-*,playwright_chromiumdev_profile-*".to_string()
 }
 
 pub(crate) fn default_tmp_e2e_min_age_hours() -> u64 {

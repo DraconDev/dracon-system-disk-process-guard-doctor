@@ -300,7 +300,10 @@ clean_tmp = false
 # e2e/test-litter fast path (defaults shown): machine-generated test-copy
 # namespaces get a SHORTER age gate, because a 20h-old 29 GiB reconcile-e2e
 # pile is obviously dead long before the general 24h gate fires.
-# tmp_e2e_patterns = "reconcile-*,reconcile-batch*,deathrun-shield-*,dr-audit-*,cw-browser-test-*,hh-base,jr-audit,nb-run,nb-fresh,.tmp*,pi-subagents-uid-*,puppeteer_dev_chrome_profile-*,playwright_chromiumdev_profile-*"
+# tmp_e2e_patterns = "reconcile-*,reconcile-batch*,deathrun-shield-*,dr-audit-*,cw-browser-test-*,ai-tts-*,iso-route,base-copy,synth4*,junk-runner-e2e.*,node-compile-cache,hh-base,jr-audit,nb-run,nb-fresh,.tmp*,pi-subagents-uid-*,puppeteer_dev_chrome_profile-*,playwright_chromiumdev_profile-*"
+#   (2026-10-27: ai-tts-*, iso-route, base-copy, synth4*, junk-runner-e2e.*
+#   and node-compile-cache added after the whole-system sweep found ~9 GiB
+#   of those families in /tmp. junk-runner-e2e uses a DOT suffix.)
 # tmp_e2e_min_age_hours = 6            # fast-path age gate (0 disables the fast path)
 # Size-aware floor (ADDED 2026-10-22). An entry of at least
 # tmp_large_entry_bytes is judged against tmp_large_min_age_hours instead
