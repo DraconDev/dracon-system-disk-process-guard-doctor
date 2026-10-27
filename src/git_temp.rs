@@ -182,6 +182,8 @@ pub(crate) struct GitOwner {
     pub(crate) name: String,
     /// The process's working directory, when readable.
     pub(crate) cwd: Option<PathBuf>,
+    /// True when this git invocation can write scratch packs.
+    pub(crate) writes_packs: bool,
 }
 
 /// Whether `name` is a git process that could be writing scratch files.
@@ -191,6 +193,49 @@ fn is_git_process_name(name: &str) -> bool {
         .and_then(|n| n.to_str())
         .unwrap_or(name);
     base == "git" || base.starts_with("git-")
+}
+
+/// Subcommands that actually write `tmp_pack_*`/`tmp_idx_*`/`tmp_obj_*`.
+///
+/// REFINED 2026-10-27 (second live run): treating ANY git process as an owner
+/// still skipped everything, because the sync daemon runs `git add`/`commit`
+/// on a one-second pulse and therefore always has a `git` inside every watched
+/// repo. But `add`/`commit`/`status` never produce scratch packs — only the
+/// packing subcommands below do. Matching the subcommand is what makes the
+/// owner check both sound (a real repack still blocks) and useful (routine
+/// commits do not).
+const PACK_WRITING_SUBCOMMANDS: [&str; 6] = [
+    "gc",
+    "repack",
+    "pack-objects",
+    "index-pack",
+    "prune",
+    "unpack-objects",
+];
+
+/// True when a git argv contains a subcommand that writes scratch files.
+///
+/// `argv` is the NUL-split `/proc/<pid>/cmdline`. For `git-remote-*` style
+/// helpers the argv has no subcommand, so they are treated as pack-writing:
+/// a push/fetch may be packing in the background and certainty is worth more
+/// than the extra skip here.
+pub(crate) fn argv_writes_packs(argv: &[String]) -> bool {
+    if argv.iter().any(|a| {
+        PACK_WRITING_SUBCOMMANDS
+            .iter()
+            .any(|sub| a == sub || a.ends_with(&format!("/{sub}")))
+    }) {
+        return true;
+    }
+    argv.first()
+        .map(|a| {
+            let base = Path::new(a)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(a);
+            base.starts_with("git-remote-") || base == "git-upload-pack" || base == "git-receive-pack"
+        })
+        .unwrap_or(false)
 }
 
 /// Collect the live git processes and their working directories.
@@ -220,10 +265,19 @@ pub(crate) fn live_git_owners(proc_root: &Path) -> Vec<GitOwner> {
             continue;
         }
         let cwd = std::fs::read_link(entry.path().join("cwd")).ok();
+        let argv: Vec<String> = std::fs::read(entry.path().join("cmdline"))
+            .map(|raw| {
+                raw.split(|b| *b == 0)
+                    .filter(|chunk| !chunk.is_empty())
+                    .map(|chunk| String::from_utf8_lossy(chunk).into_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
         owners.push(GitOwner {
             pid,
             name: comm,
             cwd,
+            writes_packs: argv_writes_packs(&argv),
         });
     }
     owners
@@ -236,10 +290,11 @@ pub(crate) fn live_git_owners(proc_root: &Path) -> Vec<GitOwner> {
 /// it, which covers both "git ran in the worktree" and "git ran inside .git".
 pub(crate) fn git_owner_for<'a>(owners: &'a [GitOwner], repo: &Path) -> Option<&'a GitOwner> {
     owners.iter().find(|owner| {
-        owner
-            .cwd
-            .as_ref()
-            .is_some_and(|cwd| cwd == repo || cwd.starts_with(repo))
+        owner.writes_packs
+            && owner
+                .cwd
+                .as_ref()
+                .is_some_and(|cwd| cwd == repo || cwd.starts_with(repo))
     })
 }
 
@@ -443,6 +498,7 @@ mod tests {
             pid: 42,
             name: "git".to_string(),
             cwd: Some(busy.join(".git")),
+            writes_packs: true,
         }];
         assert!(git_owner_for(&owners, &busy).is_some(), "git inside this repo owns it");
         assert!(
@@ -457,6 +513,7 @@ mod tests {
             pid: 7,
             name: "git".to_string(),
             cwd: None,
+            writes_packs: true,
         }];
         assert!(git_owner_for(&owners, Path::new("/home/u/Dev/repo")).is_none());
     }
@@ -491,5 +548,59 @@ mod tests {
         assert!(is_git_process_name("git-remote-https"));
         assert!(!is_git_process_name("cargo"));
         assert!(!is_git_process_name("gitk"));
+    }
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use super::*;
+
+    fn argv(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn packing_subcommands_count_as_owners() {
+        assert!(argv_writes_packs(&argv(&["git", "gc", "--quiet"])));
+        assert!(argv_writes_packs(&argv(&["git", "repack", "-ad"])));
+        assert!(argv_writes_packs(&argv(&["git", "pack-objects", "out"])));
+        assert!(argv_writes_packs(&argv(&["/usr/bin/git", "prune"])));
+    }
+
+    #[test]
+    fn routine_commit_subcommands_do_not_block_cleanup() {
+        // These run on the sync daemon's one-second pulse; if they counted as
+        // owners the cleaner could never act.
+        assert!(!argv_writes_packs(&argv(&["git", "add", "-A"])));
+        assert!(!argv_writes_packs(&argv(&["git", "commit", "-m", "x"])));
+        assert!(!argv_writes_packs(&argv(&["git", "status", "--porcelain"])));
+        assert!(!argv_writes_packs(&argv(&["git", "push", "origin", "main"])));
+    }
+
+    #[test]
+    fn transport_helpers_count_because_they_may_pack() {
+        assert!(argv_writes_packs(&argv(&["git-remote-https", "origin", "url"])));
+        assert!(argv_writes_packs(&argv(&["git-receive-pack", "/repo"])));
+    }
+
+    #[test]
+    fn non_git_argv_is_not_an_owner() {
+        assert!(!argv_writes_packs(&argv(&["cargo", "build"])));
+        assert!(!argv_writes_packs(&[]));
+    }
+
+    #[test]
+    fn a_commit_in_the_same_repo_does_not_block_a_real_deletion() {
+        let repo = PathBuf::from("/home/u/Dev/repo");
+        let owners = vec![GitOwner {
+            pid: 99,
+            name: "git".to_string(),
+            cwd: Some(repo.clone()),
+            writes_packs: false,
+        }];
+        assert!(
+            git_owner_for(&owners, &repo).is_none(),
+            "a routine git commit must not block scratch cleanup"
+        );
     }
 }
