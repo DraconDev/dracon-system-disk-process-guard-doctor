@@ -201,15 +201,15 @@ exit 0"#
     );
     // CHANGED 2026-10-27: the user profile is now thinned by SPREADING the
     // survivors across the range instead of `+5`. With generations 1..=7 and
-    // keep=5 the survivors are 1, 2, 4, 6, 7, so the deletions are 3 and 5 —
-    // note the OLDEST generation survives as a rollback anchor, which `+5`
+    // keep=5 the retained set is {1, 2, 4, 5, 7}, so the deletions are 3 and 6.
+    // Note generation 1 survives as the oldest rollback anchor, which `+5`
     // (keep 3..=7) would have destroyed.
     assert_eq!(
         lines[0], "nix-env:--list-generations -p default",
         "the generation list is read before choosing what to prune"
     );
     assert_eq!(
-        lines[1], "nix-env:--delete-generations 3 5",
+        lines[1], "nix-env:--delete-generations 3 6",
         "spread pruning keeps the oldest anchor and the current generation"
     );
     assert_eq!(
