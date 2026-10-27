@@ -10448,24 +10448,7 @@ pub(crate) async fn run_guard_once(
     // `swapDevices` config. Three cheap reads, REPORT-only, never deletes.
     // Unknown (unreadable /proc/swaps or config) is silence, not failure —
     // see space_report.rs for the unknown-means-skip contract.
-    let swap_issues = {
-        let expected: Vec<String> = guard
-            .expected_swap_prefixes
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .collect();
-        let candidates: Vec<PathBuf> = guard
-            .dead_swapfile_candidates
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(expand_tilde)
-            .collect();
-        let config_path = expand_tilde(&guard.nixos_swap_config);
-        check_swap_health(&expected, &candidates, &config_path).describe()
-    };
+    let swap_issues = check_swap_devices(guard, state).await;
 
     let report = GuardReport {
         enabled: guard.enabled,
