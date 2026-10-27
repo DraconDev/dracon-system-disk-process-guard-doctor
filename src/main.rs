@@ -1839,34 +1839,6 @@ async fn disk_use_percent_for(path: &str) -> Result<u8> {
     parse_df_use_percent(&text).ok_or_else(|| anyhow::anyhow!("failed parsing df output"))
 }
 
-/// Every process's `comm` value, as seen through `/proc`.
-///
-/// Used by the git-temp cleaner to answer "is a git process running right
-/// now?". Reads `/proc/<pid>/comm` directly rather than parsing `ps`, so no
-/// output-format assumptions or `ps`-injection surface is involved. A process
-/// that vanishes mid-scan is simply not reported.
-pub(crate) fn process_command_names() -> Vec<String> {
-    let Ok(entries) = std::fs::read_dir("/proc") else {
-        return Vec::new();
-    };
-    let mut names = Vec::new();
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let Some(pid) = name.to_str().filter(|p| {
-            !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())
-        }) else {
-            continue;
-        };
-        if let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm")) {
-            let comm = comm.trim();
-            if !comm.is_empty() {
-                names.push(comm.to_string());
-            }
-        }
-    }
-    names
-}
-
 /// Approximate allocated bytes for a report entry, bounded by `max_depth`.
 ///
 /// This exists only to size REPORT-ONLY candidates (stray dirs, backup
