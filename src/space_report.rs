@@ -384,9 +384,8 @@ pub(crate) struct SwapCheckOutcome {
     pub(crate) unreferenced: Vec<UnreferencedSwap>,
     /// False when the NixOS config was unreadable or had no parseable
     /// `swapDevices` block: `unreferenced` is then empty AND meaningless.
+    /// (Callers keep the attempted path for their own reason text.)
     pub(crate) config_known: bool,
-    /// The config path that was attempted (for reason text).
-    pub(crate) config_path: PathBuf,
 }
 
 impl SwapCheckOutcome {
@@ -473,10 +472,7 @@ pub(crate) fn evaluate_swap_health(
     on_disk: &[(PathBuf, u64)],
     config_path: &Path,
 ) -> SwapCheckOutcome {
-    let mut outcome = SwapCheckOutcome {
-        config_path: config_path.to_path_buf(),
-        ..SwapCheckOutcome::default()
-    };
+    let mut outcome = SwapCheckOutcome::default();
     let Some(swaps) = swaps_contents else {
         return outcome;
     };
