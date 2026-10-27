@@ -458,7 +458,6 @@ pub(crate) fn check_swap_health(
         config.as_deref(),
         expected_prefixes,
         &on_disk,
-        config_path,
     )
 }
 
@@ -470,7 +469,6 @@ pub(crate) fn evaluate_swap_health(
     config_text: Option<&str>,
     expected_prefixes: &[String],
     on_disk: &[(PathBuf, u64)],
-    config_path: &Path,
 ) -> SwapCheckOutcome {
     let mut outcome = SwapCheckOutcome::default();
     let Some(swaps) = swaps_contents else {
@@ -785,13 +783,7 @@ mod tests {
         let config = "swapDevices = [ { device = \"/mnt/data/swapfile\"; } ];\n";
         let expected = vec!["/dev/zram".to_string(), "/mnt/data".to_string()];
         let on_disk = vec![(PathBuf::from("/var/lib/swapfile"), 42)];
-        let outcome = evaluate_swap_health(
-            Some(swaps),
-            Some(config),
-            &expected,
-            &on_disk,
-            Path::new("/etc/nixos/configuration.nix"),
-        );
+        let outcome = evaluate_swap_health(Some(swaps), Some(config), &expected, &on_disk);
         assert!(outcome.probe_ok);
         assert!(outcome.config_known);
         assert!(outcome.has_findings());
@@ -805,8 +797,7 @@ mod tests {
     fn evaluator_unknown_means_no_findings() {
         let expected = vec!["/dev/zram".to_string()];
         // Unreadable /proc/swaps: nothing is known.
-        let outcome =
-            evaluate_swap_health(None, Some("swapDevices = [ ];"), &expected, &[], Path::new("/x"));
+        let outcome = evaluate_swap_health(None, Some("swapDevices = [ ];"), &expected, &[]);
         assert!(!outcome.probe_ok);
         assert!(!outcome.has_findings());
         // Readable swaps but a config with no swapDevices block: the
@@ -817,7 +808,6 @@ mod tests {
             Some("fileSystems = {};"),
             &expected,
             &[(PathBuf::from("/var/lib/swapfile"), 9)],
-            Path::new("/x"),
         );
         assert!(outcome.probe_ok);
         assert!(!outcome.config_known);
