@@ -230,8 +230,24 @@ pub(crate) fn check_active_swap_placement(
 /// — is out of scope: an unparsed config yields an empty list, and the
 /// caller treats the reference check as UNKNOWN (skipped), never as
 /// "everything is unreferenced".
-/// The config with comments and string CONTENTS blanked (same length, so
-/// offsets transfer to the original). Structural parsing — key search and
+/// Push `c` blanked: newlines pass through (line structure is load-bearing
+/// for `#` comments), every other char becomes one space PER BYTE. The
+/// blanked text is therefore exactly as long — in bytes — as the original,
+/// so byte offsets transfer between the two and slicing the original at
+/// blanked offsets can never split a multi-byte char (2026-10-27
+/// falsification: per-char blanking shifted every offset after non-ASCII).
+fn blank_char(out: &mut String, c: char) {
+    if c == '\n' {
+        out.push('\n');
+    } else {
+        for _ in 0..c.len_utf8() {
+            out.push(' ');
+        }
+    }
+}
+
+/// The config with comments and string CONTENTS blanked (same BYTE length,
+/// so offsets transfer to the original). Structural parsing — key search and
 /// bracket matching — runs on this, so a `swapDevices` mentioned in a
 /// comment (the 2026-10-27 false positive: `# ... swapDevices below` latched
 /// onto `boot.kernelParams = [ ... ]`) or brackets inside a string can never
@@ -244,7 +260,7 @@ fn code_only(config: &str) -> String {
         let c = chars[k];
         if c == '#' {
             while k < chars.len() && chars[k] != '\n' {
-                out.push(' ');
+                blank_char(&mut out, chars[k]);
                 k += 1;
             }
             continue;
@@ -254,7 +270,7 @@ fn code_only(config: &str) -> String {
             out.push(' ');
             k += 2;
             while k + 1 < chars.len() && !(chars[k] == '*' && chars[k + 1] == '/') {
-                out.push(if chars[k] == '\n' { '\n' } else { ' ' });
+                blank_char(&mut out, chars[k]);
                 k += 1;
             }
             out.push(' ');
@@ -267,11 +283,11 @@ fn code_only(config: &str) -> String {
             k += 1;
             while k < chars.len() && chars[k] != '"' {
                 if chars[k] == '\\' && k + 1 < chars.len() {
-                    out.push(' ');
-                    out.push(' ');
+                    blank_char(&mut out, chars[k]);
+                    blank_char(&mut out, chars[k + 1]);
                     k += 2;
                 } else {
-                    out.push(if chars[k] == '\n' { '\n' } else { ' ' });
+                    blank_char(&mut out, chars[k]);
                     k += 1;
                 }
             }
@@ -309,7 +325,7 @@ fn code_only(config: &str) -> String {
                     k += 2;
                     break;
                 }
-                out.push(if chars[k] == '\n' { '\n' } else { ' ' });
+                blank_char(&mut out, chars[k]);
                 k += 1;
             }
             continue;
@@ -929,6 +945,25 @@ mod tests {
             ]
         );
         assert!(has_swap_devices_block(config));
+    }
+
+    /// 2026-10-27 falsification: per-char blanking shifted every byte
+    /// offset after non-ASCII text, mis-extracting the block (or panicking
+    /// on the slice). Blanking must preserve byte length exactly.
+    #[test]
+    fn unicode_before_block_parses_and_never_panics() {
+        let config = "# Tauschger\u{E4}te: \u{E4}\u{F6}\u{FC} \u{65E5}\u{672C}\u{8A9E} swapDevices erw\u{E4}hnt\n\
+          swapDevices = [ { device = \"/mnt/data/swapfile\"; } ];\n";
+        assert_eq!(
+            code_only(config).len(),
+            config.len(),
+            "blanked text must be byte-identical in length"
+        );
+        assert!(has_swap_devices_block(config));
+        assert_eq!(
+            nixos_swap_devices(config),
+            vec![PathBuf::from("/mnt/data/swapfile")]
+        );
     }
 
     #[test]
