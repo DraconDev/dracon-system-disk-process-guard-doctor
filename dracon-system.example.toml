@@ -202,8 +202,10 @@ monitor_zombies = true
 zombie_threshold = 20
 
 # Wrong-swap check (REPORT-only; the guard/doctor/disk-audit never delete
-# swap). Every ACTIVE swap device must live under one of these comma-
-# separated prefixes (plain string-prefix match: /dev/zram covers zram0..N).
+# swap). Every ACTIVE swap device must match one of these comma-separated
+# prefixes by exact path, `/` component containment (/mnt/data covers
+# /mnt/data/swapfile but NOT /mnt/database or /mnt/data2), or — under /dev
+# only — kernel device enumeration (/dev/zram covers zram0..zramN).
 # An active swapfile anywhere else — e.g. a forgotten /var/lib/swapfile on
 # the nvme root — is flagged, as is any on-disk swapfile with no NixOS
 # swapDevices entry. A host with a legitimate swap partition extends this
