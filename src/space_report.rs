@@ -677,6 +677,135 @@ mod tests {
     }
 
     #[test]
+    fn swap_table_parses_size_column() {
+        let contents = "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n\
+                        /dev/zram0                              partition\t63897596\t0\t5\n\
+                        /mnt/data/swapfile                      file\t\t67108860\t131704\t-1\n";
+        let table = active_swap_table(contents);
+        assert_eq!(table.len(), 2);
+        assert_eq!(table[0].path, PathBuf::from("/dev/zram0"));
+        assert_eq!(table[0].size_kib, 63897596);
+        assert_eq!(table[1].path, PathBuf::from("/mnt/data/swapfile"));
+        assert_eq!(table[1].size_kib, 67108860);
+        // active_swap_paths still returns just the paths.
+        assert_eq!(
+            active_swap_paths(contents),
+            vec![PathBuf::from("/dev/zram0"), PathBuf::from("/mnt/data/swapfile")]
+        );
+    }
+
+    #[test]
+    fn misplaced_active_swap_is_flagged() {
+        let table = active_swap_table(
+            "Filename Type Size Used Priority\n\
+             /dev/zram0 partition 63897596 0 5\n\
+             /var/lib/swapfile file 33554432 0 -1\n",
+        );
+        let expected = vec!["/dev/zram".to_string(), "/mnt/data".to_string()];
+        let wrong = check_active_swap_placement(&table, &expected);
+        assert_eq!(wrong.len(), 1);
+        assert_eq!(wrong[0].path, PathBuf::from("/var/lib/swapfile"));
+        assert_eq!(wrong[0].bytes, 33554432 * 1024);
+    }
+
+    #[test]
+    fn expected_active_swap_is_quiet() {
+        let table = active_swap_table(
+            "Filename Type Size Used Priority\n\
+             /dev/zram0 partition 63897596 0 5\n\
+             /mnt/data/swapfile file 67108860 0 -1\n",
+        );
+        let expected = vec!["/dev/zram".to_string(), "/mnt/data".to_string()];
+        assert!(check_active_swap_placement(&table, &expected).is_empty());
+        // No active swap at all is vacuously fine.
+        assert!(check_active_swap_placement(&[], &expected).is_empty());
+    }
+
+    #[test]
+    fn swapdevices_block_parses_devices_only() {
+        let config = r#"
+          fileSystems."/" = { device = "/dev/disk/by-label/nixos"; };
+          swapDevices = [
+            { device = "/mnt/data/swapfile"; size = 64 * 1024; }
+            # { device = "/old/swapfile"; }  -- commented out, must not match
+          ];
+        "#;
+        let devices = nixos_swap_devices(config);
+        assert_eq!(devices, vec![PathBuf::from("/mnt/data/swapfile")]);
+    }
+
+    #[test]
+    fn swapdevices_without_block_is_empty() {
+        assert!(nixos_swap_devices("fileSystems = {};\n").is_empty());
+        // Unbalanced brackets never parse: unknown, not "everything".
+        assert!(nixos_swap_devices("swapDevices = [ { device = \"/x\"; };").is_empty());
+    }
+
+    #[test]
+    fn unreferenced_swapfiles_are_flagged() {
+        let on_disk = vec![
+            (PathBuf::from("/var/lib/swapfile"), 1),
+            (PathBuf::from("/mnt/data/swapfile"), 2),
+            // Device nodes are managed via zramSwap/hardware config, never
+            // via swapDevices: they must not be flagged.
+            (PathBuf::from("/dev/zram0"), 3),
+        ];
+        let config = vec![PathBuf::from("/mnt/data/swapfile")];
+        let active = vec![PathBuf::from("/var/lib/swapfile")];
+        let flagged = check_swap_references(&on_disk, &config, &active);
+        assert_eq!(flagged.len(), 1);
+        assert_eq!(flagged[0].path, PathBuf::from("/var/lib/swapfile"));
+        assert!(flagged[0].is_active, "active-but-unreferenced must be marked");
+    }
+
+    #[test]
+    fn evaluator_combines_placement_and_references() {
+        let swaps = "Filename Type Size Used Priority\n\
+                       /dev/zram0 partition 63897596 0 5\n\
+                       /var/lib/swapfile file 33554432 0 -1\n";
+        let config = "swapDevices = [ { device = \"/mnt/data/swapfile\"; } ];\n";
+        let expected = vec!["/dev/zram".to_string(), "/mnt/data".to_string()];
+        let on_disk = vec![(PathBuf::from("/var/lib/swapfile"), 42)];
+        let outcome = evaluate_swap_health(
+            Some(swaps),
+            Some(config),
+            &expected,
+            &on_disk,
+            Path::new("/etc/nixos/configuration.nix"),
+        );
+        assert!(outcome.probe_ok);
+        assert!(outcome.config_known);
+        assert!(outcome.has_findings());
+        assert_eq!(outcome.wrong.len(), 1);
+        assert_eq!(outcome.unreferenced.len(), 1);
+        assert!(outcome.unreferenced[0].is_active);
+        assert_eq!(outcome.describe().len(), 2);
+    }
+
+    #[test]
+    fn evaluator_unknown_means_no_findings() {
+        let expected = vec!["/dev/zram".to_string()];
+        // Unreadable /proc/swaps: nothing is known.
+        let outcome =
+            evaluate_swap_health(None, Some("swapDevices = [ ];"), &expected, &[], Path::new("/x"));
+        assert!(!outcome.probe_ok);
+        assert!(!outcome.has_findings());
+        // Readable swaps but a config with no swapDevices block: the
+        // reference half is unknown, the placement half still works.
+        let swaps = "Filename Type Size Used Priority\n/dev/zram0 partition 1 0 5\n";
+        let outcome = evaluate_swap_health(
+            Some(swaps),
+            Some("fileSystems = {};"),
+            &expected,
+            &[(PathBuf::from("/var/lib/swapfile"), 9)],
+            Path::new("/x"),
+        );
+        assert!(outcome.probe_ok);
+        assert!(!outcome.config_known);
+        assert!(!outcome.has_findings());
+    }
+
+    #[test]
     fn ordinary_directories_are_not_strays() {
         for name in ["Dev", "Documents", "Pictures", "Videos"] {
             assert!(
