@@ -214,3 +214,11 @@ that the booted generation is never in the plan).
   reports and prunes generations but does not run `nix-collect-garbage`.
 - The system-profile prune still requires root to take effect; the tool computes
   the closure-safe plan and reports the privileged script path.
+
+## Follow-up 2026-10-27: swapfile deleted by operator
+
+The operator ran `sudo rm -f /var/lib/swapfile` interactively (sudo requires a
+password; non-interactive `sudo -n` and `pkexec` both failed). Verified after:
+`/var/lib/swapfile` no longer exists, `swapon --show` still lists `/dev/zram0`
++ `/mnt/data/swapfile`, and `df -B1 /` shows 180,198,932,480 bytes available
+(up from ~147 GiB). The 32 GiB orphan on the nvme root is gone.
