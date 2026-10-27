@@ -393,6 +393,9 @@ fn sentinel_zero_knob_list_matches_the_policy_fields() {
         "reap_report_max_cpu_seconds",
         "nix_keep_generations",
         "stash_expire_interval_secs",
+        // ADDED 2026-10-27: 0 = git scratch files eligible immediately (the
+        // live-git-process check still blocks every deletion).
+        "git_temp_min_age_hours",
     ];
     let mut listed: Vec<&&str> = SENTINEL_ZERO_KNOBS.iter().collect();
     listed.sort();
