@@ -443,7 +443,6 @@ pub(crate) struct DiskOptions {
     pub(crate) dead_swapfile_candidates: String,
     pub(crate) git_temp_min_age_hours: u64,
     pub(crate) tmp_min_age_hours: u64,
-    pub(crate) keep_generations: u32,
 }
 
 /// Run the full audit and classify every finding.
@@ -931,7 +930,6 @@ mod disk_tests {
             dead_swapfile_candidates: String::new(),
             git_temp_min_age_hours: 6,
             tmp_min_age_hours: 24,
-            keep_generations: 5,
         }
     }
 

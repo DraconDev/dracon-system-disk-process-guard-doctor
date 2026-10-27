@@ -5147,6 +5147,7 @@ fn nix_delete_generations_arg(keep_generations: u32) -> Option<String> {
 /// Returns the generations to DELETE, sorted ascending.
 /// Legacy semantic (protect only the highest generation), used by the
 /// pre-existing spread tests.
+#[cfg(test)]
 pub(crate) fn nix_generations_to_delete_highest_protected(
     generations: &[u32],
     keep: usize,
@@ -10884,7 +10885,6 @@ async fn cmd_disk(
         dead_swapfile_candidates: guard.dead_swapfile_candidates.clone(),
         git_temp_min_age_hours: guard.git_temp_min_age_hours,
         tmp_min_age_hours: tmp_min_age_hours.unwrap_or(guard.tmp_cruft_min_age_hours),
-        keep_generations: guard.nix_keep_generations,
     };
 
     // A zero age floor would make every /tmp entry instantly deletable, which
@@ -12931,6 +12931,7 @@ mod nix_current_generation_tests {
     }
 }
 
+#[cfg(test)]
 mod nix_spread_tests {
     use super::nix_generations_to_delete_highest_protected as nix_generations_to_delete;
 
