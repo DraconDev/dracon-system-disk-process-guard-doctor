@@ -10986,7 +10986,13 @@ async fn cmd_disk(
     let (freed, records) = if report {
         (0, Vec::new())
     } else {
-        disk::apply(&mut report_data, Path::new("/proc"), options.git_temp_min_age_hours)
+        disk::apply_with_floors(
+            &mut report_data,
+            Path::new("/proc"),
+            options.git_temp_min_age_hours,
+            options.tmp_min_age_hours,
+            options.tmp_e2e_min_age_hours,
+        )
     };
     let after = available_bytes(Path::new("/"))?;
 
