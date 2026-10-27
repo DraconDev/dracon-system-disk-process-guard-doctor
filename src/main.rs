@@ -357,11 +357,13 @@ enum Commands {
     },
     /// Nitpicky disk cleaner: every known trash class in one report.
     ///
-    /// Default mode frees space and auto-applies ONLY the SAFE classes
-    /// (orphaned git scratch, aged /tmp + rotated logs); everything else is
-    /// printed with an explicit disposition and its reason. `--report` is the
-    /// dry run and frees nothing.
+    /// `disk audit` reports every class with a per-path disposition and frees
+    /// nothing. `disk clean` is the freeing mode and auto-applies ONLY the SAFE
+    /// classes (orphaned git scratch, aged /tmp + rotated logs); every other
+    /// finding is printed with its reason. A bare `disk` behaves like audit.
     Disk {
+        #[command(subcommand)]
+        action: Option<DiskCommands>,
         /// Scan and classify only; frees nothing (dry run).
         #[arg(long)]
         report: bool,
@@ -378,6 +380,16 @@ enum Commands {
         #[arg(long)]
         tmp_min_age_hours: Option<u64>,
     },
+}
+
+/// Explicit `dracon-system disk` modes.
+#[derive(Subcommand, Debug)]
+enum DiskCommands {
+    /// Report every trash class with per-path sizes, reasons and SKIP/REPORT/
+    /// APPLY dispositions. Frees nothing.
+    Audit,
+    /// Free space: auto-applies the SAFE classes only, reports the rest.
+    Clean,
 }
 
 #[derive(Subcommand, Debug)]
@@ -10778,7 +10790,6 @@ async fn cmd_status(json: bool) -> Result<()> {
 /// `--apply` is accepted as an explicit synonym for the default.
 async fn cmd_disk(
     report: bool,
-    _apply: bool,
     class: Vec<String>,
     json: bool,
     tmp_min_age_hours: Option<u64>,
@@ -12625,12 +12636,22 @@ async fn run(cli: Cli) -> Result<()> {
             .await
             .map_err(anyhow::Error::msg),
         Commands::Disk {
+            action,
             report,
             apply,
             class,
             json,
             tmp_min_age_hours,
-        } => cmd_disk(report, apply, class, json, tmp_min_age_hours).await,
+        } => {
+            // `disk audit` is the report mode; `disk clean` is the freeing
+            // mode; a bare `disk` defaults to audit unless --apply is given.
+            let report_mode = match action {
+                Some(DiskCommands::Audit) => true,
+                Some(DiskCommands::Clean) => false,
+                None => report || !apply,
+            };
+            cmd_disk(report_mode, class, json, tmp_min_age_hours).await
+        }
         Commands::Status { json } => cmd_status(json).await,
         Commands::Doctor { json, strict } => cmd_doctor(json, strict).await,
         Commands::Storage {
