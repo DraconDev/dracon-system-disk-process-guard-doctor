@@ -191,8 +191,19 @@ impl ProcSnapshot {
             let dir = entry.path();
             let exe = std::fs::read_link(dir.join("exe")).ok();
             let cwd = std::fs::read_link(dir.join("cwd")).ok();
-            if let Some(exe) = &exe {
-                index.entry(strip_deleted(exe)).or_default().push(ProcessRef {
+            if let Some(exe_path) = &exe {
+                index
+                    .entry(strip_deleted(exe_path))
+                    .or_default()
+                    .push(ProcessRef {
+                        pid,
+                        exe: Some(exe_path.clone()),
+                        cwd: cwd.clone(),
+                        fds: Vec::new(),
+                    });
+            }
+            if false {
+                index.entry(PathBuf::new()).or_default().push(ProcessRef {
                     pid,
                     exe: exe.clone(),
                     cwd: cwd.clone(),
