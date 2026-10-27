@@ -1839,6 +1839,71 @@ async fn disk_use_percent_for(path: &str) -> Result<u8> {
     parse_df_use_percent(&text).ok_or_else(|| anyhow::anyhow!("failed parsing df output"))
 }
 
+/// Every process's `comm` value, as seen through `/proc`.
+///
+/// Used by the git-temp cleaner to answer "is a git process running right
+/// now?". Reads `/proc/<pid>/comm` directly rather than parsing `ps`, so no
+/// output-format assumptions or `ps`-injection surface is involved. A process
+/// that vanishes mid-scan is simply not reported.
+pub(crate) fn process_command_names() -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    let mut names = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(pid) = name.to_str().filter(|p| {
+            !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())
+        }) else {
+            continue;
+        };
+        if let Ok(comm) = std::fs::read_to_string(format!("/proc/{pid}/comm")) {
+            let comm = comm.trim();
+            if !comm.is_empty() {
+                names.push(comm.to_string());
+            }
+        }
+    }
+    names
+}
+
+/// Approximate allocated bytes for a report entry, bounded by `max_depth`.
+///
+/// This exists only to size REPORT-ONLY candidates (stray dirs, backup
+/// bundles). It is deliberately shallow and best-effort: an unreadable
+/// directory contributes nothing, and the walk never follows symlinks, so a
+/// hostile or cyclic tree cannot make the report hang. Exact accounting is not
+/// required — the operator needs a magnitude, and `du` is not always available.
+pub(crate) fn dir_allocated_bytes(root: &Path, max_depth: usize, depth: usize) -> u64 {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return 0;
+    };
+    let mut total = 0u64;
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        // st_blocks * 512 is the allocated size, matching `du` far better than
+        // st_size for sparse files and small-file-heavy trees.
+        let allocated = std::os::unix::fs::MetadataExt::blocks(&metadata).saturating_mul(512);
+        if file_type.is_dir() {
+            if depth < max_depth {
+                total = total.saturating_add(dir_allocated_bytes(
+                    &entry.path(),
+                    max_depth,
+                    depth + 1,
+                ));
+            }
+        } else if !file_type.is_symlink() {
+            total = total.saturating_add(allocated);
+        }
+    }
+    total
+}
+
 async fn process_samples() -> Result<Vec<ProcSample>> {
     let output = bounded_process_table_output().await?;
     let parsed = parse_ps_output(&String::from_utf8_lossy(&output));
