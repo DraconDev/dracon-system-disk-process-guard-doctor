@@ -337,8 +337,8 @@ fn code_only(config: &str) -> String {
 }
 
 pub(crate) fn nixos_swap_devices(config: &str) -> Vec<PathBuf> {
-    // Structure on the blanked text, values on the original: same length,
-    // so the block offsets transfer directly.
+    // Structure on the blanked text, values on the original: same byte
+    // length, so the block offsets transfer directly.
     let code = code_only(config);
     let (start, end) = match swap_devices_block(&code) {
         Some(range) => range,
