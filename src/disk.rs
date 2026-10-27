@@ -1571,7 +1571,7 @@ mod disk_tests {
             "test".to_string(),
         ));
 
-        let (freed, records) = apply(&mut report, Path::new("/proc"), 6);
+        let (freed, records) = apply_with_floors(&mut report, Path::new("/proc"), 6, 0, 0);
         assert_eq!(freed, 1);
         assert_eq!(records.len(), 1);
         assert!(!doomed.exists(), "APPLY finding is deleted");
@@ -1600,7 +1600,7 @@ mod disk_tests {
             }),
         );
         // A capture path that cannot read /proc forces the fail-closed branch.
-        let (freed, records) = apply(&mut report, Path::new("/definitely/not/proc"), 6);
+        let (freed, records) = apply_with_floors(&mut report, Path::new("/definitely/not/proc"), 6, 0, 0);
         assert_eq!(freed, 0, "an unreadable /proc must not authorise a delete");
         assert!(records.is_empty());
         assert!(path.exists());
