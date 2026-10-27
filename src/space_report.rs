@@ -271,28 +271,50 @@ fn block_after(config: &str, key_end: usize) -> Option<String> {
     let eq = after_key.find('=')?;
     let after_eq = &after_key[eq + 1..];
     let open = after_eq.find('[')?;
-    // Bracket-match from the opening `[`, skipping `#` comments and
-    // `"..."` strings so neither can unbalance the count.
+    // Bracket-match from the opening `[`. String contents are PRESERVED
+    // (the device scanner needs them) but never counted as brackets;
+    // comments are DROPPED so a commented-out device entry cannot match.
     let mut depth = 0;
     let mut in_string = false;
     let mut in_comment = false;
     let mut buf = String::new();
-    for c in after_eq[open..].chars() {
+    let chars: Vec<char> = after_eq[open..].chars().collect();
+    let mut k = 0;
+    while k < chars.len() {
+        let c = chars[k];
         if in_comment {
             if c == '\n' {
                 in_comment = false;
             }
+            k += 1;
+            continue;
+        }
+        // Nix `/* ... */` block comments are dropped like `#` ones.
+        if !in_string && c == '/' && k + 1 < chars.len() && chars[k + 1] == '*' {
+            k += 2;
+            while k + 1 < chars.len() && !(chars[k] == '*' && chars[k + 1] == '/') {
+                k += 1;
+            }
+            k += 2;
             continue;
         }
         if in_string {
-            if c == '"' {
+            buf.push(c);
+            if c == '\\' && k + 1 < chars.len() {
+                k += 1;
+                buf.push(chars[k]);
+            } else if c == '"' {
                 in_string = false;
             }
+            k += 1;
             continue;
         }
         match c {
             '#' => in_comment = true,
-            '"' => in_string = true,
+            '"' => {
+                in_string = true;
+                buf.push(c);
+            }
             '[' => {
                 depth += 1;
                 buf.push(c);
@@ -306,6 +328,7 @@ fn block_after(config: &str, key_end: usize) -> Option<String> {
             }
             _ => buf.push(c),
         }
+        k += 1;
     }
     None
 }
