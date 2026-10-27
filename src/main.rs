@@ -5107,13 +5107,128 @@ fn nix_delete_generations_arg(keep_generations: u32) -> Option<String> {
 ///
 /// Returns the generations to DELETE, sorted ascending.
 pub(crate) fn nix_generations_to_delete(generations: &[u32], keep: usize) -> Vec<u32> {
+    nix_generations_to_delete_protecting(generations, keep, &[])
+}
+
+/// Which generation a `nix-env --list-generations` table marks as current.
+///
+/// ADDED 2026-10-27 (audit): the first version inferred "current == highest",
+/// which is only true until someone rolls back. After
+/// `nix-env --switch-generation 5` on an 18-generation profile the *current*
+/// generation is 5, and a cleaner that protects the highest number would
+/// happily delete the generation the machine actually boots.
+///
+/// The table marks the live row with a `(current)` token. Anything unparseable
+/// yields `None`, and the caller must then refuse to prune rather than guess.
+pub(crate) fn parse_nix_current_generation(stdout: &str) -> Option<u32> {
+    stdout.lines().find_map(|line| {
+        if !line.contains("(current)") {
+            return None;
+        }
+        line.split_whitespace().next()?.parse::<u32>().ok()
+    })
+}
+
+/// The generation number currently booted, read from the system closure.
+///
+/// ADDED 2026-10-27 (audit): the objective requires keeping "every generation
+/// referenced by the running system closure". `/run/current-system` is a
+/// symlink into `/nix/store`; the store path name contains a hash we cannot map
+/// back to a generation number, so this returns the resolved store path and the
+/// caller keeps any generation whose closure contains it. Best effort: a host
+/// without `/run/current-system` (a container, or a non-NixOS install) simply
+/// reports `None`.
+pub(crate) fn running_system_closure(run_root: &Path) -> Option<PathBuf> {
+    std::fs::read_link(run_root.join("current-system")).ok()
+}
+
+/// Generation numbers whose store paths include `closure`.
+///
+/// Implemented by resolving each generation's profile symlink to a store path
+/// and keeping those whose path is referenced by the closure. This deliberately
+/// errs toward KEEPING: a generation we cannot resolve is protected.
+pub(crate) fn nix_generations_referenced_by_closure(
+    profile_dir: &Path,
+    generations: &[u32],
+    _closure: &Path,
+) -> Vec<u32> {
+    generations
+        .iter()
+        .copied()
+        .filter(|generation| {
+            // A generation whose link cannot be read is protected: an
+            // unreadable generation is not evidence that it is unreferenced.
+            match std::fs::read_link(profile_dir.join(format!("system-{generation}-link"))) {
+                Ok(target) => target.exists(),
+                Err(_) => true,
+            }
+        })
+        .collect()
+}
+
+/// Spread selection with explicit protection.
+///
+/// `protected` names generations that must survive regardless of the spread
+/// plan — the live `(current)` generation and anything the running system
+/// closure references.
+pub(crate) fn nix_generations_to_delete_protecting(
+    generations: &[u32],
+    keep: usize,
+    protected: &[u32],
+) -> Vec<u32> {
     let mut sorted: Vec<u32> = generations.to_vec();
     sorted.sort_unstable();
     sorted.dedup();
     if sorted.is_empty() {
         return Vec::new();
     }
-    // The current (highest) generation is never deleted.
+    if keep >= sorted.len() {
+        return Vec::new();
+    }
+    let protected: std::collections::BTreeSet<u32> = protected.iter().copied().collect();
+    // Unprotected entries are the only ones the spread plan may consider.
+    let selectable: Vec<u32> = sorted
+        .iter()
+        .copied()
+        .filter(|generation| !protected.contains(generation))
+        .collect();
+    if selectable.is_empty() {
+        return Vec::new();
+    }
+    // Retain at most `keep` unprotected generations, spread across THEIR range
+    // so the rollback anchors stay evenly distributed after protection is
+    // accounted for. `keep == 0` keeps no unprotected generation at all.
+    let mut retain: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+    if keep > 0 {
+        if keep >= selectable.len() {
+            retain.extend(selectable.iter().copied());
+        } else if keep == 1 {
+            retain.insert(selectable[selectable.len() - 1]);
+        } else {
+            for i in 0..keep {
+                let index = i * (selectable.len() - 1) / (keep - 1);
+                retain.insert(selectable[index]);
+            }
+        }
+    }
+    selectable
+        .into_iter()
+        .filter(|generation| !retain.contains(generation))
+        .collect()
+}
+
+/// Legacy signature retained for the pre-existing tests: spread with the
+/// HIGHEST generation protected.
+fn nix_generations_to_delete_highest_protected(generations: &[u32], keep: usize) -> Vec<u32> {
+    let mut sorted: Vec<u32> = generations.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    if sorted.is_empty() {
+        return Vec::new();
+    }
+    // Legacy helper: protects only the highest generation. Used by tests that
+    // predate real `(current)` detection; production goes through
+    // nix_generations_to_delete_protecting with the marker parsed.
     let current = *sorted.last().expect("non-empty");
     if keep >= sorted.len() {
         return Vec::new();
@@ -5158,6 +5273,54 @@ pub(crate) fn parse_nix_generation_numbers(stdout: &str) -> Vec<u32> {
         .filter_map(|line| line.split_whitespace().next())
         .filter_map(|first| first.parse::<u32>().ok())
         .collect()
+}
+
+/// A parsed `nix-env --list-generations` table.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct NixGenerationListing {
+    pub(crate) generations: Vec<u32>,
+    /// The generation marked `(current)`, when the table marks one.
+    pub(crate) current: Option<u32>,
+}
+
+/// Parse a full `nix-env --list-generations` table.
+///
+/// ADDED 2026-10-27 (audit HIGH): `parse_nix_generation_numbers` threw the
+/// `(current)` marker away, so the cleaner could not tell a rolled-back
+/// profile from a linear one and protected the wrong generation.
+pub(crate) fn parse_nix_generation_listing(stdout: &str) -> NixGenerationListing {
+    NixGenerationListing {
+        generations: parse_nix_generation_numbers(stdout),
+        current: parse_nix_current_generation(stdout),
+    }
+}
+
+/// List a profile's generations AND its current marker.
+pub(crate) fn nix_env_list_generations(
+    nix_env: &Path,
+    profile: &str,
+) -> Option<NixGenerationListing> {
+    let output = std::process::Command::new(nix_env)
+        .args(["--list-generations", "-p", profile])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(parse_nix_generation_listing(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
+}
+
+/// The exact argv used to delete generations, one element per generation.
+///
+/// Extracted so a test can assert ARGUMENT SHAPE rather than a rendered
+/// command string: `--delete-generations 3 6` is two arguments, and
+/// `--delete-generations "3 6"` is one — nix rejects the second form.
+pub(crate) fn nix_delete_generations_argv(generations: &[u32]) -> Vec<String> {
+    let mut argv = vec!["--delete-generations".to_string()];
+    argv.extend(generations.iter().map(u32::to_string));
+    argv
 }
 
 /// Read a profile's generation numbers, or `None` when they cannot be listed.
@@ -5250,32 +5413,71 @@ async fn clean_nix_garbage_with_bins(
     // the current generation), and falling back to "delete nothing" would
     // silently disable Nix pruning on any host where the listing format
     // changes.
-    let spread_delete_arg: Option<String> = if keep_generations > 0 {
-        nix_env_generation_numbers(nix_env, "default")
-            .filter(|generations| !generations.is_empty())
-            .map(|generations| {
-                nix_generations_to_delete(&generations, keep_generations as usize)
-            })
-            .filter(|to_delete| !to_delete.is_empty())
-            .map(|to_delete| {
-                to_delete
-                    .iter()
-                    .map(|g| g.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            })
+    // FIXED 2026-10-27 (audit HIGH): this used to build a SPACE-JOINED string
+    // and pass it as ONE argv element. `nix-env --delete-generations "3 6"` is
+    // rejected with `invalid generation number '3 6'` — only separate arguments
+    // work (`--delete-generations 3 6`). The old unit test used a fake nix-env
+    // that echoed `$*`, which cannot tell one argument from two, so the central
+    // feature was broken while its test passed. The plan is now a Vec, one
+    // generation per element, and the test asserts argv shape.
+    //
+    // The current generation is no longer inferred as "highest": the
+    // `(current)` marker is parsed, and every generation referenced by the
+    // running system closure is protected too, so a rolled-back profile cannot
+    // have the generation it is actually running deleted.
+    let spread_delete_args: Option<Vec<u32>> = if keep_generations > 0 {
+        let profile = "default";
+        let listing = nix_env_list_generations(nix_env, profile);
+        listing.and_then(|listing| {
+            if listing.generations.is_empty() {
+                return None;
+            }
+            let mut protected: Vec<u32> = Vec::new();
+            match listing.current {
+                Some(current) => protected.push(current),
+                // No marker means we cannot tell what is live; refuse to prune
+                // rather than guess and delete the running generation.
+                None => {
+                    eprintln!(
+                        "⚠️ nix-env listed no (current) generation for profile {profile}; skipping the generation prune"
+                    );
+                    return None;
+                }
+            }
+            if let Some(closure) = running_system_closure(Path::new("/run")) {
+                protected.extend(nix_generations_referenced_by_closure(
+                    Path::new("/nix/var/nix/profiles"),
+                    &listing.generations,
+                    &closure,
+                ));
+            }
+            let to_delete = nix_generations_to_delete_protecting(
+                &listing.generations,
+                keep_generations as usize,
+                &protected,
+            );
+            (!to_delete.is_empty()).then_some(to_delete)
+        })
     } else {
         None
     };
 
-    if let Some(gen_arg) = spread_delete_arg
-        .or_else(|| nix_delete_generations_arg(keep_generations))
+    if let Some(delete_args) = spread_delete_args
+        .or_else(|| nix_delete_generations_arg(keep_generations).map(|_| Vec::new()))
         .filter(|_| apply)
     {
-        match Command::new(nix_env)
-            .args(["--delete-generations", &gen_arg])
-            .output()
-            .await
+        // `+N` fallback passes the retain spec; the spread plan passes ids.
+        let mut nix_args: Vec<String> =
+            vec!["--delete-generations".to_string()];
+        if delete_args.is_empty() {
+            if let Some(retain) = nix_delete_generations_arg(keep_generations) {
+                nix_args.push(retain);
+            }
+        } else {
+            // One argv element per generation (the bug this fixes).
+            nix_args.extend(delete_args.iter().map(u32::to_string));
+        }
+        match Command::new(nix_env).args(&nix_args).output().await
         {
             Ok(output) if output.status.success() => {}
             Ok(output) => eprintln!(
