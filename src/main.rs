@@ -5174,6 +5174,35 @@ pub(crate) fn nix_generations_to_delete(generations: &[u32], keep: usize) -> Vec
 /// permission failure stops being a line on every cycle. `None` when the
 /// profile cannot be read — the caller then leaves the profile alone
 /// rather than guessing.
+/// The generation NUMBERS a Nix profile currently has, ascending.
+///
+/// `nix-env --list-generations` prints a table whose first column is the
+/// generation number (optionally followed by "(current)"). Anything that is
+/// not a leading integer is skipped rather than guessed at, so a parser change
+/// or a warning on stderr cannot fabricate generation ids that `nix-env
+/// --delete-generations` would then act on.
+pub(crate) fn parse_nix_generation_numbers(stdout: &str) -> Vec<u32> {
+    stdout
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .filter_map(|first| first.parse::<u32>().ok())
+        .collect()
+}
+
+/// Read a profile's generation numbers, or `None` when they cannot be listed.
+pub(crate) fn nix_env_generation_numbers(nix_env: &Path, profile: &str) -> Option<Vec<u32>> {
+    let output = std::process::Command::new(nix_env)
+        .args(["--list-generations", "-p", profile])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(parse_nix_generation_numbers(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
+}
+
 fn nix_env_generation_count(nix_env: &Path, profile: &str) -> Option<usize> {
     let output = std::process::Command::new(nix_env)
         .args(["--list-generations", "-p", profile])
