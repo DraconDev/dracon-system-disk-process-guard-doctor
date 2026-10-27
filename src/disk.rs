@@ -1047,6 +1047,19 @@ pub(crate) fn apply(
     proc_root: &Path,
     git_temp_min_age_hours: u64,
 ) -> (u64, Vec<DeletedRecord>) {
+    apply_with_floors(report, proc_root, git_temp_min_age_hours, 0, 0)
+}
+
+/// `apply` with the tmp floors, so the delete-time live-churn re-check knows
+/// which window qualified each finding. `0` disables the re-check (both
+/// floors zero = the caller has no tmp policy in play).
+pub(crate) fn apply_with_floors(
+    report: &mut DiskReport,
+    proc_root: &Path,
+    git_temp_min_age_hours: u64,
+    tmp_min_age_hours: u64,
+    tmp_e2e_min_age_hours: u64,
+) -> (u64, Vec<DeletedRecord>) {
     let mut freed = 0u64;
     let mut records = Vec::new();
     let owners = live_git_owners(proc_root);
@@ -1128,15 +1141,17 @@ pub(crate) fn apply(
         // active writes. Re-walk the tree and refuse if any nested content is
         // newer than the floor that qualified this finding.
         if std::fs::symlink_metadata(&finding.path).is_ok_and(|m| m.is_dir()) {
-            let window = options
-                .tmp_e2e_min_age_hours
+            let window = tmp_e2e_min_age_hours
                 .max(1)
-                .min(options.tmp_min_age_hours);
+                .min(tmp_min_age_hours.max(1));
             let (_, newest) = crate::disk_tmp::directory_bytes_and_age(
                 &finding.path,
                 SystemTime::now(),
             );
-            if tree_is_live_churn(newest, window) {
+            if window > 0
+                && tmp_min_age_hours > 0
+                && tree_is_live_churn(newest, window)
+            {
                 let mut skipped = finding.clone();
                 skipped.disposition = Disposition::Report;
                 let content = newest
