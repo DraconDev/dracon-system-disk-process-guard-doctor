@@ -169,8 +169,21 @@ async fn nix_cleanup_apply_preserves_configured_profile_generations() {
             r#"echo "nix-env:$*" >> {quoted_log}
 if [ "$1" = "--list-generations" ]; then
     # Seven generations: above the retention of five, so the system-profile
-    # prune is genuinely needed.
-    for i in 1 2 3 4 5 6 7; do echo "  $i 2026-10-01"; done
+    # prune is genuinely needed. Generation 7 carries the (current) marker, the
+    # way real nix-env output does; without it the cleaner refuses to prune.
+    for i in 1 2 3 4 5 6; do echo "  $i 2026-10-01"; done
+    echo "  7 2026-10-01   (current)"
+elif [ "$1" = "--delete-generations" ]; then
+    # Record EVERY argument on its own line, so the test asserts argv SHAPE:
+    # `--delete-generations 3 6` is three arguments, while the broken form
+    # passed the single argument "3 6" and nix rejects it with
+    # "invalid generation number '3 6'".
+    echo "nix-env-argv:$#"
+    shift
+    while [ "$#" -gt 0 ]; do
+        echo "nix-env-arg:$1"
+        shift
+    done
 fi
 exit 0"#
         ),
@@ -208,22 +221,38 @@ exit 0"#
         lines[0], "nix-env:--list-generations -p default",
         "the generation list is read before choosing what to prune"
     );
+    // ARGV SHAPE, not a rendered string: the user-profile prune must pass one
+    // element per generation. The previous version of this feature joined the
+    // ids with spaces into a single element, which nix rejects with
+    // "invalid generation number '3 6'" — and a fake that echoes `$*` could
+    // not tell the two forms apart.
     assert_eq!(
-        lines[1], "nix-env:--delete-generations 3 6",
-        "spread pruning keeps the oldest anchor and the current generation"
+        lines[1], "nix-env-argv:3",
+        "the delete call must carry exactly three arguments"
     );
+    assert_eq!(lines[2], "nix-env-arg:--delete-generations");
     assert_eq!(
-        lines[2], "nix-env:--list-generations -p /nix/var/nix/profiles/default",
+        lines[3], "nix-env-arg:3",
+        "generation 3 is its own argument (3 and 6 are NOT one '3 6' element)"
+    );
+    assert_eq!(lines[4], "nix-env-arg:6");
+    assert_eq!(
+        lines[5], "nix-env:--list-generations -p /nix/var/nix/profiles/default",
         "the system profile is counted before it is pruned"
     );
     // The root-owned system profile cannot be enumerated for a spread plan by
     // an unprivileged guard, so it keeps the documented `+N` form.
     assert_eq!(
-        lines[3], "nix-env:--delete-generations +5 -p /nix/var/nix/profiles/default"
+        lines[6], "nix-env:--delete-generations +5 -p /nix/var/nix/profiles/default"
     );
-    assert_eq!(lines[4], "nix-gc:");
     assert!(
-        !lines[4].contains("-d"),
+        lines.iter().all(|line| !line.contains("3 6")),
+        "no argv element may contain two generation numbers joined by a space"
+    );
+    let gc_line = lines.last().expect("gc call");
+    assert_eq!(*gc_line, "nix-gc:");
+    assert!(
+        !gc_line.contains("-d"),
         "apply must not use nix-collect-garbage -d, which discards retained generations"
     );
     let _ = fs::remove_dir_all(&root);
