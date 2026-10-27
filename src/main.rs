@@ -633,6 +633,11 @@ pub(crate) struct GuardReport {
     reaped: Vec<ReapedProcess>,
     /// ADDED 2026-08-10 (v0.112.35): sustained disk fill rate (GiB/hour).
     disk_fill_gbph: Option<f64>,
+    /// ADDED 2026-10-27 (wrong-swap check): human-readable wrong-swap
+    /// findings from this pass (misplaced ACTIVE swap, swapfiles with no
+    /// NixOS `swapDevices` entry). Empty is the good state; unknown
+    /// (unreadable /proc/swaps or config) contributes nothing.
+    swap_issues: Vec<String>,
 }
 
 /// Memory/swap pressure snapshot for the guard report (JSON + table).
@@ -10429,6 +10434,31 @@ pub(crate) async fn run_guard_once(
     check_large_logs(guard, state).await;
     let memory = check_memory_pressure(guard, state, &samples).await;
 
+    // ADDED 2026-10-27 (wrong-swap check): every pass verifies that all
+    // ACTIVE swap lives on an expected device (zram + /mnt/data by
+    // default) and that on-disk swapfiles are referenced by the NixOS
+    // `swapDevices` config. Three cheap reads, REPORT-only, never deletes.
+    // Unknown (unreadable /proc/swaps or config) is silence, not failure —
+    // see space_report.rs for the unknown-means-skip contract.
+    let swap_issues = {
+        let expected: Vec<String> = guard
+            .expected_swap_prefixes
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect();
+        let candidates: Vec<PathBuf> = guard
+            .dead_swapfile_candidates
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(expand_tilde)
+            .collect();
+        let config_path = expand_tilde(&guard.nixos_swap_config);
+        check_swap_health(&expected, &candidates, &config_path).describe()
+    };
+
     let report = GuardReport {
         enabled: guard.enabled,
         disk_use_percent: used,
@@ -10444,6 +10474,7 @@ pub(crate) async fn run_guard_once(
         reap_candidates,
         reaped,
         disk_fill_gbph: fill_gbph,
+        swap_issues,
     };
     // AUDIT 2026-10-01: record what this pass left applied, so a panic or an
     // OOM kill during a critical-pressure episode cannot strand `nice` /
@@ -11656,6 +11687,23 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
             )),
         ]);
     }
+
+    // ADDED 2026-10-27 (wrong-swap check): periodic placement/reference
+    // verdict. Unknown (unreadable /proc/swaps or config) renders as
+    // "unchecked" — never as a failure.
+    table.add_row(vec![
+        Cell::new(if report.swap_issues.is_empty() {
+            "✅"
+        } else {
+            "⚠️"
+        }),
+        Cell::new("Swap Devices"),
+        Cell::new(if report.swap_issues.is_empty() {
+            "all active swap on expected devices".to_string()
+        } else {
+            report.swap_issues.join("; ")
+        }),
+    ]);
 
     // ADDED 2026-08-10 (v0.112.35): zombie + fill-rate rows.
     table.add_row(vec![
