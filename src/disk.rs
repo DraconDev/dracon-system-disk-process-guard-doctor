@@ -1,0 +1,976 @@
+//! The `dracon-system disk` subcommand group.
+//!
+//! The objective asks for an explicit, nitpicky disk cleaner: one command that
+//! brings EVERY trash class it knows about into a single report, with a
+//! per-path disposition and a reason a human can act on. `guard clean` grew
+//! these detectors piecemeal and each one needs its own flag, so there was no
+//! single answer to "what is actually eating this disk?".
+//!
+//! Dispositions (the vocabulary the output uses):
+//!
+//! - `APPLY`  — the class is safe and allowed in this mode; it was (audit) or
+//!   would be (report) deleted.
+//! - `SKIP`   — a safety rule refused it: a live process holds it, it is too
+//!   fresh, or a root-owned path needs a privileged command. The reason names
+//!   the rule AND the owning pid where one exists.
+//! - `REPORT` — never auto-deleted by design (stray dirs, backup bundles, dead
+//!   swapfiles). The path and the exact command are printed; a human decides.
+//!
+//! Mode semantics (objective, audit MED): the DEFAULT is the free-the-space
+//! mode, and it applies only the SAFE classes. `--report` is the dry run and
+//! frees nothing. `--apply` is accepted as an explicit synonym for the default
+//! so a script that spelled it out keeps working.
+
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
+
+use crate::disk_refs::{capture_references, ReferenceCapture};
+use crate::disk_tmp::{
+    find_oversized_logs, find_temp_cruft, LOG_ROOTS, OVERSIZED_LOG_BYTES, TEMP_ROOTS,
+};
+use crate::git_temp::{
+    clean_git_temp_files, find_git_temp_files, git_owner_for, live_git_owners,
+    repo_root_for_git_path,
+};
+use crate::policy::{expand_tilde, human_bytes};
+use crate::space_report::{
+    active_swap_paths, classify_stray, classify_swapfile, DeadSwapfile, StrayItem,
+};
+
+/// What the cleaner proposes to do with one finding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Disposition {
+    /// Safe class, allowed in this mode.
+    Apply,
+    /// Refused by a safety rule; `reason` says which.
+    Skip,
+    /// Never auto-deleted; a human decides.
+    Report,
+}
+
+impl Disposition {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Apply => "APPLY",
+            Self::Skip => "SKIP",
+            Self::Report => "REPORT",
+        }
+    }
+}
+
+/// The objective's four trash classes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum TrashClass {
+    /// 1. Orphaned git temp packs.
+    GitTemp,
+    /// 2. /tmp, /var/tmp, oversized/rotated logs, dead swapfiles.
+    TempAndLogs,
+    /// 3. Package/browser caches and old Nix generations.
+    CachesAndNix,
+    /// 4. Stray top-level dirs and old backup bundles.
+    Strays,
+}
+
+impl TrashClass {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::GitTemp => "1 orphaned git temp",
+            Self::TempAndLogs => "2 tmp + logs",
+            Self::CachesAndNix => "3 caches + nix",
+            Self::Strays => "4 stray dirs/bundles",
+        }
+    }
+
+    pub(crate) const ALL: [TrashClass; 4] = [
+        Self::GitTemp,
+        Self::TempAndLogs,
+        Self::CachesAndNix,
+        Self::Strays,
+    ];
+}
+
+/// One classified finding.
+#[derive(Debug, Clone)]
+pub(crate) struct Finding {
+    pub(crate) class: TrashClass,
+    pub(crate) path: PathBuf,
+    pub(crate) bytes: u64,
+    pub(crate) disposition: Disposition,
+    /// Why this disposition, in words a human can act on.
+    pub(crate) reason: String,
+    /// The `/proc` exe/cwd/fd capture taken BEFORE any deletion.
+    pub(crate) references: ReferenceCapture,
+    /// The exact command a human must run, for root-owned REPORT findings.
+    pub(crate) human_command: Option<String>,
+}
+
+impl Finding {
+    pub(crate) fn new(
+        class: TrashClass,
+        path: PathBuf,
+        bytes: u64,
+        disposition: Disposition,
+        reason: String,
+    ) -> Self {
+        Self {
+            class,
+            path,
+            bytes,
+            disposition,
+            reason,
+            references: ReferenceCapture::default(),
+            human_command: None,
+        }
+    }
+
+    pub(crate) fn with_references(mut self, references: ReferenceCapture) -> Self {
+        self.references = references;
+        self
+    }
+
+    pub(crate) fn with_command(mut self, command: String) -> Self {
+        self.human_command = Some(command);
+        self
+    }
+
+    /// One report line, in the disposition-first shape the objective asks for.
+    pub(crate) fn render(&self) -> String {
+        let mut line = format!(
+            "  • {:<6} {:<26} {} ({}) — {}",
+            self.disposition.label(),
+            format!("[{}]", self.class.label()),
+            self.path.display(),
+            human_bytes(self.bytes),
+            self.reason
+        );
+        if let Some(command) = &self.human_command {
+            line.push_str(&format!("\n           run: {command}"));
+        }
+        line
+    }
+}
+
+/// Everything the cleaner found, grouped for reporting.
+#[derive(Debug, Default)]
+pub(crate) struct DiskReport {
+    pub(crate) findings: Vec<Finding>,
+    /// Classes that produced nothing, so the report can say so explicitly
+    /// rather than leaving a silent gap.
+    pub(crate) empty_classes: Vec<TrashClass>,
+    /// True when a scan could not be performed at all (as opposed to finding
+    /// nothing), which must never read as "clean".
+    pub(crate) incomplete: Vec<String>,
+}
+
+impl DiskReport {
+    pub(crate) fn applyable(&self) -> impl Iterator<Item = &Finding> {
+        self.findings
+            .iter()
+            .filter(|f| f.disposition == Disposition::Apply)
+    }
+
+    pub(crate) fn applyable_bytes(&self) -> u64 {
+        self.applyable().map(|f| f.bytes).sum()
+    }
+
+    pub(crate) fn report_only_bytes(&self) -> u64 {
+        self.findings
+            .iter()
+            .filter(|f| f.disposition == Disposition::Report)
+            .map(|f| f.bytes)
+            .sum()
+    }
+
+    pub(crate) fn render(&self, mode: &str) -> String {
+        let mut out = String::new();
+        out.push_str(&format!("dracon-system disk — {mode}\n"));
+        let total: u64 = self.findings.iter().map(|f| f.bytes).sum();
+        out.push_str(&format!(
+            "  {} finding(s), {} total\n",
+            self.findings.len(),
+            human_bytes(total)
+        ));
+        for class in TrashClass::ALL {
+            out.push_str(&format!("\n### {}\n", class.label()));
+            let mut class_findings: Vec<&Finding> =
+                self.findings.iter().filter(|f| f.class == class).collect();
+            class_findings.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.path.cmp(&b.path)));
+            if class_findings.is_empty() {
+                if self.empty_classes.contains(&class) {
+                    out.push_str("  (nothing found)\n");
+                } else {
+                    out.push_str("  (not scanned in this run)\n");
+                }
+                continue;
+            }
+            for finding in class_findings {
+                out.push_str(&finding.render());
+                out.push('\n');
+            }
+        }
+        out.push_str(&format!(
+            "\nSAFE classes reclaimable now: {}\n",
+            human_bytes(self.applyable_bytes())
+        ));
+        out.push_str(&format!(
+            "REPORT-ONLY (needs a human decision): {}\n",
+            human_bytes(self.report_only_bytes())
+        ));
+        if !self.incomplete.is_empty() {
+            out.push_str("\n⚠️ INCOMPLETE SCAN (a clean result is not implied):\n");
+            for note in &self.incomplete {
+                out.push_str(&format!("  ! {note}\n"));
+            }
+        }
+        out
+    }
+}
+
+/// Cache families the objective names, with the directory each one lives in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum CacheFamily {
+    CargoRegistry,
+    Npm,
+    Bun,
+    Pip,
+    GoModules,
+    Playwright,
+    Puppeteer,
+    Chrome,
+}
+
+impl CacheFamily {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::CargoRegistry => "cargo registry",
+            Self::Npm => "npm",
+            Self::Bun => "bun",
+            Self::Pip => "pip",
+            Self::GoModules => "go modules",
+            Self::Playwright => "playwright",
+            Self::Puppeteer => "puppeteer",
+            Self::Chrome => "chrome",
+        }
+    }
+
+    /// Relative to the user's home directory.
+    pub(crate) fn relative_path(self) -> &'static str {
+        match self {
+            Self::CargoRegistry => ".cargo/registry/cache",
+            Self::Npm => ".npm",
+            Self::Bun => ".bun/install/cache",
+            Self::Pip => ".cache/pip",
+            Self::GoModules => "go/pkg/mod/cache/download",
+            Self::Playwright => ".cache/ms-playwright",
+            Self::Puppeteer => ".cache/puppeteer",
+            Self::Chrome => ".cache/google-chrome",
+        }
+    }
+
+    /// Process names that use this cache family.
+    pub(crate) fn process_names(self) -> &'static [&'static str] {
+        match self {
+            Self::CargoRegistry => &["cargo", "rustc", "cargo-build", "cargo-clippy"],
+            Self::Npm => &["npm", "node", "npx", "pnpm", "yarn"],
+            Self::Bun => &["bun", "bunx"],
+            Self::Pip => &["pip", "pip3", "python", "python3", "uv"],
+            Self::GoModules => &["go", "gopls"],
+            Self::Playwright => &["playwright", "node", "chrome", "chromium"],
+            Self::Puppeteer => &["puppeteer", "node", "chrome", "chromium"],
+            Self::Chrome => &["chrome", "chromium", "google-chrome"],
+        }
+    }
+
+    pub(crate) const ALL: [CacheFamily; 8] = [
+        Self::CargoRegistry,
+        Self::Npm,
+        Self::Bun,
+        Self::Pip,
+        Self::GoModules,
+        Self::Playwright,
+        Self::Puppeteer,
+        Self::Chrome,
+    ];
+}
+
+/// A process that uses a cache family, with the pid the report must show.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CacheUser {
+    pub(crate) pid: u32,
+    pub(crate) name: String,
+}
+
+/// Every process using each cache family, keyed by family.
+///
+/// ADDED 2026-10-27 (audit MED): the existing detection answered only "is SOME
+/// npm operation running", which the report could render as
+/// "active npm operation detected" with no pid. The objective requires the
+/// owning PID, which is also what a human needs to decide whether to wait or
+/// stop the process.
+pub(crate) fn cache_users(proc_root: &Path) -> std::collections::BTreeMap<CacheFamily, Vec<CacheUser>> {
+    let mut users: std::collections::BTreeMap<CacheFamily, Vec<CacheUser>> =
+        std::collections::BTreeMap::new();
+    let Ok(entries) = std::fs::read_dir(proc_root) else {
+        return users;
+    };
+    for entry in entries.flatten() {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        let Ok(comm) = std::fs::read_to_string(entry.path().join("comm")) else {
+            continue;
+        };
+        let comm = comm.trim().to_string();
+        for family in CacheFamily::ALL {
+            if family
+                .process_names()
+                .iter()
+                .any(|name| comm == *name || comm.starts_with(&format!("{name}-")))
+            {
+                users.entry(family).or_default().push(CacheUser {
+                    pid,
+                    name: comm.clone(),
+                });
+            }
+        }
+    }
+    for list in users.values_mut() {
+        list.sort_by_key(|user| user.pid);
+        list.dedup();
+    }
+    users
+}
+
+/// Render the owning processes for a cache family, or `None` when it is idle.
+pub(crate) fn describe_cache_users(users: &[CacheUser]) -> Option<String> {
+    if users.is_empty() {
+        return None;
+    }
+    Some(
+        users
+            .iter()
+            .map(|user| format!("{} (pid {})", user.name, user.pid))
+            .collect::<Vec<_>>()
+            .join(", "),
+    )
+}
+
+/// Knobs the disk cleaner reads from the guard policy.
+#[derive(Debug, Clone)]
+pub(crate) struct DiskOptions {
+    pub(crate) rust_search_roots: String,
+    pub(crate) stray_scan_roots: String,
+    pub(crate) dead_swapfile_candidates: String,
+    pub(crate) git_temp_min_age_hours: u64,
+    pub(crate) tmp_min_age_hours: u64,
+    pub(crate) keep_generations: u32,
+}
+
+/// Run the full audit and classify every finding.
+///
+/// `proc_root` and `run_root` are parameters so the whole classification can be
+/// tested against fixtures instead of the live `/proc`.
+pub(crate) fn audit(
+    options: &DiskOptions,
+    proc_root: &Path,
+    now: SystemTime,
+    report_only: bool,
+) -> DiskReport {
+    let mut report = DiskReport::default();
+
+    // --- class 1: orphaned git temp -----------------------------------------
+    let git_roots: Vec<PathBuf> = split_roots(&options.rust_search_roots);
+    let owners = live_git_owners(proc_root);
+    let mut git_found = 0usize;
+    for root in &git_roots {
+        for candidate in find_git_temp_files(root, 4) {
+            git_found += 1;
+            let references = capture_references(proc_root, &candidate.path);
+            let owner = repo_root_for_git_path(&candidate.path)
+                .and_then(|repo| git_owner_for(&owners, &repo).map(|o| format!("{}(pid {})", o.name, o.pid)));
+            let finding = if let Some(reason) = references.blocking_reason(&candidate.path) {
+                Finding::new(
+                    TrashClass::GitTemp,
+                    candidate.path.clone(),
+                    candidate.bytes,
+                    Disposition::Skip,
+                    format!("in use — {reason}"),
+                )
+                .with_references(references)
+            } else if let Some(owner) = owner {
+                Finding::new(
+                    TrashClass::GitTemp,
+                    candidate.path.clone(),
+                    candidate.bytes,
+                    Disposition::Skip,
+                    format!("live {owner} is packing this repository"),
+                )
+                .with_references(references)
+            } else if !candidate.is_expired(options.git_temp_min_age_hours) {
+                Finding::new(
+                    TrashClass::GitTemp,
+                    candidate.path.clone(),
+                    candidate.bytes,
+                    Disposition::Skip,
+                    format!(
+                        "younger than git_temp_min_age_hours={}h (may be an in-flight pack)",
+                        options.git_temp_min_age_hours
+                    ),
+                )
+                .with_references(references)
+            } else {
+                Finding::new(
+                    TrashClass::GitTemp,
+                    candidate.path.clone(),
+                    candidate.bytes,
+                    Disposition::Apply,
+                    format!(
+                        "orphaned scratch, older than {}h, no owning git process",
+                        options.git_temp_min_age_hours
+                    ),
+                )
+                .with_references(references)
+            };
+            report.findings.push(finding);
+        }
+    }
+    // The Apply set is only meaningful in the freeing mode.
+    if report_only {
+        for finding in &mut report.findings {
+            if finding.disposition == Disposition::Apply {
+                finding.reason.push_str(" — report mode frees nothing");
+            }
+        }
+    }
+    if git_found == 0 {
+        report.empty_classes.push(TrashClass::GitTemp);
+    }
+
+    // --- class 2: /tmp, /var/tmp, logs, dead swapfiles ----------------------
+    let mut tmp_found = 0usize;
+    for entry in find_temp_cruft(&TEMP_ROOTS, options.tmp_min_age_hours, now) {
+        tmp_found += 1;
+        let references = capture_references(proc_root, &entry.path);
+        let finding = if let Some(reason) = references.blocking_reason(&entry.path) {
+            Finding::new(
+                TrashClass::TempAndLogs,
+                entry.path.clone(),
+                entry.bytes,
+                Disposition::Skip,
+                format!("in use — {reason}"),
+            )
+        } else {
+            Finding::new(
+                TrashClass::TempAndLogs,
+                entry.path.clone(),
+                entry.bytes,
+                Disposition::Apply,
+                format!(
+                    "{} untouched for {}h (tmp_min_age_hours={})",
+                    entry.label(),
+                    entry.age_hours,
+                    options.tmp_min_age_hours
+                ),
+            )
+        };
+        report.findings.push(finding.with_references(references));
+    }
+    for log in find_oversized_logs(&LOG_ROOTS, options.tmp_min_age_hours, now) {
+        tmp_found += 1;
+        let references = capture_references(proc_root, &log.path);
+        let finding = if let Some(reason) = references.blocking_reason(&log.path) {
+            Finding::new(
+                TrashClass::TempAndLogs,
+                log.path.clone(),
+                log.bytes,
+                Disposition::Skip,
+                format!("in use — {reason}"),
+            )
+        } else {
+            Finding::new(
+                TrashClass::TempAndLogs,
+                log.path.clone(),
+                log.bytes,
+                Disposition::Apply,
+                log.reason(),
+            )
+        };
+        report.findings.push(finding.with_references(references));
+    }
+    let swaps = std::fs::read_to_string("/proc/swaps").unwrap_or_default();
+    let active = active_swap_paths(&swaps);
+    for path in split_roots(&options.dead_swapfile_candidates) {
+        let Ok(metadata) = std::fs::metadata(&path) else {
+            continue;
+        };
+        if let Some(dead) = classify_swapfile(&path, metadata.len(), &active) {
+            tmp_found += 1;
+            report.findings.push(dead_swapfile_finding(dead));
+        }
+    }
+    if tmp_found == 0 {
+        report.empty_classes.push(TrashClass::TempAndLogs);
+    }
+
+    // --- class 3: caches and nix generations -------------------------------
+    let mut cache_found = 0usize;
+    if let Some(home) = dirs::home_dir() {
+        let users = cache_users(proc_root);
+        for family in CacheFamily::ALL {
+            let path = home.join(family.relative_path());
+            let Ok(metadata) = std::fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                continue;
+            }
+            cache_found += 1;
+            let bytes = crate::disk_tmp::directory_bytes(&path);
+            let references = capture_references(proc_root, &path);
+            let in_use = describe_cache_users(users.get(&family).map(Vec::as_slice).unwrap_or(&[]));
+            let finding = match (references.blocking_reason(&path), in_use) {
+                (Some(reason), _) => Finding::new(
+                    TrashClass::CachesAndNix,
+                    path.clone(),
+                    bytes,
+                    Disposition::Skip,
+                    format!("in use — {reason}"),
+                ),
+                (None, Some(owners)) => Finding::new(
+                    TrashClass::CachesAndNix,
+                    path.clone(),
+                    bytes,
+                    Disposition::Skip,
+                    format!("owned by {owners}; purge from within {} after it exits", family.label()),
+                ),
+                (None, None) => Finding::new(
+                    TrashClass::CachesAndNix,
+                    path.clone(),
+                    bytes,
+                    Disposition::Report,
+                    format!(
+                        "{} cache; no owning process. Purge with the manager's own command so the cache index stays consistent (no --apply path)",
+                        family.label()
+                    ),
+                ),
+            };
+            report.findings.push(finding.with_references(references));
+        }
+    } else {
+        report.incomplete.push("home directory unknown; cache scan skipped".to_string());
+    }
+    if cache_found == 0 {
+        report.empty_classes.push(TrashClass::CachesAndNix);
+    }
+
+    // --- class 4: stray dirs and backup bundles ----------------------------
+    let stray_roots = split_roots(&options.stray_scan_roots);
+    let mut stray_found = 0usize;
+    for root in &stray_roots {
+        let Ok(entries) = std::fs::read_dir(root) else {
+            report
+                .incomplete
+                .push(format!("stray scan root unreadable: {}", root.display()));
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(metadata) = std::fs::symlink_metadata(&path) else {
+                continue;
+            };
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let bytes = if metadata.is_dir() {
+                crate::disk_tmp::directory_bytes(&path)
+            } else {
+                metadata.len()
+            };
+            let Some(stray) = classify_stray(&path, &name, bytes, metadata.is_dir()) else {
+                continue;
+            };
+            stray_found += 1;
+            let references = capture_references(proc_root, &path);
+            report
+                .findings
+                .push(stray_finding(stray).with_references(references));
+        }
+    }
+    if stray_found == 0 {
+        report.empty_classes.push(TrashClass::Strays);
+    }
+
+    report
+}
+
+fn split_roots(raw: &str) -> Vec<PathBuf> {
+    raw.split(',')
+        .filter_map(|s| {
+            let s = s.trim();
+            (!s.is_empty()).then(|| expand_tilde(s))
+        })
+        .collect()
+}
+
+pub(crate) fn dead_swapfile_finding(dead: DeadSwapfile) -> Finding {
+    let command = dead.removal_command();
+    Finding::new(
+        TrashClass::TempAndLogs,
+        dead.path,
+        dead.bytes,
+        Disposition::Report,
+        "inactive swapfile (not in /proc/swaps): deleting it is a privileged decision, never automatic"
+            .to_string(),
+    )
+    .with_command(command)
+}
+
+pub(crate) fn stray_finding(stray: StrayItem) -> Finding {
+    Finding::new(
+        TrashClass::Strays,
+        stray.path,
+        stray.bytes,
+        Disposition::Report,
+        format!(
+            "{}: never auto-deleted, needs explicit per-path approval",
+            stray.kind.label()
+        ),
+    )
+}
+
+/// Delete the APPLY-class findings and return `(bytes freed, records)`.
+///
+/// Every deleted path carries the pre-delete reference capture and the owner
+/// check the objective requires, so the evidence file can record it verbatim.
+pub(crate) fn apply(
+    report: &mut DiskReport,
+    proc_root: &Path,
+    git_temp_min_age_hours: u64,
+) -> (u64, Vec<DeletedRecord>) {
+    let mut freed = 0u64;
+    let mut records = Vec::new();
+    let owners = live_git_owners(proc_root);
+
+    // Group git-temp findings so the battle-tested cleaner (age floor, symlink
+    // refusal, per-repo ownership) keeps doing the actual unlink.
+    let mut git_candidates = Vec::new();
+    let mut others: Vec<Finding> = Vec::new();
+    for finding in report.findings.drain(..) {
+        if finding.disposition != Disposition::Apply {
+            records.retain(|r: &DeletedRecord| r.path != finding.path);
+            others.push(finding);
+            continue;
+        }
+        if finding.class == TrashClass::GitTemp {
+            git_candidates.push(crate::git_temp::GitTempFile {
+                path: finding.path.clone(),
+                bytes: finding.bytes,
+                age_hours: finding
+                    .references
+                    .refs
+                    .first()
+                    .map(|_| git_temp_min_age_hours)
+                    .unwrap_or(git_temp_min_age_hours),
+                modified: SystemTime::UNIX_EPOCH,
+            });
+            others.push(finding);
+        } else {
+            others.push(finding);
+        }
+    }
+    report.findings = others;
+
+    let owner_of = |candidate: &Path| -> Option<String> {
+        let repo = repo_root_for_git_path(candidate)?;
+        git_owner_for(&owners, &repo).map(|o| format!("{}(pid {})", o.name, o.pid))
+    };
+    let outcome = clean_git_temp_files(git_candidates, git_temp_min_age_hours, owner_of, true);
+    for cleaned in outcome.cleaned {
+        if let Some(finding) = report
+            .findings
+            .iter()
+            .find(|f| f.path == cleaned.path)
+            .cloned()
+        {
+            freed += cleaned.bytes;
+            records.push(DeletedRecord::from_finding(&finding));
+            report.findings.retain(|f| f.path != cleaned.path);
+        }
+    }
+
+    // Non-git-temp APPLY findings: re-capture references immediately before the
+    // unlink, so the recorded capture is provably pre-delete.
+    let mut remaining = Vec::new();
+    for finding in report.findings.drain(..) {
+        if finding.disposition != Disposition::Apply {
+            remaining.push(finding);
+            continue;
+        }
+        let fresh = capture_references(proc_root, &finding.path);
+        if let Some(reason) = fresh.blocking_reason(&finding.path) {
+            let mut skipped = finding.clone();
+            skipped.disposition = Disposition::Skip;
+            skipped.reason = format!("in use at delete time — {reason}");
+            skipped.references = fresh;
+            remaining.push(skipped);
+            continue;
+        }
+        let record = DeletedRecord::from_finding(&finding).with_references(&fresh);
+        let bytes = finding.bytes;
+        let result = if std::fs::symlink_metadata(&finding.path)
+            .is_ok_and(|m| m.is_dir())
+        {
+            std::fs::remove_dir_all(&finding.path)
+        } else {
+            std::fs::remove_file(&finding.path)
+        };
+        match result {
+            Ok(()) => {
+                freed += bytes;
+                records.push(record);
+            }
+            Err(error) => {
+                let mut failed = finding;
+                failed.reason = format!("delete failed: {error}");
+                failed.disposition = Disposition::Skip;
+                remaining.push(failed);
+            }
+        }
+    }
+    report.findings = remaining;
+    (freed, records)
+}
+
+/// One path the cleaner actually deleted, with its pre-delete evidence.
+#[derive(Debug, Clone)]
+pub(crate) struct DeletedRecord {
+    pub(crate) class: TrashClass,
+    pub(crate) path: PathBuf,
+    pub(crate) bytes: u64,
+    pub(crate) references: ReferenceCapture,
+}
+
+impl DeletedRecord {
+    pub(crate) fn from_finding(finding: &Finding) -> Self {
+        Self {
+            class: finding.class,
+            path: finding.path.clone(),
+            bytes: finding.bytes,
+            references: finding.references.clone(),
+        }
+    }
+
+    pub(crate) fn with_references(mut self, references: &ReferenceCapture) -> Self {
+        self.references = references.clone();
+        self
+    }
+
+    /// Markdown table row: path, pre-delete bytes, pre-delete /proc refs.
+    pub(crate) fn evidence_row(&self) -> String {
+        format!(
+            "| `{}` | {} ({}) | {} | {} |",
+            self.path.display(),
+            human_bytes(self.bytes),
+            self.bytes,
+            self.class.label(),
+            self.references.describe().replace('|', "\\|")
+        )
+    }
+}
+
+#[cfg(test)]
+mod disk_tests {
+    use super::*;
+
+    fn options() -> DiskOptions {
+        DiskOptions {
+            rust_search_roots: String::new(),
+            stray_scan_roots: String::new(),
+            dead_swapfile_candidates: String::new(),
+            git_temp_min_age_hours: 6,
+            tmp_min_age_hours: 24,
+            keep_generations: 5,
+        }
+    }
+
+    #[test]
+    fn every_objective_trash_class_has_a_label() {
+        let labels: Vec<&str> = TrashClass::ALL.iter().map(|c| c.label()).collect();
+        assert_eq!(labels.len(), 4);
+        assert!(labels[0].starts_with('1'));
+        assert!(labels[3].starts_with('4'));
+    }
+
+    #[test]
+    fn the_three_dispositions_render_distinctly() {
+        assert_eq!(Disposition::Apply.label(), "APPLY");
+        assert_eq!(Disposition::Skip.label(), "SKIP");
+        assert_eq!(Disposition::Report.label(), "REPORT");
+    }
+
+    #[test]
+    fn a_report_names_all_four_classes_even_when_nothing_is_found() {
+        let mut report = DiskReport::default();
+        report.empty_classes = TrashClass::ALL.to_vec();
+        let text = report.render("audit");
+        for class in TrashClass::ALL {
+            assert!(
+                text.contains(class.label()),
+                "report must name class {}",
+                class.label()
+            );
+        }
+        assert!(text.contains("(nothing found)"));
+    }
+
+    #[test]
+    fn an_incomplete_scan_never_reads_as_clean() {
+        let mut report = DiskReport::default();
+        report
+            .incomplete
+            .push("stray scan root unreadable: /nope".to_string());
+        let text = report.render("audit");
+        assert!(text.contains("INCOMPLETE SCAN"));
+        assert!(text.contains("a clean result is not implied"));
+    }
+
+    #[test]
+    fn a_dead_swapfile_is_report_only_with_the_exact_command() {
+        let finding = dead_swapfile_finding(DeadSwapfile {
+            path: PathBuf::from("/var/lib/swapfile"),
+            bytes: 32 * 1024 * 1024 * 1024,
+        });
+        assert_eq!(finding.disposition, Disposition::Report);
+        let text = finding.render();
+        assert!(text.contains("REPORT"));
+        assert!(text.contains("run: sudo rm -f /var/lib/swapfile"));
+    }
+
+    #[test]
+    fn cache_users_carry_the_owning_pid() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let pid_dir = dir.path().join("4242");
+        std::fs::create_dir_all(&pid_dir).expect("mkdir");
+        std::fs::write(pid_dir.join("comm"), "npm\n").expect("write comm");
+
+        let users = cache_users(dir.path());
+        let npm = users
+            .get(&CacheFamily::Npm)
+            .expect("npm must be detected as a cache user");
+        assert_eq!(npm[0].pid, 4242);
+        assert_eq!(npm[0].name, "npm");
+        let described = describe_cache_users(npm).expect("description");
+        assert!(
+            described.contains("pid 4242"),
+            "the owning PID must appear: {described}"
+        );
+    }
+
+    #[test]
+    fn an_idle_cache_has_no_owning_process_description() {
+        assert_eq!(describe_cache_users(&[]), None);
+    }
+
+    #[test]
+    fn every_named_cache_family_has_a_path_and_process_list() {
+        assert_eq!(CacheFamily::ALL.len(), 8);
+        for family in CacheFamily::ALL {
+            assert!(!family.relative_path().is_empty());
+            assert!(
+                !family.process_names().is_empty(),
+                "{} needs processes to detect",
+                family.label()
+            );
+        }
+    }
+
+    #[test]
+    fn bun_playwright_puppeteer_and_chrome_are_covered() {
+        let labels: Vec<&str> = CacheFamily::ALL.iter().map(|c| c.label()).collect();
+        for wanted in ["bun", "playwright", "puppeteer", "chrome"] {
+            assert!(
+                labels.contains(&wanted),
+                "objective class 3 names {wanted}; covered families: {labels:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn apply_only_touches_apply_class_findings() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let doomed = dir.path().join("doomed.bin");
+        std::fs::write(&doomed, b"x").expect("write");
+        let kept = dir.path().join("kept.bin");
+        std::fs::write(&kept, b"y").expect("write");
+
+        let mut report = DiskReport::default();
+        report.findings.push(Finding::new(
+            TrashClass::TempAndLogs,
+            doomed.clone(),
+            1,
+            Disposition::Apply,
+            "test".to_string(),
+        ));
+        report.findings.push(Finding::new(
+            TrashClass::Strays,
+            kept.clone(),
+            1,
+            Disposition::Report,
+            "test".to_string(),
+        ));
+
+        let (freed, records) = apply(&mut report, Path::new("/proc"), 6);
+        assert_eq!(freed, 1);
+        assert_eq!(records.len(), 1);
+        assert!(!doomed.exists(), "APPLY finding is deleted");
+        assert!(kept.exists(), "REPORT finding is never auto-deleted");
+    }
+
+    #[test]
+    fn a_path_that_becomes_used_after_the_audit_is_skipped_at_delete_time() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("freshly-used.bin");
+        std::fs::write(&path, b"z").expect("write");
+
+        // Simulate the race: the audit says Apply, but /proc now reports an fd.
+        let mut report = DiskReport::default();
+        report.findings.push(
+            Finding::new(
+                TrashClass::TempAndLogs,
+                path.clone(),
+                1,
+                Disposition::Apply,
+                "test".to_string(),
+            )
+            .with_references(crate::disk_refs::ReferenceCapture {
+                refs: Vec::new(),
+                scan_failed: false,
+            }),
+        );
+        // A capture path that cannot read /proc forces the fail-closed branch.
+        let (freed, records) = apply(&mut report, Path::new("/definitely/not/proc"), 6);
+        assert_eq!(freed, 0, "an unreadable /proc must not authorise a delete");
+        assert!(records.is_empty());
+        assert!(path.exists());
+        assert_eq!(report.findings[0].disposition, Disposition::Skip);
+    }
+
+    #[test]
+    fn evidence_rows_carry_bytes_and_the_pre_delete_capture() {
+        let record = DeletedRecord {
+            class: TrashClass::GitTemp,
+            path: PathBuf::from("/home/u/Dev/r/.git/objects/pack/tmp_pack_a"),
+            bytes: 1234,
+            references: crate::disk_refs::ReferenceCapture::default(),
+        };
+        let row = record.evidence_row();
+        assert!(row.contains("tmp_pack_a"));
+        assert!(row.contains("1234"));
+        assert!(row.contains("no /proc exe, cwd or fd reference"));
+    }
+}
