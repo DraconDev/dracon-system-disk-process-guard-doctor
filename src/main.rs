@@ -12044,15 +12044,21 @@ async fn cmd_guard_clean(
                 "preview (dry-run)"
             }
         );
+    // Every scan root goes through expand_tilde: the live policy stores
+    // "~/Dev", and PathBuf::from("~/Dev") is a literal directory named "~".
+    // The first version of this block skipped that step and reported "Nothing
+    // to clean" on a host holding 33 GiB of git scratch.
+    let scan_roots: Vec<PathBuf> = guard_clone
+        .rust_search_roots
+        .split(',')
+        .filter_map(|s| {
+            let s = s.trim();
+            (!s.is_empty()).then(|| expand_tilde(s))
+        })
+        .collect();
+
     if do_git_temp {
-        let roots: Vec<PathBuf> = guard_clone
-            .rust_search_roots
-            .split(',')
-            .filter_map(|s| {
-                let s = s.trim();
-                (!s.is_empty()).then(|| PathBuf::from(s))
-            })
-            .collect();
+        let roots = &scan_roots;
         let mut candidates = Vec::new();
         for root in &roots {
             candidates.extend(find_git_temp_files(root, 4));
@@ -12121,15 +12127,7 @@ async fn cmd_guard_clean(
                 ));
             }
         }
-        for root in &guard_clone
-            .rust_search_roots
-            .split(',')
-            .filter_map(|s| {
-                let s = s.trim();
-                (!s.is_empty()).then(|| PathBuf::from(s))
-            })
-            .collect::<Vec<_>>()
-        {
+        for root in &scan_roots {
             let Ok(entries) = std::fs::read_dir(root) else {
                 continue;
             };
