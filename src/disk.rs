@@ -954,7 +954,7 @@ mod disk_tests {
     fn a_report_names_all_four_classes_even_when_nothing_is_found() {
         let mut report = DiskReport::default();
         report.empty_classes = TrashClass::ALL.to_vec();
-        let text = report.render("audit");
+        let text = report.render("audit", 0);
         for class in TrashClass::ALL {
             assert!(
                 text.contains(class.label()),
@@ -971,7 +971,7 @@ mod disk_tests {
         report
             .incomplete
             .push("stray scan root unreadable: /nope".to_string());
-        let text = report.render("audit");
+        let text = report.render("audit", 0);
         assert!(text.contains("INCOMPLETE SCAN"));
         assert!(text.contains("a clean result is not implied"));
     }
