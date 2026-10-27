@@ -5190,32 +5190,28 @@ pub(crate) fn nix_generations_to_delete_protecting(
         return Vec::new();
     }
     let protected: std::collections::BTreeSet<u32> = protected.iter().copied().collect();
-    // Unprotected entries are the only ones the spread plan may consider.
-    let selectable: Vec<u32> = sorted
-        .iter()
-        .copied()
-        .filter(|generation| !protected.contains(generation))
-        .collect();
-    if selectable.is_empty() {
-        return Vec::new();
-    }
-    // Retain at most `keep` unprotected generations, spread across THEIR range
-    // so the rollback anchors stay evenly distributed after protection is
-    // accounted for. `keep == 0` keeps no unprotected generation at all.
-    let mut retain: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
-    if keep > 0 {
-        if keep >= selectable.len() {
-            retain.extend(selectable.iter().copied());
-        } else if keep == 1 {
-            retain.insert(selectable[selectable.len() - 1]);
-        } else {
-            for i in 0..keep {
-                let index = i * (selectable.len() - 1) / (keep - 1);
-                retain.insert(selectable[index]);
-            }
-        }
-    }
-    selectable
+    // `keep` counts generations RETAINED IN TOTAL, so the spread is computed
+    // over the full range and protection is then added on top. Computing it
+    // over "unprotected only" would silently retain `keep` PLUS every protected
+    // generation, which drifts from the configured number.
+    let retain_by_spread: std::collections::BTreeSet<u32> = if keep <= 1 {
+        [*sorted.last().expect("non-empty")].into_iter().collect()
+    } else {
+        (0..keep)
+            .map(|i| i * (sorted.len() - 1) / (keep - 1))
+            .map(|index| sorted[index])
+            .chain(std::iter::once(*sorted.last().expect("non-empty")))
+            .collect()
+    };
+    // Protection always wins, even when the spread plan did not choose it.
+    let mut retain = retain_by_spread;
+    retain.extend(
+        protected
+            .iter()
+            .copied()
+            .filter(|generation| sorted.binary_search(generation).is_ok()),
+    );
+    sorted
         .into_iter()
         .filter(|generation| !retain.contains(generation))
         .collect()
