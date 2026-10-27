@@ -520,7 +520,7 @@ pub(crate) fn classify_swapfile(path: &Path, bytes: u64, active: &[PathBuf]) -> 
 ///
 /// Uses the parent directory rather than the file itself: unlinking requires
 /// write permission on the directory, which is the operation that would fail.
-fn is_writable_by_current_user(path: &Path) -> bool {
+pub(crate) fn is_writable_by_current_user(path: &Path) -> bool {
     path.parent()
         .map(|parent| {
             // A path we cannot even inspect is treated as root-owned: the

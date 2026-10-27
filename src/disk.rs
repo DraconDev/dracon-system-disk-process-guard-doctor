@@ -34,7 +34,8 @@ use crate::git_temp::{
 };
 use crate::policy::{expand_tilde, human_bytes};
 use crate::space_report::{
-    active_swap_paths, classify_stray, classify_swapfile, DeadSwapfile, StrayItem,
+    active_swap_paths, check_swap_health, classify_stray, classify_swapfile, DeadSwapfile,
+    StrayItem, UnreferencedSwap, WrongSwap,
 };
 
 /// What the cleaner proposes to do with one finding.
@@ -441,6 +442,8 @@ pub(crate) struct DiskOptions {
     pub(crate) rust_search_roots: String,
     pub(crate) stray_scan_roots: String,
     pub(crate) dead_swapfile_candidates: String,
+    pub(crate) expected_swap_prefixes: String,
+    pub(crate) nixos_swap_config: String,
     pub(crate) git_temp_min_age_hours: u64,
     pub(crate) tmp_min_age_hours: u64,
 }
@@ -624,13 +627,58 @@ pub(crate) fn audit(
     } else {
         Vec::new()
     };
+    // Paths already reported as dead swapfiles: the unreferenced check
+    // below must not double-report them.
+    let mut dead_reported: Vec<PathBuf> = Vec::new();
     for path in swap_candidates {
         let Ok(metadata) = std::fs::metadata(&path) else {
             continue;
         };
         if let Some(dead) = classify_swapfile(&path, metadata.len(), &active) {
             tmp_found += 1;
+            dead_reported.push(path.clone());
             report.findings.push(dead_swapfile_finding(dead));
+        }
+    }
+    // --- wrong-swap placement + NixOS references (REPORT-only) ------------
+    // An ACTIVE swapfile on the wrong device is the incident in reverse:
+    // the dead-swapfile scan above deliberately ignores active files, so
+    // without this check a swapfile on the nvme root would be invisible
+    // until something deleted it.
+    if wanted(TrashClass::TempAndLogs) {
+        let expected = split_prefixes(&options.expected_swap_prefixes);
+        let config_path = expand_tilde(&options.nixos_swap_config);
+        let outcome = check_swap_health(&expected, &dead_reported, &config_path);
+        for wrong in outcome.wrong {
+            tmp_found += 1;
+            report
+                .findings
+                .push(wrong_swap_finding(wrong, &expected));
+        }
+        for unref in outcome.unreferenced {
+            // Already reported as a dead swapfile above: one finding per
+            // path, the dead one (it carries the removal command).
+            if dead_reported.iter().any(|p| p == &unref.path) {
+                continue;
+            }
+            tmp_found += 1;
+            report
+                .findings
+                .push(unreferenced_swapfile_finding(unref, &config_path));
+        }
+        if !outcome.config_known {
+            // UNKNOWN is not a finding, but silence would read as "clean".
+            let note = match std::fs::read_to_string(&config_path) {
+                Err(_) => format!(
+                    "NixOS swap config unreadable; swap reference check skipped: {}",
+                    config_path.display()
+                ),
+                Ok(_) => format!(
+                    "no swapDevices block in {}; swap reference check skipped",
+                    config_path.display()
+                ),
+            };
+            report.incomplete.push(note);
         }
     }
     if tmp_found == 0 {
@@ -746,6 +794,64 @@ fn split_roots(raw: &str) -> Vec<PathBuf> {
             (!s.is_empty()).then(|| expand_tilde(s))
         })
         .collect()
+}
+
+/// Comma-separated policy prefixes (no tilde: these are system paths).
+fn split_prefixes(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// REPORT an ACTIVE swap device outside the expected prefixes. Never
+/// auto-deleted: the fix is a human decision (move the swap, or extend
+/// `expected_swap_prefixes` for a legitimate device).
+pub(crate) fn wrong_swap_finding(wrong: WrongSwap, expected: &[String]) -> Finding {
+    Finding::new(
+        TrashClass::TempAndLogs,
+        wrong.path,
+        wrong.bytes,
+        Disposition::Report,
+        format!(
+            "ACTIVE swap on an unexpected device (expected under: {}); fix the placement or extend expected_swap_prefixes, never delete it blind",
+            expected.join(", ")
+        ),
+    )
+}
+
+/// REPORT a swapfile with no NixOS `swapDevices` entry. Inactive ones carry
+/// the exact removal command like dead swapfiles do; ACTIVE ones never do —
+/// suggesting `rm` on live swap would be the incident all over again.
+pub(crate) fn unreferenced_swapfile_finding(found: UnreferencedSwap, config: &Path) -> Finding {
+    let reason = if found.is_active {
+        format!(
+            "ACTIVE swap with no NixOS swapDevices entry in {}: a rebuild/reboot may lose it — add a device entry, never delete it while active",
+            config.display()
+        )
+    } else {
+        format!(
+            "not referenced by any NixOS swapDevices entry in {}: stale or unmanaged, delete only by explicit approval",
+            config.display()
+        )
+    };
+    let finding = Finding::new(
+        TrashClass::TempAndLogs,
+        found.path.clone(),
+        found.bytes,
+        Disposition::Report,
+        reason,
+    );
+    if found.is_active {
+        return finding;
+    }
+    let command = if crate::space_report::is_writable_by_current_user(&found.path) {
+        format!("rm -f {}", found.path.display())
+    } else {
+        format!("sudo rm -f {}", found.path.display())
+    };
+    finding.with_command(command)
 }
 
 pub(crate) fn dead_swapfile_finding(dead: DeadSwapfile) -> Finding {
