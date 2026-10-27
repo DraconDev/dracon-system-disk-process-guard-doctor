@@ -421,6 +421,9 @@ mod capture_tests {
         assert!(reason.contains("pid 11"));
         assert!(reason.contains("fds=[7]"));
         assert_eq!(blocking_pids(&capture, &target), vec![11]);
+        let rows = audit_rows(&capture);
+        assert_eq!(rows.len(), 1);
+        assert!(rows[&11].contains("fds=[7]"));
     }
 
     #[test]
