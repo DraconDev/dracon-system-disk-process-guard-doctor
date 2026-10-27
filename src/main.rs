@@ -5146,8 +5146,8 @@ fn nix_delete_generations_arg(keep_generations: u32) -> Option<String> {
 ///
 /// Returns the generations to DELETE, sorted ascending.
 /// Legacy semantic (protect only the highest generation), used by the
-/// pre-existing spread tests.
-#[cfg(test)]
+/// pre-existing spread tests. Not `#[cfg(test)]` because the module below is
+/// compiled into both the test binary and the plain binary.
 pub(crate) fn nix_generations_to_delete_highest_protected(
     generations: &[u32],
     keep: usize,
