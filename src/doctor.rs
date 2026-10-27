@@ -600,6 +600,49 @@ mod tests {
         );
     }
 
+    /// ADDED 2026-10-27 (wrong-swap check): misplaced ACTIVE swap or an
+    /// unreferenced swapfile fails the check (required, so --strict
+    /// catches it); an unreadable /proc/swaps is n/a, never a failure.
+    #[test]
+    fn doctor_flags_wrong_swap() {
+        let checks = doctor_checks(&report());
+        let swap = checks
+            .iter()
+            .find(|c| c.label == "swap devices")
+            .expect("swap devices check should be displayed");
+        assert!(swap.required, "wrong swap must fail --strict");
+        assert_eq!(swap.state, CheckState::Ok);
+
+        let mut r = report();
+        r.swap_ok = false;
+        let checks = doctor_checks(&r);
+        let swap = checks.iter().find(|c| c.label == "swap devices").expect("swap check");
+        assert_eq!(swap.state, CheckState::Fail);
+        assert!(
+            !strict_ok(&checks),
+            "a wrong-swap finding must fail --strict"
+        );
+        assert!(
+            failed_required_labels(&checks).contains(&"swap devices".to_string()),
+            "failed_required must name the swap check"
+        );
+
+        let mut r = report();
+        r.swap_probe_available = false;
+        r.swap_ok = true; // vacuous: unknown is never failure
+        let checks = doctor_checks(&r);
+        let swap = checks.iter().find(|c| c.label == "swap devices").expect("swap check");
+        assert_eq!(
+            swap.state,
+            CheckState::Skipped,
+            "an unreadable /proc/swaps must be n/a, not fail"
+        );
+        assert!(
+            strict_ok(&checks),
+            "an unanswerable swap check must not fail --strict"
+        );
+    }
+
     /// 2026-10-01 (audit): without systemctl, "cannot ask" was reported as
     /// "the service is down" plus `systemctl --user enable` advice.
     #[test]
