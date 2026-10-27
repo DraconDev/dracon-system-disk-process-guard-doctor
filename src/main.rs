@@ -42,6 +42,7 @@ mod forgotten;
 pub(crate) use forgotten::*;
 #[cfg(test)]
 mod forgotten_tests;
+mod disk_refs;
 mod git_temp;
 pub(crate) use git_temp::*;
 mod space_report;
