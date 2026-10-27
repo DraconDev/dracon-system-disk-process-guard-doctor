@@ -12603,7 +12603,7 @@ async fn cmd_guard_clean(
             .split(',')
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
-            .map(PathBuf::from)
+            .map(expand_tilde)
             .collect();
         for candidate in &swap_candidates {
             let path = candidate.clone();

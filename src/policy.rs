@@ -306,9 +306,11 @@ pub(crate) struct GuardPolicy {
     // deleted a 32 GiB swapfile only after proving it was inactive; an
     // active swapfile in the wrong place is the same hazard in reverse,
     // so the guard/doctor/disk-audit flag any active device outside this
-    // list. Plain string-prefix matching (documented in space_report.rs):
-    // `/dev/zram` covers zram0..zramN. A host with a legitimate swap
-    // partition extends this list instead of weakening the check.
+    // list. Boundary-enforcing match (see `under_prefix`): exact, `/`
+    // component containment (`/mnt/data` covers `/mnt/data/swapfile` but
+    // NOT `/mnt/database` or `/mnt/data2`), plus kernel device enumeration
+    // under `/dev` only (`/dev/zram` covers zram0..zramN). A host with a
+    // legitimate swap partition extends this list instead of weakening it.
     #[serde(default = "default_expected_swap_prefixes")]
     pub(crate) expected_swap_prefixes: String,
     // ADDED 2026-10-27 (wrong-swap check): the NixOS configuration whose
