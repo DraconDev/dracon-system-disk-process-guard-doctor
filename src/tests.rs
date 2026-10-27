@@ -166,8 +166,8 @@ async fn nix_cleanup_apply_preserves_configured_profile_generations() {
     write_test_script(
         &nix_env,
         &format!(
-            r#"echo "nix-env:$*" >> {quoted_log}
-if [ "$1" = "--list-generations" ]; then
+            r#"if [ "$1" = "--list-generations" ]; then
+    echo "nix-env:$*" >> {quoted_log}
     # Seven generations: above the retention of five, so the system-profile
     # prune is genuinely needed. Generation 7 carries the (current) marker, the
     # way real nix-env output does; without it the cleaner refuses to prune.
