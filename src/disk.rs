@@ -1085,6 +1085,64 @@ mod disk_tests {
         assert!(text.contains("run: sudo rm -f /var/lib/swapfile"));
     }
 
+    /// 2026-10-27 (wrong-swap check): an ACTIVE swapfile on the wrong
+    /// device is REPORT-only and never carries a removal command.
+    #[test]
+    fn a_wrong_swap_is_report_only_without_a_command() {
+        let finding = wrong_swap_finding(
+            WrongSwap {
+                path: PathBuf::from("/var/lib/swapfile"),
+                bytes: 32 * 1024 * 1024 * 1024,
+            },
+            &["/dev/zram".to_string(), "/mnt/data".to_string()],
+        );
+        assert_eq!(finding.disposition, Disposition::Report);
+        assert_eq!(finding.class, TrashClass::TempAndLogs);
+        let text = finding.render();
+        assert!(text.contains("REPORT"));
+        assert!(text.contains("ACTIVE swap on an unexpected device"));
+        assert!(text.contains("/dev/zram"));
+        assert!(
+            !text.contains("run:"),
+            "live swap must never get a removal command: {text}"
+        );
+    }
+
+    /// 2026-10-27 (wrong-swap check): an inactive unreferenced swapfile
+    /// carries the exact command; an ACTIVE one never does.
+    #[test]
+    fn an_unreferenced_swapfile_commands_only_when_inactive() {
+        let config = Path::new("/etc/nixos/configuration.nix");
+        let inactive = unreferenced_swapfile_finding(
+            UnreferencedSwap {
+                path: PathBuf::from("/var/lib/swapfile"),
+                bytes: 1024,
+                is_active: false,
+            },
+            config,
+        );
+        assert_eq!(inactive.disposition, Disposition::Report);
+        assert!(inactive.render().contains("swapDevices"));
+        assert!(
+            inactive.human_command.is_some(),
+            "inactive unreferenced swapfile gets the removal command"
+        );
+        let live = unreferenced_swapfile_finding(
+            UnreferencedSwap {
+                path: PathBuf::from("/mnt/data/swapfile"),
+                bytes: 2048,
+                is_active: true,
+            },
+            config,
+        );
+        let text = live.render();
+        assert!(text.contains("ACTIVE swap with no NixOS swapDevices entry"));
+        assert!(
+            live.human_command.is_none(),
+            "active swap must never get a removal command: {text}"
+        );
+    }
+
     #[test]
     fn cache_users_carry_the_owning_pid() {
         let dir = tempfile::tempdir().expect("tempdir");
