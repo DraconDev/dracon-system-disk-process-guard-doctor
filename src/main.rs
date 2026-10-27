@@ -11019,7 +11019,7 @@ fn available_bytes(path: &Path) -> Result<u64> {
     }
     // SAFETY: statvfs returned 0, so the structure is initialised.
     let stats = unsafe { stats.assume_init() };
-    Ok(stats.f_bavail as u64 * stats.f_frsize as u64)
+    Ok(stats.f_bavail * stats.f_frsize)
 }
 
 async fn cmd_storage(
