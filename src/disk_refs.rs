@@ -120,7 +120,7 @@ impl ReferenceCapture {
         }
         merged_by_pid(&self.refs)
             .into_iter()
-            .map(ProcessRef::describe)
+            .map(|reference| reference.describe())
             .collect::<Vec<_>>()
             .join("; ")
     }
