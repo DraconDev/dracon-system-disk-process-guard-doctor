@@ -5145,6 +5145,7 @@ fn nix_delete_generations_arg(keep_generations: u32) -> Option<String> {
 ///   always including both ends.
 ///
 /// Returns the generations to DELETE, sorted ascending.
+#[cfg(test)]
 pub(crate) fn nix_generations_to_delete(generations: &[u32], keep: usize) -> Vec<u32> {
     // Highest-generation protection is the documented legacy semantic (no
     // (current) marker available); production uses
@@ -5331,6 +5332,73 @@ pub(crate) fn nix_env_list_generations(
     Some(parse_nix_generation_listing(&String::from_utf8_lossy(
         &output.stdout,
     )))
+}
+
+/// A closure-safe spread plan for the NixOS system profile.
+///
+/// Reads `/nix/var/nix/profiles/system-<n>-link` (world-readable, unlike the
+/// profile lock that blocks `nix-env` without root) and protects:
+///
+/// - every generation whose resolved store path equals `/run/current-system`,
+///   i.e. the generation the machine is actually booted into;
+/// - the highest generation, as a floor for a host without a readable closure;
+/// - every generation whose link cannot be resolved (unknown is not "unused").
+///
+/// Returns `None` when the links are unreadable, which the caller treats as
+/// "leave the profile alone".
+pub(crate) fn system_profile_spread_plan(nix_env: &Path, keep: u32) -> Option<Vec<u32>> {
+    let _ = nix_env;
+    let profile_dir = Path::new("/nix/var/nix/profiles");
+    let generations = system_profile_generations(profile_dir)?;
+    if generations.is_empty() {
+        return None;
+    }
+    let mut protected: Vec<u32> = match running_system_closure(Path::new("/run")) {
+        Some(closure) => {
+            nix_generations_referenced_by_closure(profile_dir, &generations, &closure)
+        }
+        None => Vec::new(),
+    };
+    if let Some(highest) = generations.iter().copied().max() {
+        protected.push(highest);
+    }
+    Some(nix_generations_to_delete_protecting(
+        &generations,
+        keep as usize,
+        &protected,
+    ))
+}
+
+/// Generation numbers present as `system-<n>-link` symlinks.
+pub(crate) fn system_profile_generations(profile_dir: &Path) -> Option<Vec<u32>> {
+    let entries = std::fs::read_dir(profile_dir).ok()?;
+    let mut generations = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(rest) = name.strip_prefix("system-") else {
+            continue;
+        };
+        let Some(number) = rest.strip_suffix("-link") else {
+            continue;
+        };
+        if let Ok(generation) = number.parse::<u32>() {
+            generations.push(generation);
+        }
+    }
+    generations.sort_unstable();
+    generations.dedup();
+    Some(generations)
+}
+
+/// `--delete-generations <id> <id> ... -p <profile>` for a specific profile.
+pub(crate) fn nix_delete_generations_argv_with_profile(
+    generations: &[u32],
+    profile: &str,
+) -> Vec<String> {
+    let mut argv = nix_delete_generations_argv(generations);
+    argv.push("-p".to_string());
+    argv.push(profile.to_string());
+    argv
 }
 
 /// The exact argv used to delete generations, one element per generation.
@@ -5522,25 +5590,21 @@ async fn clean_nix_garbage_with_bins(
         let system_profile_needs_prune = nix_env_generation_count(nix_env, system_profile)
             .map(|count| count > keep_generations as usize)
             .unwrap_or(false);
-        if system_profile_needs_prune {
-            // BUGFIX 2026-10-27: this reused `gen_arg`, which by then could be
-            // the SPREAD plan computed for the user profile ("3 6"). Passing
-            // those numbers with `-p <system profile>` would delete generations
-            // 3 and 6 of the SYSTEM profile — numbers chosen by a completely
-            // different profile's layout. The system profile is root-owned and
-            // cannot be enumerated for its own spread plan from the user
-            // session, so it always keeps the documented `+N` form.
-            let system_gen_arg = nix_delete_generations_arg(keep_generations);
-            let Some(system_gen_arg) = system_gen_arg else {
-                return Ok((reclaimed, cleaned));
-            };
-            match Command::new(nix_env)
-                .args(["--delete-generations", &system_gen_arg])
-                .arg("-p")
-                .arg(system_profile)
-                .output()
-                .await
-            {
+        // ADDED 2026-10-27 (audit HIGH): "always keep the currently booted
+        // generation and every generation referenced by the running system
+        // closure". For NixOS the system profile's generation links are
+        // world-readable, and /run/current-system resolves to the SAME store
+        // path as the booted generation's link, so the running generation can
+        // be identified exactly instead of assumed to be the highest.
+        //
+        // ADDED 2026-10-27 (audit MED): the system profile is no longer pruned
+        // with `+N`. `+N` keeps only the newest N, which is precisely the shape
+        // the objective calls wrong; the spread plan now applies here too, with
+        // the booted generation protected unconditionally.
+        let system_spread = system_profile_spread_plan(nix_env, keep_generations);
+        if let Some(system_delete) = system_spread.filter(|plan| !plan.is_empty()) {
+            let nix_args = nix_delete_generations_argv_with_profile(&system_delete, system_profile);
+            match Command::new(nix_env).args(&nix_args).output().await {
                 Ok(output) if output.status.success() => {}
                 Ok(output) => eprintln!(
                     "⚠️ nix-env system-profile generation prune failed ({}): {} (needs root — run scripts/prune-nix-system-profile.sh with sudo; user GC still runs)",
@@ -5552,6 +5616,20 @@ async fn clean_nix_garbage_with_bins(
                     e
                 ),
             }
+            return Ok((reclaimed, cleaned));
+        }
+        if system_profile_needs_prune {
+            // The system profile's generation count is above the retention but
+            // its links could not be enumerated, so no spread plan exists.
+            // `+N` is deliberately NOT used here: it is the newest-N shape the
+            // objective rejects, and the booted generation must be identified,
+            // not assumed to be the highest. Report the privileged path and
+            // leave the profile untouched.
+            eprintln!(
+                "⚠️ nix-env system-profile has more than {keep_generations} generations \
+but its links could not be read, so no closure-safe spread plan is available; \
+run scripts/prune-nix-system-profile.sh with sudo (user GC still runs)"
+            );
         }
     }
 
