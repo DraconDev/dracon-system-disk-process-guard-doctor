@@ -1120,6 +1120,36 @@ pub(crate) fn apply(
             remaining.push(skipped);
             continue;
         }
+        // Live-churn re-check at DELETE time (2026-10-27, audit HIGH). The
+        // audit already refused to mark a live tree APPLY, but a tree that was
+        // idle during the scan can be written to before this loop runs. The
+        // daemon re-verifies every candidate at kill time for the same reason;
+        // without this, TOCTOU would let `disk clean` delete a tree under
+        // active writes. Re-walk the tree and refuse if any nested content is
+        // newer than the floor that qualified this finding.
+        if std::fs::symlink_metadata(&finding.path).is_ok_and(|m| m.is_dir()) {
+            let window = options
+                .tmp_e2e_min_age_hours
+                .max(1)
+                .min(options.tmp_min_age_hours);
+            let (_, newest) = crate::disk_tmp::directory_bytes_and_age(
+                &finding.path,
+                SystemTime::now(),
+            );
+            if tree_is_live_churn(newest, window) {
+                let mut skipped = finding.clone();
+                skipped.disposition = Disposition::Report;
+                let content = newest
+                    .map(|age| format!("{age}h"))
+                    .unwrap_or_else(|| "unreadable".to_string());
+                skipped.reason = format!(
+                    "became live churn before delete (newest nested content {content}, window {window}h) — kept"
+                );
+                skipped.references = fresh;
+                remaining.push(skipped);
+                continue;
+            }
+        }
         let record = DeletedRecord::from_finding(&finding).with_references(&fresh);
         let bytes = finding.bytes;
         let result = if std::fs::symlink_metadata(&finding.path)
