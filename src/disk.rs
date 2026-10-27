@@ -1579,6 +1579,50 @@ mod disk_tests {
     }
 
     #[test]
+    fn a_tree_that_became_live_churn_after_the_audit_is_kept_at_delete_time() {
+        // TOCTOU guard: the audit can scan an idle tree that is written to
+        // before `disk clean` runs its delete loop. Content newer than the
+        // qualifying floor must abort the delete even though the finding is
+        // already marked Apply.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let tree = dir.path().join("reused-test-tree");
+        std::fs::create_dir_all(&tree).expect("mkdir");
+        std::fs::write(tree.join("written-now.bin"), b"live").expect("write");
+
+        let mut report = DiskReport::default();
+        report.findings.push(
+            Finding::new(
+                TrashClass::TempAndLogs,
+                tree.clone(),
+                5,
+                Disposition::Apply,
+                "stale at audit time".to_string(),
+            )
+            .with_references(crate::disk_refs::ReferenceCapture {
+                refs: Vec::new(),
+                scan_failed: false,
+            }),
+        );
+        // Floors present, so the re-check is armed: 24h general, 6h e2e.
+        let (freed, records) =
+            apply_with_floors(&mut report, Path::new("/proc"), 6, 24, 6);
+        assert_eq!(freed, 0, "live-churn tree must not be deleted");
+        assert!(records.is_empty());
+        assert!(tree.exists(), "the tree survives");
+        let kept = report
+            .findings
+            .iter()
+            .find(|f| f.path == tree)
+            .expect("finding retained");
+        assert_eq!(kept.disposition, Disposition::Report);
+        assert!(
+            kept.reason.contains("became live churn"),
+            "reason must explain the refusal: {}",
+            kept.reason
+        );
+    }
+
+    #[test]
     fn a_path_that_becomes_used_after_the_audit_is_skipped_at_delete_time() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("freshly-used.bin");
