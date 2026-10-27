@@ -5039,6 +5039,63 @@ fn nix_delete_generations_arg(keep_generations: u32) -> Option<String> {
     (keep_generations > 0).then(|| format!("+{keep_generations}"))
 }
 
+/// Choose which generations to KEEP when thinning a profile down to `keep`.
+///
+/// ADDED 2026-10-27 (operator request): `+N` keeps the newest N and throws away
+/// every older one, which is the wrong shape for rollback — it collapses the
+/// entire history into a narrow recent window. Given 18 generations and
+/// `keep = 5`, `+5` leaves generations 14–18 and loses the ability to roll back
+/// to anything from further out. The operator asked for the survivors to be
+/// *spread across the range* instead, which keeps one anchor near the newest,
+/// one near the oldest and the rest spaced between.
+///
+/// Contract:
+/// - the CURRENT generation (highest number) is always kept — it is what the
+///   system boots;
+/// - `keep >= count` keeps everything (nothing to do);
+/// - `keep == 0` keeps nothing but the current generation (`0` means "keep no
+///   generations" in the policy's own normalisation, so the current one is
+///   still protected — deleting it would leave the system unbootable);
+/// - `keep == 1` keeps only the current generation;
+/// - otherwise the kept set is evenly spaced indices across the sorted range,
+///   always including both ends.
+///
+/// Returns the generations to DELETE, sorted ascending.
+pub(crate) fn nix_generations_to_delete(generations: &[u32], keep: usize) -> Vec<u32> {
+    let mut sorted: Vec<u32> = generations.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    if sorted.is_empty() {
+        return Vec::new();
+    }
+    // The current (highest) generation is never deleted.
+    let current = *sorted.last().expect("non-empty");
+    if keep >= sorted.len() {
+        return Vec::new();
+    }
+    // Indices to retain, always anchored at the first and last entry.
+    let retain: std::collections::BTreeSet<usize> = if keep <= 1 {
+        [sorted.len() - 1].into_iter().collect()
+    } else {
+        (0..keep)
+            .map(|i| {
+                // Even spacing across the whole range, inclusive of both ends.
+                let position = i * (sorted.len() - 1) / (keep - 1);
+                position
+            })
+            .chain(std::iter::once(sorted.len() - 1))
+            .collect()
+    };
+    sorted
+        .iter()
+        .enumerate()
+        .filter(|(index, generation)| {
+            !retain.contains(index) && **generation != current
+        })
+        .map(|(_, generation)| *generation)
+        .collect()
+}
+
 /// How many generations a Nix profile has.
 ///
 /// ADDED 2026-10-22: the guard only attempts the root-owned system-profile
@@ -12006,5 +12063,67 @@ fn main() {
     if let Err(error) = result {
         eprintln!("Error: {error:#}");
         std::process::exit(exit_status_for_error(&error));
+    }
+}
+
+#[cfg(test)]
+mod nix_spread_tests {
+    use super::nix_generations_to_delete;
+
+    #[test]
+    fn keeps_everything_when_keep_exceeds_count() {
+        assert!(nix_generations_to_delete(&[1, 2, 3], 5).is_empty());
+        assert!(nix_generations_to_delete(&[1, 2, 3], 3).is_empty());
+    }
+
+    #[test]
+    fn empty_profile_deletes_nothing() {
+        assert!(nix_generations_to_delete(&[], 5).is_empty());
+    }
+
+    #[test]
+    fn current_generation_is_never_deleted() {
+        // keep=0 must still leave the booted generation alone.
+        assert_eq!(nix_generations_to_delete(&[1, 2, 3], 0), vec![1, 2]);
+        assert_eq!(nix_generations_to_delete(&[7], 0), Vec::<u32>::new());
+    }
+
+    #[test]
+    fn keep_one_leaves_only_the_current_generation() {
+        assert_eq!(nix_generations_to_delete(&[1, 2, 3, 4], 1), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn survivors_are_spread_across_the_range_not_just_the_newest() {
+        // 18 generations, keep 5: the old `+5` form would keep 14..=18 and
+        // delete 1..=13. The spread form must anchor the oldest one too.
+        let generations: Vec<u32> = (1..=18).collect();
+        let deleted = nix_generations_to_delete(&generations, 5);
+        let kept: Vec<u32> = generations
+            .iter()
+            .copied()
+            .filter(|g| !deleted.contains(g))
+            .collect();
+        assert_eq!(kept.len(), 5, "exactly keep survivors");
+        assert_eq!(*kept.first().unwrap(), 1, "oldest generation retained as an anchor");
+        assert_eq!(*kept.last().unwrap(), 18, "current generation retained");
+        // And the spread must actually span the middle, unlike +5.
+        assert!(kept.iter().any(|g| (7..=12).contains(g)), "kept {kept:?}");
+    }
+
+    #[test]
+    fn deletions_are_sorted_ascending_and_deduplicated() {
+        let deleted = nix_generations_to_delete(&[5, 1, 3, 2, 4], 2);
+        let mut sorted = deleted.clone();
+        sorted.sort_unstable();
+        assert_eq!(deleted, sorted);
+        let unique: std::collections::BTreeSet<u32> = deleted.iter().copied().collect();
+        assert_eq!(unique.len(), deleted.len(), "no duplicates");
+    }
+
+    #[test]
+    fn handles_unsorted_and_duplicate_input() {
+        // Duplicate numbers collapse; the highest is still the current one.
+        assert_eq!(nix_generations_to_delete(&[3, 3, 1, 2], 2), vec![2]);
     }
 }
