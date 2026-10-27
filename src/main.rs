@@ -5328,8 +5328,19 @@ async fn clean_nix_garbage_with_bins(
             .map(|count| count > keep_generations as usize)
             .unwrap_or(false);
         if system_profile_needs_prune {
+            // BUGFIX 2026-10-27: this reused `gen_arg`, which by then could be
+            // the SPREAD plan computed for the user profile ("3 6"). Passing
+            // those numbers with `-p <system profile>` would delete generations
+            // 3 and 6 of the SYSTEM profile — numbers chosen by a completely
+            // different profile's layout. The system profile is root-owned and
+            // cannot be enumerated for its own spread plan from the user
+            // session, so it always keeps the documented `+N` form.
+            let system_gen_arg = nix_delete_generations_arg(keep_generations);
+            let Some(system_gen_arg) = system_gen_arg else {
+                return Ok((reclaimed, cleaned));
+            };
             match Command::new(nix_env)
-                .args(["--delete-generations", &gen_arg])
+                .args(["--delete-generations", &system_gen_arg])
                 .arg("-p")
                 .arg(system_profile)
                 .output()
