@@ -350,10 +350,18 @@ pub(crate) fn nixos_swap_devices(config: &str) -> Vec<PathBuf> {
     devices
 }
 
-/// The `[ ... ]` block of the first `swapDevices = [` assignment, with
-/// comments stripped and quotes/brackets respected. `None` when there is no
+/// True when the config has a parseable `swapDevices = [ ... ]` block.
+/// Operates on the blanked text (see [`code_only`]); a bare mention in a
+/// comment or string is not an assignment.
+pub(crate) fn has_swap_devices_block(config: &str) -> bool {
+    swap_devices_block(&code_only(config)).is_some()
+}
+
+/// The byte range of the `[ ... ]` value of a `swapDevices = ...` list
+/// assignment in BLANKED text ([`code_only`]) — offsets transfer to the
+/// original because blanking preserves length. `None` when there is no
 /// such assignment or the brackets never balance.
-fn swap_devices_block(config: &str) -> Option<String> {
+fn swap_devices_block(code: &str) -> Option<(usize, usize)> {
     let key = "swapDevices";
     // Try every occurrence: the first may be a longer identifier or an
     // attribute path (`x.swapDevices`), a later one the real assignment.
