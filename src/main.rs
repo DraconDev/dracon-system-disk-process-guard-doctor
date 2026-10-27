@@ -12519,6 +12519,7 @@ mod nix_current_generation_tests {
         nix_generations_to_delete_protecting, parse_nix_current_generation,
         parse_nix_generation_listing,
     };
+    use std::path::Path;
 
     const TABLE: &str = r#"   1   2026-09-01 10:00:01
    2   2026-09-15 10:00:01
