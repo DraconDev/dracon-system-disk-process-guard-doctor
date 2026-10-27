@@ -202,14 +202,6 @@ impl ProcSnapshot {
                         fds: Vec::new(),
                     });
             }
-            if false {
-                index.entry(PathBuf::new()).or_default().push(ProcessRef {
-                    pid,
-                    exe: exe.clone(),
-                    cwd: cwd.clone(),
-                    fds: Vec::new(),
-                });
-            }
             if let Some(cwd) = &cwd {
                 index.entry(strip_deleted(cwd)).or_default().push(ProcessRef {
                     pid,
