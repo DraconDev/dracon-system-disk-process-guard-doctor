@@ -12031,8 +12031,15 @@ async fn cmd_guard_clean(
         let active = std::fs::read_to_string("/proc/swaps")
             .map(|contents| active_swap_paths(&contents))
             .unwrap_or_default();
-        for candidate in &guard_clone.dead_swapfile_candidates {
-            let path = PathBuf::from(candidate);
+        let swap_candidates: Vec<PathBuf> = guard_clone
+            .dead_swapfile_candidates
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .collect();
+        for candidate in &swap_candidates {
+            let path = candidate.clone();
             let Ok(metadata) = std::fs::metadata(&path) else {
                 continue;
             };
