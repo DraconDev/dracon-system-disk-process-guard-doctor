@@ -503,6 +503,28 @@ pub(crate) fn tmp_cruft_floor(
     (age_hours >= floor).then_some(floor)
 }
 
+/// Whether a tree is under live churn, judged by the age of its NEWEST
+/// content rather than the directory's own mtime.
+///
+/// This is the one-shot mirror of the guard daemon's
+/// `tree_has_fresh_content` check. It exists because a top-level directory
+/// mtime does not move when its contents are rewritten: measured 2026-10-27,
+/// `/tmp/node-compile-cache` had a 17h-old top mtime while 317 files inside
+/// were newer than 6h and the newest was seconds old. Deleting on the top
+/// mtime would remove a tree a live process is writing to right now.
+///
+/// `newest_content_age_hours == None` means the walk could not prove the tree
+/// is old, so it counts as FRESH (fail closed) — never as deletable.
+pub(crate) fn tree_is_live_churn(
+    newest_content_age_hours: Option<u64>,
+    threshold_hours: u64,
+) -> bool {
+    match newest_content_age_hours {
+        Some(age) => age < threshold_hours,
+        None => true,
+    }
+}
+
 /// Run the full audit and classify every finding.
 ///
 /// `proc_root` and `run_root` are parameters so the whole classification can be
@@ -654,6 +676,14 @@ pub(crate) fn audit(
             && !e2e_patterns.is_empty();
         tmp_found += 1;
         let references = snapshot.capture(&entry.path);
+        // Live-churn gate (2026-10-27, audit HIGH): a directory whose NESTED
+        // content was written inside the governing floor is still in use, no
+        // matter how old its own mtime is. The daemon refuses to touch such a
+        // tree (`tree_has_fresh_content`); the one-shot audit must not be a
+        // weaker path to deletion, so it downgrades APPLY to REPORT and says
+        // why. Files are their own content, so the gate only applies to dirs.
+        let live_churn = entry.is_dir
+            && tree_is_live_churn(entry.newest_content_age_hours, floor);
         let finding = if let Some(reason) = references.blocking_reason(&entry.path) {
             Finding::new(
                 TrashClass::TempAndLogs,
@@ -672,12 +702,24 @@ pub(crate) fn audit(
                     .file_name()
                     .map(|name| name.to_string_lossy().starts_with('.'))
                     .unwrap_or(false)
+                    || live_churn
                 {
                     Disposition::Report
                 } else {
                     Disposition::Apply
                 },
-                if fast_path {
+                if live_churn {
+                    // State the content age, not the directory mtime: that
+                    // difference IS the reason it is not deletable.
+                    let content = entry
+                        .newest_content_age_hours
+                        .map(|age| format!("{age}h"))
+                        .unwrap_or_else(|| "unknown (walk incomplete)".to_string());
+                    format!(
+                        "{} top-level mtime {}h old but newest nested content {content} old — live churn, under the {}h floor; never auto-deleted",
+                        entry.label(), entry.age_hours, floor
+                    )
+                } else if fast_path {
                     format!(
                         "{} untouched for {}h (e2e fast-path floor tmp_e2e_min_age_hours={})",
                         entry.label(),
