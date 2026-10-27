@@ -274,6 +274,25 @@ pub(crate) struct GuardPolicy {
     // applied. Zero leaves profile generations untouched.
     #[serde(default = "default_nix_keep_generations")]
     pub(crate) nix_keep_generations: u32,
+    // ADDED 2026-10-27 (nitpicky disk cleaner): orphaned git scratch files
+    // inside `.git/objects` — `tmp_pack_*`/`tmp_idx_*`/`tmp_obj_*` left by
+    // interrupted or concurrent `git gc`/`repack` runs. The 2026-10-26 disk
+    // incident found 33 GiB of these in one repo; nothing else in the guard
+    // looked inside `.git`. They are pure scratch (git recreates any it still
+    // needs), but a running `git` may be writing one right now, so the cleaner
+    // refuses ALL of them while any git process is alive and otherwise applies
+    // this age floor. Raised from the initial 1h: a long repack on a big repo
+    // can legitimately hold a tmp_pack for a while, and one hour of extra delay
+    // costs nothing on a hygiene pass. 0 = eligible immediately (still subject
+    // to the live-process check).
+    #[serde(default = "default_git_temp_min_age_hours")]
+    pub(crate) git_temp_min_age_hours: u64,
+    // ADDED 2026-10-27: swapfiles to REPORT as dead when they are absent from
+    // `/proc/swaps`. Report-only by design — see space_report.rs. Comma-
+    // separated absolute paths. Defaults to the 32 GiB orphan found on this
+    // host; nothing is deleted, the report prints the exact `sudo rm` line.
+    #[serde(default = "default_dead_swapfile_candidates")]
+    pub(crate) dead_swapfile_candidates: String,
     #[serde(default = "default_node_modules_max_age_days")]
     pub(crate) node_modules_max_age_days: u64,
     // ADDED 2026-08-25 (v0.112.39): /tmp hygiene — the 2026-08-25 disk
@@ -537,6 +556,8 @@ impl Default for GuardPolicy {
             clean_nix_garbage: default_true(),
             clean_node_modules: default_true(),
             nix_keep_generations: 5,
+            git_temp_min_age_hours: default_git_temp_min_age_hours(),
+            dead_swapfile_candidates: default_dead_swapfile_candidates(),
             node_modules_max_age_days: default_node_modules_max_age_days(),
             clean_tmp: default_true(),
             tmp_search_paths: default_tmp_search_paths(),
@@ -1151,6 +1172,16 @@ pub(crate) fn default_nix_keep_generations() -> u32 {
     5
 }
 
+/// Hours a git scratch file must be untouched before it is deletable.
+pub(crate) fn default_git_temp_min_age_hours() -> u64 {
+    6
+}
+
+/// Swapfile paths to report when they are not active swap.
+pub(crate) fn default_dead_swapfile_candidates() -> String {
+    "/var/lib/swapfile".to_string()
+}
+
 pub(crate) fn default_proactive_cleanup_percent() -> u8 {
     80
 }
@@ -1274,6 +1305,8 @@ pub(crate) const SENTINEL_ZERO_KNOBS: &[&str] = &[
     "reap_report_max_cpu_seconds",
     // 0 = keep no Nix generations (delete everything prunable).
     "nix_keep_generations",
+    // 0 = eligible immediately (live-git check still applies).
+    "git_temp_min_age_hours",
 ];
 
 /// Largest header `log_preserve_header_lines` will preserve when truncating.
