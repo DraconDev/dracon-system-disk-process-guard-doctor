@@ -5146,8 +5146,8 @@ fn nix_delete_generations_arg(keep_generations: u32) -> Option<String> {
 ///
 /// Returns the generations to DELETE, sorted ascending.
 /// Legacy semantic (protect only the highest generation), used by the
-/// pre-existing spread tests. Not `#[cfg(test)]` because the module below is
-/// compiled into both the test binary and the plain binary.
+/// pre-existing spread tests.
+#[cfg(test)]
 pub(crate) fn nix_generations_to_delete_highest_protected(
     generations: &[u32],
     keep: usize,
@@ -12806,6 +12806,7 @@ fn main() {
 }
 
 #[cfg(test)]
+#[cfg(test)]
 mod nix_current_generation_tests {
     use super::{
         nix_delete_generations_argv, nix_generations_referenced_by_closure,
@@ -12932,6 +12933,7 @@ mod nix_current_generation_tests {
 }
 
 #[cfg(test)]
+#[cfg(test)]
 mod system_profile_spread_tests {
     use super::{
         nix_delete_generations_argv_with_profile, system_profile_generations,
@@ -13013,6 +13015,7 @@ mod system_profile_spread_tests {
     }
 }
 
+#[cfg(test)]
 mod nix_spread_tests {
     use super::nix_generations_to_delete_highest_protected as nix_generations_to_delete;
 
