@@ -11716,6 +11716,8 @@ async fn cmd_guard_clean(
     let do_caches = targets.caches;
     let do_node = targets.node_modules;
     let do_docker = targets.docker;
+    let do_git_temp = targets.git_temp;
+    let do_report_only = targets.report_only;
 
     let mut guard_clone = guard.clone();
     if let Some(mb) = min_size_mb {
@@ -11908,6 +11910,113 @@ async fn cmd_guard_clean(
                 "preview (dry-run)"
             }
         );
+    if do_git_temp {
+        let roots: Vec<PathBuf> = guard_clone
+            .rust_search_roots
+            .split(',')
+            .filter_map(|s| {
+                let s = s.trim();
+                (!s.is_empty()).then(|| PathBuf::from(s))
+            })
+            .collect();
+        let mut candidates = Vec::new();
+        for root in &roots {
+            candidates.extend(find_git_temp_files(root, 4));
+        }
+        let owner = git_activity_present(&process_command_names());
+        let outcome = clean_git_temp_files(
+            candidates,
+            guard_clone.git_temp_min_age_hours,
+            owner.clone(),
+            apply,
+        );
+        total_reclaimed += outcome.reclaimed_bytes;
+        for f in &outcome.cleaned {
+            actions.push(format!(
+                "GitTemp{}: {} ({})",
+                if apply { "" } else { " (would delete)" },
+                f.path.display(),
+                human_bytes(f.bytes)
+            ));
+        }
+        if let Some(owner) = &owner {
+            for f in &outcome.skipped_owned {
+                actions.push(format!(
+                    "Skipped (live {} owns repo): {} ({})",
+                    owner,
+                    f.path.display(),
+                    human_bytes(f.bytes)
+                ));
+            }
+        }
+        for f in &outcome.skipped_fresh {
+            actions.push(format!(
+                "Protected (under git_temp_min_age_hours={}h): {} ({})",
+                guard_clone.git_temp_min_age_hours,
+                f.path.display(),
+                human_bytes(f.bytes)
+            ));
+        }
+    }
+
+    if do_report_only {
+        // REPORT-ONLY by design: dead swapfiles and stray dirs/bundles are
+        // surfaced with sizes and an exact command, never deleted. See
+        // space_report.rs for why neither class is safe to automate.
+        let active = std::fs::read_to_string("/proc/swaps")
+            .map(|contents| active_swap_paths(&contents))
+            .unwrap_or_default();
+        for candidate in &guard_clone.dead_swapfile_candidates {
+            let path = PathBuf::from(candidate);
+            let Ok(metadata) = std::fs::metadata(&path) else {
+                continue;
+            };
+            if let Some(dead) = classify_swapfile(&path, metadata.len(), &active) {
+                actions.push(format!(
+                    "REPORT-ONLY dead swapfile: {} ({}) — run: {}",
+                    dead.path.display(),
+                    human_bytes(dead.bytes),
+                    dead.removal_command()
+                ));
+            }
+        }
+        for root in &guard_clone
+            .rust_search_roots
+            .split(',')
+            .filter_map(|s| {
+                let s = s.trim();
+                (!s.is_empty()).then(|| PathBuf::from(s))
+            })
+            .collect::<Vec<_>>()
+        {
+            let Ok(entries) = std::fs::read_dir(root) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let Ok(file_type) = entry.file_type() else {
+                    continue;
+                };
+                // Size is measured for report purposes only; a directory that
+                // cannot be walked is reported at 0 rather than skipped, so the
+                // operator still sees the name.
+                let bytes = if file_type.is_dir() {
+                    crate::dir_allocated_bytes(&entry.path(), 3, 0)
+                } else {
+                    entry.metadata().map(|m| m.len()).unwrap_or(0)
+                };
+                if let Some(item) = classify_stray(&entry.path(), &name, bytes, file_type.is_dir()) {
+                    actions.push(format!(
+                        "REPORT-ONLY {}: {} ({}) — needs explicit approval",
+                        item.kind.label(),
+                        item.path.display(),
+                        human_bytes(item.bytes)
+                    ));
+                }
+            }
+        }
+    }
+
         for a in &actions {
             println!("  • {}", a);
         }
