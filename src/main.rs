@@ -379,6 +379,9 @@ enum Commands {
         /// Override the /tmp age floor (hours) for this run.
         #[arg(long)]
         tmp_min_age_hours: Option<u64>,
+        /// Per-path lines printed per class (default 15; 0 prints all).
+        #[arg(long, default_value_t = 15)]
+        detail: usize,
     },
 }
 
@@ -10793,6 +10796,7 @@ async fn cmd_disk(
     class: Vec<String>,
     json: bool,
     tmp_min_age_hours: Option<u64>,
+    detail: usize,
 ) -> Result<()> {
     let (_, policy) = load_system_policy()?;
     let guard = &policy.guard;
@@ -10876,7 +10880,7 @@ async fn cmd_disk(
     } else {
         "apply (SAFE classes only)"
     };
-    print!("{}", report_data.render(mode));
+    print!("{}", report_data.render(mode, detail));
     if !report {
         println!();
         println!("Deleted {} path(s), {} freed.", records.len(), human_bytes(freed));
@@ -12642,6 +12646,7 @@ async fn run(cli: Cli) -> Result<()> {
             class,
             json,
             tmp_min_age_hours,
+            detail,
         } => {
             // `disk audit` is the report mode; `disk clean` is the freeing
             // mode; a bare `disk` defaults to audit unless --apply is given.
@@ -12650,7 +12655,7 @@ async fn run(cli: Cli) -> Result<()> {
                 Some(DiskCommands::Clean) => false,
                 None => report || !apply,
             };
-            cmd_disk(report_mode, class, json, tmp_min_age_hours).await
+            cmd_disk(report_mode, class, json, tmp_min_age_hours, detail).await
         }
         Commands::Status { json } => cmd_status(json).await,
         Commands::Doctor { json, strict } => cmd_doctor(json, strict).await,

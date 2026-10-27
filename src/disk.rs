@@ -136,9 +136,8 @@ impl Finding {
     /// One report line, in the disposition-first shape the objective asks for.
     pub(crate) fn render(&self) -> String {
         let mut line = format!(
-            "  • {:<6} {:<26} {} ({}) — {}",
+            "  • {:<6} {} ({}) — {}",
             self.disposition.label(),
-            format!("[{}]", self.class.label()),
             self.path.display(),
             human_bytes(self.bytes),
             self.reason
@@ -147,6 +146,17 @@ impl Finding {
             line.push_str(&format!("\n           run: {command}"));
         }
         line
+    }
+
+    /// True when this finding carries a human action (a command or approval).
+    ///
+    /// Used to decide whether a per-path line is worth printing: with 33k
+    /// aged `/tmp` entries a "delete this stale file" reason repeated 33k times
+    /// buries the handful of findings that actually need a decision.
+    pub(crate) fn needs_attention(&self) -> bool {
+        matches!(self.disposition, Disposition::Report)
+            || self.human_command.is_some()
+            || self.disposition == Disposition::Apply
     }
 }
 
@@ -181,7 +191,11 @@ impl DiskReport {
             .sum()
     }
 
-    pub(crate) fn render(&self, mode: &str) -> String {
+    /// Render the report.
+    ///
+    /// `detail_limit` bounds how many per-path lines each class prints; the
+    /// aggregate totals are always complete. 0 means "all".
+    pub(crate) fn render(&self, mode: &str, detail_limit: usize) -> String {
         let mut out = String::new();
         out.push_str(&format!("dracon-system disk — {mode}\n"));
         let total: u64 = self.findings.iter().map(|f| f.bytes).sum();
@@ -191,10 +205,24 @@ impl DiskReport {
             human_bytes(total)
         ));
         for class in TrashClass::ALL {
-            out.push_str(&format!("\n### {}\n", class.label()));
             let mut class_findings: Vec<&Finding> =
                 self.findings.iter().filter(|f| f.class == class).collect();
             class_findings.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.path.cmp(&b.path)));
+            let class_bytes: u64 = class_findings.iter().map(|f| f.bytes).sum();
+            let apply_bytes: u64 = class_findings
+                .iter()
+                .filter(|f| f.disposition == Disposition::Apply)
+                .map(|f| f.bytes)
+                .sum();
+            let skip_count = class_findings
+                .iter()
+                .filter(|f| f.disposition == Disposition::Skip)
+                .count();
+            let report_count = class_findings
+                .iter()
+                .filter(|f| f.disposition == Disposition::Report)
+                .count();
+            out.push_str(&format!("\n### {}\n", class.label()));
             if class_findings.is_empty() {
                 if self.empty_classes.contains(&class) {
                     out.push_str("  (nothing found)\n");
@@ -203,9 +231,41 @@ impl DiskReport {
                 }
                 continue;
             }
-            for finding in class_findings {
+            out.push_str(&format!(
+                "  {} path(s), {} — {} SAFE/reclaimable, {} needing a decision, {} skipped\n",
+                class_findings.len(),
+                human_bytes(class_bytes),
+                human_bytes(apply_bytes),
+                report_count,
+                skip_count
+            ));
+            // Findings that need a human decision first, then the largest
+            // reclaimable paths, so the actionable end of the list is on top.
+            class_findings.sort_by(|a, b| {
+                b.needs_attention()
+                    .cmp(&a.needs_attention())
+                    .then_with(|| b.bytes.cmp(&a.bytes))
+            });
+            let shown = if detail_limit == 0 {
+                class_findings.len()
+            } else {
+                detail_limit.min(class_findings.len())
+            };
+            for finding in class_findings.iter().take(shown) {
                 out.push_str(&finding.render());
                 out.push('\n');
+            }
+            if shown < class_findings.len() {
+                let rest: u64 = class_findings
+                    .iter()
+                    .skip(shown)
+                    .map(|f| f.bytes)
+                    .sum();
+                out.push_str(&format!(
+                    "  … {} more path(s), {} (use --detail 0, or --json for all)\n",
+                    class_findings.len() - shown,
+                    human_bytes(rest)
+                ));
             }
         }
         out.push_str(&format!(
