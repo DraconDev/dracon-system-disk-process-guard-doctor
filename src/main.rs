@@ -5107,7 +5107,11 @@ fn nix_delete_generations_arg(keep_generations: u32) -> Option<String> {
 ///
 /// Returns the generations to DELETE, sorted ascending.
 pub(crate) fn nix_generations_to_delete(generations: &[u32], keep: usize) -> Vec<u32> {
-    nix_generations_to_delete_protecting(generations, keep, &[])
+    // Highest-generation protection is the documented legacy semantic (no
+    // (current) marker available); production uses
+    // nix_generations_to_delete_protecting with the marker parsed instead.
+    let highest = generations.iter().copied().max().into_iter().collect::<Vec<_>>();
+    nix_generations_to_delete_protecting(generations, keep, &highest)
 }
 
 /// Which generation a `nix-env --list-generations` table marks as current.
@@ -5214,42 +5218,6 @@ pub(crate) fn nix_generations_to_delete_protecting(
     selectable
         .into_iter()
         .filter(|generation| !retain.contains(generation))
-        .collect()
-}
-
-/// Legacy signature retained for the pre-existing tests: spread with the
-/// HIGHEST generation protected.
-fn nix_generations_to_delete_highest_protected(generations: &[u32], keep: usize) -> Vec<u32> {
-    let mut sorted: Vec<u32> = generations.to_vec();
-    sorted.sort_unstable();
-    sorted.dedup();
-    if sorted.is_empty() {
-        return Vec::new();
-    }
-    // Legacy helper: protects only the highest generation. Used by tests that
-    // predate real `(current)` detection; production goes through
-    // nix_generations_to_delete_protecting with the marker parsed.
-    let current = *sorted.last().expect("non-empty");
-    if keep >= sorted.len() {
-        return Vec::new();
-    }
-    // Indices to retain, always anchored at the first and last entry.
-    let retain: std::collections::BTreeSet<usize> = if keep <= 1 {
-        [sorted.len() - 1].into_iter().collect()
-    } else {
-        (0..keep)
-            // Even spacing across the whole range, inclusive of both ends.
-            .map(|i| i * (sorted.len() - 1) / (keep - 1))
-            .chain(std::iter::once(sorted.len() - 1))
-            .collect()
-    };
-    sorted
-        .iter()
-        .enumerate()
-        .filter(|(index, generation)| {
-            !retain.contains(index) && **generation != current
-        })
-        .map(|(_, generation)| *generation)
         .collect()
 }
 
