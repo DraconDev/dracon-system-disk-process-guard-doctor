@@ -84,3 +84,25 @@ the three families.
 - Live: `disk audit --class tmp` reports the previously invisible 6.5 GiB
   across 85 findings; `--class caches` shows the three new families with
   correct owner attribution.
+
+## Workspace-gate note (2026-10-27, host under heavy load)
+
+`dracon-system` itself passes all four gates:
+
+- `cargo test --locked` (this crate) — all 3 suites ok, exit 0
+- `cargo clippy --locked --all-targets -- -D warnings` — No issues found
+- release build — ok
+
+Two workspace-wide observations from this run, neither caused by this change:
+
+1. **`dracon-warden` blocks the workspace clippy gate.** Its
+   `tests/integration_test.rs:60` defines `assert_live_hooks_untouched` and
+   never calls it — introduced in warden commit `cd19608` (28 min before this
+   note) and still orphaned at `a8dd8b8`. `-D warnings` turns that dead-code
+   warning into a hard error. Fixing it means editing another utility repo
+   mid-rewrite, which is out of scope for this goal.
+2. **A workspace-wide test run was OOM-killed** at load 71 with 1 GB
+   available (exit 137), and a reduced-parallelism rerun produced
+   "failed to spawn git" failures in `dracon-sync`. Re-running `dracon-sync`
+   alone passed completely: 1517 + 144 passed, 0 failed. Those failures are
+   resource exhaustion, not code.
