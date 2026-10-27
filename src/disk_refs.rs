@@ -89,21 +89,30 @@ impl ReferenceCapture {
         if self.refs.is_empty() {
             return None;
         }
-        let blocking: Vec<&ProcessRef> = self
-            .refs
-            .iter()
+        let mut blocking: Vec<ProcessRef> = merged_by_pid(&self.refs)
+            .into_iter()
             .filter(|r| r.blocks_deletion(target))
             .collect();
         if blocking.is_empty() {
             return None;
         }
-        Some(
-            blocking
-                .iter()
-                .map(|r| r.describe())
-                .collect::<Vec<_>>()
-                .join("; "),
-        )
+        // Cap the listing: a browser cache is held by dozens of renderer
+        // processes and printing all of them buries the actual finding.
+        const SHOWN: usize = 4;
+        let total = blocking.len();
+        let truncated = total > SHOWN;
+        if truncated {
+            blocking.truncate(SHOWN);
+        }
+        let mut text = blocking
+            .iter()
+            .map(|r| r.describe())
+            .collect::<Vec<_>>()
+            .join("; ");
+        if truncated {
+            text.push_str(&format!("; … and {} more process(es)", total - SHOWN));
+        }
+        Some(text)
     }
 
     /// One-line audit record: the refs, or an explicit "none".
