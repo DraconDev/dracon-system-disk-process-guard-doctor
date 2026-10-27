@@ -107,6 +107,10 @@ impl ReferenceCapture {
     }
 
     /// One-line audit record: the refs, or an explicit "none".
+    ///
+    /// Rows are merged per pid: the snapshot indexes exe, cwd and each fd
+    /// separately, so one process holding one file would otherwise print three
+    /// times.
     pub(crate) fn describe(&self) -> String {
         if self.scan_failed {
             return "scan failed (/proc unreadable)".to_string();
@@ -114,8 +118,8 @@ impl ReferenceCapture {
         if self.refs.is_empty() {
             return "none (no /proc exe, cwd or fd reference)".to_string();
         }
-        self.refs
-            .iter()
+        merged_by_pid(&self.refs)
+            .into_iter()
             .map(ProcessRef::describe)
             .collect::<Vec<_>>()
             .join("; ")
@@ -150,6 +154,37 @@ fn fds_for(path: &Path, target: &Path) -> Vec<u32> {
     }
     fds.sort_unstable();
     fds
+}
+
+/// Collapse per-attribute rows into one entry per pid.
+pub(crate) fn merged_by_pid(refs: &[ProcessRef]) -> Vec<ProcessRef> {
+    let mut merged: BTreeMap<u32, (Option<PathBuf>, Option<PathBuf>, Vec<u32>)> = BTreeMap::new();
+    for reference in refs {
+        let entry = merged.entry(reference.pid).or_default();
+        if entry.0.is_none() {
+            entry.0 = reference.exe.clone();
+        }
+        if entry.1.is_none() {
+            entry.1 = reference.cwd.clone();
+        }
+        for fd in &reference.fds {
+            if !entry.2.contains(fd) {
+                entry.2.push(*fd);
+            }
+        }
+    }
+    merged
+        .into_iter()
+        .map(|(pid, (exe, cwd, mut fds))| {
+            fds.sort_unstable();
+            ProcessRef {
+                pid,
+                exe,
+                cwd,
+                fds,
+            }
+        })
+        .collect()
 }
 
 /// Capture every `/proc` reference to `target`, before it is deleted.
