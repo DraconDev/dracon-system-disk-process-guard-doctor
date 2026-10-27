@@ -12513,6 +12513,130 @@ fn main() {
 }
 
 #[cfg(test)]
+mod nix_current_generation_tests {
+    use super::{
+        nix_delete_generations_argv, nix_generations_referenced_by_closure,
+        nix_generations_to_delete_protecting, parse_nix_current_generation,
+        parse_nix_generation_listing,
+    };
+
+    const TABLE: &str = r#"   1   2026-09-01 10:00:01
+   2   2026-09-15 10:00:01
+   3   2026-10-01 10:00:01   (current)
+   4   2026-10-10 10:00:01
+   5   2026-10-26 10:00:01
+"#;
+
+    #[test]
+    fn the_current_marker_is_parsed_rather_than_inferred_from_the_highest() {
+        let listing = parse_nix_generation_listing(TABLE);
+        assert_eq!(listing.generations, vec![1, 2, 3, 4, 5]);
+        assert_eq!(listing.current, Some(3), "the table says 3 is current");
+    }
+
+    #[test]
+    fn a_table_without_a_marker_yields_no_current() {
+        let listing = parse_nix_generation_listing(" 1 2026-09-01\n 2 2026-09-02\n");
+        assert_eq!(listing.current, None);
+        assert_eq!(parse_nix_current_generation("no marker here"), None);
+    }
+
+    #[test]
+    fn a_rolled_back_current_generation_is_never_deleted() {
+        // Generation 3 is live after `nix-env --switch-generation 3`, while 5
+        // is merely the highest. Protecting the highest would delete 3 — the
+        // generation the machine is actually running.
+        let listing = parse_nix_generation_listing(TABLE);
+        let delete = nix_generations_to_delete_protecting(
+            &listing.generations,
+            1,
+            &listing.current.into_iter().collect::<Vec<_>>(),
+        );
+        assert!(!delete.contains(&3), "the running generation must survive");
+        assert_eq!(delete, vec![1, 2, 4], "keep=1 retains only the current");
+    }
+
+    #[test]
+    fn closure_referenced_generations_are_also_protected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = dir.path().join("store");
+        std::fs::create_dir_all(store.join("abc-system")).expect("mkdir store");
+        // Two generations resolve to the running closure, one does not.
+        std::os::unix::fs::symlink(
+            store.join("abc-system"),
+            dir.path().join("system-4-link"),
+        )
+        .expect("symlink 4");
+        std::os::unix::fs::symlink(
+            store.join("abc-system"),
+            dir.path().join("system-5-link"),
+        )
+        .expect("symlink 5");
+        std::fs::create_dir_all(store.join("other-system")).expect("mkdir other");
+        std::os::unix::fs::symlink(
+            store.join("other-system"),
+            dir.path().join("system-6-link"),
+        )
+        .expect("symlink 6");
+
+        let running = std::fs::read_link(dir.path().join("system-5-link")).expect("resolve");
+        let protected = nix_generations_referenced_by_closure(
+            dir.path(),
+            &[4, 5, 6],
+            &running,
+        );
+        assert_eq!(
+            protected,
+            vec![4, 5],
+            "every generation resolving to the running closure is protected; \
+             an unrelated store path is not"
+        );
+    }
+
+    #[test]
+    fn an_unreadable_generation_link_is_protected_not_deleted() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let protected = nix_generations_referenced_by_closure(
+            dir.path(),
+            &[7],
+            Path::new("/nix/store/whatever"),
+        );
+        assert_eq!(
+            protected,
+            vec![7],
+            "a generation we cannot resolve must not be selected for deletion"
+        );
+    }
+
+    #[test]
+    fn delete_argv_carries_one_element_per_generation() {
+        // The defect this guards: `--delete-generations "3 6"` is ONE argv
+        // element, which nix rejects with "invalid generation number '3 6'".
+        let argv = nix_delete_generations_argv(&[3, 6]);
+        assert_eq!(
+            argv,
+            vec![
+                "--delete-generations".to_string(),
+                "3".to_string(),
+                "6".to_string()
+            ]
+        );
+        assert_eq!(argv.len(), 3, "flag plus one element per generation");
+    }
+
+    #[test]
+    fn protected_generations_do_not_inflate_the_keep_count() {
+        // `keep` is a TOTAL, so protecting extra generations must not make the
+        // plan retain more than the configured number by accident.
+        let delete = nix_generations_to_delete_protecting(&[1, 2, 3, 4, 5], 2, &[2]);
+        assert!(!delete.contains(&2));
+        assert!(
+            delete.len() <= 3,
+            "keep=2 with one extra protected generation deletes the rest: {delete:?}"
+        );
+    }
+}
+
 mod nix_spread_tests {
     use super::nix_generations_to_delete;
 
