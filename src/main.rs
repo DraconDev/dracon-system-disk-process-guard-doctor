@@ -12070,7 +12070,15 @@ async fn cmd_guard_clean(
                 ));
             }
         }
-        for root in &scan_roots {
+        let stray_roots: Vec<PathBuf> = guard_clone
+            .stray_scan_roots
+            .split(',')
+            .filter_map(|s| {
+                let s = s.trim();
+                (!s.is_empty()).then(|| expand_tilde(s))
+            })
+            .collect();
+        for root in &stray_roots {
             let Ok(entries) = std::fs::read_dir(root) else {
                 continue;
             };

@@ -293,6 +293,14 @@ pub(crate) struct GuardPolicy {
     // host; nothing is deleted, the report prints the exact `sudo rm` line.
     #[serde(default = "default_dead_swapfile_candidates")]
     pub(crate) dead_swapfile_candidates: String,
+    // ADDED 2026-10-27: where to look for REPORT-ONLY stray dirs and backup
+    // bundles. Deliberately separate from `rust_search_roots` ("~/Dev"): the
+    // strays that prompted this feature (dracon-lfs-proof, eve-audit-new,
+    // tmp-shield, *.bundle) sit at the HOME root, not inside Dev, so reusing
+    // the build-root list silently found none of them. Home is shallow-scanned
+    // only.
+    #[serde(default = "default_stray_scan_roots")]
+    pub(crate) stray_scan_roots: String,
     #[serde(default = "default_node_modules_max_age_days")]
     pub(crate) node_modules_max_age_days: u64,
     // ADDED 2026-08-25 (v0.112.39): /tmp hygiene — the 2026-08-25 disk
@@ -558,6 +566,7 @@ impl Default for GuardPolicy {
             nix_keep_generations: 5,
             git_temp_min_age_hours: default_git_temp_min_age_hours(),
             dead_swapfile_candidates: default_dead_swapfile_candidates(),
+            stray_scan_roots: default_stray_scan_roots(),
             node_modules_max_age_days: default_node_modules_max_age_days(),
             clean_tmp: default_true(),
             tmp_search_paths: default_tmp_search_paths(),
@@ -1180,6 +1189,11 @@ pub(crate) fn default_git_temp_min_age_hours() -> u64 {
 /// Swapfile paths to report when they are not active swap.
 pub(crate) fn default_dead_swapfile_candidates() -> String {
     "/var/lib/swapfile".to_string()
+}
+
+/// Directories scanned (one level deep) for report-only strays.
+pub(crate) fn default_stray_scan_roots() -> String {
+    "~".to_string()
 }
 
 pub(crate) fn default_proactive_cleanup_percent() -> u8 {
