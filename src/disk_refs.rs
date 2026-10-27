@@ -304,8 +304,15 @@ impl ProcSnapshot {
         // Anything strictly inside the target (a directory being removed).
         let prefix = target.to_path_buf();
         for (path, entries) in self.refs.range(prefix.clone()..) {
-            if path == &prefix || !path.starts_with(&prefix) {
-                continue;
+            if path == &prefix {
+                continue; // already collected as an exact hit
+            }
+            // BREAK, not continue: the map is sorted, so the first entry that
+            // is not inside `target` ends the run. Continuing here re-scanned
+            // the whole remaining index for every one of 33k /tmp queries,
+            // which is what made the first audit take four minutes.
+            if !path.starts_with(&prefix) {
+                break;
             }
             refs.extend(entries.iter().cloned());
         }
