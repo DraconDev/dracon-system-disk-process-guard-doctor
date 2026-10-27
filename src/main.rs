@@ -10870,6 +10870,8 @@ async fn cmd_disk(
         rust_search_roots: guard.rust_search_roots.clone(),
         stray_scan_roots: guard.stray_scan_roots.clone(),
         dead_swapfile_candidates: guard.dead_swapfile_candidates.clone(),
+        expected_swap_prefixes: guard.expected_swap_prefixes.clone(),
+        nixos_swap_config: guard.nixos_swap_config.clone(),
         git_temp_min_age_hours: guard.git_temp_min_age_hours,
         tmp_min_age_hours: tmp_min_age_hours.unwrap_or(guard.tmp_cruft_min_age_hours),
     };
