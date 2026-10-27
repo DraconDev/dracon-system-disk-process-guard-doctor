@@ -5466,16 +5466,18 @@ async fn clean_nix_garbage_with_bins(
         .or_else(|| nix_delete_generations_arg(keep_generations).map(|_| Vec::new()))
         .filter(|_| apply)
     {
-        // `+N` fallback passes the retain spec; the spread plan passes ids.
-        let mut nix_args: Vec<String> =
-            vec!["--delete-generations".to_string()];
-        if delete_args.is_empty() {
-            if let Some(retain) = nix_delete_generations_arg(keep_generations) {
-                nix_args.push(retain);
+        // An empty plan means "fall back to the +N retain spec"; a non-empty
+        // plan passes one argv element per generation (the bug this fixes).
+        let nix_args: Vec<String> = if delete_args.is_empty() {
+            match nix_delete_generations_arg(keep_generations) {
+                Some(retain) => vec!["--delete-generations".to_string(), retain],
+                None => Vec::new(),
             }
         } else {
-            // One argv element per generation (the bug this fixes).
-            nix_args.extend(delete_args.iter().map(u32::to_string));
+            nix_delete_generations_argv(&delete_args)
+        };
+        if nix_args.is_empty() {
+            return Ok((reclaimed, cleaned));
         }
         match Command::new(nix_env).args(&nix_args).output().await
         {
