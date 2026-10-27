@@ -848,6 +848,7 @@ mod disk_tests {
         let finding = dead_swapfile_finding(DeadSwapfile {
             path: PathBuf::from("/var/lib/swapfile"),
             bytes: 32 * 1024 * 1024 * 1024,
+            needs_root: true,
         });
         assert_eq!(finding.disposition, Disposition::Report);
         let text = finding.render();
