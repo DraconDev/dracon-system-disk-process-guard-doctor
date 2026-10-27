@@ -178,10 +178,10 @@ elif [ "$1" = "--delete-generations" ]; then
     # `--delete-generations 3 6` is three arguments, while the broken form
     # passed the single argument "3 6" and nix rejects it with
     # "invalid generation number '3 6'".
-    echo "nix-env-argv:$#"
+    echo "nix-env-argv:$#" >> {quoted_log}
     shift
     while [ "$#" -gt 0 ]; do
-        echo "nix-env-arg:$1"
+        echo "nix-env-arg:$1" >> {quoted_log}
         shift
     done
 fi
