@@ -291,9 +291,14 @@ mod tmp_log_tests {
         write(&root.join("build/one.bin"), 100, 48);
         write(&root.join("build/nested/two.bin"), 200, 48);
         let build = root.join("build");
-        let file = std::fs::File::options().write(true).open(&build).expect("open dir");
-        file.set_modified(now() - Duration::from_secs(48 * 3600 + 60))
-            .expect("set mtime");
+        // Age the directory itself: its mtime is what find_temp_cruft gates on.
+        let aged = now() - Duration::from_secs(48 * 3600 + 60);
+        std::fs::File::options()
+            .read(true)
+            .open(&build)
+            .expect("open dir")
+            .set_modified(aged)
+            .expect("set dir mtime");
 
         let found = find_temp_cruft(&[root.to_str().expect("utf8")], 24, now());
         assert_eq!(found.len(), 1);
