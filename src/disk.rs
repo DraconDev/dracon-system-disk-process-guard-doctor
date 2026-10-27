@@ -306,6 +306,12 @@ pub(crate) enum CacheFamily {
     CodexCache,
     CodexPluginsCache,
     HermesCache,
+    /// ADDED 2026-10-27 (audit MED): the hermes audio/image caches are
+    /// regeneratable media caches that grow to hundreds of MiB and are
+    /// already separate from `.hermes/cache`. Pointing at them is the whole
+    /// value of the family — they hold the bytes, the dotdir does not.
+    HermesAudioCache,
+    HermesImageCache,
 }
 
 impl CacheFamily {
@@ -325,6 +331,8 @@ impl CacheFamily {
             Self::CodexCache => "codex",
             Self::CodexPluginsCache => "codex plugins",
             Self::HermesCache => "hermes",
+            Self::HermesAudioCache => "hermes audio",
+            Self::HermesImageCache => "hermes image",
         }
     }
 
@@ -342,6 +350,8 @@ impl CacheFamily {
             Self::CodexCache => ".codex/cache",
             Self::CodexPluginsCache => ".codex/plugins/cache",
             Self::HermesCache => ".hermes/cache",
+            Self::HermesAudioCache => ".hermes/audio_cache",
+            Self::HermesImageCache => ".hermes/image_cache",
         }
     }
 
@@ -363,10 +373,11 @@ impl CacheFamily {
             // safe degradation, not a false "in use".
             Self::CodexCache | Self::CodexPluginsCache => &["codex"],
             Self::HermesCache => &["hermes", "hermes-agent"],
+            Self::HermesAudioCache | Self::HermesImageCache => &["hermes", "hermes-agent"],
         }
     }
 
-    pub(crate) const ALL: [CacheFamily; 11] = [
+    pub(crate) const ALL: [CacheFamily; 13] = [
         Self::CargoRegistry,
         Self::Npm,
         Self::Bun,
@@ -378,6 +389,8 @@ impl CacheFamily {
         Self::CodexCache,
         Self::CodexPluginsCache,
         Self::HermesCache,
+        Self::HermesAudioCache,
+        Self::HermesImageCache,
     ];
 }
 
@@ -1315,7 +1328,7 @@ mod disk_tests {
 
     #[test]
     fn every_named_cache_family_has_a_path_and_process_list() {
-        assert_eq!(CacheFamily::ALL.len(), 11);
+        assert_eq!(CacheFamily::ALL.len(), 13);
         for family in CacheFamily::ALL {
             assert!(!family.relative_path().is_empty());
             assert!(
