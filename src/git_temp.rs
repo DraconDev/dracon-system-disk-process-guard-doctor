@@ -175,24 +175,92 @@ fn age_hours(modified: Option<SystemTime>) -> Option<u64> {
     Some(age.as_secs() / 3600)
 }
 
-/// Whether any process in `process_names` is a git operation that could be
-/// writing scratch files.
+/// A live git process and the directory it is running in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GitOwner {
+    pub(crate) pid: u32,
+    pub(crate) name: String,
+    /// The process's working directory, when readable.
+    pub(crate) cwd: Option<PathBuf>,
+}
+
+/// Whether `name` is a git process that could be writing scratch files.
+fn is_git_process_name(name: &str) -> bool {
+    let base = Path::new(name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(name);
+    base == "git" || base.starts_with("git-")
+}
+
+/// Collect the live git processes and their working directories.
 ///
-/// Deliberately conservative: a `git` process anywhere means we do not delete
-/// ANY git scratch file this pass, because the honest mapping from a process to
-/// the specific repository it is packing is not available cheaply, and a wrong
-/// guess corrupts a live repack.
-pub(crate) fn git_activity_present(process_names: &[String]) -> Option<String> {
-    process_names
+/// REPLACED 2026-10-27 (first live run): the original rule was "any git process
+/// anywhere blocks every deletion". On this host that is always true — the sync
+/// daemon commits continuously — so the cleaner skipped all 22 candidates
+/// (13.6 GiB) on every pass and could never do its job. The truthful question
+/// is not "is git running" but "is git running IN THIS REPOSITORY", which the
+/// process's working directory answers directly: `git gc`/`git repack` write
+/// their temp packs while cwd is the repo root (or `.git`).
+pub(crate) fn live_git_owners(proc_root: &Path) -> Vec<GitOwner> {
+    let Ok(entries) = std::fs::read_dir(proc_root) else {
+        return Vec::new();
+    };
+    let mut owners = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(pid) = name.to_str().and_then(|p| p.parse::<u32>().ok()) else {
+            continue;
+        };
+        let Ok(comm) = std::fs::read_to_string(entry.path().join("comm")) else {
+            continue;
+        };
+        let comm = comm.trim().to_string();
+        if !is_git_process_name(&comm) {
+            continue;
+        }
+        let cwd = std::fs::read_link(entry.path().join("cwd")).ok();
+        owners.push(GitOwner {
+            pid,
+            name: comm,
+            cwd,
+        });
+    }
+    owners
+}
+
+/// The git process currently working inside `repo`, if any.
+///
+/// `repo` is the directory that contains the `.git` directory being cleaned.
+/// A process counts as an owner when its cwd is the repo itself or lies inside
+/// it, which covers both "git ran in the worktree" and "git ran inside .git".
+pub(crate) fn git_owner_for<'a>(owners: &'a [GitOwner], repo: &Path) -> Option<&'a GitOwner> {
+    owners.iter().find(|owner| {
+        owner
+            .cwd
+            .as_ref()
+            .is_some_and(|cwd| cwd == repo || cwd.starts_with(repo))
+    })
+}
+
+/// The repository root that owns a scratch file, derived from its path.
+///
+/// Scratch files always live at `<repo>/.git/objects/...`, so the repo root is
+/// the component immediately before `.git`. Returns `None` for a path without a
+/// `.git` component, which means the file is not where git would put it.
+pub(crate) fn repo_root_for_git_path(path: &Path) -> Option<PathBuf> {
+    let components: Vec<_> = path.components().collect();
+    let git_index = components
         .iter()
-        .find(|name| {
-            let base = Path::new(name.as_str())
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(name.as_str());
-            base == "git" || base.starts_with("git-") || base == "git-remote-https"
-        })
-        .cloned()
+        .rposition(|c| c.as_os_str() == ".git")?;
+    if git_index == 0 {
+        return None;
+    }
+    let mut root = PathBuf::new();
+    for component in &components[..git_index] {
+        root.push(component);
+    }
+    Some(root)
 }
 
 /// Delete expired scratch files, or report what would be deleted.
@@ -200,15 +268,18 @@ pub(crate) fn git_activity_present(process_names: &[String]) -> Option<String> {
 /// `apply == false` performs the same discovery and classification without
 /// touching the filesystem, so a dry run and a real run always agree on what
 /// is in scope.
-pub(crate) fn clean_git_temp_files(
+pub(crate) fn clean_git_temp_files<F>(
     candidates: Vec<GitTempFile>,
     min_age_hours: u64,
-    owner: Option<String>,
+    owner_of: F,
     apply: bool,
-) -> GitTempCleanupOutcome {
+) -> GitTempCleanupOutcome
+where
+    F: Fn(&Path) -> Option<String>,
+{
     let mut outcome = GitTempCleanupOutcome::default();
     for candidate in candidates {
-        if owner.is_some() {
+        if owner_of(&candidate.path).is_some() {
             outcome.skipped_owned.push(candidate);
             continue;
         }
@@ -320,7 +391,7 @@ mod tests {
             bytes: 10,
             age_hours: Some(100),
         }];
-        let outcome = clean_git_temp_files(candidates, 1, Some("git".to_string()), true);
+        let outcome = clean_git_temp_files(candidates, 1, |_| Some("git".to_string()), true);
         assert!(outcome.cleaned.is_empty());
         assert_eq!(outcome.skipped_owned.len(), 1);
         assert_eq!(outcome.reclaimed_bytes, 0);
@@ -337,7 +408,7 @@ mod tests {
             age_hours: Some(48),
         }];
 
-        let outcome = clean_git_temp_files(candidates, 1, None, false);
+        let outcome = clean_git_temp_files(candidates, 1, |_| None, false);
         assert!(path.exists(), "dry run must not delete");
         assert_eq!(outcome.cleaned.len(), 1);
         assert_eq!(outcome.reclaimed_bytes, 16);
@@ -355,7 +426,7 @@ mod tests {
             GitTempFile { path: old.clone(), bytes: 8, age_hours: Some(72) },
             GitTempFile { path: fresh.clone(), bytes: 8, age_hours: Some(0) },
         ];
-        let outcome = clean_git_temp_files(candidates, 1, None, true);
+        let outcome = clean_git_temp_files(candidates, 1, |_| None, true);
 
         assert!(!old.exists());
         assert!(fresh.exists(), "fresh scratch must survive the age floor");
@@ -365,11 +436,60 @@ mod tests {
     }
 
     #[test]
-    fn git_activity_detection_matches_git_processes_only() {
-        let names = vec!["bash".to_string(), "/usr/bin/git".to_string()];
-        assert_eq!(git_activity_present(&names), Some("/usr/bin/git".to_string()));
+    fn only_a_git_running_inside_the_repo_blocks_that_repo() {
+        let busy = PathBuf::from("/home/u/Dev/busy-repo");
+        let quiet = PathBuf::from("/home/u/Dev/quiet-repo");
+        let owners = vec![GitOwner {
+            pid: 42,
+            name: "git".to_string(),
+            cwd: Some(busy.join(".git")),
+        }];
+        assert!(git_owner_for(&owners, &busy).is_some(), "git inside this repo owns it");
+        assert!(
+            git_owner_for(&owners, &quiet).is_none(),
+            "a git process elsewhere must NOT block an unrelated repo"
+        );
+    }
 
-        let quiet = vec!["bash".to_string(), "cargo".to_string()];
-        assert_eq!(git_activity_present(&quiet), None);
+    #[test]
+    fn a_git_with_unreadable_cwd_blocks_nothing_specific() {
+        let owners = vec![GitOwner {
+            pid: 7,
+            name: "git".to_string(),
+            cwd: None,
+        }];
+        assert!(git_owner_for(&owners, Path::new("/home/u/Dev/repo")).is_none());
+    }
+
+    #[test]
+    fn repo_root_is_derived_from_the_git_component() {
+        assert_eq!(
+            repo_root_for_git_path(Path::new(
+                "/home/u/Dev/repo/.git/objects/pack/tmp_pack_a"
+            )),
+            Some(PathBuf::from("/home/u/Dev/repo"))
+        );
+        assert_eq!(
+            repo_root_for_git_path(Path::new("/home/u/Dev/repo/.git/objects/37/tmp_obj_b")),
+            Some(PathBuf::from("/home/u/Dev/repo"))
+        );
+        assert_eq!(
+            repo_root_for_git_path(Path::new("/home/u/proj/.git")),
+            Some(PathBuf::from("/home/u/proj"))
+        );
+        // No .git component means this is not git object storage.
+        assert_eq!(
+            repo_root_for_git_path(Path::new("/home/u/Dev/repo/src/tmp_pack_a")),
+            None
+        );
+    }
+
+    #[test]
+    fn git_process_names_are_recognised_without_matching_cargo() {
+        assert!(is_git_process_name("git"));
+        assert!(is_git_process_name("/usr/bin/git"));
+        assert!(is_git_process_name("git-remote-https"));
+        assert!(!is_git_process_name("cargo"));
+        assert!(!is_git_process_name("gitk"));
     }
 }
