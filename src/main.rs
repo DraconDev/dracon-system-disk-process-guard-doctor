@@ -10771,6 +10771,171 @@ async fn cmd_status(json: bool) -> Result<()> {
     Ok(())
 }
 
+/// The nitro-picky disk cleaner entry point.
+///
+/// Mode semantics follow the objective: the DEFAULT frees space and applies
+/// only the SAFE classes; `--report` is the dry run and frees nothing.
+/// `--apply` is accepted as an explicit synonym for the default.
+async fn cmd_disk(
+    report: bool,
+    _apply: bool,
+    class: Vec<String>,
+    json: bool,
+    tmp_min_age_hours: Option<u64>,
+) -> Result<()> {
+    let (_, policy) = load_system_policy()?;
+    let guard = &policy.guard;
+    let options = disk::DiskOptions {
+        rust_search_roots: guard.rust_search_roots.clone(),
+        stray_scan_roots: guard.stray_scan_roots.clone(),
+        dead_swapfile_candidates: guard.dead_swapfile_candidates.clone(),
+        git_temp_min_age_hours: guard.git_temp_min_age_hours,
+        tmp_min_age_hours: tmp_min_age_hours.unwrap_or(guard.tmp_cruft_min_age_hours),
+        keep_generations: guard.nix_keep_generations,
+    };
+
+    // A zero age floor would make every /tmp entry instantly deletable, which
+    // is the one interpretation that turns a safety knob into a hazard.
+    let mut options = options;
+    if options.tmp_min_age_hours == 0 {
+        eprintln!(
+            "⚠️ tmp_cruft_min_age_hours=0 disables /tmp cleanup; using the default of {}h",
+            policy::default_tmp_cruft_min_age_hours()
+        );
+        options.tmp_min_age_hours = policy::default_tmp_cruft_min_age_hours();
+    }
+
+    let selected = parse_disk_classes(&class)?;
+    let mut report_data = disk::audit(
+        &options,
+        Path::new("/proc"),
+        SystemTime::now(),
+        report,
+    );
+    // Restrict to the requested classes, keeping the full picture when none
+    // were named (the objective's "every trash class" default).
+    if let Some(selected) = selected {
+        report_data
+            .findings
+            .retain(|finding| selected.contains(&finding.class));
+        report_data
+            .empty_classes
+            .retain(|class| selected.contains(class));
+    }
+
+    let before = available_bytes(Path::new("/"))?;
+    let (freed, records) = if report {
+        (0, Vec::new())
+    } else {
+        disk::apply(&mut report_data, Path::new("/proc"), options.git_temp_min_age_hours)
+    };
+    let after = available_bytes(Path::new("/"))?;
+
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "mode": if report { "report" } else { "apply" },
+                "before_available_bytes": before,
+                "after_available_bytes": after,
+                "freed_bytes": freed,
+                "findings": report_data.findings.iter().map(|f| serde_json::json!({
+                    "class": f.class.label(),
+                    "path": f.path.display().to_string(),
+                    "bytes": f.bytes,
+                    "disposition": f.disposition.label(),
+                    "reason": f.reason,
+                    "references": f.references.describe(),
+                    "human_command": f.human_command,
+                })).collect::<Vec<_>>(),
+                "deleted": records.iter().map(|r| serde_json::json!({
+                    "class": r.class.label(),
+                    "path": r.path.display().to_string(),
+                    "bytes": r.bytes,
+                    "references": r.references.describe(),
+                })).collect::<Vec<_>>(),
+                "incomplete": report_data.incomplete,
+            }))?
+        );
+        return Ok(());
+    }
+
+    let mode = if report {
+        "audit (report mode — frees nothing)"
+    } else {
+        "apply (SAFE classes only)"
+    };
+    print!("{}", report_data.render(mode));
+    if !report {
+        println!();
+        println!("Deleted {} path(s), {} freed.", records.len(), human_bytes(freed));
+        if !records.is_empty() {
+            println!();
+            println!("| path | pre-delete bytes | class | pre-delete /proc refs |");
+            println!("| --- | --- | --- | --- |");
+            for record in &records {
+                println!("{}", record.evidence_row());
+            }
+        }
+        println!();
+        println!(
+            "df -B1 / : {} available before, {} available after. Note: available-byte\
+movement on a busy filesystem is not exact per-path attribution.",
+            before, after
+        );
+    }
+    Ok(())
+}
+
+/// Parse `--class git,tmp,caches,strays` into the class set, or `None` for all.
+fn parse_disk_classes(raw: &[String]) -> Result<Option<Vec<disk::TrashClass>>> {
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    let mut selected = Vec::new();
+    for token in raw {
+        for part in token.split(',') {
+            let part = part.trim();
+            if part.is_empty() {
+                continue;
+            }
+            let class = match part {
+                "git" => disk::TrashClass::GitTemp,
+                "tmp" | "logs" => disk::TrashClass::TempAndLogs,
+                "caches" | "nix" => disk::TrashClass::CachesAndNix,
+                "strays" => disk::TrashClass::Strays,
+                other => anyhow::bail!(
+                    "unknown disk class {other:?}; expected one of: git, tmp, caches, strays"
+                ),
+            };
+            if !selected.contains(&class) {
+                selected.push(class);
+            }
+        }
+    }
+    Ok(Some(selected))
+}
+
+/// Free bytes on the filesystem holding `path`.
+fn available_bytes(path: &Path) -> Result<u64> {
+    use std::ffi::CString;
+    let c_path = CString::new(path.as_os_str().as_encoded_bytes())?;
+    let mut stats = std::mem::MaybeUninit::<libc::statvfs>::uninit();
+    // SAFETY: `c_path` is a valid NUL-terminated path and `stats` is a valid
+    // out-parameter; statvfs does not retain either pointer.
+    let rc = unsafe { libc::statvfs(c_path.as_ptr(), stats.as_mut_ptr()) };
+    if rc != 0 {
+        anyhow::bail!(
+            "statvfs({}) failed: {}",
+            path.display(),
+            std::io::Error::last_os_error()
+        );
+    }
+    // SAFETY: statvfs returned 0, so the structure is initialised.
+    let stats = unsafe { stats.assume_init() };
+    Ok(stats.f_bavail as u64 * stats.f_frsize as u64)
+}
+
 async fn cmd_storage(
     root: Option<PathBuf>,
     json: bool,
@@ -12459,6 +12624,13 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::CpuLeaseRelease { key, generation } => cpu_limit::release(&key, &generation)
             .await
             .map_err(anyhow::Error::msg),
+        Commands::Disk {
+            report,
+            apply,
+            class,
+            json,
+            tmp_min_age_hours,
+        } => cmd_disk(report, apply, class, json, tmp_min_age_hours).await,
         Commands::Status { json } => cmd_status(json).await,
         Commands::Doctor { json, strict } => cmd_doctor(json, strict).await,
         Commands::Storage {
