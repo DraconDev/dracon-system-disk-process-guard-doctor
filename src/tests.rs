@@ -219,37 +219,47 @@ exit 0"#
     // keep=5 the retained set is {1, 2, 4, 5, 7}, so the deletions are 3 and 6.
     // Note generation 1 survives as the oldest rollback anchor, which `+5`
     // (keep 3..=7) would have destroyed.
-    assert_eq!(
-        lines[0], "nix-env:--list-generations -p default",
-        "the generation list is read before choosing what to prune"
+    // CHANGED 2026-10-27 (audit): assert ARGV SHAPE, not a rendered string, and
+    // locate the calls by content rather than fixed indices. The previous
+    // version of this feature joined the generation ids with spaces into ONE
+    // argv element; nix rejects that with `invalid generation number '3 6'`,
+    // and a fake nix-env that echoed `$*` could not tell one element from two,
+    // so the central feature was broken while its test passed.
+    assert!(
+        lines.contains(&"nix-env:--list-generations -p default"),
+        "the user profile generation list is read before choosing what to prune"
     );
-    // ARGV SHAPE, not a rendered string: the user-profile prune must pass one
-    // element per generation. The previous version of this feature joined the
-    // ids with spaces into a single element, which nix rejects with
-    // "invalid generation number '3 6'" — and a fake that echoes `$*` could
-    // not tell the two forms apart.
+
+    // Generations 1..=7 with keep=5: the spread retains {1, 2, 4, 5, 7} and
+    // deletes 3 and 6. Generation 1 survives as the oldest rollback anchor,
+    // which `+5` (keep 3..=7) would have destroyed.
+    let delete_at = lines
+        .iter()
+        .position(|line| *line == "nix-env-argv:3")
+        .expect("the user-profile prune must pass exactly three arguments");
+    assert_eq!(lines[delete_at + 1], "nix-env-arg:--delete-generations");
     assert_eq!(
-        lines[1], "nix-env-argv:3",
-        "the delete call must carry exactly three arguments"
+        lines[delete_at + 2], "nix-env-arg:3",
+        "generation 3 is its own argv element"
     );
-    assert_eq!(lines[2], "nix-env-arg:--delete-generations");
     assert_eq!(
-        lines[3], "nix-env-arg:3",
-        "generation 3 is its own argument (3 and 6 are NOT one '3 6' element)"
-    );
-    assert_eq!(lines[4], "nix-env-arg:6");
-    assert_eq!(
-        lines[5], "nix-env:--list-generations -p /nix/var/nix/profiles/default",
-        "the system profile is counted before it is pruned"
-    );
-    // The root-owned system profile cannot be enumerated for a spread plan by
-    // an unprivileged guard, so it keeps the documented `+N` form.
-    assert_eq!(
-        lines[6], "nix-env:--delete-generations +5 -p /nix/var/nix/profiles/default"
+        lines[delete_at + 3], "nix-env-arg:6",
+        "generation 6 is its own argv element"
     );
     assert!(
         lines.iter().all(|line| !line.contains("3 6")),
-        "no argv element may contain two generation numbers joined by a space"
+        "no argv element may carry two generation numbers joined by a space"
+    );
+
+    // The root-owned system profile cannot be enumerated for a spread plan by
+    // an unprivileged guard, so it keeps the documented `+N` form.
+    assert!(
+        lines.contains(&"nix-env:--list-generations -p /nix/var/nix/profiles/default"),
+        "the system profile is counted before it is pruned"
+    );
+    assert!(
+        lines.contains(&"nix-env:--delete-generations +5 -p /nix/var/nix/profiles/default"),
+        "the system profile keeps the +N retain spec"
     );
     let gc_line = lines.last().expect("gc call");
     assert_eq!(*gc_line, "nix-gc:");
