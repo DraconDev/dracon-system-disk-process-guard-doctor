@@ -446,6 +446,34 @@ pub(crate) struct DiskOptions {
     pub(crate) nixos_swap_config: String,
     pub(crate) git_temp_min_age_hours: u64,
     pub(crate) tmp_min_age_hours: u64,
+    /// ADDED 2026-10-27 (leftover-audit follow-up): the one-shot audit
+    /// judges e2e/test-litter names against this SHORT floor so the sweep
+    /// REPORTs them instead of staying blind until the general floor.
+    pub(crate) tmp_e2e_patterns: String,
+    pub(crate) tmp_e2e_min_age_hours: u64,
+}
+
+/// Which age floor governs a `/tmp` entry: the short e2e floor when the
+/// basename matches a fast-path pattern, otherwise the general floor.
+/// Returns the governing floor when the entry is at least that old (`None`
+/// = not yet cruft). An empty pattern list disables the fast path — the
+/// caller passes empty patterns when the e2e floor is 0, mirroring the
+/// guard daemon's `e2e_min_age_hours == 0` early return.
+pub(crate) fn tmp_cruft_floor(
+    file_name: &str,
+    age_hours: u64,
+    e2e_patterns: &[String],
+    general_floor_hours: u64,
+    e2e_floor_hours: u64,
+) -> Option<u64> {
+    let floor = if e2e_patterns.is_empty() {
+        general_floor_hours
+    } else if crate::tmp_e2e_match(file_name, e2e_patterns) {
+        e2e_floor_hours
+    } else {
+        general_floor_hours
+    };
+    (age_hours >= floor).then_some(floor)
 }
 
 /// Run the full audit and classify every finding.
