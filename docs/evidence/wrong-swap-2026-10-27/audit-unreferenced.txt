@@ -1,0 +1,33 @@
+dracon-system disk — audit (report mode — frees nothing)
+  32 finding(s), 64.1 GiB total
+
+### 1 orphaned git temp
+  (nothing found)
+
+### 2 tmp + logs
+  32 path(s), 64.1 GiB — 12.9 MiB SAFE/reclaimable, 1 needing a decision, 2 skipped
+  • REPORT /mnt/data/swapfile (64.0 GiB) — ACTIVE swap with no NixOS swapDevices entry in /tmp/fake-config.nix: a rebuild/reboot may lose it — add a device entry, never delete it while active
+  • APPLY  /tmp/k2 (5.7 MiB) — tmp-dir untouched for 156h (tmp_min_age_hours=24)
+  • APPLY  /tmp/mcode-install-test-6r5wDV (3.6 MiB) — tmp-dir untouched for 185h (tmp_min_age_hours=24)
+  • APPLY  /tmp/mcode-install-dbg-rOedX9 (3.6 MiB) — tmp-dir untouched for 185h (tmp_min_age_hours=24)
+  • APPLY  /tmp/eve-install-backup-cleanup-1897637-1792137438351935114 (850.0 B) — tmp-dir untouched for 268h (tmp_min_age_hours=24)
+  • APPLY  /tmp/eve10-readonly-replay-3085601-1790790071511169641 (776.0 B) — tmp-dir untouched for 618h (tmp_min_age_hours=24)
+  • APPLY  /tmp/audit-sandbox-home (59.0 B) — tmp-dir untouched for 579h (tmp_min_age_hours=24)
+  • APPLY  /tmp/fNguO13r (0.0 B) — tmp-dir untouched for 4867h (tmp_min_age_hours=24)
+  • APPLY  /tmp/nb-probe-logs (0.0 B) — tmp-dir untouched for 734h (tmp_min_age_hours=24)
+  • APPLY  /tmp/sddm-auth-14ad0f27-5e27-488d-a0be-2c559b916d32 (0.0 B) — tmp-file untouched for 780h (tmp_min_age_hours=24)
+  • APPLY  /tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-ModemManager.service-0tvuBG (0.0 B) — tmp-dir untouched for 625h (tmp_min_age_hours=24)
+  • APPLY  /tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-bluetooth.service-nybf28 (0.0 B) — tmp-dir untouched for 780h (tmp_min_age_hours=24)
+  • APPLY  /tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-cups.service-wQS7ij (0.0 B) — tmp-dir untouched for 780h (tmp_min_age_hours=24)
+  • APPLY  /tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-fwupd.service-z7LS2r (0.0 B) — tmp-dir untouched for 779h (tmp_min_age_hours=24)
+  • APPLY  /tmp/systemd-private-2822e9832a7d4bee9becadd9b541b685-nscd.service-q2KvHs (0.0 B) — tmp-dir untouched for 780h (tmp_min_age_hours=24)
+  … 17 more path(s), 50.3 MiB (use --detail 0, or --json for all)
+
+### 3 caches + nix
+  (nothing found)
+
+### 4 stray dirs/bundles
+  (nothing found)
+
+SAFE classes reclaimable now: 12.9 MiB
+REPORT-ONLY (needs a human decision): 64.0 GiB
