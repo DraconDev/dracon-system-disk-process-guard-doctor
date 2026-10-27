@@ -6182,6 +6182,66 @@ async fn check_disk_early_warning(guard: &GuardPolicy, state: &mut GuardRuntimeS
     }
 }
 
+/// Wrong-swap placement + NixOS reference check, run on every guard pass.
+///
+/// ADDED 2026-10-27: three cheap reads (`/proc/swaps`, a few stats, the
+/// NixOS config), REPORT-only, never deletes. Findings are NOT only
+/// returned in the `GuardReport` (which the daemon discards) — entry into
+/// the wrong state sends one notification, and the event stream carries
+/// repeats at `report_repeat_secs`, mirroring the disk-trend checks.
+/// Unknown (unreadable `/proc/swaps` or config) is silence, not failure.
+async fn check_swap_devices(
+    guard: &GuardPolicy,
+    state: &mut GuardRuntimeState,
+) -> Vec<String> {
+    let expected: Vec<String> = guard
+        .expected_swap_prefixes
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    let candidates: Vec<PathBuf> = guard
+        .dead_swapfile_candidates
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(expand_tilde)
+        .collect();
+    let config_path = expand_tilde(&guard.nixos_swap_config);
+    let issues = check_swap_health(&expected, &candidates, &config_path).describe();
+    let (previous, event_due) = report_state_transition(
+        state,
+        "swap-devices",
+        if issues.is_empty() { "ok" } else { "wrong" },
+        guard.report_repeat_secs,
+    );
+    if issues.is_empty() {
+        return issues;
+    }
+    let detail = format!(
+        "Wrong swap placement (expected under: {}): {}",
+        if expected.is_empty() {
+            "(none configured)".to_string()
+        } else {
+            expected.join(", ")
+        },
+        issues.join("; ")
+    );
+    if previous.as_deref() != Some("wrong") {
+        send_notification(guard, "Dracon System Guard - Wrong Swap", &detail).await;
+    }
+    if event_due {
+        emit_event(&DraconEvent::new(
+            "system",
+            EventSeverity::Warn,
+            "system/swap-devices",
+            detail,
+        ));
+    }
+    issues
+}
+
 /// Use space available to this user, excluding filesystem reserved blocks.
 fn rapid_disk_fill_message(rate: f64, used_pct: u8, avail_bytes: u64) -> String {
     let available_gib = avail_bytes as f64 / 1024_f64.powi(3);
