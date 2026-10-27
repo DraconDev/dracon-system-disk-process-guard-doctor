@@ -168,7 +168,8 @@ pub(crate) fn fds_for(path: &Path, target: &Path) -> Vec<u32> {
 
 /// Collapse per-attribute rows into one entry per pid.
 pub(crate) fn merged_by_pid(refs: &[ProcessRef]) -> Vec<ProcessRef> {
-    let mut merged: BTreeMap<u32, (Option<PathBuf>, Option<PathBuf>, Vec<u32>)> = BTreeMap::new();
+    type MergedRow = (Option<PathBuf>, Option<PathBuf>, Vec<u32>);
+    let mut merged: BTreeMap<u32, MergedRow> = BTreeMap::new();
     for reference in refs {
         let entry = merged.entry(reference.pid).or_default();
         if entry.0.is_none() {
@@ -378,7 +379,9 @@ pub(crate) fn capture_references(proc_root: &Path, target: &Path) -> ReferenceCa
     }
 }
 
-/// Aggregate counts used by the live scan cache, exposed for tests.
+/// Pids that forbid deletion, exposed for tests and callers that only want
+/// the identifiers rather than the rendered reason.
+#[cfg(test)]
 pub(crate) fn blocking_pids(capture: &ReferenceCapture, target: &Path) -> Vec<u32> {
     capture
         .refs
@@ -389,6 +392,7 @@ pub(crate) fn blocking_pids(capture: &ReferenceCapture, target: &Path) -> Vec<u3
 }
 
 /// Render a capture as `BTreeMap`-friendly audit rows: `(pid, description)`.
+#[cfg(test)]
 pub(crate) fn audit_rows(capture: &ReferenceCapture) -> BTreeMap<u32, String> {
     capture
         .refs
