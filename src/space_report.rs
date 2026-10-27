@@ -567,7 +567,7 @@ pub(crate) fn evaluate_swap_health(
     // swapfile as unreferenced would be pure noise. An explicitly EMPTY
     // block (`swapDevices = [ ];`) is KNOWN — the operator declared no
     // swapfiles, so everything on disk is unreferenced.
-    if swap_devices_block(config).is_none() {
+    if !has_swap_devices_block(config) {
         return outcome;
     }
     outcome.config_known = true;
@@ -831,6 +831,36 @@ mod tests {
         "#;
         let devices = nixos_swap_devices(config);
         assert_eq!(devices, vec![PathBuf::from("/mnt/data/swapfile")]);
+    }
+
+    /// 2026-10-27 false positive: a COMMENT mentioning swapDevices
+    /// (`# ... swapDevices below`) preceded the real assignment, and the
+    /// parser latched onto `boot.kernelParams = [ ... ]` — concluding the
+    /// device list was empty and flagging every swapfile as unreferenced.
+    /// Also covers the `lib.mkForce [ ... ]` wrapper the live config uses.
+    #[test]
+    fn swapdevices_ignores_comment_mentions() {
+        let config = "# Swap managed explicitly via zram and swapDevices below.\n\
+          boot.kernelParams = [ \"systemd.swap=0\" ];\n\
+          swapDevices = lib.mkForce [\n\
+            {\n\
+              device = \"/dev/disk/by-uuid/5021c67f-4e1f-4a52-94a4-52ca9325d4ef\";\n\
+              priority = 1;\n\
+            }\n\
+            {\n\
+              device = \"/mnt/data/swapfile\";\n\
+              size = 65536;\n\
+            }\n\
+          ];\n";
+        let devices = nixos_swap_devices(config);
+        assert_eq!(
+            devices,
+            vec![
+                PathBuf::from("/dev/disk/by-uuid/5021c67f-4e1f-4a52-94a4-52ca9325d4ef"),
+                PathBuf::from("/mnt/data/swapfile"),
+            ]
+        );
+        assert!(has_swap_devices_block(config));
     }
 
     #[test]
