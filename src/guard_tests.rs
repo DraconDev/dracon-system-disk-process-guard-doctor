@@ -436,6 +436,29 @@ fn report_state_transition_suppresses_unchanged_events() {
     assert!(recovery, "state transitions should emit immediately");
 }
 
+/// ADDED 2026-10-27 (wrong-swap check, falsification fix): the periodic
+/// finding must be OBSERVABLE from the daemon pass — recorded in the
+/// pass state (entry/repeat dedup) and returned for the report — not
+/// silently computed. This pins the state key and the ok/wrong agreement;
+/// live swap contents stay host-dependent and are asserted nowhere.
+#[tokio::test]
+async fn swap_devices_check_records_its_state_every_pass() {
+    let guard = crate::GuardPolicy::default();
+    let mut state = crate::GuardRuntimeState::default();
+    let issues = crate::check_swap_devices(&guard, &mut state).await;
+    let recorded = state.report_states["swap-devices"].value.clone();
+    assert_eq!(
+        recorded,
+        if issues.is_empty() { "ok" } else { "wrong" },
+        "the recorded state must agree with what the pass found"
+    );
+    // A second pass with unchanged findings keeps the state (entry fires
+    // once, repeats go through the event stream at report_repeat_secs).
+    let again = crate::check_swap_devices(&guard, &mut state).await;
+    assert_eq!(again, issues);
+    assert_eq!(state.report_states["swap-devices"].value, recorded);
+}
+
 #[test]
 fn memory_pressure_ignores_swap_occupancy_without_active_pressure() {
     assert_eq!(
