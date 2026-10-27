@@ -42,6 +42,8 @@ mod forgotten;
 pub(crate) use forgotten::*;
 #[cfg(test)]
 mod forgotten_tests;
+mod git_temp;
+pub(crate) use git_temp::*;
 mod links;
 pub(crate) use links::*;
 mod policy;
