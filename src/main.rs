@@ -11008,6 +11008,7 @@ async fn cmd_disk(
                     "bytes": f.bytes,
                     "disposition": f.disposition.label(),
                     "reason": f.reason,
+                    "qualifying_floor_hours": f.qualifying_floor_hours,
                     "references": f.references.describe(),
                     "human_command": f.human_command,
                 })).collect::<Vec<_>>(),

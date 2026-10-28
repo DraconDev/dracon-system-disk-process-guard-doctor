@@ -136,12 +136,34 @@ Live checks:
 
 The audit refusing to mark a live tree APPLY is not sufficient on its own: a
 tree idle during the scan can be written to before `disk clean`'s delete loop
-runs. `disk::apply` therefore re-walks every directory candidate immediately
-before `remove_dir_all` and keeps the tree if any nested content is newer than
-the floor that qualified it. Test:
-`a_tree_that_became_live_churn_after_the_audit_is_kept_at_delete_time`
-(finding already marked APPLY, live content present → 0 bytes freed, tree
-survives, disposition downgraded to REPORT with the reason recorded).
+runs. `disk::apply_with_floors` therefore re-walks every directory candidate
+immediately before `remove_dir_all` and keeps the tree if any nested content is
+newer than **the floor that qualified that finding**.
+
+The qualifying floor travels ON the finding (`Finding::qualifying_floor_hours`,
+set in the class-2 audit loop), not as a global window. A single global
+`min(e2e, general)` window would apply the 6h e2e floor to 24h general-floor
+findings, so a general-floor tree whose content was refreshed to 12h during
+the audit→delete gap — by an mtime-PRESERVING restore (`cp -a`, `rsync -a`,
+`tar -x`, `unzip`), exactly how these test trees are rebuilt — would be
+deleted, while the daemon's own general pass keeps it. A finding with no
+recorded floor FAILS CLOSED: the tree is kept.
+
+Tests for this behaviour:
+
+- `the_delete_time_check_uses_the_floor_that_qualified_the_finding` — the
+  discriminating case. Both fixtures hold content aged 12h (inside the 24h
+  general floor, outside the 6h e2e floor). The **general-floor (24h)**
+  finding must be KEPT; the **e2e-floor (6h)** finding with the same 12h
+  content must still be DELETED — so the test proves the per-finding floor and
+  not a fixed 6h window, and it cannot be satisfied by a blanket
+  "never delete" rule.
+- `a_tree_that_became_live_churn_after_the_audit_is_kept_at_delete_time` —
+  an **e2e-floor (6h)** finding whose content was written during the gap
+  (0h) → 0 bytes freed, tree survives, disposition downgraded to REPORT with
+  the reason recorded.
+- `a_finding_without_a_known_floor_fails_closed_and_keeps_the_tree` — a
+  finding with no recorded floor is never deleted on a guessed window.
 
 ## Final observed numbers (last run on this tree)
 
