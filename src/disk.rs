@@ -1638,11 +1638,11 @@ mod disk_tests {
             .with_references(crate::disk_refs::ReferenceCapture {
                 refs: Vec::new(),
                 scan_failed: false,
-            }),
+            })
+            // The floor that qualified this finding.
+            .with_qualifying_floor(6),
         );
-        // Floors present, so the re-check is armed: 24h general, 6h e2e.
-        let (freed, records) =
-            apply_with_floors(&mut report, Path::new("/proc"), 6);
+        let (freed, records) = apply_with_floors(&mut report, Path::new("/proc"), 6);
         assert_eq!(freed, 0, "live-churn tree must not be deleted");
         assert!(records.is_empty());
         assert!(tree.exists(), "the tree survives");
