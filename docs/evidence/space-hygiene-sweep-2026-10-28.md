@@ -6,9 +6,9 @@ fixtures. The Nix store was sized and compared by reachability only.
 
 Primary measurements below are from 2026-10-28 (roughly 15:53–16:05 UTC). Three
 read-only full anchored passes were run at 20:17–20:29, 22:30–22:42, and
-23:24–23:37 UTC; focused sandbox resampling and root-stability checks followed.
-Live state changed during every window, so byte values are exact `du --bytes`
-readings for their stated pass, not an atomic filesystem snapshot. Area,
+23:24–23:37 UTC; focused sandbox resampling and root-stability checks continued
+through 23:44. Live state changed during every window, so byte values are exact
+`du --bytes` readings for their stated pass, not an atomic filesystem snapshot. Area,
 agent-tool and off-limits tables use the latest full pass (23:24–23:37 UTC);
 all candidate-ranking tables are individually pass-labeled. The sandbox
 sub-decomposition tables are separate and are not new global rankings.
@@ -236,6 +236,9 @@ flagged for cleaning.
   pass was run; the count nevertheless changed to 632 by the end. The pre-sweep
   reading was 610 roots, followed by 612 and 614/615. Thus even the specified
   precheck did not guarantee an unchanged count across the full measurement.
+  Ten additional list samples at 23:39–23:44 varied 630–647
+  (633, 630, 631, 637, 639, 631, 632, 646, 647, 645); no consecutive full
+  lists were identical, so another anchored pass was not started.
 - This work executed no garbage-collection command. At 23:37 UTC the scheduled
   unit `nix-gc.service` still showed its last start at 2026-10-28 00:00:00 GMT
   and next run at 2026-10-29 00:00 GMT; the inspected nix-daemon journal window
@@ -258,11 +261,15 @@ find <dir> -mindepth 1 -maxdepth 1 -type d    # sandbox enumeration
 ls -la --time-style=+%F <dir>                 # dates and names
 readlink -f /etc/nixos                        # resolve config symlink
 nix-store --gc --print-roots | wc -l          # read-only root listing/count
+nix-store --gc --print-roots | sort           # full root-list stability comparison
 nix-store -qR <root store paths>              # read-only reachability closure query
 nix path-info --json --all                    # store path metadata
 journalctl --disk-usage                       # journal accounting
 journalctl -u nix-daemon.service --since ...  # daemon log inspection
 systemctl show nix-gc.service -p ExecMainStartTimestamp  # timer metadata only
+systemctl list-timers --all                   # scheduled timer metadata
+ps -p <observed pid> -o pid,ppid,etimes,stat,comm  # process state only
+# Read /proc/<pid>/maps,comm,status,exe for mapped store-path attribution
 ls -1 /nix/var/nix/gcroots/auto               # registered root symlinks
 find /nix/store -mindepth 1 -maxdepth 1        # store path enumeration
 ```
