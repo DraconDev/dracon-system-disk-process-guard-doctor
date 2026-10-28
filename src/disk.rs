@@ -103,6 +103,20 @@ pub(crate) struct Finding {
     pub(crate) references: ReferenceCapture,
     /// The exact command a human must run, for root-owned REPORT findings.
     pub(crate) human_command: Option<String>,
+    /// The age floor (hours) that QUALIFIED this finding, when one applies.
+    ///
+    /// ADDED 2026-10-27 (audit HIGH, rework round): the delete-time
+    /// live-churn re-check must compare against the floor this finding
+    /// actually cleared — 6h for an e2e-pattern tree, 24h for a general one.
+    /// Recomputing a single global window (`min(e2e, general)`) applied the
+    /// 6h window to 24h-floor findings, so a general-floor tree whose
+    /// content was refreshed to 12h during the audit→delete gap (an
+    /// mtime-preserving restore — `cp -a`, `rsync -a`, `tar -x`) was
+    /// deleted, while the daemon's own general pass would have kept it.
+    ///
+    /// `None` = no floor is known for this finding, and the delete-time
+    /// check must then FAIL CLOSED (keep the tree).
+    pub(crate) qualifying_floor_hours: Option<u64>,
 }
 
 impl Finding {
@@ -121,6 +135,7 @@ impl Finding {
             reason,
             references: ReferenceCapture::default(),
             human_command: None,
+            qualifying_floor_hours: None,
         }
     }
 
