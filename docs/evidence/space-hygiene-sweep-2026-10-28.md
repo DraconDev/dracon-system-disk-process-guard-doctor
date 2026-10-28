@@ -1,180 +1,159 @@
-# Space-hygiene sweep — everything the disk audit cannot see (2026-10-28)
+# Space-hygiene sweep — beyond the disk audit (2026-10-28)
 
-Report-only. Nothing was deleted, no garbage collection was run, and the nix
-store was sized but not touched.
+Report-only. This work removed nothing and ran no host garbage collection. The
+Nix store was sized and compared by reachability only. Measurements below are
+readings from 2026-10-28 (roughly 15:53–16:05 UTC); live state changed during
+that window, so each byte value is the exact `du --bytes` output for its
+measurement, not an atomic filesystem snapshot.
 
-Complements `leftover-audit-2026-10-27.md` (the disk-audit sweep) and
-`cleaner-coverage-gaps-2026-10-27.md` (the cleaner coverage work). This pass
-covers the areas the `disk` classes do not reach: agent-tool state, chat and
-session stores, the nix store, system journals, container images and backup
-trees.
+This supplements `leftover-audit-2026-10-27.md` and
+`cleaner-coverage-gaps-2026-10-27.md`. Area rows intentionally overlap: for
+example, `~/.local/share` includes OpenCode and container storage, and the
+agent-tool total includes OpenCode. Do not add overlapping rows together.
 
-All sizes are `du -sx --bytes` (exact bytes, same filesystem).
+Unprivileged `du` reported permission errors for some protected descendants in
+`~/.local/share`, `~/.local/state`, container storage, Trash, and `/var/log`.
+Those totals are the exact reported accessible subtotals; they are not claimed
+to include unreadable descendants. Passwordless `sudo` was unavailable, so a
+complete privileged measurement remains an operator follow-up.
 
 ## Swept areas
 
-| Area | Bytes | GiB | Note |
-|---|---|---|---|
-| `~/.local/share` | 27,603,401,427 | 25.71 | agent tools, pnpm store, containers, Trash |
-| `~/.local/state` | 30,484,096,236 | 28.39 | daemon state, session state |
-| `/nix/store` | 48,292,600,416 | 44.98 | 37,535 paths, 610 GC roots |
-| `~/Backups` | 23,781,110,001 | 22.15 | off-limits: backup bundles |
-| `~/dracon/backups` | 19,411,474,935 | 18.08 | off-limits: backup bundles |
-| `~/chat` | 7,321,716,379 | 6.82 | agent session data |
-| `/var/log` | 586,361,472 | 0.55 | journals |
-| `~/.local/share/containers` | 243,857,603 | 0.23 | container image storage |
+| Area | Bytes | Verdict | Notes |
+|---|---:|---|---|
+| `~/.local/share` | 27,604,341,781 | needs-operator-call | Unprivileged subtotal; container and Trash descendants denied |
+| `~/.local/state` | 22,657,671,121 | needs-operator-call | Unprivileged subtotal; five service-migration backup directories denied |
+| `~/.local/bin` | 3,087,112,066 | keep | User-installed tools |
+| `/nix/store` | 48,292,600,416 | keep | 8,366,644,248 estimated unreachable output bytes; see Nix section |
+| Agent-tool state (six named tools) | 31,135,381,678 | keep | Exact sum of the six roots below; overlaps `~/.local/share` |
+| `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data |
+| `/var/log` | 562,811,904 | needs-operator-call | Unprivileged subtotal; `/var/log/private` and `/var/log/gdm` denied |
+| `/var/log/journal` | 552,075,264 | clean-with-approval | `journalctl --disk-usage` separately reported 459.7M |
+| `~/.local/share/containers` | 243,857,603 | needs-operator-call | Same measured subtotal as `containers/storage`; protected descendants denied |
+| `~/Backups` | 23,781,110,001 | keep | Backup tree; off-limits to cleaning |
+| `~/dracon/backups` | 19,411,474,935 | keep | Backup bundles; off-limits to cleaning |
 
-## Findings, largest first
+### Agent-tool state inventory
 
-| # | Path | Bytes | GiB | Verdict |
-|---|---|---|---|---|
-| 1 | `~/.local/state/dracon/sync/gates/browser-extensions-shared/dracon-pre-push.*` (4 stale sandboxes) | 10,932,233,354 | 10.18 | clean-with-approval |
-| 2 | `~/.local/share/opencode/snapshot` (53 git-style session snapshots, oldest 2026-04-28) | 5,898,491,422 | 5.49 | needs-operator-call |
-| 3 | `~/.local/state/dracon/protection-repair-2026-10-20/verification-target` | 5,946,756,827 | 5.54 | needs-operator-call |
-| 4 | `~/.local/state/dracon-sync/qualification/canonical-writer-fence-2026-10-27` | 4,183,823,815 | 3.90 | needs-operator-call |
-| 5 | `~/.local/share/muse/sessions` (per-year session store) | 3,701,817,725 | 3.45 | needs-operator-call |
-| 6 | `~/.local/share/pnpm/store` (content-addressable package store) | 2,833,801,709 | 2.64 | clean-with-approval |
-| 7 | `~/.local/share/mimocode/snapshot` | 2,645,718,475 | 2.46 | needs-operator-call |
-| 8 | `~/.codex/packages` (installed daemon/tool packages) | 2,022,254,271 | 1.88 | keep |
-| 9 | `~/.local/share/rtk/history.db` (shell command-history DB, written today) | 1,610,940,416 | 1.50 | needs-operator-call |
-| 10 | `~/.codex/sessions` (conversation history) | 1,120,760,642 | 1.04 | keep |
-| 11 | `~/chat/pi/kimi` | 6,983,789,017 | 6.50 | needs-operator-call |
-| 12 | `/var/log/journal` (systemd journal) | 575,668,224 | 0.54 | clean-with-approval |
-| 13 | `~/.local/share/containers/storage` | 243,857,603 | 0.23 | clean-with-approval |
-| 14 | `~/.local/share/Trash` | 553,895,960 | 0.52 | needs-operator-call |
+| Tool | Measured path(s) | Bytes | Verdict |
+|---|---|---:|---|
+| Codex | `~/.codex` | 4,259,082,138 | keep |
+| Hermes | `~/.hermes` | 2,387,521,841 | keep |
+| OpenCode | `~/.local/share/opencode` + `~/.opencode` | 13,332,068,891 | keep |
+| Pi | `~/.pi` | 5,913,277,992 | keep |
+| Zcode | `~/.zcode` | 2,826,633,061 | keep |
+| Kilocode | `~/.kilocode` | 2,416,797,755 | keep |
+| **Total** | Six named tools, no shared roots | **31,135,381,678** | **keep** |
 
-Top three findings: **10.18 GiB** (stale pre-push sandboxes), **5.54 GiB**
-(repair snapshot), **5.49 GiB** (opencode snapshots).
+The OpenCode total combines 12,429,660,938 bytes at `~/.local/share/opencode`
+and 902,407,953 bytes at `~/.opencode`. The separate `mimocode` directory below
+is not a substitute for any of the six named tools.
 
-## Verdict notes
+## Findings, largest actionable candidates first
 
-**1 — stale pre-push gate sandboxes (10.18 GiB), clean-with-approval.**
-The sync daemon copies the whole repo into
-`~/.local/state/dracon/sync/gates/<repo>/dracon-pre-push.<rand>` for each
-pre-push hook run. Four sandboxes are older than the current day and hold
-3.39 / 3.02 / 2.72 / 1.06 GiB (dated 2026-10-26, 10-27, 10-26, 10-25). The
-daemon is live and its own sandboxes from today (`CckNvr`, `U27Pu7`,
-`bun-cache`, `npm-cache`) must be left alone. These four are leftovers, not
-live work. Safe to remove once the daemon is paused; the durable fix is a
-retention policy inside the daemon, not a manual `rm`.
+Every row has one verdict from `{keep, clean-with-approval, needs-operator-call}`.
+The first three rows are the top three actionable findings by measured bytes.
 
-**2/7 — opencode and mimocode snapshots (7.95 GiB total), needs-operator-call.**
-Each holds one git-style directory per session (`config`, `description`,
-`HEAD`, object store). opencode has 53 snapshot dirs, the oldest from
-2026-04-28; mimocode has its own copy. These are the tools' session-restore
-data — deleting them removes the ability to restore those sessions. No
-opencode or mimocode process is running, so nothing is currently writing them.
-Operator decision: keep N months of history, or drop snapshots older than a
-chosen date.
+| # | Path | Bytes | Verdict |
+|---|---|---:|---|
+| 1 | `~/.local/state/dracon/sync/gates/browser-extensions-shared/dracon-pre-push.*` (48 current-day sandboxes; transient subtotal) | 8,986,622,727 | needs-operator-call |
+| 2 | `~/chat/pi/kimi` | 6,983,789,017 | needs-operator-call |
+| 3 | `~/.local/state/dracon/protection-repair-2026-10-20/verification-target` | 5,942,225,851 | needs-operator-call |
+| 4 | `~/.local/share/opencode/snapshot` | 5,898,491,422 | needs-operator-call |
+| 5 | `~/.local/state/dracon-sync/qualification/canonical-writer-fence-2026-10-27` | 4,167,353,169 | needs-operator-call |
+| 6 | `~/.local/share/muse/sessions` | 3,701,817,725 | needs-operator-call |
+| 7 | `~/.local/share/pnpm/store` | 2,833,801,709 | clean-with-approval |
+| 8 | `~/.local/share/mimocode/snapshot` | 2,645,718,475 | needs-operator-call |
+| 9 | `~/.local/share/rtk/history.db` | 1,612,066,816 | needs-operator-call |
+| 10 | `~/.local/share/Trash` | 553,895,960 | needs-operator-call |
+| 11 | `/var/log/journal` | 552,075,264 | clean-with-approval |
+| 12 | `~/.local/share/containers/storage` | 243,857,603 | needs-operator-call |
+| 13 | `~/.local/state/dracon/sync/gates/browser-extensions-shared/dracon-pre-push.*` (112 directories older than 2026-10-28) | 57,585,810 | clean-with-approval |
 
-**3 — protection-repair snapshot (5.54 GiB), needs-operator-call.**
-A dated, one-off repair artifact from 2026-10-20: a full `verification-target`
-copy. It is the evidence of that repair, not a cache. Keep until the incident
-is closed, then archive or drop.
+The current-day sandbox subtotal varied across repeated reads while hook
+sandboxes were changing. It is therefore a measurement to review, not a claim
+that the copies are stale or safe to remove. The earlier 10,932,233,354-byte
+four-sandbox set from the first report was no longer present at its sampled
+paths during this follow-up; this work did not delete it. A fresh scan found
+112 older sandbox directories totaling 57,585,810 bytes and 48 current-day
+directories. No cleanup was attempted.
 
-**4 — canonical-writer-fence qualification fixture (3.90 GiB), needs-operator-call.**
-A dated test fixture from 2026-10-27. Test scaffolding, not production state,
-but it is what the daemon's qualification run produced — confirm the run is
-finished before removing.
+The pnpm store is content-addressable and any pruning requires approval. The
+OpenCode, Muse, mimocode, Codex, and chat paths contain session or restore data;
+no retention period was assumed. `rtk/history.db` was actively written during
+the measurements. Container storage and Trash have unreadable descendants, so
+they need an operator review rather than a cleanup recommendation.
 
-**6 — pnpm store (2.64 GiB), clean-with-approval.** Content-addressable
-package store; `pnpm store prune` reclaims what no project references. No
-pnpm process is running.
+## Off-limits: sized, never flagged for cleaning
 
-**9 — rtk history.db (1.50 GiB), needs-operator-call.** The shell wrapper's
-command-history database, actively written (last modified today). It is the
-same store that produced the multi-megabyte `~/.local/share/rtk/tee/` logs
-seen during this sweep. It grows without bound — the durable fix is a
-retention/rotation policy for it, not a one-off delete.
+| Path | Size | Verdict |
+|---|---:|---|
+| `~/Videos` | 30,159,410,550 bytes | keep |
+| `~/Pictures` | 39,687,466 bytes | keep |
+| Repository data under `~/Dev` | 365 GiB (prior sweep estimate) | keep |
+| `~/Backups` | 23,781,110,001 bytes | keep |
+| `~/dracon/backups` | 19,411,474,935 bytes | keep |
+| `~/.config` | 16,667,539,386 bytes | keep |
+| `~/.dracon` | 4,201,071,920 bytes | keep |
+| NixOS configuration target `~/.dracon/nixos` (`/etc/nixos` symlink) | 297,401 bytes | keep |
 
-**11 — `~/chat/pi/kimi` (6.50 GiB), needs-operator-call.** Another agent's
-session store, not ours to prune unilaterally.
+`~/Music` does not exist and is not listed as a sized path. Backup bundles,
+media, repository history, and live configuration have no
+`clean-with-approval` verdict.
 
-**12/13/14 — journals, container storage, Trash, clean-with-approval /
-needs-operator-call.** The journal is 492 MB as reported by `journalctl
---disk-usage` and can be vacuumed to a smaller cap. Container storage holds
-one image set. The Trash is 579 MB, partly root-owned (the `dg-clean-host-*`
-and `doomtap.*` entries with an unreadable `owner.key`) — those need `sudo`
-and an operator look first.
+## Nix store: sized only
 
-## Off-limits (sized only, never flagged for cleaning)
-
-- **Media** — `~/Videos` 29 GiB, `~/Music`, `~/Pictures`.
-- **Git history** — every `.git` directory in `~/Dev` (365 GiB of repos).
-- **Backup bundles** — `~/Backups` 22.15 GiB and `~/dracon/backups` 18.08 GiB,
-  including `doomtap-rewrite-20260922` (2.98 GiB),
-  `main1-build-artifacts-20260917` (4.47 GiB),
-  `main1-rollbacks-20260916` (3.65 GiB),
-  `main1-compiler-output-20260917` (1.62 GiB), `auto-prune` (0.71 GiB) and
-  the `history-cleanup` rewrite mirror (0.31 GiB). These are the only copies
-  of rewritten history.
-- **Live configs** — `~/.config` 16 GiB, `~/.dracon`, NixOS configuration.
-
-## Nix store (sized, not touched)
-
-- On-disk: 48,292,600,416 bytes (44.98 GiB apparent), 37,535 store paths at the
-  sweep reading (37,536 by the end of the sweep — nix was installing packages
-  concurrently), 610 GC roots.
-- Reachable from the GC roots: 4,604 paths. The other **32,931 paths
-  (87.7%)** are not referenced by any root: 31,515 of those are `.drv`
-  build recipes (0.11 GiB) and **1,416 are real outputs totalling 7.79 GiB**.
-- Unreachable registrations run 2025-12 → 2026-10.
-- **No GC was run.** `nix-store --gc --print-dead` needs root to read the
-  store DB and returned nothing as this user, so the 7.79 GiB figure is the
-  unreachable-by-roots calculation, not a GC dry-run. The authoritative number
-  is `sudo nix-collect-garbage --dry-run`.
-
-### Proof that no GC ran
-
-The unreachable set was measured twice — at the start and at the end of the
-sweep — and is **identical both times**: 4,604 reachable paths, 32,931
-unreachable, of which 1,416 are real outputs totalling 7.79 GiB. A garbage
-collection would have deleted exactly those 1,416 output paths; they are
-still in the store. That is the evidence that no GC ran.
-
-The GC-root count is NOT such an indicator: it went 610 → 612 during the
-sweep because nix installed packages concurrently on this live host, and a GC
-would not change the root list at all. It is reported above as a measurement,
-not as a no-GC proof.
+- Measured store size: **48,292,600,416 bytes**.
+- The sweep's reachability calculation found 4,604 reachable paths and 32,931
+  paths outside those closures. Of the latter, 31,515 were derivations; 1,416
+  were outputs totaling **8,366,644,248 bytes** (7.79 GiB). This is a
+  read-only unreachable-set estimate, not a prediction that every path will
+  necessarily be reclaimed.
+- No host GC was run by this work. The recorded pre-sweep root count was 610;
+  later observations were 612, 614/615, and follow-up samples of 644, 614, and
+  639 (the last at 16:05 UTC). The required unchanged-root check is therefore
+  **not satisfied**. This is a documented contract deviation requiring
+  operator sign-off; the repeated unreachable-set evidence is supplementary
+  and is not represented as a substitute for that check.
+- The root-count drift occurred while this live host's Nix roots were changing.
+  Nothing here establishes that GC caused the drift, and this report does not
+  claim that the root-count acceptance item passed.
 
 ## Read-only commands used
 
+```text
+du -sx --bytes <path>                         # byte measurements
+ du -x --max-depth=1 --bytes <dir>            # breakdowns
+find <dir> -type f -printf '%s %TY-%Tm-%Td %p\n'  # file sizes and dates
+find <dir> -mindepth 1 -maxdepth 1 -type d    # sandbox enumeration
+ls -la --time-style=+%F <dir>                 # dates and names
+readlink -f /etc/nixos                       # resolve config symlink
+nix-store --gc --print-roots | wc -l          # read-only root listing/count
+nix-store -qR <root paths>                    # read-only reachability closures
+nix path-info --json --all                    # store path metadata
+journalctl --disk-usage                       # journal accounting
 ```
-du -sx --bytes <path>                       # every size in this report
-du -x --max-depth=1 --bytes <dir>           # breakdowns
-ls -la --time-style=+%F <dir>               # ages
-nix-store --gc --print-roots                # 610 roots
-nix-store -qR <roots>                       # 4,604 reachable paths
-nix path-info --json --all                  # 37,535 paths, sizes
-journalctl --disk-usage
-find <dir> -type f -printf '%s %TY-%Tm-%Td %p\n'
+
+`nix-store --gc --print-roots` only prints roots; it does not run collection.
+No clean/apply/delete or host GC command was executed for this sweep.
+
+## Workspace test transcript
+
+The plain environment lacked OpenSSL include/library locations. This exact
+workspace invocation supplied the Nix OpenSSL paths and exited successfully:
+
+```text
+$ cd /home/dracon/Dev/dracon-utilities
+$ OPENSSL_INCLUDE_DIR=/nix/store/cqkz127l4l98xgp7p6y1j2cqvyx0w3jl-openssl-3.6.2-dev/include \
+  OPENSSL_LIB_DIR=/nix/store/by19gg2pqp2b1gqphdf6bwk2g3hgak79-openssl-3.6.2/lib \
+  timeout 1800 cargo test --workspace --locked
+...
+test result: ok. 712 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+...
+test result: ok. 245 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+...
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+...
+44 test-result records; aggregate 2,897 passed; 0 failed
+WORKSPACE_TEST_EXIT=0
 ```
-
-No `rm`, `clean`, `--apply`, `nix-collect-garbage`, `podman system prune` or
-any other mutating command was executed during this sweep.
-
-## Gate note (host under heavy load)
-
-This goal changed NO source code — only this evidence document (verified: the
-only commits since the sweep began touch this file). The gates therefore
-measure the tree as it already stood.
-
-- `cargo test --locked --bin dracon-system` — **exit 0, 712 passed, 0 failed.**
-- `cargo test --locked` (dracon-sync alone) — **exit 0, 1696 passed, 0 failed**
-  across 13 suites.
-- `cargo test --workspace --locked` — does not complete cleanly **while the
-  host is thrashing**. Two attempts were killed or failed under load 58–75 with
-  1–2 GB available:
-  - One `dracon-system` failure: `storage_cleanup_activity_refuses_live_process_binary`
-    panicked with `ExecutableFileBusy` ("Text file busy") at `src/tests.rs:4884`
-    — the documented ETXTBSY flake described at the top of `tests.rs`, for
-    tests that copy a binary and exec it. It passes **3/3** in isolation and
-    the whole crate passes (712/712) when run on its own.
-  - The remaining failures were all in `dracon-sync`
-    (`test_push_with_retries_*`, `test_remove_stale_remotes_*`,
-    `hygiene_generated_ignore_*`) with `failed to spawn` / `No such file` —
-    resource exhaustion under the same load. Running that crate alone passes
-    1696/1696.
-
-The failures are environmental and appear in a sibling crate this goal did not
-touch. Re-running the workspace suite on an idle host is the way to confirm.
