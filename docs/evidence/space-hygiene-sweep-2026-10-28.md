@@ -126,9 +126,11 @@ all have `keep` verdicts and no `clean-with-approval` verdict.
   as 610, followed by 612 and 614/615; an intermediate anchored read was
   636 → 637. During the requested recheck, spot samples at 21:16–21:20 UTC
   ranged 632–637; two root listings 30 seconds apart changed 636 → 638 with
-  four root-list entries different. Roots were still changing, so the full
-  anchored pass was not restarted. These live-host readings do not satisfy the
-  required unchanged-root check.
+  four root-list entries different. A further 19 read-only root-list snapshots
+  from 21:21–21:32 ranged 631–651, with no more than two consecutive identical
+  root lists. Roots were still changing, so the requested full anchored pass
+  was not restarted. These live-host readings do not satisfy the required
+  unchanged-root check.
 - This work executed no garbage-collection command. The objective's unchanged
   root-count acceptance item is **not met** and is recorded as a contract
   deviation requiring operator sign-off. The unchanged reachable set is
