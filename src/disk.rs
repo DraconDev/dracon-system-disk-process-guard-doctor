@@ -771,7 +771,15 @@ pub(crate) fn audit(
                 },
             )
         };
-        report.findings.push(finding.with_references(references));
+        // The governing floor travels WITH the finding: the delete-time
+        // live-churn re-check must compare against the floor that actually
+        // qualified this entry (6h for an e2e-pattern tree, 24h for a
+        // general one), not one global window.
+        report.findings.push(
+            finding
+                .with_references(references)
+                .with_qualifying_floor(floor),
+        );
     }
     let logs = if wanted(TrashClass::TempAndLogs) {
         find_oversized_logs(&LOG_ROOTS, options.tmp_min_age_hours, now)
@@ -1144,32 +1152,41 @@ pub(crate) fn apply_with_floors(
             remaining.push(skipped);
             continue;
         }
-        // Live-churn re-check at DELETE time (2026-10-27, audit HIGH). The
-        // audit already refused to mark a live tree APPLY, but a tree that was
-        // idle during the scan can be written to before this loop runs. The
-        // daemon re-verifies every candidate at kill time for the same reason;
-        // without this, TOCTOU would let `disk clean` delete a tree under
-        // active writes. Re-walk the tree and refuse if any nested content is
-        // newer than the floor that qualified this finding.
+        // Live-churn re-check at DELETE time (2026-10-27, audit HIGH, rework
+        // round). The audit already refused to mark a live tree APPLY, but a
+        // tree that was idle during the scan can be written to before this
+        // loop runs. The daemon re-verifies every candidate at kill time for
+        // the same reason; without this, TOCTOU would let `disk clean`
+        // delete a tree under active writes.
+        //
+        // The comparison uses the floor that QUALIFIED this finding
+        // (`qualifying_floor_hours`), not a global window: a general-floor
+        // (24h) finding must be re-checked against 24h, because content
+        // refreshed to 12h during the gap is still newer than the floor
+        // that made the finding eligible. A finding with no known floor
+        // FAILS CLOSED — the tree is kept.
         if std::fs::symlink_metadata(&finding.path).is_ok_and(|m| m.is_dir()) {
-            let window = tmp_e2e_min_age_hours
-                .max(1)
-                .min(tmp_min_age_hours.max(1));
             let (_, newest) = crate::disk_tmp::directory_bytes_and_age(
                 &finding.path,
                 SystemTime::now(),
             );
-            if window > 0
-                && tmp_min_age_hours > 0
-                && tree_is_live_churn(newest, window)
-            {
+            let churn = match finding.qualifying_floor_hours {
+                Some(floor) => tree_is_live_churn(newest, floor),
+                // No floor known: cannot prove the tree is idle, so keep it.
+                None => true,
+            };
+            if churn {
                 let mut skipped = finding.clone();
                 skipped.disposition = Disposition::Report;
                 let content = newest
                     .map(|age| format!("{age}h"))
                     .unwrap_or_else(|| "unreadable".to_string());
+                let floor_text = finding
+                    .qualifying_floor_hours
+                    .map(|floor| format!("{floor}h"))
+                    .unwrap_or_else(|| "unknown".to_string());
                 skipped.reason = format!(
-                    "became live churn before delete (newest nested content {content}, window {window}h) — kept"
+                    "became live churn before delete (newest nested content {content}, qualifying floor {floor_text}) — kept"
                 );
                 skipped.references = fresh;
                 remaining.push(skipped);
