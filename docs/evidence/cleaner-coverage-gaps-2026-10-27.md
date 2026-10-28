@@ -62,9 +62,17 @@ pub(crate) fn tree_is_live_churn(
   a reason stating both ages so the difference is visible.
 - Unreadable/truncated walk → treated as FRESH (fail closed), matching the
   daemon's walk-error behavior.
-- An EMPTY tree has no content to be fresh, so it falls back to its own mtime —
-  otherwise every empty `systemd-private-*` dir would be permanently
-  undeletable and would bury the real signal.
+- A readable but EMPTY tree has no content to be fresh, so it falls back to its
+  own mtime — otherwise such a dir could never be reclaimed.
+- An UNREADABLE tree fails CLOSED and is reported, not deleted. On this host
+  that is the `systemd-private-*` family: root-owned, mode 0700, so the walk
+  cannot list them at all. Roughly 20 of the ~32 live class-2 findings are
+  exactly these 0-byte dirs, each reported as *"nested content is unreadable
+  (permissions) — cannot prove the tree is idle"*. They are owned by running
+  services and are never deletable by the user account, so REPORT (never
+  APPLY) is the correct disposition. The daemon behaves the same way — its
+  `tree_has_fresh_content` returns "fresh" on a read error and skips the
+  entry entirely.
 
 Live result after the fix:
 
