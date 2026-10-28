@@ -1076,8 +1076,6 @@ pub(crate) fn apply_with_floors(
     report: &mut DiskReport,
     proc_root: &Path,
     git_temp_min_age_hours: u64,
-    tmp_min_age_hours: u64,
-    tmp_e2e_min_age_hours: u64,
 ) -> (u64, Vec<DeletedRecord>) {
     let mut freed = 0u64;
     let mut records = Vec::new();
