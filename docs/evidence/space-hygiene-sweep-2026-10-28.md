@@ -157,10 +157,12 @@ flagged for cleaning.
   paths before and after, with an identical reachable path set**, while the
   store path count stayed at **37,535 before and after**. The GC-root count
   moved **651 → 657** (621 → 627 indirect roots; 30 direct roots in both
-  readings) and six root entries were added, all pointing at existing store
-  paths (`glibc-2.40-224-dev`, `gmp-6.3.0`, `isl-0.20`, `gcc-14.3.0`,
+  readings): eight root entries were added and two removed (net +6), and every
+  added entry points at a store path that already existed
+  (`glibc-2.40-224-dev`, `gmp-6.3.0`, `isl-0.20`, `gcc-14.3.0`,
   `binutils-wrapper-2.44`, `tmuxplugin-resurrect-…`, `mpfr-4.2.2`,
-  `libmpc-1.3.1`).
+  `libmpc-1.3.1`); the removed entries were `ffmpegthumbs-25.08.3` and
+  `taglib-2.1.1`.
 - The earlier anchored pass (20:17–20:29 UTC) read 637 → 633 roots with the
   same 4,606-path reachable set. Read-only root-list spot samples on
   2026-10-28 ranged 616–739 roots between 21:13 and 22:29 UTC, with a
