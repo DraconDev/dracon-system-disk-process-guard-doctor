@@ -1,8 +1,10 @@
 # Space-hygiene sweep — beyond the disk audit (2026-10-28)
 
-Report-only. No user/system data was cleaned or deleted, and no host garbage
-collection was run. The workspace test suite used isolated temporary fixtures.
-The Nix store was sized and compared by reachability only. Primary measurements below are from 2026-10-28 (roughly 15:53–16:05 UTC), with
+Report-only. This work cleaned or deleted no user/system data and executed no
+garbage-collection command. The workspace test suite used isolated temporary
+fixtures. The Nix store was sized and compared by reachability only.
+
+Primary measurements below are from 2026-10-28 (roughly 15:53–16:05 UTC), with
 a separate read-only anchored follow-up at 20:17–20:29 UTC. Live state changed
 during both windows, so byte values are exact `du --bytes` readings for their
 stated pass, not an atomic filesystem snapshot. Follow-up readings are labeled
