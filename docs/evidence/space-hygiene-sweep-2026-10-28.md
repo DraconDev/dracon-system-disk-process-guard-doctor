@@ -1,7 +1,8 @@
 # Space-hygiene sweep — beyond the disk audit (2026-10-28)
 
-Report-only. This work removed nothing and ran no host garbage collection. The
-Nix store was sized and compared by reachability only. Measurements below are
+Report-only. No user/system data was cleaned or deleted, and no host garbage
+collection was run. The workspace test suite used isolated temporary fixtures.
+The Nix store was sized and compared by reachability only. Measurements below are
 readings from 2026-10-28 (roughly 15:53–16:05 UTC); live state changed during
 that window, so each byte value is the exact `du --bytes` output for its
 measurement, not an atomic filesystem snapshot.
@@ -135,7 +136,8 @@ journalctl --disk-usage                       # journal accounting
 ```
 
 `nix-store --gc --print-roots` only prints roots; it does not run collection.
-No clean/apply/delete or host GC command was executed for this sweep.
+No host clean/apply/delete or GC command was executed for this sweep. Any
+workspace-test fixture cleanup was confined to its isolated temporary dirs.
 
 ## Workspace test transcript
 
