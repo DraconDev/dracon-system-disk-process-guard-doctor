@@ -1789,6 +1789,95 @@ mod disk_tests {
     }
 
     #[test]
+    fn the_end_to_end_path_keeps_a_general_floor_tree_refreshed_during_the_gap() {
+        // End-to-end through the REAL functions: `find_temp_cruft` (the
+        // scanner) → the audit's own floor decision → `apply_with_floors`
+        // (the deleter). The bug this guards lived in the WIRING between
+        // them: a global 6h window let a 24h-floor tree be deleted.
+        //
+        // Timeline:
+        //   t0  content 30h old, dir mtime 30h old  → audit says APPLY
+        //   t1  content restored to 12h (mtime-preserving) during the gap
+        //   t2  delete loop runs → must KEEP, because 12h is still newer
+        //       than the 24h floor that qualified it.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+        let now = SystemTime::now();
+        let age = |hours: u64| now - std::time::Duration::from_secs(hours * 3600);
+
+        let general_tree = root.join("general-end-to-end");
+        std::fs::create_dir_all(&general_tree).expect("mkdir");
+        let general_file = general_tree.join("data.bin");
+        std::fs::write(&general_file, b"payload").expect("write");
+        std::fs::File::options()
+            .write(true)
+            .open(&general_file)
+            .expect("open")
+            .set_modified(age(30))
+            .expect("set mtime");
+        std::fs::File::options()
+            .read(true)
+            .open(&general_tree)
+            .expect("open dir")
+            .set_modified(age(30))
+            .expect("set dir mtime");
+
+        // The real scanner, with the production floors (general 24, e2e 6).
+        let patterns = crate::parse_tmp_e2e_patterns(&crate::policy::default_tmp_e2e_patterns());
+        let entries = crate::disk_tmp::find_temp_cruft(&[root.to_str().expect("utf8")], 6, now);
+        let entry = entries
+            .iter()
+            .find(|e| e.path == general_tree)
+            .expect("the tree is scanned");
+        let floor = tmp_cruft_floor(
+            "general-end-to-end",
+            entry.age_hours,
+            &patterns,
+            24,
+            6,
+        )
+        .expect("the tree clears the walk floor");
+        assert_eq!(floor, 24, "a non-pattern name uses the general floor");
+        assert_eq!(entry.newest_content_age_hours, Some(30));
+        assert!(
+            !tree_is_live_churn(entry.newest_content_age_hours, floor),
+            "30h-old content clears the 24h floor: the audit marks it APPLY"
+        );
+
+        // The gap: the tree is rebuilt with mtimes preserved, so its content
+        // is now 12h old — newer than the 24h floor, older than the 6h one.
+        std::fs::File::options()
+            .write(true)
+            .open(&general_file)
+            .expect("open")
+            .set_modified(age(12))
+            .expect("set mtime");
+
+        let mut report = DiskReport::default();
+        report.findings.push(
+            Finding::new(
+                TrashClass::TempAndLogs,
+                general_tree.clone(),
+                entry.bytes,
+                Disposition::Apply,
+                "scanned at audit time".to_string(),
+            )
+            .with_references(crate::disk_refs::ReferenceCapture {
+                refs: Vec::new(),
+                scan_failed: false,
+            })
+            .with_qualifying_floor(floor),
+        );
+        let (freed, records) = apply_with_floors(&mut report, Path::new("/proc"), 6);
+        assert_eq!(freed, 0, "the 24h-floor tree must survive");
+        assert!(records.is_empty());
+        assert!(
+            general_tree.exists(),
+            "content refreshed to 12h is still newer than the 24h floor that qualified the finding"
+        );
+    }
+
+    #[test]
     fn a_path_that_becomes_used_after_the_audit_is_skipped_at_delete_time() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("freshly-used.bin");
