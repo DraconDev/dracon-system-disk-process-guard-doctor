@@ -183,16 +183,16 @@ they need an operator review rather than a cleanup recommendation.
 
 | Path | Size | Verdict |
 |---|---:|---|
-| `~/Videos` | 30,189,183,204 bytes | keep |
-| `~/Pictures` | 43,488,508 bytes | keep |
-| Git history in 27 `.git` directories under `~/Dev` | 63,680,423,733 bytes | keep |
+| `~/Videos` | 30,203,671,682 bytes | keep |
+| `~/Pictures` | 44,300,634 bytes | keep |
+| Git history in 27 `.git` directories under `~/Dev` | 63,767,372,326 bytes | keep |
 | `~/Backups` | 23,781,110,001 bytes | keep |
 | `~/dracon/backups` | 19,411,474,935 bytes | keep |
-| `~/.config` | 16,749,246,523 bytes | keep |
-| `~/.dracon` | 4,333,729,325 bytes | keep |
+| `~/.config` | 16,785,212,713 bytes | keep |
+| `~/.dracon` | 4,355,960,634 bytes | keep |
 | NixOS configuration target `~/.dracon/nixos` (`/etc/nixos` symlink) | 297,401 bytes | keep |
 
-These are exact measured byte values from the final anchored pass, except that
+These are exact measured byte values from the latest anchored pass, except that
 the Git-history row is the sum of `du --bytes` over the 27 discovered `.git`
 directories; it excludes working-tree files. Media, Git history, backup
 bundles, and live configuration all carry `keep` verdicts only; none of them is
@@ -200,45 +200,53 @@ flagged for cleaning.
 
 ## Nix store: sized only
 
-- Primary-pass measured store size: **48,292,600,416 bytes**. The final
-  anchored pass measured **48,739,098,826 bytes** at 22:30 UTC.
+- Primary-pass measured store size: **48,292,600,416 bytes**. The second full
+  pass measured **48,739,098,826 bytes** at 22:30 UTC; the latest full pass
+  measured **48,292,944,394 bytes** at 23:24 UTC.
 - The primary-pass reachability calculation found 4,604 reachable paths and
   32,931 paths outside those closures. Of the latter, 31,515 were derivations;
   1,416 were outputs totaling **8,366,644,248 bytes** (7.79 GiB). This is a
   read-only unreachable-output estimate from the primary pass, not a prediction
   that every path will necessarily be reclaimed.
-- The final anchored pass (22:30:31–22:41:57 UTC) measured **4,604 reachable
+- The second full pass (22:30:31–22:41:57 UTC) measured **4,604 reachable
   paths before and after, with an identical reachable path set**, while the
   store path count stayed at **37,535 before and after**. The GC-root count
   moved **651 → 657** (621 → 627 indirect roots; 30 direct roots in both
-  readings): eight root entries were added and two removed (net +6), and every
-  added entry points at a store path that already existed
-  (`glibc-2.40-224-dev`, `gmp-6.3.0`, `isl-0.20`, `gcc-14.3.0`,
-  `binutils-wrapper-2.44`, `tmuxplugin-resurrect-…`, `mpfr-4.2.2`,
-  `libmpc-1.3.1`); the removed entries were `ffmpegthumbs-25.08.3` and
-  `taglib-2.1.1`.
+  readings): eight root entries were added and two removed (net +6); the added
+  entries pointed at existing store paths, while removed entries were
+  `ffmpegthumbs-25.08.3` and `taglib-2.1.1`.
+- The latest full pass (23:24:56–23:37:03 UTC) measured **4,603 reachable
+  paths before and after, with an identical reachable path set**. Root count
+  changed **635 → 632** (605 → 602 indirect roots; 30 direct roots in both
+  readings), with three entries added (`wl-clipboard-2.3.0`, `xdg-utils-1.2.1`,
+  `xgcc-14.3.0-libgcc`) and six removed (`kcolorpicker-0.3.1`,
+  `libkdcraw-25.08.3`, `gwenview-25.08.3`, `kimageannotator-0.7.2`,
+  `cfitsio-4.6.3`, `exiv2-0.28.8`). The store-entry count also changed
+  **37,535 → 37,532** during this pass; the cause of that inventory change was
+  not established.
 - The earlier anchored pass (20:17–20:29 UTC) read 637 → 633 roots with the
-  same 4,606-path reachable set. Read-only root-list spot samples on
-  2026-10-28 ranged 615–739 roots from 21:13–22:29 UTC; a transient burst
-  ranged 2,616–3,069 at 22:08–22:12 UTC. Samples at 23:08–23:10 were
-  617, 616, 617, 616, 617, and none of the five complete root lists matched
-  the previous list. During that window the `xgcc-14.3.0-libgcc` indirect root
-  was mapped by a live `cargo`/`rustc` process; this work did not start or stop
-  that process. It had exited by 23:11, but five full-list samples at
-  23:12–23:14 still varied 619–649 (642, 643, 619, 644, 649); a further 12
-  samples at 23:14–23:20 varied 623–650, with no more than two consecutive
-  lists identical. The pre-sweep reading was 610 roots, followed by 612 and
-  614/615. The root set on this host therefore does not stay unchanged across
-  a measurement window.
-- This work executed no garbage-collection command. The scheduled collection
-  unit `nix-gc.service` last ran at 2026-10-28 00:00:00 GMT — before the sweep
-  window — and is next scheduled for 2026-10-29 00:00 GMT. The store path count
-  was unchanged across the final anchored pass, which a collection would have
-  reduced.
+  same 4,606-path reachable set. Read-only spot samples on 2026-10-28 ranged
+  615–739 roots from 21:13–22:29 UTC; a transient burst ranged 2,616–3,069 at
+  22:08–22:12 UTC. Samples at 23:08–23:10 were 617, 616, 617, 616, 617, with
+  no identical consecutive full lists. During that interval the
+  `xgcc-14.3.0-libgcc` indirect root was mapped by a live `cargo`/`rustc`
+  process; this work did not start or stop it. It had exited by 23:11, but
+  subsequent lists remained unstable. A five-list stability check at
+  23:21–23:24 finally observed five identical lists at 635 roots, so the full
+  pass was run; the count nevertheless changed to 632 by the end. The pre-sweep
+  reading was 610 roots, followed by 612 and 614/615. Thus even the specified
+  precheck did not guarantee an unchanged count across the full measurement.
+- This work executed no garbage-collection command. At 23:37 UTC the scheduled
+  unit `nix-gc.service` still showed its last start at 2026-10-28 00:00:00 GMT
+  and next run at 2026-10-29 00:00 GMT; the inspected nix-daemon journal window
+  contained no GC/collection text. However, because the store-entry count
+  changed by three during the latest pass and its cause was not established,
+  this evidence does not prove that no external store mutation or collection
+  occurred.
 - The objective's unchanged root-count acceptance item is therefore **not met**
   and is recorded as a contract deviation requiring operator sign-off. The
-  unchanged reachable set and unchanged store path count are supplementary
-  evidence only; they are not substituted for that acceptance item.
+  identical reachable path sets do not substitute for that acceptance item;
+  the latest pass also lacks an unchanged store-entry count.
 
 ## Read-only commands used
 
