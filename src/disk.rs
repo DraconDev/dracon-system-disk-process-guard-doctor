@@ -149,6 +149,13 @@ impl Finding {
         self
     }
 
+    /// Record the age floor that qualified this finding, so the delete-time
+    /// live-churn re-check compares against THAT floor.
+    pub(crate) fn with_qualifying_floor(mut self, hours: u64) -> Self {
+        self.qualifying_floor_hours = Some(hours);
+        self
+    }
+
     /// One report line, in the disposition-first shape the objective asks for.
     pub(crate) fn render(&self) -> String {
         let mut line = format!(
