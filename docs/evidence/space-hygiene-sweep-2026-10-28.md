@@ -190,9 +190,11 @@ flagged for cleaning.
   2026-10-28 ranged 615–739 roots from 21:13–22:29 UTC; a transient burst
   ranged 2,616–3,069 at 22:08–22:12 UTC. Samples at 23:08–23:10 were
   617, 616, 617, 616, 617, and none of the five complete root lists matched
-  the previous list. The pre-sweep reading was 610 roots, followed by 612 and
-  614/615. The root set on this host therefore does not stay unchanged across
-  a measurement window.
+  the previous list. During that window the `xgcc-14.3.0-libgcc` indirect root
+  was mapped by a live `cargo`/`rustc` process; this work did not start or stop
+  that process. The pre-sweep reading was 610 roots, followed by 612 and 614/615.
+  The root set on this host therefore does not stay unchanged across a
+  measurement window.
 - This work executed no garbage-collection command. The scheduled collection
   unit `nix-gc.service` last ran at 2026-10-28 00:00:00 GMT — before the sweep
   window — and is next scheduled for 2026-10-29 00:00 GMT. The store path count
