@@ -4,16 +4,14 @@ Report-only. This work cleaned or deleted no user/system data and executed no
 garbage-collection command. The workspace test suite used isolated temporary
 fixtures. The Nix store was sized and compared by reachability only.
 
-Primary measurements below are from 2026-10-28 (roughly 15:53–16:05 UTC). Two
-read-only full anchored passes were run at 20:17–20:29 UTC and 22:30–22:42 UTC;
-a focused sandbox resample followed at 23:07 UTC, with root-stability sampling
-through 23:20 UTC. Live state changed during every window, so byte values are
-exact `du --bytes` readings for their stated pass, not an atomic filesystem
-snapshot. Area, agent-tool, candidate and
-off-limits tables use the final full anchored pass (22:30–22:42 UTC); the
-primary-pass candidate table and its top-three list are kept alongside it.
-The later sandbox decomposition is separately labeled and is not a new global
-candidate ranking.
+Primary measurements below are from 2026-10-28 (roughly 15:53–16:05 UTC). Three
+read-only full anchored passes were run at 20:17–20:29, 22:30–22:42, and
+23:24–23:37 UTC; focused sandbox resampling and root-stability checks followed.
+Live state changed during every window, so byte values are exact `du --bytes`
+readings for their stated pass, not an atomic filesystem snapshot. Area,
+agent-tool and off-limits tables use the latest full pass (23:24–23:37 UTC);
+all candidate-ranking tables are individually pass-labeled. The sandbox
+sub-decomposition tables are separate and are not new global rankings.
 
 This supplements `leftover-audit-2026-10-27.md` and
 `cleaner-coverage-gaps-2026-10-27.md`. Area rows intentionally overlap: for
@@ -30,14 +28,14 @@ complete privileged measurement remains an operator follow-up.
 
 | Area | Bytes | Verdict | Notes |
 |---|---:|---|---|
-| `~/.local/share` | 27,611,821,984 | needs-operator-call | Unprivileged subtotal; container and Trash descendants denied |
-| `~/.local/state` | 28,451,892,662 | needs-operator-call | Unprivileged subtotal; protected descendants denied |
+| `~/.local/share` | 27,611,876,629 | needs-operator-call | Unprivileged subtotal; container and Trash descendants denied |
+| `~/.local/state` | 29,059,432,587 | needs-operator-call | Unprivileged subtotal; protected descendants denied |
 | `~/.local/bin` | 3,087,112,036 | keep | User-installed tools |
-| `/nix/store` | 48,739,098,826 | keep | Final anchored pass; 8,366,644,248 estimated unreachable output bytes from the primary pass; see Nix section |
-| Agent-tool state (six named tools) | 31,288,814,802 | keep | Exact sum of the six roots below; overlaps `~/.local/share` |
+| `/nix/store` | 48,292,944,394 | keep | Latest anchored pass; 8,366,644,248 estimated unreachable output bytes from the primary pass; see Nix section |
+| Agent-tool state (six named tools) | 31,295,594,876 | keep | Exact sum of the six roots below; overlaps `~/.local/share` |
 | `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data |
-| `/var/log` | 613,299,456 | needs-operator-call | Unprivileged subtotal; `/var/log/private` and `/var/log/gdm` denied |
-| `/var/log/journal` | 602,406,912 | clean-with-approval | `du` size from the final anchored pass; a separate `journalctl --disk-usage` reading at approximately 21:05 UTC reported 475.7M |
+| `/var/log` | 613,302,528 | needs-operator-call | Unprivileged subtotal; `/var/log/private` and `/var/log/gdm` denied |
+| `/var/log/journal` | 602,406,912 | clean-with-approval | `du` size from the latest anchored pass; a separate `journalctl --disk-usage` reading at approximately 21:05 UTC reported 475.7M |
 | `~/.local/share/containers` | 243,857,603 | needs-operator-call | Unprivileged subtotal; `containers/storage` separately measured 243,759,299 bytes |
 | `~/Backups` | 23,781,110,001 | keep | Backup tree; off-limits to cleaning |
 | `~/dracon/backups` | 19,411,474,935 | keep | Backup bundles; off-limits to cleaning |
@@ -46,13 +44,13 @@ complete privileged measurement remains an operator follow-up.
 
 | Tool | Measured path(s) | Bytes | Verdict |
 |---|---|---:|---|
-| Codex | `~/.codex` | 4,262,047,464 | keep |
+| Codex | `~/.codex` | 4,258,570,597 | keep |
 | Hermes | `~/.hermes` | 2,387,521,841 | keep |
 | OpenCode | `~/.local/share/opencode` + `~/.opencode` | 13,332,068,891 | keep |
-| Pi | `~/.pi` | 6,063,745,790 | keep |
+| Pi | `~/.pi` | 6,074,002,731 | keep |
 | Zcode | `~/.zcode` | 2,826,633,061 | keep |
 | Kilocode | `~/.kilocode` | 2,416,797,755 | keep |
-| **Total** | Six named tools, no shared roots | **31,288,814,802** | **keep** |
+| **Total** | Six named tools, no shared roots | **31,295,594,876** | **keep** |
 
 The OpenCode total combines 12,429,660,938 bytes at `~/.local/share/opencode`
 and 902,407,953 bytes at `~/.opencode`. The separate `mimocode` directory below
