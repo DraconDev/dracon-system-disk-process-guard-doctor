@@ -6,9 +6,10 @@ fixtures. The Nix store was sized and compared by reachability only.
 
 Primary measurements below are from 2026-10-28 (roughly 15:53–16:05 UTC). Two
 read-only full anchored passes were run at 20:17–20:29 UTC and 22:30–22:42 UTC;
-a focused sandbox resample followed at 23:07 UTC. Live state changed during
-every window, so byte values are exact `du --bytes` readings for their stated
-pass, not an atomic filesystem snapshot. Area, agent-tool, candidate and
+a focused sandbox resample followed at 23:07 UTC, with root-stability sampling
+through 23:20 UTC. Live state changed during every window, so byte values are
+exact `du --bytes` readings for their stated pass, not an atomic filesystem
+snapshot. Area, agent-tool, candidate and
 off-limits tables use the final full anchored pass (22:30–22:42 UTC); the
 primary-pass candidate table and its top-three list are kept alongside it.
 The later sandbox decomposition is separately labeled and is not a new global
@@ -192,11 +193,12 @@ flagged for cleaning.
   617, 616, 617, 616, 617, and none of the five complete root lists matched
   the previous list. During that window the `xgcc-14.3.0-libgcc` indirect root
   was mapped by a live `cargo`/`rustc` process; this work did not start or stop
-  that process. It had exited by 23:11, but five subsequent full-list samples
-  at 23:12–23:14 still varied 619–649 (642, 643, 619, 644, 649), with no
-  consecutive lists identical. The pre-sweep reading was 610 roots, followed by
-  612 and 614/615. The root set on this host therefore does not stay unchanged
-  across a measurement window.
+  that process. It had exited by 23:11, but five full-list samples at
+  23:12–23:14 still varied 619–649 (642, 643, 619, 644, 649); a further 12
+  samples at 23:14–23:20 varied 623–650, with no more than two consecutive
+  lists identical. The pre-sweep reading was 610 roots, followed by 612 and
+  614/615. The root set on this host therefore does not stay unchanged across
+  a measurement window.
 - This work executed no garbage-collection command. The scheduled collection
   unit `nix-gc.service` last ran at 2026-10-28 00:00:00 GMT — before the sweep
   window — and is next scheduled for 2026-10-29 00:00 GMT. The store path count
