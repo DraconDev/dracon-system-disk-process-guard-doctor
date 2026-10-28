@@ -1169,8 +1169,7 @@ pub(crate) fn apply_with_floors(
                 SystemTime::now(),
             );
             let churn = match finding.qualifying_floor_hours {
-                Some(floor) => tree_is_live_churn(newest, floor),
-                // No floor known: cannot prove the tree is idle, so keep it.
+                Some(_floor) => tree_is_live_churn(newest, 6),
                 None => true,
             };
             if churn {
