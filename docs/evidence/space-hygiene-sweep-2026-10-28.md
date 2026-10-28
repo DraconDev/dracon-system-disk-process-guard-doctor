@@ -63,8 +63,8 @@ The first three rows are the top three actionable findings by bytes in the
 first sweep report (15:53–16:05 UTC), ordered by their exact `du --bytes`
 readings: **10,932,233,354 / 6,983,789,017 / 5,946,756,827 bytes**. Rows 1, 3
 and 5 carry the first report's readings; row 12 was re-measured in the
-20:17 UTC resample, and every other row in this table repeats its value in
-the final resample below.
+20:17 UTC resample. The remaining primary-pass readings are retained as
+historical context; subsequent full-pass rankings follow below.
 
 | # | Path | Bytes | Verdict |
 |---|---|---:|---|
@@ -84,12 +84,12 @@ the final resample below.
 | 14 | `~/.local/share/containers/storage` | 243,759,299 | needs-operator-call |
 | 15 | `~/.local/state/dracon/sync/gates/browser-extensions-shared/dracon-pre-push.*` (112 directories older than 2026-10-28) | 57,585,810 | clean-with-approval |
 
-### Latest full anchored pass (22:30–22:42 UTC)
+### Second full anchored pass (22:30–22:42 UTC)
 
-The same candidates re-measured in the final anchored pass, again sorted by
+The same candidates re-measured in the second anchored pass, again sorted by
 bytes. Top three in this pass: **10,089,320,961 / 9,345,044,328 /
-6,983,789,017 bytes**. Both tables are the same paths at different moments on
-a live host; neither is a claim that a candidate is stale or safe to remove.
+6,983,789,017 bytes**. These tables show different moments on a live host;
+neither is a claim that a candidate is stale or safe to remove.
 
 | # | Path | Bytes | Verdict |
 |---|---|---:|---|
@@ -139,6 +139,39 @@ was a separate call about 47 seconds earlier.
 The 71-directory and 112-directory totals sum exactly to the 183-directory
 result in this resample. These nested scopes overlap the whole-directory size
 and must not be added to it.
+
+### Latest full anchored pass (23:24–23:37 UTC)
+
+Top three in this pass: **9,872,972,432 / 9,521,175,879 /
+6,983,789,017 bytes**. The full candidate ranking is sorted by its exact
+`du --bytes` readings; the first gate-directory row is a whole-tree size.
+
+| # | Path | Bytes | Verdict |
+|---|---|---:|---|
+| 1 | `~/.local/state/dracon-sync/qualification/canonical-writer-fence-2026-10-27` | 9,872,972,432 | needs-operator-call |
+| 2 | `~/.local/state/dracon/sync/gates/browser-extensions-shared` (whole-tree `du`; included 184 sandbox directories) | 9,521,175,879 | needs-operator-call |
+| 3 | `~/chat/pi/kimi` | 6,983,789,017 | needs-operator-call |
+| 4 | `~/.local/state/dracon/protection-repair-2026-10-20/verification-target` | 5,942,225,851 | needs-operator-call |
+| 5 | `~/.local/share/opencode/snapshot` | 5,898,491,422 | needs-operator-call |
+| 6 | `~/.local/share/muse/sessions` | 3,701,928,542 | needs-operator-call |
+| 7 | `~/.local/share/pnpm/store` | 2,833,801,709 | clean-with-approval |
+| 8 | `~/.local/share/mimocode/snapshot` | 2,645,718,475 | needs-operator-call |
+| 9 | `~/.codex/packages` | 2,022,254,271 | keep |
+| 10 | `~/.local/share/rtk/history.db` | 1,612,664,832 | needs-operator-call |
+| 11 | `~/.codex/sessions` | 1,120,760,642 | keep |
+| 12 | `/var/log/journal` | 602,406,912 | clean-with-approval |
+| 13 | `~/.local/share/Trash` | 553,895,960 | needs-operator-call |
+| 14 | `~/.local/share/containers/storage` | 243,759,299 | needs-operator-call |
+| 15 | `~/.local/state/dracon/sync/gates/browser-extensions-shared/dracon-pre-push.*` (112 directories older than 2026-10-28) | 57,585,810 | clean-with-approval |
+
+In this pass the gate-directory tree measured 9,521,175,879 bytes; one `du`
+call over all 184 matching sandbox directories reported 8,661,956,035 bytes.
+Separate date-filtered calls reported 72 directories from 2026-10-28 at
+8,004,103,365 bytes and the same 112 older directories at 57,585,810 bytes.
+Their subtotal is lower than the all-directory reading by 600,266,860 bytes;
+these live, separate measurements do not reconcile, and no hardlink explanation
+is assumed. The writer-fence candidate increased from 9,345,044,328 bytes in
+the 22:30 pass to 9,872,972,432 bytes here. No cleanup was attempted.
 
 The pnpm store is content-addressable and any pruning requires approval. The
 OpenCode, Muse, mimocode, Codex, and chat paths contain session or restore data;
