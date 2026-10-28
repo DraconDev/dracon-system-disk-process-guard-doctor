@@ -4,11 +4,13 @@ Report-only. This work cleaned or deleted no user/system data and executed no
 garbage-collection command. The workspace test suite used isolated temporary
 fixtures. The Nix store was sized and compared by reachability only.
 
-Primary measurements below are from 2026-10-28 (roughly 15:53–16:05 UTC), with
-a separate read-only anchored follow-up at 20:17–20:29 UTC. Live state changed
-during both windows, so byte values are exact `du --bytes` readings for their
-stated pass, not an atomic filesystem snapshot. Follow-up readings are labeled
-where they differ from the primary pass.
+Primary measurements below are from 2026-10-28 (roughly 15:53–16:05 UTC). Two
+read-only anchored follow-up passes were run at 20:17–20:29 UTC and
+22:30–22:42 UTC. Live state changed during every window, so byte values are
+exact `du --bytes` readings for their stated pass, not an atomic filesystem
+snapshot. Area, agent-tool, candidate and off-limits tables use the final
+anchored pass (22:30–22:42 UTC); the primary-pass candidate table and its
+top-three list are kept alongside it, and every row names its pass.
 
 This supplements `leftover-audit-2026-10-27.md` and
 `cleaner-coverage-gaps-2026-10-27.md`. Area rows intentionally overlap: for
@@ -25,15 +27,15 @@ complete privileged measurement remains an operator follow-up.
 
 | Area | Bytes | Verdict | Notes |
 |---|---:|---|---|
-| `~/.local/share` | 27,611,094,805 | needs-operator-call | Follow-up unprivileged subtotal; container and Trash descendants denied |
-| `~/.local/state` | 21,092,958,816 | needs-operator-call | Follow-up unprivileged subtotal; protected descendants denied |
-| `~/.local/bin` | 3,087,112,036 | keep | Follow-up size; user-installed tools |
-| `/nix/store` | 48,292,600,416 | keep | Primary-pass size; 8,366,644,248 estimated unreachable output bytes. Follow-up size: 49,080,070,864; see Nix section |
-| Agent-tool state (six named tools) | 31,233,361,770 | keep | Follow-up sum of the six roots below; overlaps `~/.local/share` |
+| `~/.local/share` | 27,611,821,984 | needs-operator-call | Unprivileged subtotal; container and Trash descendants denied |
+| `~/.local/state` | 28,451,892,662 | needs-operator-call | Unprivileged subtotal; protected descendants denied |
+| `~/.local/bin` | 3,087,112,036 | keep | User-installed tools |
+| `/nix/store` | 48,739,098,826 | keep | Final anchored pass; 8,366,644,248 estimated unreachable output bytes from the primary pass; see Nix section |
+| Agent-tool state (six named tools) | 31,288,814,802 | keep | Exact sum of the six roots below; overlaps `~/.local/share` |
 | `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data |
-| `/var/log` | 571,318,784 | needs-operator-call | Follow-up unprivileged subtotal; `/var/log/private` and `/var/log/gdm` denied |
-| `/var/log/journal` | 560,463,872 | clean-with-approval | Follow-up `du` size; separate later `journalctl --disk-usage` reading was 475.7M |
-| `~/.local/share/containers` | 243,857,603 | needs-operator-call | Follow-up unprivileged subtotal; `containers/storage` separately measured 243,759,299 bytes |
+| `/var/log` | 613,299,456 | needs-operator-call | Unprivileged subtotal; `/var/log/private` and `/var/log/gdm` denied |
+| `/var/log/journal` | 602,406,912 | clean-with-approval | `du` size from the final anchored pass; `journalctl --disk-usage` separately reported 475.7M at 20:3x UTC |
+| `~/.local/share/containers` | 243,857,603 | needs-operator-call | Unprivileged subtotal; `containers/storage` separately measured 243,759,299 bytes |
 | `~/Backups` | 23,781,110,001 | keep | Backup tree; off-limits to cleaning |
 | `~/dracon/backups` | 19,411,474,935 | keep | Backup bundles; off-limits to cleaning |
 
@@ -41,13 +43,13 @@ complete privileged measurement remains an operator follow-up.
 
 | Tool | Measured path(s) | Bytes | Verdict |
 |---|---|---:|---|
-| Codex | `~/.codex` | 4,259,339,796 | keep |
+| Codex | `~/.codex` | 4,262,047,464 | keep |
 | Hermes | `~/.hermes` | 2,387,521,841 | keep |
 | OpenCode | `~/.local/share/opencode` + `~/.opencode` | 13,332,068,891 | keep |
-| Pi | `~/.pi` | 6,014,958,664 | keep |
+| Pi | `~/.pi` | 6,063,745,790 | keep |
 | Zcode | `~/.zcode` | 2,826,633,061 | keep |
-| Kilocode | `~/.kilocode` | 2,412,839,517 | keep |
-| **Total** | Six named tools, no shared roots | **31,233,361,770** | **keep** |
+| Kilocode | `~/.kilocode` | 2,416,797,755 | keep |
+| **Total** | Six named tools, no shared roots | **31,288,814,802** | **keep** |
 
 The OpenCode total combines 12,429,660,938 bytes at `~/.local/share/opencode`
 and 902,407,953 bytes at `~/.opencode`. The separate `mimocode` directory below
@@ -57,8 +59,8 @@ is an additional candidate, not a substitute for any of the six named tools.
 
 Every row has one verdict from `{keep, clean-with-approval, needs-operator-call}`.
 The first three rows are the top three actionable findings by bytes in the
-primary pass, ordered by their exact `du --bytes` readings. Later live resamples
-are identified separately and do not rewrite that ranking.
+primary pass (15:53–16:05 UTC), ordered by their exact `du --bytes` readings:
+**10,932,233,354 / 6,983,789,017 / 5,946,756,827 bytes**.
 
 | # | Path | Bytes | Verdict |
 |---|---|---:|---|
@@ -78,13 +80,41 @@ are identified separately and do not rewrite that ranking.
 | 14 | `~/.local/share/containers/storage` | 243,759,299 | needs-operator-call |
 | 15 | `~/.local/state/dracon/sync/gates/browser-extensions-shared/dracon-pre-push.*` (112 directories older than 2026-10-28) | 57,585,810 | clean-with-approval |
 
-The primary top-three byte values are the sums/readings from `du -sx --bytes`;
-the four original sandbox paths were no longer present at their sampled paths
-in the later follow-up, and this work did not delete them. In the 20:17–20:29
-anchored follow-up, a new census found 65 current-day sandbox directories
-(total 8,991,355,495 bytes) and 112 older directories (57,585,810 bytes). These
-changing sandbox measurements are evidence to review, not a claim that live
-copies are stale or safe to remove. No cleanup was attempted.
+### Latest resample (final anchored pass, 22:30–22:42 UTC)
+
+The same candidates re-measured in the final anchored pass, again sorted by
+bytes. Top three in this pass: **10,089,320,961 / 9,345,044,328 /
+6,983,789,017 bytes**. Both tables are the same paths at different moments on
+a live host; neither is a claim that a candidate is stale or safe to remove.
+
+| # | Path | Bytes | Verdict |
+|---|---|---:|---|
+| 1 | `~/.local/state/dracon/sync/gates/browser-extensions-shared` (182 sandbox directories) | 10,089,320,961 | needs-operator-call |
+| 2 | `~/.local/state/dracon-sync/qualification/canonical-writer-fence-2026-10-27` | 9,345,044,328 | needs-operator-call |
+| 3 | `~/chat/pi/kimi` | 6,983,789,017 | needs-operator-call |
+| 4 | `~/.local/state/dracon/protection-repair-2026-10-20/verification-target` | 5,942,225,851 | needs-operator-call |
+| 5 | `~/.local/share/opencode/snapshot` | 5,898,491,422 | needs-operator-call |
+| 6 | `~/.local/share/muse/sessions` | 3,701,928,542 | needs-operator-call |
+| 7 | `~/.local/share/pnpm/store` | 2,833,801,709 | clean-with-approval |
+| 8 | `~/.local/share/mimocode/snapshot` | 2,645,718,475 | needs-operator-call |
+| 9 | `~/.codex/packages` | 2,022,254,271 | keep |
+| 10 | `~/.local/share/rtk/history.db` | 1,612,066,832 | needs-operator-call |
+| 11 | `~/.codex/sessions` | 1,120,760,642 | keep |
+| 12 | `/var/log/journal` | 602,406,912 | clean-with-approval |
+| 13 | `~/.local/share/Trash` | 553,895,960 | needs-operator-call |
+| 14 | `~/.local/share/containers/storage` | 243,759,299 | needs-operator-call |
+| 15 | `~/.local/state/dracon/sync/gates/browser-extensions-shared/dracon-pre-push.*` (112 directories older than 2026-10-28) | 57,585,810 | clean-with-approval |
+
+The four original sandbox paths in primary row 1 no longer exist at their
+sampled names; this work did not delete them. The two largest sandbox
+directories present in the final pass were `dracon-pre-push.U27Pu7`
+(2,994,434,549 bytes) and `dracon-pre-push.6DbN2k` (2,983,485,489 bytes).
+The current-day sandbox subset (70 directories) measured 8,149,133,488 bytes and
+the older subset (112 directories) 57,585,810 bytes; these are separate `du`
+invocations, so hardlinked content can be counted in both subsets, while the
+whole-tree figure (8,704,883,941 bytes) is the de-duplicated one. The
+canonical-writer-fence candidate grew from 4,183,823,815 to 9,345,044,328
+bytes during the sweep window. No cleanup was attempted.
 
 The pnpm store is content-addressable and any pruning requires approval. The
 OpenCode, Muse, mimocode, Codex, and chat paths contain session or restore data;
@@ -96,47 +126,53 @@ they need an operator review rather than a cleanup recommendation.
 
 | Path | Size | Verdict |
 |---|---:|---|
-| `~/Videos` | 30,164,030,821 bytes | keep |
-| `~/Pictures` | 43,059,919 bytes | keep |
-| Git history in 27 `.git` directories under `~/Dev` | 63,458,042,388 bytes | keep |
+| `~/Videos` | 30,189,183,204 bytes | keep |
+| `~/Pictures` | 43,488,508 bytes | keep |
+| Git history in 27 `.git` directories under `~/Dev` | 63,680,423,733 bytes | keep |
 | `~/Backups` | 23,781,110,001 bytes | keep |
 | `~/dracon/backups` | 19,411,474,935 bytes | keep |
-| `~/.config` | 16,816,247,909 bytes | keep |
-| `~/.dracon` | 4,293,937,793 bytes | keep |
+| `~/.config` | 16,749,246,523 bytes | keep |
+| `~/.dracon` | 4,333,729,325 bytes | keep |
 | NixOS configuration target `~/.dracon/nixos` (`/etc/nixos` symlink) | 297,401 bytes | keep |
 
-These are exact measured byte values except that the Git-history row is the
-sum of `du --bytes` over the 27 discovered `.git` directories; it excludes
-working-tree files. Media, Git history, backup bundles, and live configuration
-all have `keep` verdicts and no `clean-with-approval` verdict.
+These are exact measured byte values from the final anchored pass, except that
+the Git-history row is the sum of `du --bytes` over the 27 discovered `.git`
+directories; it excludes working-tree files. Media, Git history, backup
+bundles, and live configuration all have `keep` verdicts and no
+`clean-with-approval` verdict.
 
 ## Nix store: sized only
 
-- Primary-pass measured store size: **48,292,600,416 bytes**. The anchored
-  follow-up measured **49,080,070,864 bytes** at 20:17 UTC.
+- Primary-pass measured store size: **48,292,600,416 bytes**. The final
+  anchored pass measured **48,739,098,826 bytes** at 22:30 UTC.
 - The primary-pass reachability calculation found 4,604 reachable paths and
   32,931 paths outside those closures. Of the latter, 31,515 were derivations;
   1,416 were outputs totaling **8,366,644,248 bytes** (7.79 GiB). This is a
   read-only unreachable-output estimate from the primary pass, not a prediction
   that every path will necessarily be reclaimed.
-- The anchored follow-up at 20:17–20:29 UTC measured 4,606 reachable paths
-  before and after, while the store entry count moved 37,540 → 37,979. The
-  reachable path set was identical, but the GC-root count moved **637 → 633**
-  and the root set changed. Earlier observations recorded the pre-sweep count
-  as 610, followed by 612 and 614/615; an intermediate anchored read was
-  636 → 637. During the requested recheck, spot samples at 21:16–21:20 UTC
-  ranged 632–637; two root listings 30 seconds apart changed 636 → 638 with
-  four root-list entries different. A further 19 read-only root-list snapshots
-  from 21:21–21:32 ranged 631–651, with no more than two consecutive identical
-  root lists. Roots were still changing, so the requested full anchored pass
-  was not restarted. These live-host readings do not satisfy the required
-  unchanged-root check.
-- This work executed no garbage-collection command. The objective's unchanged
-  root-count acceptance item is **not met** and is recorded as a contract
-  deviation requiring operator sign-off. The unchanged reachable set is
-  supplementary evidence only; it is not substituted for that acceptance item.
-  Nothing here establishes that host activity caused by another process did or
-  did not run a collection.
+- The final anchored pass (22:30:31–22:41:57 UTC) measured **4,604 reachable
+  paths before and after, with an identical reachable path set**, while the
+  store path count stayed at **37,535 before and after**. The GC-root count
+  moved **651 → 657** (621 → 627 indirect roots; 30 direct roots in both
+  readings) and six root entries were added, all pointing at existing store
+  paths (`glibc-2.40-224-dev`, `gmp-6.3.0`, `isl-0.20`, `gcc-14.3.0`,
+  `binutils-wrapper-2.44`, `tmuxplugin-resurrect-…`, `mpfr-4.2.2`,
+  `libmpc-1.3.1`).
+- The earlier anchored pass (20:17–20:29 UTC) read 637 → 633 roots with the
+  same 4,606-path reachable set. Read-only root-list spot samples on
+  2026-10-28 ranged 616–739 roots between 21:13 and 22:29 UTC, with a
+  transient reading of 3,066 at 22:09–22:12 UTC. The pre-sweep reading was 610
+  roots, followed by 612 and 614/615. The root set on this host therefore does
+  not stay unchanged across a measurement window.
+- This work executed no garbage-collection command. The scheduled collection
+  unit `nix-gc.service` last ran at 2026-10-28 00:00:00 GMT — before the sweep
+  window — and is next scheduled for 2026-10-29 00:00 GMT. The store path count
+  was unchanged across the final anchored pass, which a collection would have
+  reduced.
+- The objective's unchanged root-count acceptance item is therefore **not met**
+  and is recorded as a contract deviation requiring operator sign-off. The
+  unchanged reachable set and unchanged store path count are supplementary
+  evidence only; they are not substituted for that acceptance item.
 
 ## Read-only commands used
 
@@ -151,6 +187,10 @@ nix-store --gc --print-roots | wc -l          # read-only root listing/count
 nix-store -qR <root store paths>              # read-only reachability closure query
 nix path-info --json --all                    # store path metadata
 journalctl --disk-usage                       # journal accounting
+journalctl -u nix-daemon.service --since ...  # daemon log inspection
+systemctl show nix-gc.service -p ExecMainStartTimestamp  # timer metadata only
+ls -1 /nix/var/nix/gcroots/auto               # registered root symlinks
+find /nix/store -mindepth 1 -maxdepth 1        # store path enumeration
 ```
 
 `nix-store --gc --print-roots` only prints roots; despite the option name, it
