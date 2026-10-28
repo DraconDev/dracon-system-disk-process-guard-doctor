@@ -5,12 +5,14 @@ garbage-collection command. The workspace test suite used isolated temporary
 fixtures. The Nix store was sized and compared by reachability only.
 
 Primary measurements below are from 2026-10-28 (roughly 15:53–16:05 UTC). Two
-read-only anchored follow-up passes were run at 20:17–20:29 UTC and
-22:30–22:42 UTC. Live state changed during every window, so byte values are
-exact `du --bytes` readings for their stated pass, not an atomic filesystem
-snapshot. Area, agent-tool, candidate and off-limits tables use the final
-anchored pass (22:30–22:42 UTC); the primary-pass candidate table and its
-top-three list are kept alongside it, and every row names its pass.
+read-only full anchored passes were run at 20:17–20:29 UTC and 22:30–22:42 UTC;
+a focused sandbox resample followed at 23:07 UTC. Live state changed during
+every window, so byte values are exact `du --bytes` readings for their stated
+pass, not an atomic filesystem snapshot. Area, agent-tool, candidate and
+off-limits tables use the final full anchored pass (22:30–22:42 UTC); the
+primary-pass candidate table and its top-three list are kept alongside it.
+The later sandbox decomposition is separately labeled and is not a new global
+candidate ranking.
 
 This supplements `leftover-audit-2026-10-27.md` and
 `cleaner-coverage-gaps-2026-10-27.md`. Area rows intentionally overlap: for
@@ -83,7 +85,7 @@ the final resample below.
 | 14 | `~/.local/share/containers/storage` | 243,759,299 | needs-operator-call |
 | 15 | `~/.local/state/dracon/sync/gates/browser-extensions-shared/dracon-pre-push.*` (112 directories older than 2026-10-28) | 57,585,810 | clean-with-approval |
 
-### Latest resample (final anchored pass, 22:30–22:42 UTC)
+### Latest full anchored pass (22:30–22:42 UTC)
 
 The same candidates re-measured in the final anchored pass, again sorted by
 bytes. Top three in this pass: **10,089,320,961 / 9,345,044,328 /
@@ -92,7 +94,7 @@ a live host; neither is a claim that a candidate is stale or safe to remove.
 
 | # | Path | Bytes | Verdict |
 |---|---|---:|---|
-| 1 | `~/.local/state/dracon/sync/gates/browser-extensions-shared` (182 sandbox directories) | 10,089,320,961 | needs-operator-call |
+| 1 | `~/.local/state/dracon/sync/gates/browser-extensions-shared` (whole-tree `du`; included 182 sandbox directories) | 10,089,320,961 | needs-operator-call |
 | 2 | `~/.local/state/dracon-sync/qualification/canonical-writer-fence-2026-10-27` | 9,345,044,328 | needs-operator-call |
 | 3 | `~/chat/pi/kimi` | 6,983,789,017 | needs-operator-call |
 | 4 | `~/.local/state/dracon/protection-repair-2026-10-20/verification-target` | 5,942,225,851 | needs-operator-call |
@@ -109,15 +111,35 @@ a live host; neither is a claim that a candidate is stale or safe to remove.
 | 15 | `~/.local/state/dracon/sync/gates/browser-extensions-shared/dracon-pre-push.*` (112 directories older than 2026-10-28) | 57,585,810 | clean-with-approval |
 
 The four original sandbox paths in primary row 1 no longer exist at their
-sampled names; this work did not delete them. The two largest sandbox
-directories present in the final pass were `dracon-pre-push.U27Pu7`
-(2,994,434,549 bytes) and `dracon-pre-push.6DbN2k` (2,983,485,489 bytes).
-The current-day sandbox subset (70 directories) measured 8,149,133,488 bytes and
-the older subset (112 directories) 57,585,810 bytes; these are separate `du`
-invocations, so hardlinked content can be counted in both subsets, while the
-whole-tree figure (8,704,883,941 bytes) is the de-duplicated one. The
-canonical-writer-fence candidate grew from 4,183,823,815 to 9,345,044,328
-bytes during the sweep window. No cleanup was attempted.
+sampled names; this work did not delete them. In the 22:30 pass, the two largest
+sandbox directories were `dracon-pre-push.U27Pu7` (2,994,434,549 bytes) and
+`dracon-pre-push.6DbN2k` (2,983,485,489 bytes). The whole gate directory measured
+10,089,320,961 bytes; one `du` call over all 182 matching sandbox directories
+reported 8,704,883,941 bytes. Separate date-filtered calls reported 70
+current-day directories at 8,149,133,488 bytes and 112 older directories at
+57,585,810 bytes. Those subset sums are lower than the all-directory reading,
+so the difference is attributed to live changes between separate `du` calls;
+no hardlink de-duplication explanation is assumed. The canonical-writer-fence
+candidate grew from 4,183,823,815 to 9,345,044,328 bytes during the sweep
+window. No cleanup was attempted.
+
+### Sandbox decomposition spot-resample (23:07–23:08 UTC)
+
+This is a later size decomposition of the same overlapping gate area, not a
+new global findings ranking. One `du` call over the 183 sandbox directories
+produced the exact matching today/older subtotals below; the whole-tree read
+was a separate call about 47 seconds earlier.
+
+| Scope | Bytes | Verdict |
+|---|---:|---|
+| Whole `browser-extensions-shared` directory | 11,243,084,228 | needs-operator-call |
+| All 183 `dracon-pre-push.*` directories | 9,066,337,298 | needs-operator-call |
+| 71 directories dated 2026-10-28 | 9,008,751,488 | needs-operator-call |
+| 112 directories older than 2026-10-28 | 57,585,810 | clean-with-approval |
+
+The 71-directory and 112-directory totals sum exactly to the 183-directory
+result in this resample. These nested scopes overlap the whole-directory size
+and must not be added to it.
 
 The pnpm store is content-addressable and any pruning requires approval. The
 OpenCode, Muse, mimocode, Codex, and chat paths contain session or restore data;
@@ -165,10 +187,12 @@ flagged for cleaning.
   `taglib-2.1.1`.
 - The earlier anchored pass (20:17–20:29 UTC) read 637 → 633 roots with the
   same 4,606-path reachable set. Read-only root-list spot samples on
-  2026-10-28 ranged 616–739 roots between 21:13 and 22:29 UTC, with a
-  transient reading of 3,066 at 22:09–22:12 UTC. The pre-sweep reading was 610
-  roots, followed by 612 and 614/615. The root set on this host therefore does
-  not stay unchanged across a measurement window.
+  2026-10-28 ranged 615–739 roots from 21:13–22:29 UTC; a transient burst
+  ranged 2,616–3,069 at 22:08–22:12 UTC. Samples at 23:08–23:10 were
+  617, 616, 617, 616, 617, and none of the five complete root lists matched
+  the previous list. The pre-sweep reading was 610 roots, followed by 612 and
+  614/615. The root set on this host therefore does not stay unchanged across
+  a measurement window.
 - This work executed no garbage-collection command. The scheduled collection
   unit `nix-gc.service` last ran at 2026-10-28 00:00:00 GMT — before the sweep
   window — and is next scheduled for 2026-10-29 00:00 GMT. The store path count
