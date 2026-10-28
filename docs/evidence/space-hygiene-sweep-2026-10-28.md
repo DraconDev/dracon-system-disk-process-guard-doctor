@@ -112,8 +112,9 @@ and an operator look first.
 
 ## Nix store (sized, not touched)
 
-- On-disk: 48,292,600,416 bytes (44.98 GiB apparent), 37,535 store paths,
-  610 GC roots.
+- On-disk: 48,292,600,416 bytes (44.98 GiB apparent), 37,535 store paths at the
+  sweep reading (37,536 by the end of the sweep — nix was installing packages
+  concurrently), 610 GC roots.
 - Reachable from the GC roots: 4,604 paths. The other **32,931 paths
   (87.7%)** are not referenced by any root: 31,515 of those are `.drv`
   build recipes (0.11 GiB) and **1,416 are real outputs totalling 7.79 GiB**.
@@ -122,6 +123,19 @@ and an operator look first.
   store DB and returned nothing as this user, so the 7.79 GiB figure is the
   unreachable-by-roots calculation, not a GC dry-run. The authoritative number
   is `sudo nix-collect-garbage --dry-run`.
+
+### Proof that no GC ran
+
+The unreachable set was measured twice — at the start and at the end of the
+sweep — and is **identical both times**: 4,604 reachable paths, 32,931
+unreachable, of which 1,416 are real outputs totalling 7.79 GiB. A garbage
+collection would have deleted exactly those 1,416 output paths; they are
+still in the store. That is the evidence that no GC ran.
+
+The GC-root count is NOT such an indicator: it went 610 → 612 during the
+sweep because nix installed packages concurrently on this live host, and a GC
+would not change the root list at all. It is reported above as a measurement,
+not as a no-GC proof.
 
 ## Read-only commands used
 
