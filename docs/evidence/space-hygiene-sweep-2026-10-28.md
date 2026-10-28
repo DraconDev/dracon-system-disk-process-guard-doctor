@@ -152,3 +152,29 @@ find <dir> -type f -printf '%s %TY-%Tm-%Td %p\n'
 
 No `rm`, `clean`, `--apply`, `nix-collect-garbage`, `podman system prune` or
 any other mutating command was executed during this sweep.
+
+## Gate note (host under heavy load)
+
+This goal changed NO source code — only this evidence document (verified: the
+only commits since the sweep began touch this file). The gates therefore
+measure the tree as it already stood.
+
+- `cargo test --locked --bin dracon-system` — **exit 0, 712 passed, 0 failed.**
+- `cargo test --locked` (dracon-sync alone) — **exit 0, 1696 passed, 0 failed**
+  across 13 suites.
+- `cargo test --workspace --locked` — does not complete cleanly **while the
+  host is thrashing**. Two attempts were killed or failed under load 58–75 with
+  1–2 GB available:
+  - One `dracon-system` failure: `storage_cleanup_activity_refuses_live_process_binary`
+    panicked with `ExecutableFileBusy` ("Text file busy") at `src/tests.rs:4884`
+    — the documented ETXTBSY flake described at the top of `tests.rs`, for
+    tests that copy a binary and exec it. It passes **3/3** in isolation and
+    the whole crate passes (712/712) when run on its own.
+  - The remaining failures were all in `dracon-sync`
+    (`test_push_with_retries_*`, `test_remove_stale_remotes_*`,
+    `hygiene_generated_ignore_*`) with `failed to spawn` / `No such file` —
+    resource exhaustion under the same load. Running that crate alone passes
+    1696/1696.
+
+The failures are environmental and appear in a sibling crate this goal did not
+touch. Re-running the workspace suite on an idle host is the way to confirm.
