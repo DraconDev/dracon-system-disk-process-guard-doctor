@@ -10990,8 +10990,6 @@ async fn cmd_disk(
             &mut report_data,
             Path::new("/proc"),
             options.git_temp_min_age_hours,
-            options.tmp_min_age_hours,
-            options.tmp_e2e_min_age_hours,
         )
     };
     let after = available_bytes(Path::new("/"))?;
