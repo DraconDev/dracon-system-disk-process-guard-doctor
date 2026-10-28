@@ -138,8 +138,8 @@ they need an operator review rather than a cleanup recommendation.
 These are exact measured byte values from the final anchored pass, except that
 the Git-history row is the sum of `du --bytes` over the 27 discovered `.git`
 directories; it excludes working-tree files. Media, Git history, backup
-bundles, and live configuration all have `keep` verdicts and no
-`clean-with-approval` verdict.
+bundles, and live configuration all carry `keep` verdicts only; none of them is
+flagged for cleaning.
 
 ## Nix store: sized only
 
