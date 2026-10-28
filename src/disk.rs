@@ -745,14 +745,18 @@ pub(crate) fn audit(
                 },
                 if live_churn {
                     // State the content age, not the directory mtime: that
-                    // difference IS the reason it is not deletable.
-                    let content = entry
-                        .newest_content_age_hours
-                        .map(|age| format!("{age}h"))
-                        .unwrap_or_else(|| "unreadable".to_string());
+                    // difference IS the reason it is not deletable. An
+                    // UNREADABLE tree (root-owned mode-0700 dirs such as
+                    // systemd-private-*) is stated as such: the walk could
+                    // not prove the tree is idle, so it is kept.
+                    let content_note = match entry.newest_content_age_hours {
+                        Some(age) => format!("newest nested content is {age}h old"),
+                        None => "nested content is unreadable (permissions) — cannot prove the tree is idle"
+                            .to_string(),
+                    };
                     format!(
-                        "{} top-level mtime {}h old but newest nested content is {} old — live churn, under the {}h floor; never auto-deleted",
-                        entry.label(), entry.age_hours, content, floor
+                        "{} top-level mtime {}h old but {content_note} — live churn, under the {}h floor; never auto-deleted",
+                        entry.label(), entry.age_hours, floor
                     )
                 } else if fast_path {
                     format!(
@@ -1176,15 +1180,17 @@ pub(crate) fn apply_with_floors(
             if churn {
                 let mut skipped = finding.clone();
                 skipped.disposition = Disposition::Report;
-                let content = newest
-                    .map(|age| format!("{age}h"))
-                    .unwrap_or_else(|| "unreadable".to_string());
+                let content_note = match newest {
+                    Some(age) => format!("newest nested content is {age}h old"),
+                    None => "nested content is unreadable (permissions) — cannot prove the tree is idle"
+                        .to_string(),
+                };
                 let floor_text = finding
                     .qualifying_floor_hours
                     .map(|floor| format!("{floor}h"))
                     .unwrap_or_else(|| "unknown".to_string());
                 skipped.reason = format!(
-                    "became live churn before delete (newest nested content {content}, qualifying floor {floor_text}) — kept"
+                    "became live churn before delete ({content_note}, qualifying floor {floor_text}) — kept"
                 );
                 skipped.references = fresh;
                 remaining.push(skipped);
