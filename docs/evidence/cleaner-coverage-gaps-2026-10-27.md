@@ -164,6 +164,12 @@ Tests for this behaviour:
   the reason recorded.
 - `a_finding_without_a_known_floor_fails_closed_and_keeps_the_tree` — a
   finding with no recorded floor is never deleted on a guessed window.
+- `the_end_to_end_path_keeps_a_general_floor_tree_refreshed_during_the_gap` —
+  the end-to-end version, through the REAL `find_temp_cruft` → the audit's
+  floor decision → the REAL `apply_with_floors`: a **general-floor (24h)**
+  tree scanned as APPLY at 30h-old content, then rebuilt to 12h-old content
+  (mtime-preserving) during the audit→delete gap, must SURVIVE the delete
+  loop.
 
 ## Final observed numbers (last run on this tree)
 
@@ -171,10 +177,13 @@ Tests for this behaviour:
 - `cargo clippy --workspace --locked --all-targets -- -D warnings` — exit 0.
 - `cargo deny check` — exit 0.
 - `cargo build --release --locked` — exit 0.
-- `disk audit --class tmp` — 37 findings, 211.7 MiB, with
-  `/tmp/node-compile-cache (146.6 MiB)` REPORTed: *top-level mtime 19h old but
-  newest nested content is 0h old — live churn, under the 6h floor; never
+- `disk audit --class tmp` — 32 findings, 217.0 MiB, with
+  `/tmp/node-compile-cache (149.7 MiB)` REPORTed: *top-level mtime 28h old but
+  newest nested content is 4h old — live churn, under the 6h floor; never
   auto-deleted*.
+- `disk audit --class tmp --json` — every class-2 finding now carries
+  `qualifying_floor_hours` (6 for e2e-pattern entries, 24 for general ones),
+  so the delete-time decision is auditable from the report alone.
 - `disk audit --class caches` — `.codex/cache` 46.3 MiB and
   `.codex/plugins/cache` 27.5 MiB both SKIP as codex-owned; hermes audio/image
   caches REPORT as unowned.
