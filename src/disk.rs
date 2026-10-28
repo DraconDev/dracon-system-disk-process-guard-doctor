@@ -1660,6 +1660,129 @@ mod disk_tests {
     }
 
     #[test]
+    fn the_delete_time_check_uses_the_floor_that_qualified_the_finding() {
+        // The discriminating regression (2026-10-27, audit HIGH, rework
+        // round). Both fixtures have content aged 12h — INSIDE the 24h
+        // general floor but OUTSIDE the 6h e2e floor. The 12h age is
+        // produced the way real test trees are rebuilt: an mtime-PRESERVING
+        // restore (`cp -a`, `rsync -a`, `tar -x`), so the content looks
+        // mid-aged rather than freshly written.
+        //
+        // Before the fix, one global `min(e2e, general)` = 6h window was
+        // applied to both, so the 24h-floor tree was deleted — a weaker
+        // route to deletion than the daemon's own general pass.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let age_12h = SystemTime::now() - std::time::Duration::from_secs(12 * 3600);
+
+        // Case A: GENERAL floor (24h) — content 12h old is newer than the
+        // floor that qualified it, so the tree must be KEPT.
+        let general_tree = dir.path().join("general-floor-tree");
+        std::fs::create_dir_all(&general_tree).expect("mkdir");
+        let general_file = general_tree.join("restored.bin");
+        std::fs::write(&general_file, b"restored").expect("write");
+        std::fs::File::options()
+            .write(true)
+            .open(&general_file)
+            .expect("open")
+            .set_modified(age_12h)
+            .expect("set mtime");
+        let mut general_report = DiskReport::default();
+        general_report.findings.push(
+            Finding::new(
+                TrashClass::TempAndLogs,
+                general_tree.clone(),
+                8,
+                Disposition::Apply,
+                "general floor".to_string(),
+            )
+            .with_references(crate::disk_refs::ReferenceCapture {
+                refs: Vec::new(),
+                scan_failed: false,
+            })
+            .with_qualifying_floor(24),
+        );
+        let (freed_a, records_a) =
+            apply_with_floors(&mut general_report, Path::new("/proc"), 6);
+        assert_eq!(freed_a, 0, "24h-floor tree must not be deleted");
+        assert!(records_a.is_empty());
+        assert!(
+            general_tree.exists(),
+            "a general-floor tree whose content is 12h old is still newer than its 24h floor — it must survive"
+        );
+
+        // Case B: E2E floor (6h) — the same 12h content is OLDER than the
+        // floor that qualified it, so the tree is genuinely idle and the
+        // delete goes ahead. Without this case the test would pass with a
+        // blanket "never delete" rule.
+        let e2e_tree = dir.path().join("e2e-floor-tree");
+        std::fs::create_dir_all(&e2e_tree).expect("mkdir");
+        let e2e_file = e2e_tree.join("restored.bin");
+        std::fs::write(&e2e_file, b"restored").expect("write");
+        std::fs::File::options()
+            .write(true)
+            .open(&e2e_file)
+            .expect("open")
+            .set_modified(age_12h)
+            .expect("set mtime");
+        let mut e2e_report = DiskReport::default();
+        e2e_report.findings.push(
+            Finding::new(
+                TrashClass::TempAndLogs,
+                e2e_tree.clone(),
+                8,
+                Disposition::Apply,
+                "e2e floor".to_string(),
+            )
+            .with_references(crate::disk_refs::ReferenceCapture {
+                refs: Vec::new(),
+                scan_failed: false,
+            })
+            .with_qualifying_floor(6),
+        );
+        let (freed_b, records_b) =
+            apply_with_floors(&mut e2e_report, Path::new("/proc"), 6);
+        assert_eq!(freed_b, 8, "6h-floor tree with 12h-old content is idle");
+        assert_eq!(records_b.len(), 1);
+        assert!(!e2e_tree.exists(), "the idle tree is removed");
+    }
+
+    #[test]
+    fn a_finding_without_a_known_floor_fails_closed_and_keeps_the_tree() {
+        // No floor recorded (e.g. a finding produced outside the tmp audit
+        // path) must not be deleted on the strength of a guessed window.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let tree = dir.path().join("no-floor-tree");
+        std::fs::create_dir_all(&tree).expect("mkdir");
+        std::fs::write(tree.join("old.bin"), b"old").expect("write");
+        let old = SystemTime::now() - std::time::Duration::from_secs(48 * 3600);
+        std::fs::File::options()
+            .write(true)
+            .open(tree.join("old.bin"))
+            .expect("open")
+            .set_modified(old)
+            .expect("set mtime");
+
+        let mut report = DiskReport::default();
+        report.findings.push(
+            Finding::new(
+                TrashClass::TempAndLogs,
+                tree.clone(),
+                3,
+                Disposition::Apply,
+                "no floor recorded".to_string(),
+            )
+            .with_references(crate::disk_refs::ReferenceCapture {
+                refs: Vec::new(),
+                scan_failed: false,
+            }),
+        );
+        let (freed, records) = apply_with_floors(&mut report, Path::new("/proc"), 6);
+        assert_eq!(freed, 0, "unknown floor must not authorize deletion");
+        assert!(records.is_empty());
+        assert!(tree.exists(), "the tree survives when the floor is unknown");
+    }
+
+    #[test]
     fn a_path_that_becomes_used_after_the_audit_is_skipped_at_delete_time() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("freshly-used.bin");
