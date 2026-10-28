@@ -34,7 +34,7 @@ complete privileged measurement remains an operator follow-up.
 | Agent-tool state (six named tools) | 31,288,814,802 | keep | Exact sum of the six roots below; overlaps `~/.local/share` |
 | `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data |
 | `/var/log` | 613,299,456 | needs-operator-call | Unprivileged subtotal; `/var/log/private` and `/var/log/gdm` denied |
-| `/var/log/journal` | 602,406,912 | clean-with-approval | `du` size from the final anchored pass; `journalctl --disk-usage` separately reported 475.7M at 20:3x UTC |
+| `/var/log/journal` | 602,406,912 | clean-with-approval | `du` size from the final anchored pass; a separate `journalctl --disk-usage` reading at approximately 21:05 UTC reported 475.7M |
 | `~/.local/share/containers` | 243,857,603 | needs-operator-call | Unprivileged subtotal; `containers/storage` separately measured 243,759,299 bytes |
 | `~/Backups` | 23,781,110,001 | keep | Backup tree; off-limits to cleaning |
 | `~/dracon/backups` | 19,411,474,935 | keep | Backup bundles; off-limits to cleaning |
@@ -59,8 +59,11 @@ is an additional candidate, not a substitute for any of the six named tools.
 
 Every row has one verdict from `{keep, clean-with-approval, needs-operator-call}`.
 The first three rows are the top three actionable findings by bytes in the
-primary pass (15:53–16:05 UTC), ordered by their exact `du --bytes` readings:
-**10,932,233,354 / 6,983,789,017 / 5,946,756,827 bytes**.
+first sweep report (15:53–16:05 UTC), ordered by their exact `du --bytes`
+readings: **10,932,233,354 / 6,983,789,017 / 5,946,756,827 bytes**. Rows 1, 3
+and 5 carry the first report's readings; row 12 was re-measured in the
+20:17 UTC resample, and every other row in this table repeats its value in
+the final resample below.
 
 | # | Path | Bytes | Verdict |
 |---|---|---:|---|
@@ -75,7 +78,7 @@ primary pass (15:53–16:05 UTC), ordered by their exact `du --bytes` readings:
 | 9 | `~/.codex/packages` | 2,022,254,271 | keep |
 | 10 | `~/.local/share/rtk/history.db` | 1,612,066,816 | needs-operator-call |
 | 11 | `~/.codex/sessions` | 1,120,760,642 | keep |
-| 12 | `/var/log/journal` | 560,463,872 | clean-with-approval |
+| 12 | `/var/log/journal` (20:17 UTC resample) | 560,463,872 | clean-with-approval |
 | 13 | `~/.local/share/Trash` | 553,895,960 | needs-operator-call |
 | 14 | `~/.local/share/containers/storage` | 243,759,299 | needs-operator-call |
 | 15 | `~/.local/state/dracon/sync/gates/browser-extensions-shared/dracon-pre-push.*` (112 directories older than 2026-10-28) | 57,585,810 | clean-with-approval |
