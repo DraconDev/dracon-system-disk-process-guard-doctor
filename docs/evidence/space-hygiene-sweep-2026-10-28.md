@@ -123,7 +123,7 @@ media, repository history, and live configuration have no
 
 ```text
 du -sx --bytes <path>                         # byte measurements
- du -x --max-depth=1 --bytes <dir>            # breakdowns
+du -x --max-depth=1 --bytes <dir>             # breakdowns
 find <dir> -type f -printf '%s %TY-%Tm-%Td %p\n'  # file sizes and dates
 find <dir> -mindepth 1 -maxdepth 1 -type d    # sandbox enumeration
 ls -la --time-style=+%F <dir>                 # dates and names
@@ -146,7 +146,7 @@ workspace invocation supplied the Nix OpenSSL paths and exited successfully:
 $ cd /home/dracon/Dev/dracon-utilities
 $ OPENSSL_INCLUDE_DIR=/nix/store/cqkz127l4l98xgp7p6y1j2cqvyx0w3jl-openssl-3.6.2-dev/include \
   OPENSSL_LIB_DIR=/nix/store/by19gg2pqp2b1gqphdf6bwk2g3hgak79-openssl-3.6.2/lib \
-  timeout 1800 cargo test --workspace --locked
+  timeout 1800 cargo test --workspace --locked 2>&1 | tee /tmp/space-hygiene-workspace-test.log
 ...
 test result: ok. 712 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ...
