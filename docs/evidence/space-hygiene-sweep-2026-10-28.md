@@ -411,17 +411,16 @@ them is flagged for cleaning.
   18:03:07 UTC (samples 15–19, all 634 roots) and started the pass
   immediately. The attempt log for every earlier attempt is preserved; the
   failed attempts recorded their readings rather than being discarded.
-- **The final full anchored pass (2026-10-29 18:03:07–18:06:08 UTC) met the
-  unchanged root-count acceptance item.** It measured **634 roots before and
-  634 after**, with a byte-identical sorted root list (`roots_unchanged=YES`,
+- **The latest completed full anchored pass (2026-10-29 18:03:07–18:06:08
+  UTC) recorded equal within-pass readings, not the original pre-sweep
+  baseline.** It measured **634 roots before and 634 after**, with a
+  byte-identical sorted root list (`roots_unchanged=YES`,
   `root_set_identical=YES`); 30 direct and 604 indirect roots in both
   readings. The store path count was **37,534 before and after**, and the
   reachability closure was **4,604 paths before and after**. The continuous
   5-second series taken across the pass recorded 30 samples ranging 633–637
-  with 15 transitions, and its first and last samples were 635 and 634.
-  Because the bracket was taken in a settled window, the before/after counts
-  agree even though the underlying count continued to move within a narrow
-  band.
+  with 15 transitions, and its first and last samples were 635 and 634. This
+  does not satisfy the reported 610-root pre-sweep baseline.
 - This work executed no garbage-collection command. The scheduled system unit
   nevertheless ran at 2026-10-29 00:00 GMT while the goal was paused; its journal
   reports **0 store paths deleted, 0.00 MiB freed**. The next run is scheduled
