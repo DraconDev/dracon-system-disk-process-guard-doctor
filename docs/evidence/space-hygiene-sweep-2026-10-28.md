@@ -317,6 +317,10 @@ flagged for cleaning.
 
 ## Read-only commands used
 
+This list contains only read-only measurement and inspection commands. The
+reversible tmux controls used during root-stability observation and their
+restoration are described in the Nix section above, not presented as read-only.
+
 ```text
 du -sx --bytes <path>                         # byte measurements
 du -x --max-depth=1 --bytes <dir>             # breakdowns
