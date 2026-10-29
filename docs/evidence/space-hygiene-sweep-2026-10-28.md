@@ -1,17 +1,19 @@
 # Space-hygiene sweep — beyond the disk audit (2026-10-28)
 
-Report-only. This work cleaned or deleted no user/system data and executed no
-garbage-collection command. The workspace test suite used isolated temporary
-fixtures. The Nix store was sized and compared by reachability only.
+Report-only. This work performed no cleanup or deletion and executed no
+collection command. The scheduled system `nix-gc.service` ran at 2026-10-29
+00:00 while the work was paused; its journal reports 0 store paths deleted and
+0.00 MiB freed. Workspace tests used isolated temporary fixtures. The Nix store
+was sized and compared by reachability only.
 
-Primary measurements below are from 2026-10-28 (roughly 15:53–16:05 UTC). Three
-read-only full anchored passes were run at 20:17–20:29, 22:30–22:42, and
-23:24–23:37 UTC; focused sandbox resampling and root-stability checks continued
-through 23:44. Live state changed during every window, so byte values are exact
-`du --bytes` readings for their stated pass, not an atomic filesystem snapshot. Area,
-agent-tool and off-limits tables use the latest full pass (23:24–23:37 UTC);
-all candidate-ranking tables are individually pass-labeled. The sandbox
-sub-decomposition tables are separate and are not new global rankings.
+Primary measurements below are from 2026-10-28 (roughly 15:53–16:05 UTC). Four
+full anchored passes were run: 20:17–20:29, 22:30–22:42, and 23:24–23:37 UTC,
+then 2026-10-29 00:41–01:07 UTC. Focused sandbox resampling and root-stability
+checks also ran. Live state changed during every window, so byte values are
+exact `du --bytes` readings for their stated pass, not an atomic filesystem
+snapshot. Area, agent-tool and off-limits tables use the latest full pass
+(00:41–01:07 UTC); all candidate rankings are individually pass-labeled. The
+sandbox sub-decomposition tables are separate and not new global rankings.
 
 This supplements `leftover-audit-2026-10-27.md` and
 `cleaner-coverage-gaps-2026-10-27.md`. Area rows intentionally overlap: for
@@ -28,14 +30,14 @@ complete privileged measurement remains an operator follow-up.
 
 | Area | Bytes | Verdict | Notes |
 |---|---:|---|---|
-| `~/.local/share` | 27,611,876,629 | needs-operator-call | Unprivileged subtotal; container and Trash descendants denied |
-| `~/.local/state` | 29,059,432,587 | needs-operator-call | Unprivileged subtotal; protected descendants denied |
+| `~/.local/share` | 27,612,010,993 | needs-operator-call | Unprivileged subtotal; container and Trash descendants denied |
+| `~/.local/state` | 28,125,901,334 | needs-operator-call | Unprivileged subtotal; protected descendants denied |
 | `~/.local/bin` | 3,087,112,036 | keep | User-installed tools |
-| `/nix/store` | 48,292,944,394 | keep | Latest anchored pass; 8,366,644,248 estimated unreachable output bytes from the primary pass; see Nix section |
-| Agent-tool state (six named tools) | 31,295,594,876 | keep | Exact sum of the six roots below; overlaps `~/.local/share` |
+| `/nix/store` | 50,942,398,774 | keep | Latest anchored pass; 8,366,644,248 estimated unreachable output bytes from the primary pass; see Nix section |
+| Agent-tool state (six named tools) | 31,370,478,392 | keep | Exact sum of the six roots below; overlaps `~/.local/share` |
 | `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data |
-| `/var/log` | 613,302,528 | needs-operator-call | Unprivileged subtotal; `/var/log/private` and `/var/log/gdm` denied |
-| `/var/log/journal` | 602,406,912 | clean-with-approval | `du` size from the latest anchored pass; a separate `journalctl --disk-usage` reading at approximately 21:05 UTC reported 475.7M |
+| `/var/log` | 621,724,160 | needs-operator-call | Unprivileged subtotal; `/var/log/private` and `/var/log/gdm` denied |
+| `/var/log/journal` | 610,795,520 | clean-with-approval | `du` size from the latest anchored pass; a separate `journalctl --disk-usage` reading at approximately 21:05 UTC reported 475.7M |
 | `~/.local/share/containers` | 243,857,603 | needs-operator-call | Unprivileged subtotal; `containers/storage` separately measured 243,759,299 bytes |
 | `~/Backups` | 23,781,110,001 | keep | Backup tree; off-limits to cleaning |
 | `~/dracon/backups` | 19,411,474,935 | keep | Backup bundles; off-limits to cleaning |
@@ -44,13 +46,13 @@ complete privileged measurement remains an operator follow-up.
 
 | Tool | Measured path(s) | Bytes | Verdict |
 |---|---|---:|---|
-| Codex | `~/.codex` | 4,258,570,597 | keep |
+| Codex | `~/.codex` | 4,261,178,971 | keep |
 | Hermes | `~/.hermes` | 2,387,521,841 | keep |
 | OpenCode | `~/.local/share/opencode` + `~/.opencode` | 13,332,068,891 | keep |
-| Pi | `~/.pi` | 6,074,002,731 | keep |
+| Pi | `~/.pi` | 6,146,277,873 | keep |
 | Zcode | `~/.zcode` | 2,826,633,061 | keep |
 | Kilocode | `~/.kilocode` | 2,416,797,755 | keep |
-| **Total** | Six named tools, no shared roots | **31,295,594,876** | **keep** |
+| **Total** | Six named tools, no shared roots | **31,370,478,392** | **keep** |
 
 The OpenCode total combines 12,429,660,938 bytes at `~/.local/share/opencode`
 and 902,407,953 bytes at `~/.opencode`. The separate `mimocode` directory below
@@ -140,7 +142,7 @@ The 71-directory and 112-directory totals sum exactly to the 183-directory
 result in this resample. These nested scopes overlap the whole-directory size
 and must not be added to it.
 
-### Latest full anchored pass (23:24–23:37 UTC)
+### Third full anchored pass (23:24–23:37 UTC)
 
 Top three in this pass: **9,872,972,432 / 9,521,175,879 /
 6,983,789,017 bytes**. The full candidate ranking is sorted by its exact
@@ -173,6 +175,37 @@ these live, separate measurements do not reconcile, and no hardlink explanation
 is assumed. The writer-fence candidate increased from 9,345,044,328 bytes in
 the 22:30 pass to 9,872,972,432 bytes here. No cleanup was attempted.
 
+### Latest full anchored pass (2026-10-29 00:41–01:07 UTC)
+
+This v2 pass warmed up its Nix closure query before bracketing root counts.
+Top three findings by this pass's `du --bytes` readings:
+**12,185,297,146 / 11,250,196,770 / 6,983,789,017 bytes**.
+
+| # | Path | Bytes | Verdict |
+|---|---|---:|---|
+| 1 | `~/.local/state/dracon-sync/qualification/canonical-writer-fence-2026-10-27` | 12,185,297,146 | needs-operator-call |
+| 2 | `~/.local/state/dracon/sync/gates/browser-extensions-shared` (whole-tree `du`; included 188 sandbox directories) | 11,250,196,770 | needs-operator-call |
+| 3 | `~/chat/pi/kimi` | 6,983,789,017 | needs-operator-call |
+| 4 | `~/.local/state/dracon/protection-repair-2026-10-20/verification-target` | 5,942,225,851 | needs-operator-call |
+| 5 | `~/.local/share/opencode/snapshot` | 5,898,491,422 | needs-operator-call |
+| 6 | `~/.local/share/muse/sessions` | 3,701,928,542 | needs-operator-call |
+| 7 | `~/.local/share/pnpm/store` | 2,833,801,709 | clean-with-approval |
+| 8 | `~/.local/share/mimocode/snapshot` | 2,645,718,475 | needs-operator-call |
+| 9 | `~/.codex/packages` | 2,022,254,271 | keep |
+| 10 | `~/.local/share/rtk/history.db` | 1,612,664,832 | needs-operator-call |
+| 11 | `~/.codex/sessions` | 1,120,760,642 | keep |
+| 12 | `/var/log/journal` | 610,795,520 | clean-with-approval |
+| 13 | `~/.local/share/Trash` | 553,895,960 | needs-operator-call |
+| 14 | `~/.local/share/containers/storage` | 243,759,299 | needs-operator-call |
+| 15 | `~/.local/state/dracon/sync/gates/browser-extensions-shared/dracon-pre-push.*` (112 directories older than 2026-10-28) | 57,585,810 | clean-with-approval |
+
+The gate directory measured 11,250,196,770 bytes; one `du` call over all 188
+sandbox directories reported 9,773,475,442 bytes. Separate date-filtered calls
+reported 76 directories dated 2026-10-28 at 9,715,886,055 bytes and the same
+112 older directories at 57,585,810 bytes; their sum differs from the all-dir
+measurement by 3,577 bytes. The writer-fence directory grew to 12,185,297,146
+bytes. These live scopes overlap; no cleanup was attempted.
+
 The pnpm store is content-addressable and any pruning requires approval. The
 OpenCode, Muse, mimocode, Codex, and chat paths contain session or restore data;
 no retention period was assumed. `rtk/history.db` was actively written during
@@ -183,13 +216,13 @@ they need an operator review rather than a cleanup recommendation.
 
 | Path | Size | Verdict |
 |---|---:|---|
-| `~/Videos` | 30,203,671,682 bytes | keep |
+| `~/Videos` | 30,247,970,677 bytes | keep |
 | `~/Pictures` | 44,300,634 bytes | keep |
-| Git history in 27 `.git` directories under `~/Dev` | 63,767,372,326 bytes | keep |
+| Git history in 27 `.git` directories under `~/Dev` | 63,815,744,309 bytes | keep |
 | `~/Backups` | 23,781,110,001 bytes | keep |
 | `~/dracon/backups` | 19,411,474,935 bytes | keep |
-| `~/.config` | 16,785,212,713 bytes | keep |
-| `~/.dracon` | 4,355,960,634 bytes | keep |
+| `~/.config` | 16,773,828,956 bytes | keep |
+| `~/.dracon` | 4,382,140,133 bytes | keep |
 | NixOS configuration target `~/.dracon/nixos` (`/etc/nixos` symlink) | 297,401 bytes | keep |
 
 These are exact measured byte values from the latest anchored pass, except that
