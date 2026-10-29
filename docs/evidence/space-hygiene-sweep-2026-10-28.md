@@ -46,7 +46,7 @@ complete privileged measurement remains an operator follow-up.
 | Agent-tool state (six named tools) | 31,465,750,447 | keep | Exact sum of the six roots below; overlaps `~/.local/share` |
 | `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data |
 | `/var/log` | 614,934,912 | needs-operator-call | Unprivileged subtotal; `/var/log/private` and `/var/log/gdm` denied |
-| `/var/log/journal` | 603,979,776 | clean-with-approval | `du` size from the final anchored pass; a separate `journalctl --disk-usage` reading at approximately 21:05 UTC reported 475.7M |
+| `/var/log/journal` | 603,979,776 | clean-with-approval | `du` size from the latest completed anchored pass; a separate `journalctl --disk-usage` reading at approximately 21:05 UTC reported 475.7M |
 | `~/.local/share/containers` | 243,857,603 | needs-operator-call | Unprivileged subtotal; `containers/storage` separately measured 243,759,299 bytes |
 | `~/Backups` | 26,473,384,957 | keep | Backup tree; off-limits to cleaning |
 | `~/dracon/backups` | 19,411,474,935 | keep | Backup bundles; off-limits to cleaning |
@@ -475,6 +475,9 @@ find <dir> -mindepth 1 -maxdepth 1 -type d    # sandbox enumeration
 find <dir> -type d -name .git -prune -exec du -sx --bytes {} +  # git history (find's -prune only stops descent; it removes nothing)
 ls -la --time-style=+%F <dir>                 # dates and names
 readlink -f /etc/nixos                        # resolve config symlink
+sudo -n true                                  # privilege availability probe (password required)
+date -Is                                      # observation timestamps
+systemctl is-active nix-gc.service            # current service state
 nix-store --gc --print-roots | wc -l          # read-only root listing/count
 nix-store --gc --print-roots | sort           # full root-list stability comparison
 nix-store -qR <root store paths>              # read-only reachability closure query
