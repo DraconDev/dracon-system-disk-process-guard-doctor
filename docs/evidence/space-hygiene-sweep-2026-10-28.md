@@ -1,10 +1,13 @@
 # Space-hygiene sweep — beyond the disk audit (2026-10-28)
 
-Report-only. This work performed no cleanup or deletion and executed no
-collection command. The scheduled system `nix-gc.service` ran at 2026-10-29
-00:00 while the work was paused; its journal reports 0 store paths deleted and
-0.00 MiB freed. Workspace tests used isolated temporary fixtures. The Nix store
-was sized and compared by reachability only.
+Report-only for surveyed data. No surveyed candidate was cleaned or deleted,
+and this work invoked no collection command. Earlier anchored-measurement helper
+runs removed only their generated `/tmp` measurement scratch file after
+recording values; that was not candidate cleanup. The helper's scratch-removal
+line was removed before the follow-up stability attempts. The scheduled system
+`nix-gc.service` ran at 2026-10-29 00:00 while the work was paused; its journal
+reports 0 store paths deleted and 0.00 MiB freed. Workspace tests used isolated
+temporary fixtures. The Nix store was sized and compared by reachability only.
 
 Primary measurements below are from 2026-10-28 (roughly 15:53–16:05 UTC). Four
 full anchored passes were run: 20:17–20:29, 22:30–22:42, and 23:24–23:37 UTC,
@@ -283,10 +286,25 @@ flagged for cleaning.
   one sample also gained a Chromium sandbox root. A `/proc` file-descriptor
   check observed tmux-resurrect `scripts/save.sh` holding the store path while
   its root was present; the short-lived process exited before its parent could
-  be identified. The active tmux server reports `@continuum-save-interval 5`,
-  so its periodic save hook is enabled. These live-process roots are not
-  represented by `/nix/var/nix/gcroots/auto` symlink changes. No tmux process
-  or setting was stopped.
+  be identified. At that earlier sample the active tmux server reported
+  `@continuum-save-interval 5`, so its periodic save hook was enabled. These
+  live-process roots are not represented by `/nix/var/nix/gcroots/auto` symlink
+  changes. No tmux process or setting was stopped during that earlier check.
+- Additional root-list-only stability checks on 2026-10-29 16:29–16:49 UTC made
+  six five-sample attempts; all failed to obtain five byte-identical sorted
+  lists 30 seconds apart, so no anchored pass was started. The 16:44 attempt
+  counted 647, 647, 3,068, 3,068, 3,068 roots; the 16:47 attempt counted 3,068,
+  3,096, 3,094, 643, 697. A separate 16:43 pair changed 643 → 647 and showed
+  four added root entries. These checks invoked only `nix-store --gc
+  --print-roots`, not `nix-store -qR`; the bursts are observed but not
+  attributed. Three immediate root-list readings at 16:50:32–16:50:46 were
+  724, 700, and 693, and a nix-daemon worker was present; its effect on the
+  changing counts was not established.
+- During that follow-up observation, both tmux servers had
+  `@continuum-save-interval 0`, and three `tmux-persist-daemon` processes plus
+  the legacy `/tmp/tpd` driver were stopped. The root lists still changed.
+  At 16:51 UTC both server intervals were restored to 5 and all four stopped
+  processes were resumed; their running states and settings were verified.
 - This work executed no garbage-collection command. The scheduled system unit
   nevertheless ran at 2026-10-29 00:00 GMT while the goal was paused; its journal
   reports **0 store paths deleted, 0.00 MiB freed**. The next run is scheduled
@@ -323,9 +341,10 @@ find /nix/store -mindepth 1 -maxdepth 1        # store path enumeration
 ```
 
 `nix-store --gc --print-roots` only prints roots; despite the option name, it
-does not run collection. No cleanup, apply, delete, or collection command was
-executed by this sweep. Workspace-test fixtures remained confined to their
-temporary test directories.
+does not run collection. No cleanup, apply, or collection command was executed
+against surveyed data. The earlier helper's generated-scratch removal is
+qualified above. Workspace-test fixtures remained confined to their temporary
+test directories.
 
 ## Workspace test transcript
 
