@@ -246,6 +246,26 @@ this pass's `du --bytes` readings: **15,656,917,210 / 12,186,624,107 /
 Row 1 is a whole-tree `du` of the gate directory. The sandbox decomposition
 below is a separate scope and must not be added to it.
 
+#### Sandbox decomposition of the final pass
+
+One `du` call per scope. The two date-filtered scopes partition the
+all-sandboxes scope exactly, and the all-sandboxes scope is smaller than the
+whole-tree figure because the whole tree also holds non-sandbox entries and
+because the calls ran at different moments on a live directory.
+
+| Scope | Directories | Bytes | Verdict |
+|---|---:|---:|---|
+| Whole `browser-extensions-shared` directory | — | 15,656,917,210 | needs-operator-call |
+| All `dracon-pre-push.*` sandboxes | 338 | 13,461,371,994 | needs-operator-call |
+| …dated 2026-10-28 | 226 | 13,403,786,184 | needs-operator-call |
+| …older than 2026-10-28 | 112 | 57,585,810 | clean-with-approval |
+
+13,403,786,184 + 57,585,810 = 13,461,371,994, which equals the all-sandboxes
+figure exactly. The whole-tree figure exceeds it by 2,195,545,216 bytes; the
+calls are separate and the tree was live, so no hardlink or de-duplication
+explanation is asserted. These nested scopes overlap the whole-directory size
+and must not be added to it.
+
 #### Post-pass live spot check (2026-10-29 20:52–20:56 UTC)
 
 A read-only re-measurement of the same paths after the pass confirms that most
@@ -276,26 +296,6 @@ The three drifting paths are live, actively written directories, so their
 figures are point-in-time readings rather than stable values. The report keeps
 the pass-labelled numbers above; the live column shows what a reader would
 measure if they re-ran `du` themselves.
-
-#### Sandbox decomposition of the final pass
-
-One `du` call per scope. The two date-filtered scopes partition the
-all-sandboxes scope exactly, and the all-sandboxes scope is smaller than the
-whole-tree figure because the whole tree also holds non-sandbox entries and
-because the calls ran at different moments on a live directory.
-
-| Scope | Directories | Bytes | Verdict |
-|---|---:|---:|---|
-| Whole `browser-extensions-shared` directory | — | 15,656,917,210 | needs-operator-call |
-| All `dracon-pre-push.*` sandboxes | 338 | 13,461,371,994 | needs-operator-call |
-| …dated 2026-10-28 | 226 | 13,403,786,184 | needs-operator-call |
-| …older than 2026-10-28 | 112 | 57,585,810 | clean-with-approval |
-
-13,403,786,184 + 57,585,810 = 13,461,371,994, which equals the all-sandboxes
-figure exactly. The whole-tree figure exceeds it by 2,195,545,216 bytes; the
-calls are separate and the tree was live, so no hardlink or de-duplication
-explanation is asserted. These nested scopes overlap the whole-directory size
-and must not be added to it.
 
 The pnpm store is content-addressable and any pruning requires approval. The
 OpenCode, Muse, mimocode, Codex, and chat paths contain session or restore data;
@@ -436,6 +436,7 @@ du -sx --bytes <path>                         # byte measurements
 du -x --max-depth=1 --bytes <dir>             # breakdowns
 find <dir> -type f -printf '%s %TY-%Tm-%Td %p\n'  # file sizes and dates
 find <dir> -mindepth 1 -maxdepth 1 -type d    # sandbox enumeration
+find <dir> -type d -name .git -prune -exec du -sx --bytes {} +  # git history (find's -prune only stops descent; it removes nothing)
 ls -la --time-style=+%F <dir>                 # dates and names
 readlink -f /etc/nixos                        # resolve config symlink
 nix-store --gc --print-roots | wc -l          # read-only root listing/count
@@ -447,10 +448,12 @@ journalctl -u nix-daemon.service --since ...  # daemon log inspection
 journalctl -u nix-gc.service --since ...      # scheduled GC result (0 paths)
 systemctl show nix-gc.service -p ExecMainStartTimestamp  # timer metadata only
 systemctl list-timers --all                   # scheduled timer metadata
+ps -eo pid,ppid,stat,etime,args               # process inventory
 ps -p <observed pid> -o pid,ppid,etimes,stat,comm  # process state only
 tmux show-option -g                           # live option read, no changes
 # Read /proc/<pid>/maps,comm,status,exe for mapped store-path attribution
 ls -1 /nix/var/nix/gcroots/auto               # registered root symlinks
+find /nix/var/nix/gcroots/auto -maxdepth 1 -type l -printf '%TY-%Tm-%Td %p -> %l\n'
 find /nix/store -mindepth 1 -maxdepth 1        # store path enumeration
 ```
 
@@ -464,56 +467,57 @@ test directories.
 
 The workspace test used the Nix OpenSSL headers and libraries required in this
 shell. The following is the complete 44-line suite-result transcript from the
-bounded `cargo test` invocation; aggregate: 2,897 passed, 0 failed, 25 ignored.
+bounded `cargo test --workspace --locked` invocation that closed this sweep;
+aggregate: 2,917 passed, 0 failed, 25 ignored.
 
 ```text
 $ cd /home/dracon/Dev/dracon-utilities
 $ OPENSSL_INCLUDE_DIR=/nix/store/cqkz127l4l98xgp7p6y1j2cqvyx0w3jl-openssl-3.6.2-dev/include \
   OPENSSL_LIB_DIR=/nix/store/by19gg2pqp2b1gqphdf6bwk2g3hgak79-openssl-3.6.2/lib \
-  timeout 1800 cargo test --workspace --locked > /tmp/space-hygiene-workspace-test-recheck.log 2>&1
-$ grep '^test result:' /tmp/space-hygiene-workspace-test-recheck.log
- test result: ok. 83 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 19.88s
- test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
- test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
- test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
- test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 15.62s
- test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.05s
- test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
- test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
- test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.73s
- test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
- test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 52.50s
- test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.38s
- test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s
- test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.78s
- test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.42s
- test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
- test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
- test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.65s
- test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.10s
- test result: ok. 38 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 8.45s
- test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
- test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.03s
- test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
- test result: ok. 144 passed; 0 failed; 13 ignored; 0 measured; 0 filtered out; finished in 129.37s
- test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1521 filtered out; finished in 0.00s
- test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1521 filtered out; finished in 0.00s
- test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1521 filtered out; finished in 0.01s
- test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1521 filtered out; finished in 0.00s
- test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1521 filtered out; finished in 0.00s
- test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1521 filtered out; finished in 0.00s
- test result: ok. 1519 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 707.37s
- test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.67s
- test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.13s
- test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.41s
- test result: ok. 14 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 15.10s
- test result: ok. 712 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 36.16s
- test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
- test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
- test result: ok. 245 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 125.19s
- test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 40.32s
- test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 80.67s
- test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.61s
+  timeout 2400 cargo test --workspace --locked > /home/dracon/.cache/space-hygiene/workspace-test-final.log 2>&1
+$ grep '^test result:' /home/dracon/.cache/space-hygiene/workspace-test-final.log
+ test result: ok. 87 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.65s
+ test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.58s
+ test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.36s
+ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+ test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.29s
+ test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.37s
+ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+ test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+ test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.32s
+ test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+ test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 27.15s
+ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.88s
+ test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+ test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.06s
+ test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.55s
+ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.95s
+ test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.78s
+ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.59s
+ test result: ok. 38 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 1.35s
+ test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+ test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.66s
+ test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+ test result: ok. 144 passed; 0 failed; 13 ignored; 0 measured; 0 filtered out; finished in 108.39s
+ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1532 filtered out; finished in 0.00s
+ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1532 filtered out; finished in 0.00s
+ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1532 filtered out; finished in 0.01s
+ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1532 filtered out; finished in 0.01s
+ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1532 filtered out; finished in 0.01s
+ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1532 filtered out; finished in 0.00s
+ test result: ok. 1530 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 624.97s
+ test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.74s
+ test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.49s
+ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+ test result: ok. 14 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 10.14s
+ test result: ok. 712 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.82s
+ test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
+ test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+ test result: ok. 248 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 33.47s
+ test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 28.05s
+ test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 48.00s
+ test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.12s
  test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
  test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 WORKSPACE_TEST_EXIT=0
