@@ -277,6 +277,11 @@ flagged for cleaning.
   closure/path-info queries coinciding with indirect-root changes, so the
   instrument may contribute transient roots; this was not isolated from other
   activity. The original pre-sweep reading was 610, followed by 612 and 614/615.
+  A 20-sample check at 09:28–09:38 ranged 638–645 with a maximum identical
+  full-list streak of four, so the compressed v4 pass was not started. Five-
+  second diffs showed `tmuxplugin-resurrect` repeatedly appearing/disappearing;
+  one sample also gained a Chromium sandbox root. These live-process roots are
+  not represented by `/nix/var/nix/gcroots/auto` symlink changes.
 - This work executed no garbage-collection command. The scheduled system unit
   nevertheless ran at 2026-10-29 00:00 GMT while the goal was paused; its journal
   reports **0 store paths deleted, 0.00 MiB freed**. The next run is scheduled
