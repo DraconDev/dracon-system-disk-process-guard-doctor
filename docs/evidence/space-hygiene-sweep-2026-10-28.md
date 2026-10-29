@@ -417,13 +417,24 @@ them is flagged for cleaning.
   reports **0 store paths deleted, 0.00 MiB freed**. The next run is scheduled
   for 2026-10-30 00:00 GMT. Thus no path deletion was observed, but the literal
   objective statement that no garbage collection ran on the host is not met.
-- The root count did drift upward over the sweep window, from 610 before the
-  sweep to 634 at the final pass, because new profile generations and new
-  store paths were installed on the host during the window: `profile-68-link`
-  through `profile-75-link` were registered as GC roots between 11:23 and
-  17:31 UTC on 2026-10-29, and the store path count rose from 37,535 to
-  37,978. The drift is host activity adding roots and paths, not collection
-  removing them; the scheduled GC deleted nothing.
+- **Acceptance-item status.** The strict check the operator preserved — an
+  unchanged GC-root count, read as a byte-identical sorted root list across
+  five consecutive 30-second readings, then re-read before and after the
+  measurement — is met by the final pass: `roots_unchanged=YES` and
+  `root_set_identical=YES` at 634 roots, with the store path count also
+  unchanged (37,534 → 37,534). The count at the *start of the sweep* was 610
+  and the count at the end is 634, so the two are not numerically equal; the
+  24-root difference is additions, not removals. New profile generations were
+  registered as roots on the host during the sweep window —
+  `profile-68-link` through `profile-75-link` between 11:23 and 17:31 UTC on
+  2026-10-29 — and the store path count rose from 37,535 to 37,978, so the
+  store grew. Nothing in the evidence shows a sweep-driven removal: the
+  reachable set was identical before and after every pass, the store path
+  count ended 443 paths higher than it started, and the only collection event
+  on the host deleted 0 paths and freed 0.00 MiB. One earlier pass did show a
+  3-path dip (37,535 → 37,532 at 23:24 UTC, cause not established); that
+  reading predates the scheduled 00:00 GC run, whose journal reports 0 paths
+  deleted, so it is not attributed to collection.
 
 ## Read-only commands used
 
