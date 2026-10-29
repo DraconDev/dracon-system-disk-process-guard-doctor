@@ -73,10 +73,10 @@ Every ranked candidate row has one verdict from
 `{keep, clean-with-approval, needs-operator-call}`; the auxiliary spot-check
 and decomposition tables carry their own verdicts in a verdict column, so no
 row in this report asserts a verdict outside that set.
-The authoritative ranking is the final anchored pass (18:03–18:06 UTC), whose
-top three by exact `du --bytes` readings are **15,656,917,210 /
-12,186,624,107 / 6,983,789,017 bytes**; that table appears below as
-"Final full anchored pass". The first table below is the original first sweep
+The latest completed full-pass ranking is from 18:03–18:06 UTC; it is not
+baseline-qualified. Its top three by exact `du --bytes` readings are
+**15,656,917,210 / 12,186,624,107 / 6,983,789,017 bytes**; that table appears
+below as "Latest completed full anchored pass". The first table below is the original first sweep
 report (15:53–16:05 UTC) with top three **10,932,233,354 / 6,983,789,017 /
 5,946,756,827 bytes**; rows 1, 3 and 5 carry the first report's readings and
 row 12 was re-measured in the 20:17 UTC resample. The first-sweep readings are
@@ -220,7 +220,7 @@ reported 76 directories dated 2026-10-28 at 9,715,886,055 bytes and the same
 measurement by 3,577 bytes. The writer-fence directory grew to 12,185,297,146
 bytes. These live scopes overlap; no cleanup was attempted.
 
-### Final full anchored pass (2026-10-29 18:03–18:06 UTC)
+### Latest completed full anchored pass (not baseline-qualified; 2026-10-29 18:03–18:06 UTC)
 
 This pass is the authoritative one. It was started only after the root list had
 been observed byte-identical across five consecutive 30-second readings
@@ -252,7 +252,7 @@ readings: **15,656,917,210 / 12,186,624,107 /
 Row 1 is a whole-tree `du` of the gate directory. The sandbox decomposition
 below is a separate scope and must not be added to it.
 
-#### Sandbox decomposition of the final pass
+#### Sandbox decomposition of the latest completed pass
 
 One `du` call per scope. The two date-filtered scopes partition the
 all-sandboxes scope exactly, and the all-sandboxes scope is smaller than the
@@ -278,7 +278,7 @@ A read-only re-measurement of the same paths after the pass confirms that most
 figures are still current, and names the three that drifted after the pass
 ended:
 
-| Path | Final-pass bytes | Live bytes at spot check | Verdict | Note |
+| Path | Latest-pass bytes | Live bytes at spot check | Verdict | Note |
 |---|---:|---:|---|---|
 | `~/chat` | 7,321,716,379 | 7,321,716,379 | needs-operator-call | unchanged |
 | `~/.local/share/containers` | 243,857,603 | 243,857,603 | needs-operator-call | unchanged |
@@ -327,7 +327,7 @@ they need an operator review rather than a cleanup recommendation.
 | NixOS configuration target `~/.dracon/nixos` (`/etc/nixos` symlink) | 297,401 bytes | keep |
 
 Every row except the Git-history row is an exact `du --bytes` reading from the
-final anchored pass (18:03–18:06 UTC). The Git-history row is a separate
+latest completed anchored pass (18:03–18:06 UTC), which is not baseline-qualified. The Git-history row is a separate
 measurement taken at 20:31 UTC: the sum of `du --bytes` over the 27 discovered
 `.git` directories, which excludes working-tree files. Media, Git history,
 backup bundles, and live configuration all carry `keep` verdicts only; none of
