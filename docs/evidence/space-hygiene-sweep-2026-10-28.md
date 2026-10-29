@@ -449,18 +449,17 @@ them is flagged for cleaning.
   652. No new anchored pass was started and no replacement baseline-qualified
   measurement is claimed. These observations include transient 2,000–3,000
   root-list bursts; their cause is not established.
-- The reachable closure was measured at **4,604 paths before and after** the
-  final pass, and the *GC-root set* was byte-identical before and after
-  (`root_set_identical=YES`). Earlier passes additionally recorded an
-  identical reachable path set; the final pass artifact records the closure
-  counts, not a set-level comparison, so the report does not claim one.
-- The scheduled `nix-gc.service` run observed in the checked journal window
-  (2026-10-29 00:00–00:04 GMT) reports **0 store paths deleted, 0.00 MiB
-  freed**; its next scheduled run is 2026-10-30 00:00 GMT. The nix-daemon
-  journal contains no collection lines for the sweep window. This work
-  executed no garbage-collection command. The literal objective statement
-  that no garbage collection ran *on the host* is therefore not met, because
-  that scheduled unit did run — but it deleted nothing.
+- The latest completed pass measured the reachable closure at **4,604 paths
+  before and after** and the *GC-root set* byte-identical before and after.
+  Its artifact records closure counts rather than a set-level comparison, so
+  no final reachable-set identity is claimed.
+- Privileged measurements remain incomplete: `sudo -n true` returned
+  `sudo: a password is required`. The unreadable descendants under
+  `~/.local/share`, `~/.local/state`, container/Trash paths, and `/var/log`
+  therefore remain unprivileged subtotals pending an operator-authorized
+  `du --bytes` measurement. The scheduled GC at 2026-10-29 00:00 GMT reports
+  zero paths deleted, but it did run; the literal host-wide no-GC requirement
+  is not claimed.
 
 ## Read-only commands used
 
