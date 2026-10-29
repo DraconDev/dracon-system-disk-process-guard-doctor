@@ -233,9 +233,10 @@ flagged for cleaning.
 
 ## Nix store: sized only
 
-- Primary-pass measured store size: **48,292,600,416 bytes**. The second full
-  pass measured **48,739,098,826 bytes** at 22:30 UTC; the latest full pass
-  measured **48,292,944,394 bytes** at 23:24 UTC.
+- Primary-pass measured store size: **48,292,600,416 bytes**. Later full-pass
+  readings were **48,739,098,826 bytes** (2026-10-28 22:30),
+  **48,292,944,394 bytes** (23:24), and **50,942,398,774 bytes**
+  (2026-10-29 00:41).
 - The primary-pass reachability calculation found 4,604 reachable paths and
   32,931 paths outside those closures. Of the latter, 31,515 were derivations;
   1,416 were outputs totaling **8,366,644,248 bytes** (7.79 GiB). This is a
@@ -248,41 +249,40 @@ flagged for cleaning.
   readings): eight root entries were added and two removed (net +6); the added
   entries pointed at existing store paths, while removed entries were
   `ffmpegthumbs-25.08.3` and `taglib-2.1.1`.
-- The latest full pass (23:24:56–23:37:03 UTC) measured **4,603 reachable
-  paths before and after, with an identical reachable path set**. Root count
-  changed **635 → 632** (605 → 602 indirect roots; 30 direct roots in both
-  readings), with three entries added (`wl-clipboard-2.3.0`, `xdg-utils-1.2.1`,
-  `xgcc-14.3.0-libgcc`) and six removed (`kcolorpicker-0.3.1`,
-  `libkdcraw-25.08.3`, `gwenview-25.08.3`, `kimageannotator-0.7.2`,
-  `cfitsio-4.6.3`, `exiv2-0.28.8`). The store-entry count also changed
-  **37,535 → 37,532** during this pass; the cause of that inventory change was
-  not established.
+- The third full pass (2026-10-28 23:24:56–23:37:03 UTC) measured **4,603
+  reachable paths before and after, with an identical reachable path set**.
+  Root count changed **635 → 632** (605 → 602 indirect roots; 30 direct roots
+  in both readings). The store-entry count changed **37,535 → 37,532**; the
+  cause was not established.
 - The earlier anchored pass (20:17–20:29 UTC) read 637 → 633 roots with the
-  same 4,606-path reachable set. Read-only spot samples on 2026-10-28 ranged
-  615–739 roots from 21:13–22:29 UTC; a transient burst ranged 2,616–3,069 at
-  22:08–22:12 UTC. Samples at 23:08–23:10 were 617, 616, 617, 616, 617, with
-  no identical consecutive full lists. During that interval the
-  `xgcc-14.3.0-libgcc` indirect root was mapped by a live `cargo`/`rustc`
-  process; this work did not start or stop it. It had exited by 23:11, but
-  subsequent lists remained unstable. A five-list stability check at
-  23:21–23:24 finally observed five identical lists at 635 roots, so the full
-  pass was run; the count nevertheless changed to 632 by the end. The pre-sweep
-  reading was 610 roots, followed by 612 and 614/615. Thus even the specified
-  precheck did not guarantee an unchanged count across the full measurement.
-  Ten additional list samples at 23:39–23:44 varied 630–647
-  (633, 630, 631, 637, 639, 631, 632, 646, 647, 645); no consecutive full
-  lists were identical, so another anchored pass was not started.
-- This work executed no garbage-collection command. At 23:37 UTC the scheduled
-  unit `nix-gc.service` still showed its last start at 2026-10-28 00:00:00 GMT
-  and next run at 2026-10-29 00:00 GMT; the inspected nix-daemon journal window
-  contained no GC/collection text. However, because the store-entry count
-  changed by three during the latest pass and its cause was not established,
-  this evidence does not prove that no external store mutation or collection
-  occurred.
-- The objective's unchanged root-count acceptance item is therefore **not met**
-  and is recorded as a contract deviation requiring operator sign-off. The
-  identical reachable path sets do not substitute for that acceptance item;
-  the latest pass also lacks an unchanged store-entry count.
+  same 4,606-path reachable set. On 2026-10-28, spot samples ranged 615–739
+  roots from 21:13–22:29 UTC; a transient burst ranged 2,616–3,069 at
+  22:08–22:12 UTC. A five-list stability check at 23:21–23:24 observed five
+  identical lists at 635 roots, but the ensuing full pass ended at 632.
+- The 2026-10-29 v2 full pass ran 00:41:01–01:07:03 UTC after a 19-second
+  reachability warm-up. It measured **620 → 615 roots** (590 → 584 indirect;
+  30 → 31 direct) and **37,537 → 37,908 store entries**. Two profile
+  generations appeared during this interval: `profile-66-link` at 00:52:35 and
+  `profile-67-link` at 01:06:54. The pass's final root list added `profile-66-link`
+  plus `mpdecimal-4.0.1`, while removing six indirect entries. The exact
+  process initiating these profile changes was not identified.
+- Stability checks after the v2 pass still failed: five samples at 00:24–00:26
+  varied 614, 619, 650, 647, 645; a 150-second interval without Nix queries
+  changed 620 → 622 and added `fontconfig-conf` and
+  `tmuxplugin-resurrect-unstable-2022-05-01`. Later samples at 01:20–01:27
+  ranged 614–650. Separate probes also showed that Nix closure/path-info
+  queries coincide with indirect-root changes, so the root-list instrument may
+  itself contribute transient roots; this was not isolated from other activity.
+  The original pre-sweep reading was 610, followed by 612 and 614/615.
+- This work executed no garbage-collection command. The scheduled system unit
+  nevertheless ran at 2026-10-29 00:00 GMT while the goal was paused; its journal
+  reports **0 store paths deleted, 0.00 MiB freed**. The next run is scheduled
+  for 2026-10-30 00:00 GMT. Thus no path deletion was observed, but the literal
+  objective statement that no garbage collection ran on the host is not met.
+- The objective's unchanged root-count acceptance item is **not met**: no full
+  pass had equal before/after root counts. Identical reachable sets do not
+  substitute for that requirement. The scheduled host GC ran but deleted no
+  store paths; this work did not invoke it.
 
 ## Read-only commands used
 
