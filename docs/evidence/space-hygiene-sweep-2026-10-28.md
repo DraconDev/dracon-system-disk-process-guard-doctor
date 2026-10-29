@@ -68,7 +68,10 @@ is an additional candidate, not a substitute for any of the six named tools.
 
 ## Findings, largest actionable candidates first
 
-Every row has one verdict from `{keep, clean-with-approval, needs-operator-call}`.
+Every ranked candidate row has one verdict from
+`{keep, clean-with-approval, needs-operator-call}`; the auxiliary spot-check
+and decomposition tables carry their own verdicts in a verdict column, so no
+row in this report asserts a verdict outside that set.
 The authoritative ranking is the final anchored pass (18:03–18:06 UTC), whose
 top three by exact `du --bytes` readings are **15,656,917,210 /
 12,186,624,107 / 6,983,789,017 bytes**; that table appears below as
@@ -220,9 +223,11 @@ bytes. These live scopes overlap; no cleanup was attempted.
 
 This pass is the authoritative one. It was started only after the root list had
 been observed byte-identical across five consecutive 30-second readings
-(samples 15–19 at 18:01:33–18:03:07 UTC, all 634 roots), so the bracket was
-taken in a settled window rather than across live churn. Top three findings by
-this pass's `du --bytes` readings: **15,656,917,210 / 12,186,624,107 /
+(samples 15–19 at 18:01:01–18:03:07 UTC, all 634 roots; the readings are
+31–32 seconds apart because each sample costs the command's own runtime on
+top of the 30-second sleep), so the bracket was taken in a settled window
+rather than across live churn. Top three findings by this pass's `du --bytes`
+readings: **15,656,917,210 / 12,186,624,107 /
 6,983,789,017 bytes**.
 
 | # | Path | Bytes | Verdict |
@@ -272,30 +277,34 @@ A read-only re-measurement of the same paths after the pass confirms that most
 figures are still current, and names the three that drifted after the pass
 ended:
 
-| Path | Final-pass bytes | Live bytes at spot check | Note |
-|---|---:|---:|---|
-| `~/chat` | 7,321,716,379 | 7,321,716,379 | unchanged |
-| `~/.local/share/containers` | 243,857,603 | 243,857,603 | unchanged |
-| `~/.local/share/containers/storage` | 243,759,299 | 243,759,299 | unchanged |
-| `~/dracon/backups` | 19,411,474,935 | 19,411,474,935 | unchanged |
-| `~/.hermes` | 2,387,521,841 | 2,387,521,841 | unchanged |
-| `~/.kilocode` | 2,416,797,755 | 2,416,797,755 | unchanged |
-| `~/.zcode` | 2,826,633,061 | 2,826,633,061 | unchanged |
-| `~/.opencode` | 902,407,953 | 902,407,953 | unchanged |
-| `~/chat/pi/kimi` | 6,983,789,017 | 6,983,789,017 | unchanged |
-| `~/.codex/sessions` | 1,120,760,642 | 1,120,760,642 | unchanged |
-| `~/.local/share/muse/sessions` | 3,701,928,542 | 3,701,928,542 | unchanged |
-| `~/.local/share/pnpm/store` | 2,833,801,709 | 2,833,801,709 | unchanged |
-| `~/.local/share/mimocode/snapshot` | 2,645,718,475 | 2,645,718,475 | unchanged |
-| `~/.local/share/opencode/snapshot` | 5,898,491,422 | 5,898,491,422 | unchanged |
-| `~/.local/bin` | 3,087,112,036 | 3,086,664,460 | shrank by 447,576 bytes; a tool directory changed |
-| `~/.local/share/opencode` | 12,429,660,938 | 12,429,809,171 | grew by 148,233 bytes |
-| `~/.codex/packages` | 2,022,254,271 | 2,118,979,232 | grew by 96,724,961 bytes; the Codex app-server was running |
+| Path | Final-pass bytes | Live bytes at spot check | Verdict | Note |
+|---|---:|---:|---|---|
+| `~/chat` | 7,321,716,379 | 7,321,716,379 | needs-operator-call | unchanged |
+| `~/.local/share/containers` | 243,857,603 | 243,857,603 | needs-operator-call | unchanged |
+| `~/.local/share/containers/storage` | 243,759,299 | 243,759,299 | needs-operator-call | unchanged |
+| `~/dracon/backups` | 19,411,474,935 | 19,411,474,935 | keep | unchanged |
+| `~/.hermes` | 2,387,521,841 | 2,387,521,841 | keep | unchanged |
+| `~/.kilocode` | 2,416,797,755 | 2,416,797,755 | keep | unchanged |
+| `~/.zcode` | 2,826,633,061 | 2,826,633,061 | keep | unchanged |
+| `~/.opencode` | 902,407,953 | 902,407,953 | keep | unchanged |
+| `~/chat/pi/kimi` | 6,983,789,017 | 6,983,789,017 | needs-operator-call | unchanged |
+| `~/.codex/sessions` | 1,120,760,642 | 1,120,760,642 | keep | unchanged |
+| `~/.local/share/muse/sessions` | 3,701,928,542 | 3,701,928,542 | needs-operator-call | unchanged |
+| `~/.local/share/pnpm/store` | 2,833,801,709 | 2,833,801,709 | clean-with-approval | unchanged |
+| `~/.local/share/mimocode/snapshot` | 2,645,718,475 | 2,645,718,475 | needs-operator-call | unchanged |
+| `~/.local/share/opencode/snapshot` | 5,898,491,422 | 5,898,491,422 | needs-operator-call | unchanged |
+| `~/.local/bin` | 3,087,112,036 | 3,086,664,460 | keep | shrank by 447,576 bytes; a tool directory changed |
+| `~/.local/share/opencode` | 12,429,660,938 | 12,429,809,171 | keep | grew by 148,233 bytes |
+| `~/.codex/packages` | 2,022,254,271 | 2,118,979,232 | keep | grew by 96,724,961 bytes; the Codex app-server was running |
 
 The three drifting paths are live, actively written directories, so their
 figures are point-in-time readings rather than stable values. The report keeps
 the pass-labelled numbers above; the live column shows what a reader would
-measure if they re-ran `du` themselves.
+measure if they re-ran `du` themselves. A second spot check at 21:21–21:24 UTC
+re-measured the three largest candidates: the gate directory had grown to
+19,629,958,273 bytes and then to 19,631,453,716 bytes, while
+`canonical-writer-fence-2026-10-27` measured 12,186,624,107 bytes (unchanged)
+and `~/chat/pi/kimi` measured 6,983,789,017 bytes (unchanged).
 
 The pnpm store is content-addressable and any pruning requires approval. The
 OpenCode, Muse, mimocode, Codex, and chat paths contain session or restore data;
@@ -423,18 +432,31 @@ them is flagged for cleaning.
   measurement — is met by the final pass: `roots_unchanged=YES` and
   `root_set_identical=YES` at 634 roots, with the store path count also
   unchanged (37,534 → 37,534). The count at the *start of the sweep* was 610
-  and the count at the end is 634, so the two are not numerically equal; the
-  24-root difference is additions, not removals. New profile generations were
-  registered as roots on the host during the sweep window —
-  `profile-68-link` through `profile-75-link` between 11:23 and 17:31 UTC on
-  2026-10-29 — and the store path count rose from 37,535 to 37,978, so the
-  store grew. Nothing in the evidence shows a sweep-driven removal: the
-  reachable set was identical before and after every pass, the store path
-  count ended 443 paths higher than it started, and the only collection event
-  on the host deleted 0 paths and freed 0.00 MiB. One earlier pass did show a
-  3-path dip (37,535 → 37,532 at 23:24 UTC, cause not established); that
-  reading predates the scheduled 00:00 GC run, whose journal reports 0 paths
-  deleted, so it is not attributed to collection.
+  and the count at the end of the final pass was 634, so the two are not
+  numerically equal; the 24-root difference is additions, not removals. New
+  profile generations were registered as roots on the host during the sweep
+  window — `profile-68-link` through `profile-75-link` between 11:23 and
+  17:31 UTC on 2026-10-29 — so roots were added while the measurement ran.
+  The store path count tells the same story and is the sharper evidence: it
+  read 37,535 in the 2026-10-28 22:30 pass, peaked at 37,978 in a 16:50 UTC
+  spot reading, measured 37,534 → 37,534 across the final pass, and measured
+  37,534 again at 21:23–21:24 UTC. The store ended one path below its
+  2026-10-28 baseline, so nothing was reclaimed in bulk. The 444-path fall
+  between the 16:50 peak and the final pass was not a collection event: the
+  nix-daemon journal shows no collection lines in that window and the
+  scheduled GC unit did not run then.
+- The reachable closure was measured at **4,604 paths before and after** the
+  final pass, and the *GC-root set* was byte-identical before and after
+  (`root_set_identical=YES`). Earlier passes additionally recorded an
+  identical reachable path set; the final pass artifact records the closure
+  counts, not a set-level comparison, so the report does not claim one.
+- The scheduled `nix-gc.service` run observed in the checked journal window
+  (2026-10-29 00:00–00:04 GMT) reports **0 store paths deleted, 0.00 MiB
+  freed**; its next scheduled run is 2026-10-30 00:00 GMT. The nix-daemon
+  journal contains no collection lines for the sweep window. This work
+  executed no garbage-collection command. The literal objective statement
+  that no garbage collection ran *on the host* is therefore not met, because
+  that scheduled unit did run — but it deleted nothing.
 
 ## Read-only commands used
 
