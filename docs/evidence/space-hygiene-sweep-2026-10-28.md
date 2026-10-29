@@ -263,9 +263,12 @@ flagged for cleaning.
   reachability warm-up. It measured **620 → 615 roots** (590 → 584 indirect;
   30 → 31 direct) and **37,537 → 37,908 store entries**. Two profile
   generations appeared during this interval: `profile-66-link` at 00:52:35 and
-  `profile-67-link` at 01:06:54. The pass's final root list added `profile-66-link`
-  plus `mpdecimal-4.0.1`, while removing seven indirect entries. The exact
-  process initiating these profile changes was not identified.
+  `profile-67-link` at 01:06:54. Their manifests list the same 25 packages, but
+  the `empire` output changed each time and points to successive revisions of
+  local `~/Dev/empire` `main`. The pass's final root list added `profile-66-link`
+  plus `mpdecimal-4.0.1`, while removing seven indirect entries. This is
+  consistent with external profile upgrades during the pass; the invoking
+  process was not identified.
 - Stability checks after the v2 pass still failed: five samples at 00:24–00:26
   varied 614, 619, 650, 647, 645; a 150-second interval without Nix queries
   changed 620 → 622 and added `fontconfig-conf` and
