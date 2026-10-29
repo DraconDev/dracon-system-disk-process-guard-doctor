@@ -283,9 +283,10 @@ flagged for cleaning.
   one sample also gained a Chromium sandbox root. A `/proc` file-descriptor
   check observed tmux-resurrect `scripts/save.sh` holding the store path while
   its root was present; the short-lived process exited before its parent could
-  be identified. These live-process roots are not represented by
-  `/nix/var/nix/gcroots/auto` symlink changes. No tmux process or setting was
-  stopped.
+  be identified. The active tmux server reports `@continuum-save-interval 5`,
+  so its periodic save hook is enabled. These live-process roots are not
+  represented by `/nix/var/nix/gcroots/auto` symlink changes. No tmux process
+  or setting was stopped.
 - This work executed no garbage-collection command. The scheduled system unit
   nevertheless ran at 2026-10-29 00:00 GMT while the goal was paused; its journal
   reports **0 store paths deleted, 0.00 MiB freed**. The next run is scheduled
@@ -315,6 +316,7 @@ journalctl -u nix-gc.service --since ...      # scheduled GC result (0 paths)
 systemctl show nix-gc.service -p ExecMainStartTimestamp  # timer metadata only
 systemctl list-timers --all                   # scheduled timer metadata
 ps -p <observed pid> -o pid,ppid,etimes,stat,comm  # process state only
+tmux show-option -g                           # live option read, no changes
 # Read /proc/<pid>/maps,comm,status,exe for mapped store-path attribution
 ls -1 /nix/var/nix/gcroots/auto               # registered root symlinks
 find /nix/store -mindepth 1 -maxdepth 1        # store path enumeration
