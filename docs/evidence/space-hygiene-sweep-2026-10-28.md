@@ -421,33 +421,34 @@ them is flagged for cleaning.
   5-second series taken across the pass recorded 30 samples ranging 633–637
   with 15 transitions, and its first and last samples were 635 and 634. This
   does not satisfy the reported 610-root pre-sweep baseline.
-- This work executed no garbage-collection command. The scheduled system unit
-  nevertheless ran at 2026-10-29 00:00 GMT while the goal was paused; its journal
-  reports **0 store paths deleted, 0.00 MiB freed**. The next run is scheduled
-  for 2026-10-30 00:00 GMT. Thus no path deletion was observed, but the literal
-  objective statement that no garbage collection ran on the host is not met.
-- **Acceptance-item status.** The strict check the operator preserved — an
-  unchanged GC-root count, read as a byte-identical sorted root list across
-  five consecutive 30-second readings, then re-read before and after the
-  measurement — is met by the final pass: `roots_unchanged=YES` and
-  `root_set_identical=YES` at 634 roots, with the store path count also
-  unchanged (37,534 → 37,534). The count at the *start of the sweep* was 610
-  — a spot reading recorded in this report's own pass history below, not a
-  separately preserved artifact — and the count at the end of the final pass
-  was 634, so the two are not numerically equal; the 24-root difference is
-  additions, not removals. New
-  profile generations were registered as roots on the host during the sweep
-  window — `profile-68-link` through `profile-75-link` between 11:23 and
-  17:31 UTC on 2026-10-29 — so roots were added while the measurement ran.
-  The store path count tells the same story and is the sharper evidence: it
-  read 37,535 in the 2026-10-28 22:30 pass, peaked at 37,978 in a 16:50 UTC
-  spot reading, measured 37,534 → 37,534 across the final pass, and measured
-  37,534 again at 21:23–21:24 UTC. The store ended one path below its
-  2026-10-28 baseline, so nothing was reclaimed in bulk. The 444-path fall
-  between the 16:50 peak and the final pass was not a collection event: the
-  nix-daemon journal shows no collection lines in that window and the
-  scheduled GC unit did not run then. The mechanism that reclaimed those
-  paths was not established.
+- The scheduled `nix-gc.service` run at 2026-10-29 00:00 GMT reports **0
+  store paths deleted, 0.00 MiB freed**. The baseline-bound retry observations
+  from 23:08–23:53 UTC had no `nix-gc.service` journal entries; at 23:53 the
+  service was inactive and its last start remained 00:00 GMT. The next timer
+  was scheduled for 2026-10-30 00:00 GMT. This work invoked no collection
+  command, but the earlier scheduled host GC did run, so no host-wide
+  no-GC claim is made.
+- **Acceptance-item status: not yet met.** The reported original pre-sweep
+  count of 610 and the latest completed pass's 634→634 bracket are not equal;
+  the 610 reading was not retained as a separate root-list artifact. The
+  store path count was 37,535 in the 2026-10-28 22:30 pass, peaked at 37,978
+  in a 16:50 UTC spot reading, measured 37,534→37,534 across the 18:03 pass,
+  and measured 37,534 again at 21:23–21:24 UTC. New profile generations
+  (`profile-68-link` through `profile-75-link`) were registered between 11:23
+  and 17:31 UTC on 2026-10-29. The 444-path fall from the 16:50 peak was not
+  associated with a collection event in the checked journal window; its
+  mechanism was not established.
+- A revised bounded retry gate preserves every sorted root-list sample,
+  requires five consecutive byte-identical lists, saves that settled list as
+  the explicit pre-sweep baseline, and accepts the anchored pass only when
+  both its before/after lists and counts match that baseline and no GC service
+  start appears during the bounded observation window. The 23:08 UTC attempt
+  saved a 646-root baseline but did not obtain a stable list over 20 readings.
+  The subsequent 23:19, 23:29, 23:39, and 23:50 checks also failed to reach
+  five identical full lists; the 23:50 counts were 649, 649, 651, 650, and
+  652. No new anchored pass was started and no replacement baseline-qualified
+  measurement is claimed. These observations include transient 2,000–3,000
+  root-list bursts; their cause is not established.
 - The reachable closure was measured at **4,604 paths before and after** the
   final pass, and the *GC-root set* was byte-identical before and after
   (`root_set_identical=YES`). Earlier passes additionally recorded an
