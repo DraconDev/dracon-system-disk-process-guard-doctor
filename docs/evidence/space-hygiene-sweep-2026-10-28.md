@@ -60,7 +60,7 @@ complete privileged measurement remains an operator follow-up.
 | Pi | `~/.pi` | 6,244,179,700 | keep |
 | Zcode | `~/.zcode` | 2,826,633,061 | keep |
 | Kilocode | `~/.kilocode` | 2,416,797,755 | keep |
-| **Total** | Six named tools, no shared roots | **31,465,750,447** | **keep** |
+| **Total** | Six named tools, no shared roots | **31,465,750,447** | keep |
 
 The OpenCode total combines 12,429,660,938 bytes at `~/.local/share/opencode`
 and 902,407,953 bytes at `~/.opencode`. The separate `mimocode` directory below
