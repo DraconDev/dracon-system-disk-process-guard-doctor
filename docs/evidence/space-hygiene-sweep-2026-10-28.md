@@ -9,19 +9,20 @@ line was removed before the follow-up stability attempts. The scheduled system
 reports 0 store paths deleted and 0.00 MiB freed. Workspace tests used isolated
 temporary fixtures. The Nix store was sized and compared by reachability only.
 
-Primary measurements below are from 2026-10-28 (roughly 15:53–16:05 UTC). Five
-full anchored passes were run: 20:17–20:29, 22:30–22:42, and 23:24–23:37 UTC,
-then 2026-10-29 00:41–01:07 UTC, and finally 2026-10-29 18:03–18:06 UTC. The
-final pass is the authoritative one: it was started only after five
-consecutive byte-identical sorted root lists were observed 30 seconds apart,
-and it recorded an unchanged GC-root count with a byte-identical root set
-before and after. Focused sandbox resampling and root-stability checks also
-ran. Live state changed during every window, so byte values are exact
-`du --bytes` readings for their stated pass, not an atomic filesystem
-snapshot. Area, agent-tool and off-limits tables use the final anchored pass
-(18:03–18:06 UTC), except the Git-history row, which is a separate measurement
-described below. All candidate rankings are individually pass-labeled. The
-sandbox sub-decomposition tables are separate and not new global rankings.
+Primary measurements below began on 2026-10-28 (roughly 15:53–16:05 UTC). Five
+full anchored passes were run through 2026-10-29 18:03–18:06 UTC. That latest
+completed pass recorded equal within-pass values (634 roots before and after)
+but did not match the reported original pre-sweep baseline of 610; it is not
+accepted as meeting the strict baseline check. A new baseline-bound retry is
+in progress; its attempts and current outcome are recorded in the Nix section.
+A scheduled system `nix-gc.service` run during the earlier work window is also
+recorded below. Live state changed during every window, so byte values are
+exact `du --bytes` readings for their stated pass, not an atomic filesystem
+snapshot. Area, agent-tool and off-limits tables currently use the latest
+completed pass (18:03–18:06 UTC), except the Git-history row, which is a
+separate measurement described below. All candidate rankings are
+individually pass-labeled. The sandbox sub-decomposition tables are separate
+and not new global rankings.
 
 This supplements `leftover-audit-2026-10-27.md` and
 `cleaner-coverage-gaps-2026-10-27.md`. Area rows intentionally overlap: for
@@ -41,7 +42,7 @@ complete privileged measurement remains an operator follow-up.
 | `~/.local/share` | 27,614,583,320 | needs-operator-call | Unprivileged subtotal; container and Trash descendants denied |
 | `~/.local/state` | 34,992,060,510 | needs-operator-call | Unprivileged subtotal; protected descendants denied |
 | `~/.local/bin` | 3,087,112,036 | keep | User-installed tools |
-| `/nix/store` | 49,161,672,136 | keep | Final anchored pass; 8,366,644,248 estimated unreachable output bytes from the primary pass; see Nix section |
+| `/nix/store` | 49,161,672,136 | keep | Latest completed anchored pass (not baseline-qualified); 8,366,644,248 estimated unreachable output bytes from the primary pass; see Nix section |
 | Agent-tool state (six named tools) | 31,465,750,447 | keep | Exact sum of the six roots below; overlaps `~/.local/share` |
 | `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data |
 | `/var/log` | 614,934,912 | needs-operator-call | Unprivileged subtotal; `/var/log/private` and `/var/log/gdm` denied |
