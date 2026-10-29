@@ -302,6 +302,7 @@ nix-store -qR <root store paths>              # read-only reachability closure q
 nix path-info --json --all                    # store path metadata
 journalctl --disk-usage                       # journal accounting
 journalctl -u nix-daemon.service --since ...  # daemon log inspection
+journalctl -u nix-gc.service --since ...      # scheduled GC result (0 paths)
 systemctl show nix-gc.service -p ExecMainStartTimestamp  # timer metadata only
 systemctl list-timers --all                   # scheduled timer metadata
 ps -p <observed pid> -o pid,ppid,etimes,stat,comm  # process state only
