@@ -432,8 +432,10 @@ them is flagged for cleaning.
   measurement — is met by the final pass: `roots_unchanged=YES` and
   `root_set_identical=YES` at 634 roots, with the store path count also
   unchanged (37,534 → 37,534). The count at the *start of the sweep* was 610
-  and the count at the end of the final pass was 634, so the two are not
-  numerically equal; the 24-root difference is additions, not removals. New
+  — a spot reading recorded in this report's own pass history below, not a
+  separately preserved artifact — and the count at the end of the final pass
+  was 634, so the two are not numerically equal; the 24-root difference is
+  additions, not removals. New
   profile generations were registered as roots on the host during the sweep
   window — `profile-68-link` through `profile-75-link` between 11:23 and
   17:31 UTC on 2026-10-29 — so roots were added while the measurement ran.
@@ -444,7 +446,8 @@ them is flagged for cleaning.
   2026-10-28 baseline, so nothing was reclaimed in bulk. The 444-path fall
   between the 16:50 peak and the final pass was not a collection event: the
   nix-daemon journal shows no collection lines in that window and the
-  scheduled GC unit did not run then.
+  scheduled GC unit did not run then. The mechanism that reclaimed those
+  paths was not established.
 - The reachable closure was measured at **4,604 paths before and after** the
   final pass, and the *GC-root set* was byte-identical before and after
   (`root_set_identical=YES`). Earlier passes additionally recorded an
