@@ -264,16 +264,16 @@ flagged for cleaning.
   30 → 31 direct) and **37,537 → 37,908 store entries**. Two profile
   generations appeared during this interval: `profile-66-link` at 00:52:35 and
   `profile-67-link` at 01:06:54. The pass's final root list added `profile-66-link`
-  plus `mpdecimal-4.0.1`, while removing six indirect entries. The exact
+  plus `mpdecimal-4.0.1`, while removing seven indirect entries. The exact
   process initiating these profile changes was not identified.
 - Stability checks after the v2 pass still failed: five samples at 00:24–00:26
   varied 614, 619, 650, 647, 645; a 150-second interval without Nix queries
   changed 620 → 622 and added `fontconfig-conf` and
-  `tmuxplugin-resurrect-unstable-2022-05-01`. Later samples at 01:20–01:27
-  ranged 614–650. Separate probes also showed that Nix closure/path-info
-  queries coincide with indirect-root changes, so the root-list instrument may
-  itself contribute transient roots; this was not isolated from other activity.
-  The original pre-sweep reading was 610, followed by 612 and 614/615.
+  `tmuxplugin-resurrect-unstable-2022-05-01`. Later spot readings ranged
+  614–650; the 01:20:54 sample was 621. Separate probes also showed Nix
+  closure/path-info queries coinciding with indirect-root changes, so the
+  instrument may contribute transient roots; this was not isolated from other
+  activity. The original pre-sweep reading was 610, followed by 612 and 614/615.
 - This work executed no garbage-collection command. The scheduled system unit
   nevertheless ran at 2026-10-29 00:00 GMT while the goal was paused; its journal
   reports **0 store paths deleted, 0.00 MiB freed**. The next run is scheduled
