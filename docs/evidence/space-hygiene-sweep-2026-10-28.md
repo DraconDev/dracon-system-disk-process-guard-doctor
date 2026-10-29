@@ -246,6 +246,37 @@ this pass's `du --bytes` readings: **15,656,917,210 / 12,186,624,107 /
 Row 1 is a whole-tree `du` of the gate directory. The sandbox decomposition
 below is a separate scope and must not be added to it.
 
+#### Post-pass live spot check (2026-10-29 20:52–20:56 UTC)
+
+A read-only re-measurement of the same paths after the pass confirms that most
+figures are still current, and names the three that drifted after the pass
+ended:
+
+| Path | Final-pass bytes | Live bytes at spot check | Note |
+|---|---:|---:|---|
+| `~/chat` | 7,321,716,379 | 7,321,716,379 | unchanged |
+| `~/.local/share/containers` | 243,857,603 | 243,857,603 | unchanged |
+| `~/.local/share/containers/storage` | 243,759,299 | 243,759,299 | unchanged |
+| `~/dracon/backups` | 19,411,474,935 | 19,411,474,935 | unchanged |
+| `~/.hermes` | 2,387,521,841 | 2,387,521,841 | unchanged |
+| `~/.kilocode` | 2,416,797,755 | 2,416,797,755 | unchanged |
+| `~/.zcode` | 2,826,633,061 | 2,826,633,061 | unchanged |
+| `~/.opencode` | 902,407,953 | 902,407,953 | unchanged |
+| `~/chat/pi/kimi` | 6,983,789,017 | 6,983,789,017 | unchanged |
+| `~/.codex/sessions` | 1,120,760,642 | 1,120,760,642 | unchanged |
+| `~/.local/share/muse/sessions` | 3,701,928,542 | 3,701,928,542 | unchanged |
+| `~/.local/share/pnpm/store` | 2,833,801,709 | 2,833,801,709 | unchanged |
+| `~/.local/share/mimocode/snapshot` | 2,645,718,475 | 2,645,718,475 | unchanged |
+| `~/.local/share/opencode/snapshot` | 5,898,491,422 | 5,898,491,422 | unchanged |
+| `~/.local/bin` | 3,087,112,036 | 3,086,664,460 | shrank by 447,576 bytes; a tool directory changed |
+| `~/.local/share/opencode` | 12,429,660,938 | 12,429,809,171 | grew by 148,233 bytes |
+| `~/.codex/packages` | 2,022,254,271 | 2,118,979,232 | grew by 96,724,961 bytes; the Codex app-server was running |
+
+The three drifting paths are live, actively written directories, so their
+figures are point-in-time readings rather than stable values. The report keeps
+the pass-labelled numbers above; the live column shows what a reader would
+measure if they re-ran `du` themselves.
+
 #### Sandbox decomposition of the final pass
 
 One `du` call per scope. The two date-filtered scopes partition the
