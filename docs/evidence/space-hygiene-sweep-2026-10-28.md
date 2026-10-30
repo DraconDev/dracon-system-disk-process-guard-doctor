@@ -28,8 +28,9 @@ agent-tool total includes OpenCode. Do not add overlapping rows together.
 Unprivileged `du` reported denied descendants in `~/.local/share`,
 `~/.local/state`, Trash, and `/var/log`. Read-only `podman unshare du` could
 read the UID-mapped container tree (3,461,884,035 bytes, no permission errors),
-but still could not read the root-owned Trash backup, five state handover
-backups, `/var/log/private`, or `/var/log/gdm`. `sudo -n true` reports that a
+but still could not read the root-owned Trash backup (Trash subtotal:
+553,895,998 bytes), five state handover backups, `/var/log/private`, or
+`/var/log/gdm`. `sudo -n true` reports that a
 password is required, so complete privileged totals remain an operator
 follow-up. Table subtotals are labeled rather than presented as full totals.
 
@@ -43,7 +44,7 @@ follow-up. Table subtotals are labeled rather than presented as full totals.
 | `/nix/store` | 48,303,274,209 | keep | `du` at 08:53; latest retry failed root-count gate. 8,366,644,248 bytes remains a historical pre-GC unreachable-output estimate; see Nix section |
 | Agent-tool state (six named tools) | 31,840,760,127 | keep | Exact sum of the six latest measured roots below; overlaps `~/.local/share` |
 | `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data; `du` at 08:53 |
-| `/var/log` | 623,448,320 | needs-operator-call | `du` subtotal from 08:53; user-namespace scan also denied `/var/log/private` and `/var/log/gdm` |
+| `/var/log` | 623,448,320 | needs-operator-call | `du` subtotal from 08:53; `podman unshare du` read 589,901,568 but denied `/var/log/private` and `/var/log/gdm` |
 | `/var/log/journal` | 612,368,384 | clean-with-approval | `du` at 08:53; separate `journalctl --disk-usage` reading was 475.7M at approximately 21:05 UTC |
 | `~/.local/share/containers` | 3,461,884,035 | needs-operator-call | `podman unshare du` at 09:11; all descendants readable in that user namespace (0 permission errors) |
 | `~/Backups` | 26,473,384,957 | keep | Backup tree; off-limits to cleaning |
@@ -75,6 +76,7 @@ is an additional candidate, not a substitute for any of the six named tools.
 | `alpine:3.20` | 7,807,582 | keep | Docker image inspect `Size` |
 | Docker build cache | 71,261,146 | keep | Docker `/system/df` API; 2 entries |
 | Podman image storage | 250,748,103 | keep | `podman system df --format json` `RawSize`; 2 images, 0 containers |
+| `~/.local/share/containers/storage` | 3,461,785,731 | needs-operator-call | `podman unshare du`; 0 permission errors, nested within the area row |
 | Untagged Podman image `6232b387…` | 80,694,099 | needs-operator-call | Exact image-inspect size; no repo tag |
 | `docker.io/library/ubuntu:24.04` (Podman) | 80,702,836 | keep | Exact image-inspect size |
 
@@ -429,7 +431,12 @@ them is flagged for cleaning.
   `@continuum-save-interval 0`, and three `tmux-persist-daemon` processes plus
   the legacy `/tmp/tpd` driver were stopped. The root lists still changed.
   At 16:51 UTC both server intervals were restored to 5 and all four stopped
-  processes were resumed; their running states and settings were verified.
+  processes were resumed; their running states and settings were verified. A
+  fresh read-only check at 09:24 UTC on 2026-10-30 found the default tmux
+  server active with `@continuum-save-interval 5`, `/tmp/tpd` running, and 16
+  `tmux-persist-daemon` processes. The exact original three daemon PIDs cannot
+  be matched amid later process churn, but no paused autosave state is
+  observable and no further restoration action was needed.
 - A wider stability gate was then applied: instead of five readings, the retry
   loop was run with twenty samples 30 seconds apart, and it would start the
   anchored pass only once the sorted root list had been byte-identical five
@@ -437,7 +444,7 @@ them is flagged for cleaning.
   18:03:07 UTC (samples 15–19, all 634 roots) and started the pass
   immediately. The attempt log for every earlier attempt is preserved; the
   failed attempts recorded their readings rather than being discarded.
-- **The latest completed full anchored pass (2026-10-29 18:03:07–18:06:08
+- **The historical full anchored pass (2026-10-29 18:03:07–18:06:08
   UTC) recorded equal within-pass readings, not the original pre-sweep
   baseline.** It measured **634 roots before and 634 after**, with a
   byte-identical sorted root list (`roots_unchanged=YES`,
