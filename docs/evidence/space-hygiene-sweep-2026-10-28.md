@@ -142,17 +142,29 @@ Every ranked candidate row has one verdict from
 `{keep, clean-with-approval, needs-operator-call}`; the auxiliary spot-check
 and decomposition tables carry their own verdicts in a verdict column, so no
 row in this report asserts a verdict outside that set.
-The latest per-path top three are from the complete 19:40 post-GC pass:
-**30,673,976,941 / 12,186,624,107 / 6,983,789,017 bytes** by exact
-`du --bytes` readings. This pass satisfied its preserved 609-root baseline
-bracket; the figures remain point-in-time readings, not an atomic filesystem
-snapshot. Historical full-pass rankings follow.
+The latest per-path top three are from the v6 qualified pass
+(2026-10-30 23:40:55 UTC onward):
+**34,312,946,681 / 12,186,624,107 / 6,983,789,017 bytes** by exact
+`du --bytes` readings, with **30,906,069,120 bytes** of `~/Videos` and
+**16,985,596,547 bytes** of `~/.config` following as sized-but-never-flagged
+media and live config. The first-ranked figure is the whole gate tree; the
+per-sandbox subset sums below it are nested and must not be added to it.
+These are point-in-time readings, not an atomic filesystem snapshot. Historical
+full-pass rankings follow.
 
 | # | Path | Bytes | Verdict |
 |---|---|---:|---|
-| 1 | `~/.local/state/dracon/sync/gates/browser-extensions-shared` | 30,673,976,941 | needs-operator-call |
+| 1 | `~/.local/state/dracon/sync/gates/browser-extensions-shared` (whole-tree `du`) | 34,312,946,681 | needs-operator-call |
 | 2 | `~/.local/state/dracon-sync/qualification/canonical-writer-fence-2026-10-27` | 12,186,624,107 | needs-operator-call |
 | 3 | `~/chat/pi/kimi` | 6,983,789,017 | needs-operator-call |
+
+Gate-tree decomposition from the same v6 pass: `sandboxes_all` covered 379
+directories totalling 32,115,525,943 bytes, split as 267 directories dated
+2026-10-28 at 32,057,940,133 bytes and 112 older directories at 57,585,810
+bytes. Those subsets are nested inside the whole-tree row and are not additive
+with it; the whole-tree reading is larger because it also covers non-sandbox
+content. The writer-fence candidate measured 12,186,624,107 bytes for the
+second consecutive pass.
 
 The original first-sweep ranking (15:53–16:05 UTC) follows as historical
 context, with top three **10,932,233,354 / 6,983,789,017 / 5,946,756,827
@@ -394,18 +406,18 @@ they need an operator review rather than a cleanup recommendation.
 
 | Path | Size | Verdict |
 |---|---:|---|
-| `~/Videos` | 30,743,674,509 bytes | keep |
-| `~/Pictures` | 67,565,294 bytes | keep |
-| Git history in 27 `.git` directories under `~/Dev` | 61,919,612,221 bytes | keep |
+| `~/Videos` | 30,906,069,120 bytes | keep |
+| `~/Pictures` | 69,140,898 bytes | keep |
+| Git history in 27 `.git` directories under `~/Dev` | 62,507,435,454 bytes | keep |
 | `~/Backups` | 26,473,384,957 bytes | keep |
-| `~/dracon/backups` | 19,411,474,935 bytes | keep |
-| `~/.config` | 16,910,142,887 bytes | keep |
-| `~/.dracon` | 4,117,202,897 bytes | keep |
+| `~/dracon/backups` | 21,594,713,333 bytes | keep |
+| `~/.config` | 16,985,596,547 bytes | keep |
+| `~/.dracon` | 4,130,290,544 bytes | keep |
 | NixOS configuration target `~/.dracon/nixos` (`/etc/nixos` symlink) | 297,401 bytes | keep |
 
-Every row is an exact `du --bytes` reading from the complete 2026-10-30
-19:40–19:42 UTC pass; the Git-history row sums the 27 discovered `.git`
-directories and excludes working-tree files. Media, Git history, backup
+Every row is an exact `du --bytes` reading from the v6 qualified pass
+(2026-10-30 23:40:55 UTC onward); the Git-history row sums the 27 discovered
+`.git` directories and excludes working-tree files. Media, Git history, backup
 bundles, and live configuration all carry `keep` verdicts only; none is
 flagged for cleaning.
 
@@ -416,10 +428,12 @@ flagged for cleaning.
   **48,292,944,394 bytes** (23:24), **50,942,398,774 bytes**
   (2026-10-29 00:41), and **49,161,672,136 bytes** (2026-10-29 18:03). The
   2026-10-30 08:53 attempt measured **48,303,274,209 bytes**; the 15:11 pass
-  measured **50,983,998,714 bytes** and failed its bracket (656→636). A 19:20
-  full pass measured **50,993,583,694 bytes** but also failed (640→636). The
-  latest complete pass at 19:40 measured **48,312,514,794 bytes** and passed
-  the fresh post-GC bracket at 609→609.
+  measured **50,983,998,714 bytes** and failed its root-count bracket (656→636).
+  A 19:20 full pass measured **50,993,583,694 bytes** but also failed (640→636).
+  The 19:40 pass measured **48,312,514,794 bytes** at 609→609, and the qualified
+  v6 pass at 23:40 measured the same **48,312,514,794 bytes** with store entries
+  37,539→37,539, `--print-dead` 0→0 and no GC service run. The v6 bracket is the
+  current no-collection evidence; see the v6 subsection below.
 - The primary-pass reachability calculation found 4,604 reachable paths and
   32,931 paths outside those closures. Of the latter, 31,515 were derivations;
   1,416 were outputs totaling **8,366,644,248 bytes** (7.79 GiB). This is a
@@ -633,11 +647,28 @@ a later post-GC bracket.
 
 The retry gate's disposable tests are preserved under
 `docs/evidence/space-hygiene-baseline-gate-2026-10-30/gate-fixtures/` with the
-helper scripts and mock dependencies. They exercise count match/mismatch,
+helper scripts and mock dependencies.
+
+The v6 acceptance rule (preserved baseline match + unchanged `/nix/store`
+entries + unchanged `--print-dead` set + no GC service run) was exercised with
+disposable mocks under `gate-fixtures/v6-acceptance/`. The executed cases and
+their observed outcomes:
+
+| Fixture case | Exit | Outcome |
+|---|---:|---|
+| Root churn only (roots added/removed, store and dead set unchanged) | 0 | Accepted — root churn correctly treated as diagnostic |
+| Identical inputs repeated | 0 | Accepted — no false rejection |
+| `/nix/store` grew | 1 | Rejected — collection evidence present |
+| `/nix/store` shrank | 1 | Rejected — collection evidence present |
+| Dead set grew | 1 | Rejected — collection evidence present |
+| `nix-gc.service` journal event present | 2 | Rejected — no-GC condition violated |
+
+Those are logic tests against mock dependencies, not host observations. They
+show the repaired rule tolerates the harmless churn that made the old proxy
+unusable while still rejecting an actual store change or a GC run. Additional
+fixtures retained from the earlier rule exercise count match/mismatch,
 GC-event rejection, journal-unavailable fail-closed behavior, and the
-contract's count-only acceptance when identities churn at a constant count.
-The added endpoint-only fixture verifies that the anchor still rejects a
-changed after-count when concurrent root polling is disabled.
+endpoint-only bracket.
 
 ### Fresh endpoint-only baseline-bound pass (2026-10-30 19:40:41–19:42:18 UTC)
 
@@ -663,6 +694,53 @@ the extra sampler only for the accepted bracket; it does not attribute the
 root changes to the sampler or any specific process. The fresh pass is
 post-GC and does not erase the historical scheduled collection described
 above.
+
+### Qualified v6 pass — direct no-collection evidence (2026-10-30 23:40:55 UTC)
+
+The GC-root count is **not** a collection signal on this host, and the earlier
+brackets that required it were measuring the wrong thing. `nix-store --gc
+--print-roots` lists the Nix daemon's transient roots for any store path a live
+process currently has mapped, so the list changes during any multi-minute
+measurement even when nothing is collected. Three consecutive passes at
+23:15–23:39 UTC showed exactly that (609→650, 650→617, 617→644) with no GC
+service run and an unchanged store:
+
+| Attempt | Preserved baseline | `roots_before` | `roots_after` | `/nix/store` entries | `--print-dead` | GC run | Verdict |
+|---|---:|---:|---:|---|---|---|---|
+| contract-final #1 | 609 | 609 | 650 | 37,539→37,539 | not captured | no | rejected by root-count proxy |
+| contract-final #2 | 650 | 650 | 617 | 37,539→37,539 | not captured | no | rejected by root-count proxy |
+| contract-final2 | 617 | 617 | 644 | 37,539→37,539 | not captured | no | rejected by root-count proxy |
+| **v6 qualified** | **618** | **618** | 638 | **37,539→37,539** | **0→0** | no | **accepted** |
+
+The added and removed roots in those diffs were the same video-encode toolchain
+(`ffmpeg`, `libvpx`, `svt-av1`, `libass`, `libopenmpt`, `zvbi`, `openjpeg`,
+`wl-clipboard`) appearing and disappearing; the v6 pass recorded +26/−6 churn.
+A read-only check found no process holding those store paths at sampling time,
+so the registrations were transient runtime roots, not collection effects.
+
+The v6 pass therefore measures the invariant directly:
+
+- Preserved 618-root pre-sweep baseline matched `roots_before` byte-for-byte.
+- `/nix/store` entry count: **37,539 → 37,539** (a collection would remove paths).
+- `nix-store --gc --print-dead` (the deletion set; printing deletes nothing):
+  **0 → 0**.
+- No `nix-gc.service` run: the bounded journal window returned `-- No entries --`
+  and the service start timestamp stayed at 2026-10-30 00:00 GMT.
+- `nix-gc.service` was not invoked by this survey at any point; the only GC runs
+  on this host were the system timer's, recorded above.
+
+Full artifacts, including both preserved root lists, both dead-set files and the
+root-churn diffs, are in
+`docs/evidence/space-hygiene-baseline-gate-2026-10-30/attempt-20261030T2340Z-v6-qualified/`.
+The non-qualifying attempts are retained under
+`attempt-20261030T2315Z-contract-final/`.
+
+One nuance the evidence supports and this report does not overstate: the
+`--print-dead` set is empty because the boot generation holds every store path
+reachable, so it cannot shrink further. The two readings are complementary —
+the store-entry count would drop on any deletion, and the dead-set count would
+change if reachability moved. Neither is a substitute for the journal/service
+check, and all three are reported.
 
 ## Read-only commands used
 
