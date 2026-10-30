@@ -772,10 +772,12 @@ sudo du -sx --bytes "$HOME/.local/state"      # completed; output preserved abov
 sudo du -sx --bytes /var/log                   # completed; output preserved above
 sudo find "$HOME/.local/state" -type d -iname '*handover*' -print0 | sudo xargs -0 -r du -sx --bytes  # operator attempt; no completed size output retained
 timeout 60s find "$HOME/.local/state" -xdev -maxdepth 8 -type d -iname '*handover*' -printf '%p\n'  # 22:14 path search; five matches, permission denied
+stat -c '%A %U:%G %n' "$HOME/.local/state/dracon-sync/service-migration"/*/handover-backup  # ownership without traversal
 date -Is                                      # observation timestamps
 systemctl is-active nix-gc.service            # current service state
 nix-store --gc --print-roots | wc -l          # read-only root listing/count
 nix-store --gc --print-roots | sort           # full root-list stability comparison
+nix-store --gc --print-dead | wc -l           # deletion-set count; prints, deletes nothing
 nix-store -qR <root store paths>              # read-only reachability closure query
 nix path-info --json --all                    # store path metadata
 journalctl --disk-usage                       # journal accounting
