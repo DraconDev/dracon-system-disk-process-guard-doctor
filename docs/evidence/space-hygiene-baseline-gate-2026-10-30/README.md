@@ -28,7 +28,23 @@ live host.
 
 The archived `anchored-pass.sh` is the exact version used for the live
 15:11 attempt; its `git_history` aggregation emitted an AWK parse error, so
-that row was absent and remains sourced from the separate 20:31 measurement.
-The live cache helper was corrected to use `printf`; its Bash syntax and a
-small sum fixture passed, but the corrected script has not been run against
-the host. `anchored-pass-aggregator-fixed.sh` preserves that corrected version.
+that row was absent. The live cache helper was corrected to use `printf`; the
+19:20 host pass included the corrected 27-repository total but failed the
+root-count bracket. After disabling the concurrent sampler for the acceptance
+bracket, the 19:40 host pass qualified at 609→609 roots with identical root
+lists. Its full artifacts are in `attempt-20261030T194041Z-endpoint-only/`.
+The optional-sampler regression fixture is in
+`gate-fixtures/endpoint-only-sampler/`.
+
+## Fixture rerun and cache-log qualification
+
+The current retry gate's stable, count-mismatch, same-count-root-churn,
+GC-event and journal-unavailable fixtures were rerun with explicit isolated
+mock paths. Results and per-case logs are in
+`gate-fixtures/retry-gate-rerun/`.
+
+The shared cache `attempts.log` also contains entries at 19:37 and 19:39 from
+an initial fixture integration invocation that used mocked `nix-store` but
+incorrectly wrote to the default live log directory. Those records are not
+host observations and are excluded from all claims. The validated 19:40 pass
+uses a separate, unique log directory preserved in its own evidence folder.
