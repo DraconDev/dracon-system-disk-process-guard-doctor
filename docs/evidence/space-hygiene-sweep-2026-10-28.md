@@ -464,7 +464,8 @@ them is flagged for cleaning.
   Both were system-timer actions, not commands invoked by this survey. No
   host-wide no-GC/no-deletion condition can be claimed; the most recent
   bounded anchored window at 08:53–08:55 UTC had no GC start during its own
-  measurement window.
+  measurement window. At 09:11 UTC the next timer was scheduled for
+  2026-10-31 00:00 GMT; no timer change was made.
 - **Acceptance-item status: not yet met.** The reported original pre-sweep
   reading of 610 has no preserved root-list artifact. The latest completed
   anchored attempt on 2026-10-30 saved an attempt-specific 639-root baseline,
