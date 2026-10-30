@@ -18,10 +18,13 @@ matched it before and after, with byte-identical sorted lists; its bounded
 journal/service check found no GC. This is a new post-GC baseline, not a
 reconstruction of the earlier unpreserved 610-root observation. The area,
 agent-tool and off-limits tables now use the 19:40 pass, except the container
-storage row, which uses the later `podman unshare du` reading. `~/.local/share`,
-`~/.local/state`, and `/var/log` remain unprivileged subtotals because exact
-host-root output is not retained here. Candidate top-three findings use the
-19:40 full pass. Live state changed during every window, so sizes are exact
+storage row, which uses the later `podman unshare du` reading. The 19:40 rows
+for `~/.local/share`, `~/.local/state`, and `/var/log` remain pass-specific
+unprivileged measurements; separate operator-pasted privileged readings from
+18:13 UTC are recorded below, not substituted into that pass. The shell output
+did not include `date -Is`, so 18:13:15.514Z is the message-capture timestamp,
+not an independently observed command timestamp. Candidate top-three findings
+use the 19:40 full pass. Live state changed during every window, so sizes are exact
 readings for their stated pass, not an atomic filesystem snapshot. Historical
 full-pass tables are retained separately.
 
@@ -32,30 +35,62 @@ agent-tool total includes OpenCode. Do not add overlapping rows together.
 
 Unprivileged `du` reported denied descendants in `~/.local/share`,
 `~/.local/state`, Trash, and `/var/log`. Read-only `podman unshare du` could
-read the UID-mapped container tree (3,461,884,035 bytes, no permission errors),
-but earlier runs could not read the root-owned Trash backup, five state
-handover backups, `/var/log/private`, or `/var/log/gdm`. The operator later
-reported running a host-root `du`, but its exact terminal output is not present
-in the retained evidence; no privileged totals are inferred or substituted.
-`sudo -n true` still reports that a password is required in this session, so
-complete privileged totals remain an operator follow-up. Table subtotals are
-labeled rather than presented as full totals.
+read the UID-mapped container tree (3,461,884,035 bytes, no permission errors).
+The operator later pasted exact privileged totals for the share, state, Trash,
+and log paths; they are retained below as a separate point-in-time sample. The
+five state handover directories were still not sized. A read-only search at
+22:14 UTC found their paths but received `Permission denied` on each. `sudo -n
+true` still requires an interactive password in this session, so their sizes
+remain an operator follow-up. The 19:40 pass subtotals stay labeled rather than
+being replaced with measurements from a different time.
 
 ## Swept areas
 
 | Area | Bytes | Verdict | Notes |
 |---|---:|---|---|
-| `~/.local/share` | 27,622,929,585 | needs-operator-call | Unprivileged subtotal from the complete 19:40 pass; earlier `podman unshare du` subtotal was 30,833,970,932 bytes and still denied one root-owned Trash subtree |
-| `~/.local/state` | 50,083,125,306 | needs-operator-call | Unprivileged subtotal from the complete 19:40 pass; five root-owned handover backups remain unreadable in this session |
+| `~/.local/share` | 27,622,929,585 | needs-operator-call | Unprivileged subtotal from the complete 19:40 pass; a separate 18:13 operator-pasted `sudo du` reading was 30,840,087,166 bytes |
+| `~/.local/state` | 50,083,125,306 | needs-operator-call | Unprivileged subtotal from the complete 19:40 pass; a separate 18:13 operator-pasted `sudo du` reading was 49,316,690,397 bytes; five handover backup subtrees still lack individual sizes |
 | `~/.local/bin` | 3,090,902,012 | keep | User-installed tools; `du` in the complete 19:40 pass |
 | `/nix/store` | 48,312,514,794 | keep | `du` in the complete 19:40 post-GC pass; preserved root bracket 609→609 and no GC in its window. 8,366,644,248 bytes remains a historical pre-GC unreachable-output estimate; see Nix section |
 | Agent-tool state (six named tools) | 32,175,371,407 | keep | Exact sum of the six roots measured in the complete 19:40 pass; overlaps `~/.local/share` |
 | `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data; `du` in the complete 19:40 pass |
-| `/var/log` | 606,780,928 | needs-operator-call | Unprivileged subtotal from the complete 19:40 pass; `podman unshare du` previously read 589,901,568 but denied `/var/log/private` and `/var/log/gdm` |
+| `/var/log` | 606,780,928 | needs-operator-call | Unprivileged subtotal from the complete 19:40 pass; a separate 18:13 operator-pasted `sudo du` reading was 598,374,272 bytes, with `/var/log/private` and `/var/log/gdm` each at 0 bytes |
 | `/var/log/journal` | 595,591,168 | clean-with-approval | `du` in the complete 19:40 pass; separate `journalctl --disk-usage` reading was 475.7M at approximately 21:05 UTC |
 | `~/.local/share/containers` | 3,461,884,035 | needs-operator-call | `podman unshare du` at 09:11; all descendants readable in that user namespace (0 permission errors) |
 | `~/Backups` | 26,473,384,957 | keep | Backup tree; off-limits to cleaning |
 | `~/dracon/backups` | 19,411,474,935 | keep | Backup bundles; off-limits to cleaning |
+
+### Supplemental operator-pasted privileged sample (2026-10-30)
+
+The exact output below was pasted in the user's 18:13:15.514 UTC message. That
+is the message-capture time only; the shell command had no recorded `date -Is`,
+so it is not asserted as the exact measurement instant. These are separate
+readings from the 19:40 pass and are not used to rewrite its pass-specific area
+table.
+
+| Path | Bytes | Verdict | Provenance |
+|---|---:|---|---|
+| `~/.local/share/Trash` | 553,982,709 | needs-operator-call | operator-pasted `sudo du -sx --bytes` |
+| `/var/log/private` | 0 | keep | operator-pasted `sudo du -sx --bytes` |
+| `/var/log/gdm` | 0 | keep | operator-pasted `sudo du -sx --bytes` |
+| `~/.local/share` | 30,840,087,166 | needs-operator-call | operator-pasted `sudo du -sx --bytes` |
+| `~/.local/state` | 49,316,690,397 | needs-operator-call | operator-pasted `sudo du -sx --bytes` |
+| `/var/log` | 598,374,272 | needs-operator-call | operator-pasted `sudo du -sx --bytes` |
+
+The corresponding pasted command output was:
+
+```text
+$ sudo du -sx --bytes "$HOME/.local/share/Trash" /var/log/private /var/log/gdm
+553982709       /home/dracon/.local/share/Trash
+0       /var/log/private
+0       /var/log/gdm
+$ sudo du -sx --bytes "$HOME/.local/share"
+30840087166     /home/dracon/.local/share
+$ sudo du -sx --bytes "$HOME/.local/state"
+49316690397     /home/dracon/.local/state
+$ sudo du -sx --bytes /var/log
+598374272       /var/log
+```
 
 ### Agent-tool state inventory
 
@@ -643,7 +678,13 @@ find <dir> -type d -name .git -prune -exec du -sx --bytes {} +  # git history (f
 ls -la --time-style=+%F <dir>                 # dates and names
 readlink -f /etc/nixos                        # resolve config symlink
 sudo -n true                                  # privilege availability probe (password required)
-sudo du -sx --bytes "$HOME/.local/share" "$HOME/.local/share/Trash" "$HOME/.local/state" /var/log /var/log/private /var/log/gdm  # operator-run; exact output not retained
+sudo du -sx --bytes "$HOME/.local/share" "$HOME/.local/share/Trash" "$HOME/.local/state" /var/log /var/log/private /var/log/gdm  # initial operator attempt interrupted
+sudo du -sx --bytes "$HOME/.local/share/Trash" /var/log/private /var/log/gdm  # completed; output preserved above
+sudo du -sx --bytes "$HOME/.local/share"      # completed; output preserved above
+sudo du -sx --bytes "$HOME/.local/state"      # completed; output preserved above
+sudo du -sx --bytes /var/log                   # completed; output preserved above
+sudo find "$HOME/.local/state" -type d -iname '*handover*' -print0 | sudo xargs -0 -r du -sx --bytes  # operator attempt; no completed size output retained
+timeout 60s find "$HOME/.local/state" -xdev -maxdepth 8 -type d -iname '*handover*' -printf '%p\n'  # 22:14 path search; five matches, permission denied
 date -Is                                      # observation timestamps
 systemctl is-active nix-gc.service            # current service state
 nix-store --gc --print-roots | wc -l          # read-only root listing/count
@@ -675,26 +716,35 @@ command against surveyed data; the scheduled host GC is separately recorded
 above. The earlier helper's generated-scratch removal is qualified above.
 Workspace-test fixtures remained confined to their temporary test directories.
 
-## Operator follow-up: privileged path sizes
+## Operator follow-up: five handover-backup sizes
 
-The fresh Nix baseline-bound pass now qualifies, but the protected-path size
-objection remains unresolved in the saved evidence. `sudo` requires an
-interactive password in this session, and the exact output of the operator-run
-privileged measurement is not retained, so the report cannot cite those
-values or the individual sizes of the five state handover backups. Please
-repeat the read-only commands below and include their exact output and the
-measurement timestamp:
+The user's exact privileged readings for `~/.local/share`, Trash,
+`~/.local/state`, and `/var/log` are now preserved in the supplemental sample
+above. They remain separate from the 19:40 pass and their command timestamp
+was not recorded. The only remaining size gap is the five root-owned handover
+backup directories. A read-only path search at 22:14:18 UTC found all five,
+but traversal of each returned `Permission denied`; no sizes were obtained.
+`sudo -n true` still requires a password here, so please run the targeted
+read-only measurement below and paste its complete output with the `date -Is`
+result. No cleanup or GC is requested.
+
+| Handover-backup path | Bytes | Verdict | Evidence |
+|---|---:|---|---|
+| `~/.local/state/dracon-sync/service-migration/20261018-operator-v8/handover-backup` | not measured | needs-operator-call | unprivileged `find` returned `Permission denied` |
+| `~/.local/state/dracon-sync/service-migration/20261018-operator-v3/handover-backup` | not measured | needs-operator-call | unprivileged `find` returned `Permission denied` |
+| `~/.local/state/dracon-sync/service-migration/20261018-operator-v2/handover-backup` | not measured | needs-operator-call | unprivileged `find` returned `Permission denied` |
+| `~/.local/state/dracon-sync/service-migration/20261018-operator-v6/handover-backup` | not measured | needs-operator-call | unprivileged `find` returned `Permission denied` |
+| `~/.local/state/dracon-sync/service-migration/20261018-operator-v7/handover-backup` | not measured | needs-operator-call | unprivileged `find` returned `Permission denied` |
 
 ```sh
 date -Is
 sudo du -sx --bytes \
-  "$HOME/.local/share" "$HOME/.local/share/Trash" \
-  "$HOME/.local/state" /var/log /var/log/private /var/log/gdm
-sudo find "$HOME/.local/state" -type d -iname '*handover*' -print0 \
-  | sudo xargs -0 -r du -sx --bytes
+  "$HOME/.local/state/dracon-sync/service-migration/20261018-operator-v8/handover-backup" \
+  "$HOME/.local/state/dracon-sync/service-migration/20261018-operator-v3/handover-backup" \
+  "$HOME/.local/state/dracon-sync/service-migration/20261018-operator-v2/handover-backup" \
+  "$HOME/.local/state/dracon-sync/service-migration/20261018-operator-v6/handover-backup" \
+  "$HOME/.local/state/dracon-sync/service-migration/20261018-operator-v7/handover-backup"
 ```
-
-No cleanup, deletion, service pause, or garbage-collection action is requested.
 
 ## Workspace test transcript
 
