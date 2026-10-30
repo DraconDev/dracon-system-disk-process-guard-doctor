@@ -53,6 +53,6 @@ uses a separate, unique log directory preserved in its own evidence folder.
 
 A bounded `cargo test --workspace --locked` run exited 0 with 44 suite-result lines:
 2,923 passed, 0 failed, 25 ignored. The complete output is preserved in
-`workspace-test-20261030T1944Z.log`. This verification does not change the
-host measurement claim; it covers the workspace after the report/evidence
-updates.
+`workspace-test-20261030T1944Z.log`. The run covers the workspace at that
+revision; no Rust source changed during this report-only task. It does not
+independently validate the host measurements.
