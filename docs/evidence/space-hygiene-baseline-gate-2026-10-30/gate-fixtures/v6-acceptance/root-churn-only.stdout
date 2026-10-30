@@ -1,0 +1,24 @@
+=== attempt 1 @ 20261030T234030Z ===
+observation_window_start=2026-10-30T23:40:30Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT gc_start_before_status=0
+warmup_reachable=0
+pre_sweep_baseline_at=2026-10-30T23:40:30Z pre_sweep_baseline_count=3 baseline_file=/tmp/sh-v6-fixture-nUZqk7/log-root-churn-only/baseline-20261030T234030Z.txt
+attempt 1: starting anchored pass from preserved baseline
+attempt 1: pass exit=0
+pre_sweep_baseline_at=2026-10-30T23:40:30Z
+pre_sweep_baseline_count=3
+pre_sweep_baseline_file=/tmp/sh-v6-fixture-nUZqk7/log-root-churn-only/baseline-20261030T234030Z.txt
+roots_before=3
+store_paths_before=3
+roots_after=3
+store_paths_after=3
+roots_unchanged=YES
+root_set_identical=NO
+root_series_samples=0
+root_series_min=NOT_SAMPLED
+root_series_max=NOT_SAMPLED
+root_series_constant=NOT_SAMPLED
+root_series_transitions=NOT_SAMPLED
+pass_seconds=1
+preserved_baseline_count=3 run_baseline_count=3 roots_before=3 roots_after=3 root_churn_added=3 root_churn_removed=3 baseline_matches_before=YES store_paths=3->3 dead_paths=2->2 no_collection_evidence=YES gc_unchanged=YES
+attempt 1: SUCCESS - preserved pre-sweep baseline matched, /nix/store and --print-dead set unchanged, no nix-gc.service run in window
+note: GC-root count changed by +3/-3 (daemon transient roots); reported as diagnostic, not a collection signal

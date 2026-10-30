@@ -1,0 +1,23 @@
+=== attempt 1 @ 20261030T234033Z ===
+observation_window_start=2026-10-30T23:40:33Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT gc_start_before_status=0
+pre_sweep_baseline_at=2026-10-30T23:40:34Z pre_sweep_baseline_count=3 baseline_file=/tmp/sh-v6-fixture-nUZqk7/log-store-grew/baseline-20261030T234033Z.txt
+attempt 1: starting anchored pass from preserved baseline
+attempt 1: pass exit=0
+pre_sweep_baseline_at=2026-10-30T23:40:34Z
+pre_sweep_baseline_count=3
+pre_sweep_baseline_file=/tmp/sh-v6-fixture-nUZqk7/log-store-grew/baseline-20261030T234033Z.txt
+roots_before=3
+store_paths_before=3
+roots_after=3
+store_paths_after=4
+roots_unchanged=YES
+root_set_identical=YES
+root_series_samples=0
+root_series_min=NOT_SAMPLED
+root_series_max=NOT_SAMPLED
+root_series_constant=NOT_SAMPLED
+root_series_transitions=NOT_SAMPLED
+pass_seconds=1
+preserved_baseline_count=3 run_baseline_count=3 roots_before=3 roots_after=3 root_churn_added=0 root_churn_removed=0 baseline_matches_before=YES store_paths=3->4 dead_paths=2->2 no_collection_evidence=NO gc_unchanged=YES
+attempt 1: baseline mismatch or collection evidence present; retrying with a fresh preserved baseline
+all 1 attempts exhausted without a qualifying bounded pass
