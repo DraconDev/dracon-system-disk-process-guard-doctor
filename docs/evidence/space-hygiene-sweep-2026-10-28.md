@@ -609,9 +609,9 @@ nix path-info --json --all                    # store path metadata
 journalctl --disk-usage                       # journal accounting
 journalctl -u nix-daemon.service --since ...  # daemon log inspection
 journalctl -u nix-gc.service --since ...      # scheduled GC journal results
-systemctl show nix-gc.service -p ExecMainStartTimestamp  # timer metadata only
-systemctl list-timers --all
-timeout 1800s env MAX_ATTEMPTS=3 bash /home/dracon/.cache/space-hygiene/retry-anchored-pass.sh  # bounded, read-only measurements; evidence under cache                   # scheduled timer metadata
+systemctl show nix-gc.service -p ExecMainStartTimestamp  # service start timestamp
+systemctl list-timers --all  # scheduled timer metadata
+timeout 1800s env MAX_ATTEMPTS=3 bash /home/dracon/.cache/space-hygiene/retry-anchored-pass.sh  # bounded, read-only measurements; evidence under cache
 ps -eo pid,ppid,stat,etime,args               # process inventory
 ps -p <observed pid> -o pid,ppid,etimes,stat,comm  # process state only
 tmux show-option -g                           # live option read, no changes
@@ -648,10 +648,14 @@ sudo find "$HOME/.local/state" -type d -iname '*handover*' -print0 \
 
 The live Nix-root baseline also changed during the complete 16.5-minute pass.
 When a 40-minute low-activity window with no Nix profile/package updates is
-available, rerun one fresh bounded baseline attempt; the read-only invocation
-is `timeout 2400s env MAX_ATTEMPTS=1 bash
-/home/dracon/.cache/space-hygiene/retry-anchored-pass.sh`. No timer or service
-pause is requested or implied.
+available, rerun one fresh bounded baseline attempt with this read-only
+invocation:
+
+```sh
+timeout 2400s env MAX_ATTEMPTS=1 bash /home/dracon/.cache/space-hygiene/retry-anchored-pass.sh
+```
+
+No timer or service pause is requested or implied.
 
 ## Workspace test transcript
 
