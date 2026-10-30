@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -eu
+printf '%s\n' "$*" >>"${NIX_CALL_LOG:?}"
+if [ "${1:-}" = --gc ] && [ "${2:-}" = --print-roots ]; then
+  printf '%s\n' '/nix/var/nix/gcroots/auto/fixture -> /nix/store/fixture-path'
+  if [ "${NIX_AFTER_CHANGE:-NO}" = YES ]; then
+    printf '%s\n' '/nix/var/nix/gcroots/auto/extra -> /nix/store/extra-path'
+  fi
+elif [ "${1:-}" = -qR ]; then
+  printf '%s\n' /nix/store/fixture-path
+else
+  exit 2
+fi

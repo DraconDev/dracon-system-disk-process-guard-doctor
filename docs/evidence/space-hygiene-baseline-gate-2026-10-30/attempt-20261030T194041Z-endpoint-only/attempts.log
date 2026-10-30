@@ -1,0 +1,22 @@
+=== attempt 1 @ 20261030T194041Z ===
+observation_window_start=2026-10-30T19:40:41Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT gc_start_before_status=0
+pre_sweep_baseline_at=2026-10-30T19:40:57Z pre_sweep_baseline_count=609 baseline_file=/home/dracon/.cache/space-hygiene/attempts/endpoint-only-20261030T1944Z/baseline-20261030T194041Z.txt
+attempt 1: starting anchored pass from preserved baseline
+attempt 1: pass exit=0
+pre_sweep_baseline_at=2026-10-30T19:40:57Z
+pre_sweep_baseline_count=609
+pre_sweep_baseline_file=/home/dracon/.cache/space-hygiene/attempts/endpoint-only-20261030T1944Z/baseline-20261030T194041Z.txt
+roots_before=609
+store_paths_before=37539
+roots_after=609
+store_paths_after=37539
+roots_unchanged=YES
+root_set_identical=YES
+root_series_samples=0
+root_series_min=NOT_SAMPLED
+root_series_max=NOT_SAMPLED
+root_series_constant=NOT_SAMPLED
+root_series_transitions=NOT_SAMPLED
+pass_seconds=81
+preserved_baseline_count=609 run_baseline_count=609 roots_before=609 roots_after=609 baseline_matches_before=YES gc_unchanged=YES
+attempt 1: SUCCESS - measured roots match preserved pre-sweep baseline; no nix-gc.service run in window

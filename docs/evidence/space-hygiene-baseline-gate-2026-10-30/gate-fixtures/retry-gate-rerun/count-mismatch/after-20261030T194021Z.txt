@@ -1,0 +1,2 @@
+/root/0 -> /nix/store/mock-0
+/root/1 -> /nix/store/mock-1

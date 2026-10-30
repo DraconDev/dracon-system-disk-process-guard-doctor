@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Avoid delays in the disposable fixture.
+exit 0

@@ -1,0 +1,2 @@
+/nix/var/nix/gcroots/auto/extra -> /nix/store/extra-path
+/nix/var/nix/gcroots/auto/fixture -> /nix/store/fixture-path
