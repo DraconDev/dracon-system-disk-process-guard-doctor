@@ -223,7 +223,7 @@ reported 76 directories dated 2026-10-28 at 9,715,886,055 bytes and the same
 measurement by 3,577 bytes. The writer-fence directory grew to 12,185,297,146
 bytes. These live scopes overlap; no cleanup was attempted.
 
-### Latest completed full anchored pass (not baseline-qualified; 2026-10-29 18:03–18:06 UTC)
+### Historical full anchored pass (not baseline-qualified; 2026-10-29 18:03–18:06 UTC)
 
 This pass is the authoritative one. It was started only after the root list had
 been observed byte-identical across five consecutive 30-second readings
@@ -330,9 +330,10 @@ they need an operator review rather than a cleanup recommendation.
 | NixOS configuration target `~/.dracon/nixos` (`/etc/nixos` symlink) | 297,401 bytes | keep |
 
 Every row except the Git-history row is an exact `du --bytes` reading from the
-latest completed anchored pass (18:03–18:06 UTC), which is not baseline-qualified. The Git-history row is a separate
-measurement taken at 20:31 UTC: the sum of `du --bytes` over the 27 discovered
-`.git` directories, which excludes working-tree files. Media, Git history,
+2026-10-30 08:53–08:55 UTC measurement attempt, which is not baseline-qualified.
+The Git-history row is a separate measurement taken at 20:31 UTC: the sum of
+`du --bytes` over the 27 discovered `.git` directories, which excludes
+working-tree files. Media, Git history,
 backup bundles, and live configuration all carry `keep` verdicts only; none of
 them is flagged for cleaning.
 
