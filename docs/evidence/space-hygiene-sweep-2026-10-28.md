@@ -61,7 +61,7 @@ follow-up. Table subtotals are labeled rather than presented as full totals.
 | Kilocode | `~/.kilocode` | 2,416,797,755 | keep |
 | **Total** | Six named tools, no shared roots | **31,840,760,127** | keep |
 
-The OpenCode total combines 12,429,660,938 bytes at `~/.local/share/opencode`
+The OpenCode total combines 12,429,986,898 bytes at `~/.local/share/opencode`
 and 902,407,953 bytes at `~/.opencode`. The separate `mimocode` directory below
 is an additional candidate, not a substitute for any of the six named tools.
 
@@ -273,7 +273,7 @@ readings: **15,656,917,210 / 12,186,624,107 /
 Row 1 is a whole-tree `du` of the gate directory. The sandbox decomposition
 below is a separate scope and must not be added to it.
 
-#### Sandbox decomposition of the latest completed pass
+#### Historical sandbox decomposition of the 2026-10-29 full pass
 
 One `du` call per scope. The two date-filtered scopes partition the
 all-sandboxes scope exactly, and the all-sandboxes scope is smaller than the
@@ -360,12 +360,16 @@ them is flagged for cleaning.
 - Primary-pass measured store size: **48,292,600,416 bytes**. Later full-pass
   readings were **48,739,098,826 bytes** (2026-10-28 22:30),
   **48,292,944,394 bytes** (23:24), **50,942,398,774 bytes**
-  (2026-10-29 00:41), and **49,161,672,136 bytes** (2026-10-29 18:03).
+  (2026-10-29 00:41), and **49,161,672,136 bytes** (2026-10-29 18:03). The
+  latest 2026-10-30 08:53 attempt measured **48,303,274,209 bytes**, but failed
+  the baseline count gate.
 - The primary-pass reachability calculation found 4,604 reachable paths and
   32,931 paths outside those closures. Of the latter, 31,515 were derivations;
   1,416 were outputs totaling **8,366,644,248 bytes** (7.79 GiB). This is a
   read-only unreachable-output estimate from the primary pass, not a prediction
-  that every path will necessarily be reclaimed.
+  that every path will necessarily be reclaimed. It predates the 2026-10-30
+  scheduled GC and was not recalculated afterward, so it is not a current
+  post-GC estimate.
 - The second full pass (22:30:31–22:41:57 UTC) measured **4,604 reachable
   paths before and after, with an identical reachable path set**, while the
   store path count stayed at **37,535 before and after**. The GC-root count
@@ -530,7 +534,7 @@ nix-store -qR <root store paths>              # read-only reachability closure q
 nix path-info --json --all                    # store path metadata
 journalctl --disk-usage                       # journal accounting
 journalctl -u nix-daemon.service --since ...  # daemon log inspection
-journalctl -u nix-gc.service --since ...      # scheduled GC result (0 paths)
+journalctl -u nix-gc.service --since ...      # scheduled GC journal results
 systemctl show nix-gc.service -p ExecMainStartTimestamp  # timer metadata only
 systemctl list-timers --all                   # scheduled timer metadata
 ps -eo pid,ppid,stat,etime,args               # process inventory
