@@ -65,6 +65,24 @@ The OpenCode total combines 12,429,660,938 bytes at `~/.local/share/opencode`
 and 902,407,953 bytes at `~/.opencode`. The separate `mimocode` directory below
 is an additional candidate, not a substitute for any of the six named tools.
 
+## Container image inventory (read-only, 2026-10-30 09:16 UTC)
+
+| Backend / item | Bytes | Verdict | Notes |
+|---|---:|---|---|
+| Docker image-layer store | 165,670,938 | keep | Docker `/system/df` API `LayersSize`; 3 images, 0 containers |
+| `dg-cleanhost:ubuntu-24.04` | 149,441,316 | keep | Docker image inspect `Size` |
+| `alpine:latest` | 8,422,040 | keep | Docker image inspect `Size` |
+| `alpine:3.20` | 7,807,582 | keep | Docker image inspect `Size` |
+| Docker build cache | 71,261,146 | keep | Docker `/system/df` API; 2 entries |
+| Podman image storage | 250,748,103 | keep | `podman system df --format json` `RawSize`; 2 images, 0 containers |
+| Untagged Podman image `6232b387…` | 80,694,099 | needs-operator-call | Exact image-inspect size; no repo tag |
+| `docker.io/library/ubuntu:24.04` (Podman) | 80,702,836 | keep | Exact image-inspect size |
+
+Backend totals are storage accounting and are not added to their per-image
+rows. Docker reports two local volumes at 0 bytes; Podman reports one local
+volume at 0 bytes. The container-store directory measurement is listed in the
+area table, not added to image sizes.
+
 ## Findings, largest actionable candidates first
 
 Every ranked candidate row has one verdict from
