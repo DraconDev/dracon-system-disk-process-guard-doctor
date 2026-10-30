@@ -61,7 +61,7 @@ known.
 | `~/.local/state` | 53,739,383,637 | needs-operator-call | v6 unprivileged pass reading; the operator privileged `sudo du` full-area total was 49,316,690,397 (live growth between readings). Five root-owned handover backups still lack individual sizes |
 | `~/.local/bin` | 3,090,902,820 | keep | v6 pass |
 | `/nix/store` | 48,312,514,794 | keep | v6 pass; store paths 37,539→37,539 and `--print-dead` 0→0 across the pass. 8,366,644,248 bytes remains a historical pre-GC unreachable-output estimate; see Nix section |
-| Agent-tool state (six named tools) | 32,637,301,129 | keep | Exact sum of the six roots in the v6 pass; overlaps `~/.local/share` |
+| Agent-tool state (six named tools) | 32,220,378,149 | keep | Exact sum of the six roots in the v6 pass; overlaps `~/.local/share` |
 | `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data; v6 pass |
 | `/var/log` | 615,233,280 | needs-operator-call | v6 unprivileged subtotal; the operator privileged `sudo du` total was 598,374,272, with `/var/log/private` and `/var/log/gdm` each 0 |
 | `/var/log/journal` | 603,979,776 | clean-with-approval | v6 pass; separate `journalctl --disk-usage` reading was 475.7M at approximately 21:05 UTC |
@@ -111,7 +111,7 @@ $ sudo du -sx --bytes /var/log
 | Pi | `~/.pi` | 6,895,118,186 | keep |
 | Zcode | `~/.zcode` | 2,826,633,061 | keep |
 | Kilocode | `~/.kilocode` | 2,416,797,755 | keep |
-| **Total** | Six named tools, no shared roots | **32,637,301,129** | keep |
+| **Total** | Six named tools, no shared roots | **32,220,378,149** | keep |
 
 The OpenCode total combines 12,429,986,898 bytes at `~/.local/share/opencode`
 and 902,407,953 bytes at `~/.opencode`. The separate `mimocode` directory below
