@@ -19,4 +19,16 @@ Report-only evidence for the latest Nix-root baseline attempts and the retry-gat
 
 ## Fixture checks
 
-The disposable fixture outputs and scripts are under `gate-fixtures/`. They exercise acceptance of an unchanged count with no GC event, acceptance of same-count root-set churn (the contract is count-based), rejection of a changed count, rejection of a GC event, and fail-closed behavior when the journal cannot be read. These are gate-logic tests, not observations of the live host.
+The disposable fixture outputs and scripts are under `gate-fixtures/`. They
+exercise acceptance of an unchanged count with no GC event, acceptance of
+same-count root-set churn (the contract is count-based), rejection of a
+changed count, rejection of a GC event, and fail-closed behavior when the
+journal cannot be read. These are gate-logic tests, not observations of the
+live host.
+
+The archived `anchored-pass.sh` is the exact version used for the live
+15:11 attempt; its `git_history` aggregation emitted an AWK parse error, so
+that row was absent and remains sourced from the separate 20:31 measurement.
+The live cache helper was corrected to use `printf`; its Bash syntax and a
+small sum fixture passed, but the corrected script has not been run against
+the host. `anchored-pass-aggregator-fixed.sh` preserves that corrected version.
