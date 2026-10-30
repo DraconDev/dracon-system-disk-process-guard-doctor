@@ -464,28 +464,43 @@ them is flagged for cleaning.
   between 11:23 and 17:31 UTC on 2026-10-29. The 444-path fall from the
   16:50 peak was not associated with a collection event in the checked
   journal window; its mechanism was not established.
-- A revised bounded retry gate preserves every sorted root-list sample,
-  requires five consecutive byte-identical lists, saves that settled list as
-  the explicit pre-sweep baseline, and accepts the anchored pass only when
-  both its before/after lists and counts match that baseline and no GC service
-  start appears during the bounded observation window. The 23:08 UTC attempt
-  saved a 646-root baseline but did not obtain a stable list over 20 readings.
-  The subsequent 23:19, 23:29, 23:39, and 23:50 checks also failed to reach
-  five identical full lists; the 23:50 counts were 649, 649, 651, 650, and
-  652. No new anchored pass was started and no replacement baseline-qualified
-  measurement is claimed. These observations include transient 2,000–3,000
-  root-list bursts; their cause is not established.
-- The latest completed pass measured the reachable closure at **4,604 paths
-  before and after** and the *GC-root set* byte-identical before and after.
-  Its artifact records closure counts rather than a set-level comparison, so
-  no final reachable-set identity is claimed.
-- Privileged measurements remain incomplete: `sudo -n true` returned
-  `sudo: a password is required`. The unreadable descendants under
-  `~/.local/share`, `~/.local/state`, container/Trash paths, and `/var/log`
-  therefore remain unprivileged subtotals pending an operator-authorized
-  `du --bytes` measurement. The scheduled GC at 2026-10-29 00:00 GMT reports
-  zero paths deleted, but it did run; the literal host-wide no-GC requirement
-  is not claimed.
+- The 2026-10-29 23:08–23:53 retries used a stricter full-list stability
+  check. Their saved baseline and subsequent readings are retained in the
+  local attempt log; the 23:08 attempt reached 646 roots but did not establish
+  a qualifying stable window, and later counts also varied. Those pre-GC
+  attempts produced no replacement baseline-qualified measurement and
+  included transient 2,000–3,000-root bursts whose cause is not established.
+- The revised bounded gate preserves every sorted full root-list sample and
+  waits for five consecutive equal **counts** 30 seconds apart; the fifth
+  sample is saved as the attempt's pre-sweep baseline. Acceptance requires
+  the anchored pass's before and after counts to equal that saved count,
+  `roots_unchanged=YES` within the pass, and no new `nix-gc.service` start or
+  journal event during the bounded window. Root-set identity is retained as
+  diagnostic evidence, not an acceptance requirement.
+- After the 2026-10-30 scheduled GC, two full attempts also failed the count
+  gate: the 00:35 UTC run saved 613 then measured 613→610 roots; the 01:01 UTC
+  run saved 641 then measured 641→616. The latest attempt started at
+  08:53:16 UTC with a saved baseline of 639 and measured 637→640 roots; its
+  20-sample series ranged 637–640 with 13 transitions. It kept the store-path
+  count at 37,536 before and after and the reachability closure at 4,605,
+  while recording five root entries added and two removed between bracket
+  lists. The GC start remained unchanged during this measurement window, but
+  the count mismatch means it is not accepted. Its full lists are retained in
+  `docs/evidence/space-hygiene-root-lists-2026-10-30T085316Z/`. The next retry
+  after 08:55 did not reach five equal counts and started no pass. No
+  baseline-qualified post-GC measurement is available.
+- The historical 2026-10-29 pass measured the reachable closure at **4,604
+  paths before and after** and had a byte-identical GC-root list. The latest
+  2026-10-30 attempt measured **4,605 reachable paths before and after**, but
+  its artifacts preserve counts rather than closure path sets; no reachable-
+  set identity is claimed for either pass.
+- Privileged totals remain incomplete: `sudo -n true` returned
+  `sudo: a password is required`. The Podman user namespace did fully read the
+  container tree, but the root-owned Trash backup, five state handover
+  backups, `/var/log/private`, and `/var/log/gdm` remain unreadable and are
+  omitted from the corresponding subtotals. Those paths require an
+  operator-authorized host-root `du --bytes` measurement. The Oct-30 scheduled
+  GC removed 368 store paths; no host-wide no-GC/no-deletion claim is made.
 
 ## Read-only commands used
 
