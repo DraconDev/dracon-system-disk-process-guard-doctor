@@ -561,8 +561,11 @@ been run over the host tree. The evidence bundle is
 A second attempt began at 15:28:24 with a new preserved baseline of 639 and
 started its anchored pass at 15:28:49. The 30-minute outer timeout ended before
 an after-count or completed measurement record was captured. Its partial
-`du` file is retained only for spot readings (including the 29,454,836,584-byte
-gate tree); it is not a full or baseline-qualified pass. The later read-only
+`du` file includes spot readings of the gate tree (29,454,836,584 bytes),
+`~/.local/state` (48,863,863,900 bytes), `~/.local/share`
+(27,619,892,394 bytes), and `~/.config` (16,876,548,041 bytes). These do not
+replace the full-pass table; the attempt is not a full or baseline-qualified
+pass. The later read-only
 check found no `nix-gc.service` journal events since 15:28:24 and the service
 start timestamp still read 00:00 GMT. Partial artifacts and that after-check
 are under
