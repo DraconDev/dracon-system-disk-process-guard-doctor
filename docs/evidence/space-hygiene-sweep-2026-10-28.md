@@ -15,7 +15,8 @@ through 2026-10-29 18:03–18:06 UTC. A later full measurement attempt on
 root-count gate (saved baseline 639; anchored bracket 637→640). It is therefore
 used only as the latest size reading, not as a qualifying baseline pass. The
 current area, agent-tool and off-limits tables use that attempt, except the
-Git-history row, which remains a separate measurement, and the container-tree row uses a later `podman unshare du` reading. Live state changed
+Git-history row, which remains a separate measurement, and the container-tree row uses a later
+`podman unshare du` reading. Live state changed
 during every window, so sizes are exact readings for their stated pass, not an
 atomic filesystem snapshot. All candidate rankings are individually
 pass-labeled; the historical full-pass table is retained separately.
@@ -93,13 +94,15 @@ and decomposition tables carry their own verdicts in a verdict column, so no
 row in this report asserts a verdict outside that set.
 The latest measured top three are from the 2026-10-30 08:53–08:55 UTC attempt
 (not baseline-qualified): **22,366,383,926 / 12,186,624,107 /
-6,983,789,017 bytes** by exact `du --bytes` readings. The current-reading table is below; historical full-pass rankings follow.
+6,983,789,017 bytes** by exact `du --bytes` readings. The current-reading table is below; historical full-pass rankings
+follow.
 
 | # | Path | Bytes | Verdict |
 |---|---|---:|---|
 | 1 | `~/.local/state/dracon/sync/gates/browser-extensions-shared` | 22,366,383,926 | needs-operator-call |
 | 2 | `~/.local/state/dracon-sync/qualification/canonical-writer-fence-2026-10-27` | 12,186,624,107 | needs-operator-call |
 | 3 | `~/chat/pi/kimi` | 6,983,789,017 | needs-operator-call |
+
 The original first-sweep ranking (15:53–16:05 UTC) follows as historical
 context, with top three **10,932,233,354 / 6,983,789,017 / 5,946,756,827
 bytes**. Rows 1, 3 and 5 carry the original readings; row 12 was re-measured
