@@ -707,9 +707,9 @@ $ cd /home/dracon/Dev/dracon-utilities
 $ OPENSSL_INCLUDE_DIR=/nix/store/cqkz127l4l98xgp7p6y1j2cqvyx0w3jl-openssl-3.6.2-dev/include \
   OPENSSL_LIB_DIR=/nix/store/by19gg2pqp2b1gqphdf6bwk2g3hgak79-openssl-3.6.2/lib \
   timeout 2400 cargo test --workspace --locked > /home/dracon/.cache/space-hygiene/workspace-test-20261030T1944Z.log 2>&1
-$ echo WORKSPACE_TEST_EXIT=0
-$ awk 'test result lines => 44; passed=2923; failed=0; ignored=25'
 ```
+
+Result: exit 0; 44 suites; 2,923 passed, 0 failed, 25 ignored.
 
 ```text
 $ cd /home/dracon/Dev/dracon-utilities
