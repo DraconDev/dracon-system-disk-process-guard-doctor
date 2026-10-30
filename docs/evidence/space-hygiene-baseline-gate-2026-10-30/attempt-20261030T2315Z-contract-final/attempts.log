@@ -1,0 +1,45 @@
+=== attempt 1 @ 20261030T231540Z ===
+observation_window_start=2026-10-30T23:15:41Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT gc_start_before_status=0
+pre_sweep_baseline_at=2026-10-30T23:16:06Z pre_sweep_baseline_count=609 baseline_file=/home/dracon/.cache/space-hygiene/attempts/contract-final-Y1030T231540Z/baseline-20261030T231540Z.txt
+attempt 1: starting anchored pass from preserved baseline
+attempt 1: pass exit=0
+pre_sweep_baseline_at=2026-10-30T23:16:06Z
+pre_sweep_baseline_count=609
+pre_sweep_baseline_file=/home/dracon/.cache/space-hygiene/attempts/contract-final-Y1030T231540Z/baseline-20261030T231540Z.txt
+roots_before=609
+store_paths_before=37539
+roots_after=650
+store_paths_after=37539
+roots_unchanged=NO
+root_set_identical=NO
+root_series_samples=0
+root_series_min=NOT_SAMPLED
+root_series_max=NOT_SAMPLED
+root_series_constant=NOT_SAMPLED
+root_series_transitions=NOT_SAMPLED
+pass_seconds=446
+preserved_baseline_count=609 run_baseline_count=609 roots_before=609 roots_after=650 baseline_matches_before=YES gc_unchanged=YES
+attempt 1: baseline or post-pass count differed; retrying with a fresh preserved baseline
+=== attempt 2 @ 20261030T232333Z ===
+observation_window_start=2026-10-30T23:23:33Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT gc_start_before_status=0
+pre_sweep_baseline_at=2026-10-30T23:23:50Z pre_sweep_baseline_count=650 baseline_file=/home/dracon/.cache/space-hygiene/attempts/contract-final-Y1030T231540Z/baseline-20261030T232333Z.txt
+attempt 2: starting anchored pass from preserved baseline
+attempt 2: pass exit=0
+pre_sweep_baseline_at=2026-10-30T23:23:50Z
+pre_sweep_baseline_count=650
+pre_sweep_baseline_file=/home/dracon/.cache/space-hygiene/attempts/contract-final-Y1030T231540Z/baseline-20261030T232333Z.txt
+roots_before=650
+store_paths_before=37539
+roots_after=617
+store_paths_after=37539
+roots_unchanged=NO
+root_set_identical=NO
+root_series_samples=0
+root_series_min=NOT_SAMPLED
+root_series_max=NOT_SAMPLED
+root_series_constant=NOT_SAMPLED
+root_series_transitions=NOT_SAMPLED
+pass_seconds=458
+preserved_baseline_count=650 run_baseline_count=650 roots_before=650 roots_after=617 baseline_matches_before=YES gc_unchanged=YES
+attempt 2: baseline or post-pass count differed; retrying with a fresh preserved baseline
+all 2 attempts exhausted without a qualifying bounded pass
