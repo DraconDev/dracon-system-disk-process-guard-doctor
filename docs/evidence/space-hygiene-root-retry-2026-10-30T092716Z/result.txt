@@ -1,0 +1,34 @@
+=== attempt 1 @ 20261030T092716Z ===
+observation_window_start=2026-10-30T09:27:16Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT
+2026-10-30T09:27:18Z sample=1 roots=654 equal_count_streak=1
+2026-10-30T09:27:50Z sample=2 roots=655 equal_count_streak=1
+2026-10-30T09:28:22Z sample=3 roots=659 equal_count_streak=1
+2026-10-30T09:28:57Z sample=4 roots=654 equal_count_streak=1
+2026-10-30T09:29:32Z sample=5 roots=3102 equal_count_streak=1
+2026-10-30T09:30:11Z sample=6 roots=3101 equal_count_streak=1
+2026-10-30T09:30:45Z sample=7 roots=3101 equal_count_streak=2
+2026-10-30T09:31:18Z sample=8 roots=3102 equal_count_streak=1
+2026-10-30T09:31:51Z sample=9 roots=3101 equal_count_streak=1
+2026-10-30T09:32:23Z sample=10 roots=3102 equal_count_streak=1
+2026-10-30T09:33:00Z sample=11 roots=3101 equal_count_streak=1
+2026-10-30T09:33:34Z sample=12 roots=3099 equal_count_streak=1
+2026-10-30T09:34:06Z sample=13 roots=652 equal_count_streak=1
+2026-10-30T09:34:38Z sample=14 roots=648 equal_count_streak=1
+2026-10-30T09:35:09Z sample=15 roots=648 equal_count_streak=2
+2026-10-30T09:35:40Z sample=16 roots=649 equal_count_streak=1
+2026-10-30T09:36:11Z sample=17 roots=650 equal_count_streak=1
+2026-10-30T09:36:43Z sample=18 roots=649 equal_count_streak=1
+2026-10-30T09:37:14Z sample=19 roots=650 equal_count_streak=1
+2026-10-30T09:37:46Z sample=20 roots=649 equal_count_streak=1
+2026-10-30T09:38:17Z sample=21 roots=649 equal_count_streak=2
+2026-10-30T09:38:48Z sample=22 roots=650 equal_count_streak=1
+2026-10-30T09:39:19Z sample=23 roots=648 equal_count_streak=1
+2026-10-30T09:39:51Z sample=24 roots=650 equal_count_streak=1
+2026-10-30T09:40:23Z sample=25 roots=633 equal_count_streak=1
+2026-10-30T09:40:54Z sample=26 roots=631 equal_count_streak=1
+2026-10-30T09:41:28Z sample=27 roots=2674 equal_count_streak=1
+2026-10-30T09:42:00Z sample=28 roots=2697 equal_count_streak=1
+2026-10-30T09:42:34Z sample=29 roots=2694 equal_count_streak=1
+2026-10-30T09:43:07Z sample=30 roots=2690 equal_count_streak=1
+attempt 1: root list did not reach five identical readings; skipping pass
+all 1 attempts exhausted without an unchanged bracket
