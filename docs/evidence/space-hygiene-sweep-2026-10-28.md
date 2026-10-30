@@ -10,21 +10,30 @@ anchored-measurement helpers removed only generated `/tmp` scratch files, not
 surveyed candidates. Workspace tests used isolated temporary fixtures.
 
 Primary measurements began on 2026-10-28. Five historical full anchored passes ran
-through 2026-10-29 18:03–18:06 UTC. On 2026-10-30, the 15:11 complete pass
-failed its root bracket (656→636), and the 15:28 attempt timed out before an
-after-count. A later complete pass at 19:20 also failed (640→636). The fresh
-post-GC pass at 19:40:57–19:42:18 UTC preserved a 609-root pre-sweep list and
-matched it before and after, with byte-identical sorted lists; its bounded
-journal/service check found no GC. This is a new post-GC baseline, not a
-reconstruction of the earlier unpreserved 610-root observation. The area,
-agent-tool and off-limits tables now use the 19:40 pass, except the container
-storage row, which uses the later `podman unshare du` reading. The 19:40 rows
-for `~/.local/share`, `~/.local/state`, and `/var/log` remain pass-specific
-unprivileged measurements; separate operator-pasted privileged readings from
-18:13 UTC are recorded below, not substituted into that pass. The shell output
-did not include `date -Is`, so 18:13:15.514Z is the message-capture timestamp,
-not an independently observed command timestamp. Candidate top-three findings
-use the 19:40 full pass. Live state changed during every window, so sizes are exact
+through 2026-10-29 18:03–18:06 UTC. On 2026-10-30, several passes failed the
+literal GC-root-count bracket. The cause is now established and is a defect in
+that bracket, not in the runs: `nix-store --gc --print-roots` also lists the Nix
+daemon's **transient** roots for whatever a live process currently has mapped, so
+the list churns during any multi-minute measurement on this host even when
+nothing is collected. At 23:15–23:39 UTC the added/removed roots were repeatedly
+the same video-encode toolchain (`ffmpeg`, `libvpx`, `svt-av1`, `libass`,
+`libopenmpt`, `zvbi`, `openjpeg`, `wl-clipboard`) appearing and disappearing;
+three otherwise-clean passes there read 609→650, 650→617 and 617→644.
+
+The current qualified pass is the **v6** run at 23:40:55–23:49:0x UTC. It
+measures the claimed invariant directly instead of by root-count equality: the
+`/nix/store` entry count stayed **37,539 → 37,539**, the `--print-dead` set (what
+a collection would delete; printing it deletes nothing) stayed **0 → 0**, the
+preserved 618-root pre-sweep baseline matched `roots_before` exactly, and there
+was no `nix-gc.service` run in the bounded window. Root churn of +26/−6 is
+reported as a diagnostic. Evidence is in
+`docs/evidence/space-hygiene-baseline-gate-2026-10-30/attempt-20261030T2340Z-v6-qualified/`.
+
+The area, agent-tool and off-limits tables use this v6 pass. Its rows for
+`~/.local/share`, `~/.local/state`, and `/var/log` are pass-specific unprivileged
+readings; the operator-pasted privileged full-area totals are recorded
+separately below and are the better area-level size where they exist. Live state
+changed during every window, so sizes are exact
 readings for their stated pass, not an atomic filesystem snapshot. Historical
 full-pass tables are retained separately.
 
@@ -35,14 +44,14 @@ agent-tool total includes OpenCode. Do not add overlapping rows together.
 
 Unprivileged `du` reported denied descendants in `~/.local/share`,
 `~/.local/state`, Trash, and `/var/log`. Read-only `podman unshare du` could
-read the UID-mapped container tree (3,461,884,035 bytes, no permission errors).
-The operator later pasted exact privileged totals for the share, state, Trash,
-and log paths; they are retained below as a separate point-in-time sample. The
-five state handover directories were still not sized. A read-only search at
-22:14 UTC found their paths but received `Permission denied` on each. `sudo -n
-true` still requires an interactive password in this session, so their sizes
-remain an operator follow-up. The 19:40 pass subtotals stay labeled rather than
-being replaced with measurements from a different time.
+read the UID-mapped container tree. The operator pasted exact privileged totals
+for the share, state, Trash, and log paths; they are retained below as a
+separate point-in-time sample and are the full-area figures for those rows. The
+five root-owned state handover-backup directories are identified and carry a
+`needs-operator-call` verdict with their individual sizes marked not measured;
+`sudo -n true` requires an interactive password here, so a per-subtree split of
+those five is the one remaining unsized detail inside an area whose total is
+known.
 
 ## Swept areas
 

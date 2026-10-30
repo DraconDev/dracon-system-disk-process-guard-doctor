@@ -1,0 +1,82 @@
+=== anchored pass v5 start 2026-10-30T23:41:12+00:00 ===
+root_sampler=DISABLED_FOR_ACCEPTANCE_BRACKET
+warmup_reachable=4606
+pre_sweep_baseline_at=2026-10-30T23:41:12Z
+pre_sweep_baseline_count=618
+pre_sweep_baseline_file=/home/dracon/.cache/space-hygiene/attempts/contract-v6-Y1030T234055Z/baseline-20261030T234055Z.txt
+roots_before=618
+roots_before_direct=30
+roots_before_indirect=588
+store_paths_before=37539
+dead_paths_before=0
+agent_codex|4361912455|/home/dracon/.codex
+agent_hermes|2387521841|/home/dracon/.hermes
+agent_kilocode|2416797755|/home/dracon/.kilocode
+agent_opencode_home|902407953|/home/dracon/.opencode
+agent_opencode_share|12429986898|/home/dracon/.local/share/opencode
+agent_pi|6895118186|/home/dracon/.pi
+agent_zcode|2826633061|/home/dracon/.zcode
+area_backups|26473384957|/home/dracon/Backups
+area_chat|7321716379|/home/dracon/chat
+area_containers|243857603|/home/dracon/.local/share/containers
+area_containers_store|243759299|/home/dracon/.local/share/containers/storage
+area_dracon_backups|21594713333|/home/dracon/dracon/backups
+area_local_bin|3090902820|/home/dracon/.local/bin
+area_local_share|27623172341|/home/dracon/.local/share
+area_local_state|53739383637|/home/dracon/.local/state
+area_nix_store|48312514794|/nix/store
+area_varlog|615233280|/var/log
+area_varlog_journal|603979776|/var/log/journal
+cand_chat_pi_kimi|6983789017|/home/dracon/chat/pi/kimi
+cand_codex_packages|2118979232|/home/dracon/.codex/packages
+cand_codex_sessions|1120760642|/home/dracon/.codex/sessions
+cand_gates_today|34312946681|/home/dracon/.local/state/dracon/sync/gates/browser-extensions-shared
+cand_mimocode_snapshot|2645718475|/home/dracon/.local/share/mimocode/snapshot
+cand_muse_sessions|3701928542|/home/dracon/.local/share/muse/sessions
+cand_opencode_snapshot|5898491422|/home/dracon/.local/share/opencode/snapshot
+cand_pnpm_store|2833801709|/home/dracon/.local/share/pnpm/store
+cand_protection_repair|5942225851|/home/dracon/.local/state/dracon/protection-repair-2026-10-20/verification-target
+cand_rtk_history|1617068032|/home/dracon/.local/share/rtk/history.db
+cand_trash|553895998|/home/dracon/.local/share/Trash
+cand_writer_fence|12186624107|/home/dracon/.local/state/dracon-sync/qualification/canonical-writer-fence-2026-10-27
+git_history|27|62507435454
+off_config|16985596547|/home/dracon/.config
+off_dracon|4130290544|/home/dracon/.dracon
+off_etc_nixos|18|/etc/nixos
+off_nixos_config|297401|/home/dracon/.dracon/nixos
+off_pictures|69140898|/home/dracon/Pictures
+off_videos|30906069120|/home/dracon/Videos
+sandboxes_2026-10-28|267|32057940133
+sandboxes_all|379|32115525943
+sandboxes_older_than_2026-10-28|112|57585810
+reachable_end=4606
+roots_after=638
+roots_after_direct=30
+roots_after_indirect=608
+store_paths_after=37539
+dead_paths_after=0
+no_collection_evidence=YES
+--- comparison ---
+roots_unchanged=NO
+root_set_identical=NO
+root_set_added_count=26
+root_set_removed_count=6
+root_set_added_sample:
+  + {censored} -> /nix/store/0xq6grfqyq950qq5g4af02d5mgdyd1wk-svt-av1-3.1.2
+  + {censored} -> /nix/store/1jy31jm70hj264lqnfq4krnfc8kxavbh-libopenmpt-0.8.6
+  + {censored} -> /nix/store/2kmhkbnxifr65wqkfxyx2lrswsyjwb4n-ffmpeg-8.0-lib
+  + {censored} -> /nix/store/30d12zr26jknnicjwfwvrffmifsqdgan-zvbi-0.2.44
+  + {censored} -> /nix/store/4605ni709v609ks8jly0mm5gwdm5r1yh-openjpeg-2.5.4
+root_set_removed_sample:
+  - {censored} -> /nix/store/68hvm2wjcpvy7p3sd3p5iji9y4dvjp15-kcolorpicker-0.3.1
+  - {censored} -> /nix/store/72sj62q0zaalbwsqpf4d17nzr5mhxrdi-libkdcraw-25.08.3
+  - {censored} -> /nix/store/dqcqyqzak3dj7b1lnc7m261pp78q9bng-gwenview-25.08.3
+  - {censored} -> /nix/store/giy1g7ll13qm784930zhhvyzwyc2j955-kimageannotator-0.7.2
+  - {censored} -> /nix/store/knxxcjg1ldkpzvbrbx96k5vjrmp1zbs1-cfitsio-4.6.3
+root_series_samples=0
+root_series_min=NOT_SAMPLED
+root_series_max=NOT_SAMPLED
+root_series_constant=NOT_SAMPLED
+root_series_transitions=NOT_SAMPLED
+pass_seconds=427
+=== anchored pass v5 end 2026-10-30T23:48:19+00:00 ===
