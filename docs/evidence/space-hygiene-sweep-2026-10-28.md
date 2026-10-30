@@ -9,19 +9,21 @@ met; no non-Nix candidate was intentionally cleaned by this survey. Earlier
 anchored-measurement helpers removed only generated `/tmp` scratch files, not
 surveyed candidates. Workspace tests used isolated temporary fixtures.
 
-Primary measurements began on 2026-10-28. Five full anchored passes ran
-through 2026-10-29 18:03–18:06 UTC. The latest complete size pass ran
-2026-10-30 15:11:52–15:28:23 UTC; its saved baseline was 656 roots, but the
-anchored bracket was 656→636, so it is **not** a qualifying baseline pass. A
-second attempt started at 15:28:49 with baseline 639, but its 30-minute outer
-bound ended before an after-count was captured. It contributes only isolated
-spot readings. The area, agent-tool and off-limits tables use the 15:11 full
-size pass, except the Git-history row, which remains a separate measurement,
-and the container-tree row uses a later `podman unshare du` reading. Candidate
-top-three spot readings are explicitly labeled as partial. Live state changed
-during every window, so sizes are exact readings for their stated pass, not an
-atomic filesystem snapshot. The historical full-pass table is retained
-separately.
+Primary measurements began on 2026-10-28. Five historical full anchored passes ran
+through 2026-10-29 18:03–18:06 UTC. On 2026-10-30, the 15:11 complete pass
+failed its root bracket (656→636), and the 15:28 attempt timed out before an
+after-count. A later complete pass at 19:20 also failed (640→636). The fresh
+post-GC pass at 19:40:57–19:42:18 UTC preserved a 609-root pre-sweep list and
+matched it before and after, with byte-identical sorted lists; its bounded
+journal/service check found no GC. This is a new post-GC baseline, not a
+reconstruction of the earlier unpreserved 610-root observation. The area,
+agent-tool and off-limits tables now use the 19:40 pass, except the container
+storage row, which uses the later `podman unshare du` reading. `~/.local/share`,
+`~/.local/state`, and `/var/log` remain unprivileged subtotals because exact
+host-root output is not retained here. Candidate top-three findings use the
+19:40 full pass. Live state changed during every window, so sizes are exact
+readings for their stated pass, not an atomic filesystem snapshot. Historical
+full-pass tables are retained separately.
 
 This supplements `leftover-audit-2026-10-27.md` and
 `cleaner-coverage-gaps-2026-10-27.md`. Area rows intentionally overlap: for
@@ -31,9 +33,11 @@ agent-tool total includes OpenCode. Do not add overlapping rows together.
 Unprivileged `du` reported denied descendants in `~/.local/share`,
 `~/.local/state`, Trash, and `/var/log`. Read-only `podman unshare du` could
 read the UID-mapped container tree (3,461,884,035 bytes, no permission errors),
-but still could not read the root-owned Trash backup (Trash subtotal:
-553,895,998 bytes), five state handover backups, `/var/log/private`, or
-`/var/log/gdm`. `sudo -n true` reports that a password is required, so
+but earlier runs could not read the root-owned Trash backup, five state
+handover backups, `/var/log/private`, or `/var/log/gdm`. The operator later
+reported running a host-root `du`, but its exact terminal output is not present
+in the retained evidence; no privileged totals are inferred or substituted.
+`sudo -n true` still reports that a password is required in this session, so
 complete privileged totals remain an operator follow-up. Table subtotals are
 labeled rather than presented as full totals.
 
@@ -41,14 +45,14 @@ labeled rather than presented as full totals.
 
 | Area | Bytes | Verdict | Notes |
 |---|---:|---|---|
-| `~/.local/share` | 27,619,278,169 | needs-operator-call | `du` subtotal from the complete 15:11 pass; `podman unshare du` read 30,833,970,932 bytes but still denied one root-owned Trash subtree |
-| `~/.local/state` | 46,184,695,068 | needs-operator-call | `du` subtotal from the complete 15:11 pass; `podman unshare du` read 41,775,195,328 bytes but denied five root-owned handover backups |
-| `~/.local/bin` | 3,090,902,012 | keep | User-installed tools; `du` in the complete 15:11 pass |
-| `/nix/store` | 50,983,998,714 | keep | `du` in the complete 15:11 pass; the root-count gate failed (656→636). 8,366,644,248 bytes remains a historical pre-GC unreachable-output estimate; see Nix section |
-| Agent-tool state (six named tools) | 32,041,769,244 | keep | Exact sum of the six roots measured in the complete 15:11 pass; overlaps `~/.local/share` |
-| `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data; `du` in the complete 15:11 pass |
-| `/var/log` | 623,494,784 | needs-operator-call | `du` subtotal from the complete 15:11 pass; `podman unshare du` read 589,901,568 but denied `/var/log/private` and `/var/log/gdm` |
-| `/var/log/journal` | 612,368,384 | clean-with-approval | `du` in the complete 15:11 pass; separate `journalctl --disk-usage` reading was 475.7M at approximately 21:05 UTC |
+| `~/.local/share` | 27,622,929,585 | needs-operator-call | Unprivileged subtotal from the complete 19:40 pass; earlier `podman unshare du` subtotal was 30,833,970,932 bytes and still denied one root-owned Trash subtree |
+| `~/.local/state` | 50,083,125,306 | needs-operator-call | Unprivileged subtotal from the complete 19:40 pass; five root-owned handover backups remain unreadable in this session |
+| `~/.local/bin` | 3,090,902,012 | keep | User-installed tools; `du` in the complete 19:40 pass |
+| `/nix/store` | 48,312,514,794 | keep | `du` in the complete 19:40 post-GC pass; preserved root bracket 609→609 and no GC in its window. 8,366,644,248 bytes remains a historical pre-GC unreachable-output estimate; see Nix section |
+| Agent-tool state (six named tools) | 32,175,371,407 | keep | Exact sum of the six roots measured in the complete 19:40 pass; overlaps `~/.local/share` |
+| `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data; `du` in the complete 19:40 pass |
+| `/var/log` | 606,780,928 | needs-operator-call | Unprivileged subtotal from the complete 19:40 pass; `podman unshare du` previously read 589,901,568 but denied `/var/log/private` and `/var/log/gdm` |
+| `/var/log/journal` | 595,591,168 | clean-with-approval | `du` in the complete 19:40 pass; separate `journalctl --disk-usage` reading was 475.7M at approximately 21:05 UTC |
 | `~/.local/share/containers` | 3,461,884,035 | needs-operator-call | `podman unshare du` at 09:11; all descendants readable in that user namespace (0 permission errors) |
 | `~/Backups` | 26,473,384,957 | keep | Backup tree; off-limits to cleaning |
 | `~/dracon/backups` | 19,411,474,935 | keep | Backup bundles; off-limits to cleaning |
@@ -57,13 +61,13 @@ labeled rather than presented as full totals.
 
 | Tool | Measured path(s) | Bytes | Verdict |
 |---|---|---:|---|
-| Codex | `~/.codex` | 4,359,922,893 | keep |
+| Codex | `~/.codex` | 4,359,100,962 | keep |
 | Hermes | `~/.hermes` | 2,387,521,841 | keep |
 | OpenCode | `~/.local/share/opencode` + `~/.opencode` | 13,332,394,851 | keep |
-| Pi | `~/.pi` | 6,718,498,843 | keep |
+| Pi | `~/.pi` | 6,852,922,937 | keep |
 | Zcode | `~/.zcode` | 2,826,633,061 | keep |
 | Kilocode | `~/.kilocode` | 2,416,797,755 | keep |
-| **Total** | Six named tools, no shared roots | **32,041,769,244** | keep |
+| **Total** | Six named tools, no shared roots | **32,175,371,407** | keep |
 
 The OpenCode total combines 12,429,986,898 bytes at `~/.local/share/opencode`
 and 902,407,953 bytes at `~/.opencode`. The separate `mimocode` directory below
@@ -94,15 +98,15 @@ Every ranked candidate row has one verdict from
 `{keep, clean-with-approval, needs-operator-call}`; the auxiliary spot-check
 and decomposition tables carry their own verdicts in a verdict column, so no
 row in this report asserts a verdict outside that set.
-The latest per-path top three are from the partial attempt that began at
-15:28 UTC: **29,454,836,584 / 12,186,624,107 / 6,983,789,017 bytes** by exact
-`du --bytes` readings. They are spot observations only: that attempt ended
-before its after-count, so they are not a baseline-qualified or atomic sweep.
-The current-reading table is below; historical full-pass rankings follow.
+The latest per-path top three are from the complete 19:40 post-GC pass:
+**30,673,976,941 / 12,186,624,107 / 6,983,789,017 bytes** by exact
+`du --bytes` readings. This pass satisfied its preserved 609-root baseline
+bracket; the figures remain point-in-time readings, not an atomic filesystem
+snapshot. Historical full-pass rankings follow.
 
 | # | Path | Bytes | Verdict |
 |---|---|---:|---|
-| 1 | `~/.local/state/dracon/sync/gates/browser-extensions-shared` | 29,454,836,584 | needs-operator-call |
+| 1 | `~/.local/state/dracon/sync/gates/browser-extensions-shared` | 30,673,976,941 | needs-operator-call |
 | 2 | `~/.local/state/dracon-sync/qualification/canonical-writer-fence-2026-10-27` | 12,186,624,107 | needs-operator-call |
 | 3 | `~/chat/pi/kimi` | 6,983,789,017 | needs-operator-call |
 
@@ -346,23 +350,20 @@ they need an operator review rather than a cleanup recommendation.
 
 | Path | Size | Verdict |
 |---|---:|---|
-| `~/Videos` | 30,742,497,732 bytes | keep |
-| `~/Pictures` | 64,687,182 bytes | keep |
-| Git history in 27 `.git` directories under `~/Dev` | 63,432,860,650 bytes | keep |
+| `~/Videos` | 30,743,674,509 bytes | keep |
+| `~/Pictures` | 67,565,294 bytes | keep |
+| Git history in 27 `.git` directories under `~/Dev` | 61,919,612,221 bytes | keep |
 | `~/Backups` | 26,473,384,957 bytes | keep |
 | `~/dracon/backups` | 19,411,474,935 bytes | keep |
-| `~/.config` | 17,209,139,838 bytes | keep |
-| `~/.dracon` | 4,115,169,665 bytes | keep |
+| `~/.config` | 16,910,142,887 bytes | keep |
+| `~/.dracon` | 4,117,202,897 bytes | keep |
 | NixOS configuration target `~/.dracon/nixos` (`/etc/nixos` symlink) | 297,401 bytes | keep |
 
-Every row except the Git-history row is an exact `du --bytes` reading from the
-complete 2026-10-30 15:11–15:28 UTC size pass, which is not baseline-qualified.
-The partial 15:28 attempt separately measured `~/.config` at 16,876,548,041
-bytes; it ended before the full sweep completed. The Git-history row is a
-separate measurement taken at 20:31 UTC: the sum of `du --bytes` over the 27
-discovered `.git` directories, which excludes working-tree files. Media, Git history,
-backup bundles, and live configuration all carry `keep` verdicts only; none of
-them is flagged for cleaning.
+Every row is an exact `du --bytes` reading from the complete 2026-10-30
+19:40–19:42 UTC pass; the Git-history row sums the 27 discovered `.git`
+directories and excludes working-tree files. Media, Git history, backup
+bundles, and live configuration all carry `keep` verdicts only; none is
+flagged for cleaning.
 
 ## Nix store: sized only
 
@@ -370,9 +371,11 @@ them is flagged for cleaning.
   readings were **48,739,098,826 bytes** (2026-10-28 22:30),
   **48,292,944,394 bytes** (23:24), **50,942,398,774 bytes**
   (2026-10-29 00:41), and **49,161,672,136 bytes** (2026-10-29 18:03). The
-  2026-10-30 08:53 attempt measured **48,303,274,209 bytes**. The latest
-  complete size pass (15:11–15:28) measured **50,983,998,714 bytes**, but its
-  saved-baseline bracket failed (656→636).
+  2026-10-30 08:53 attempt measured **48,303,274,209 bytes**; the 15:11 pass
+  measured **50,983,998,714 bytes** and failed its bracket (656→636). A 19:20
+  full pass measured **50,993,583,694 bytes** but also failed (640→636). The
+  latest complete pass at 19:40 measured **48,312,514,794 bytes** and passed
+  the fresh post-GC bracket at 609→609.
 - The primary-pass reachability calculation found 4,604 reachable paths and
   32,931 paths outside those closures. Of the latter, 31,515 were derivations;
   1,416 were outputs totaling **8,366,644,248 bytes** (7.79 GiB). This is a
@@ -466,17 +469,20 @@ them is flagged for cleaning.
   store paths deleted, 0.00 MiB freed**. The next scheduled run, at
   2026-10-30 00:00 GMT, deleted **368 store paths and freed 2510.01 MiB**.
   Both were system-timer actions, not commands invoked by this survey. No
-  host-wide no-GC/no-deletion condition can be claimed. The latest complete
-  pass's bounded window had no GC journal event and the service start stayed
-  at 00:00 GMT, but the root-count bracket failed. The later partial attempt
-  also had no GC event in its observed interval but no final bracket. At
-  09:11 UTC the next timer was scheduled for 2026-10-31 00:00 GMT; no timer
-  change was made.
-- **Acceptance-item status: not yet met.** The reported original pre-sweep
-  reading of 610 has no preserved root-list artifact. The 08:53 completed
-  anchored attempt saved an attempt-specific 639-root baseline, then measured
-  637 roots before and 640 after. Its full baseline, before, and after lists
-  are preserved in
+  host-wide no-GC/no-deletion condition can be claimed. The 19:20 pass had no
+  GC event but failed its 640→636 root bracket. The fresh 19:40 pass had no GC
+  journal event, the service start remained at 00:00 GMT, and the preserved
+  609-root baseline matched both endpoints. At 09:11 UTC the next timer was
+  scheduled for 2026-10-31 00:00 GMT; no timer change was made.
+- **Fresh bounded-pass gate: met; original sweep baseline remains
+  unreconstructed.** The reported original pre-sweep reading of 610 has no
+  preserved root-list artifact. The fresh 19:40 post-GC pass instead saved a
+  609-root baseline, measured 609 before and after with byte-identical lists,
+  held store paths at 37,539, and had no GC service/journal event in its
+  bounded window. This satisfies the new bounded-pass check without rewriting
+  the historical 610→634 record. The 08:53 completed anchored attempt saved
+  an attempt-specific 639-root baseline, then measured 637 roots before and
+  640 after. Its full baseline, before, and after lists are preserved in
   `docs/evidence/space-hygiene-root-lists-2026-10-30T085316Z/` (line counts
   baseline/before/after: 639/637/640; SHA-256: `f31e682191deead0431f939a6a586678b20ca6e3a305929c3941539590e1e9fc`,
   `039c698886a60e30f5bf45a4b0f0c7b4d669fc3e315b972b3aebd01ca1dee707`,
@@ -533,18 +539,20 @@ them is flagged for cleaning.
 - The historical 2026-10-29 pass measured the reachable closure at **4,604
   paths before and after** and had a byte-identical GC-root list. The 08:53
   2026-10-30 attempt measured **4,605 reachable paths before and after**; the
-  later complete 15:11 pass measured **4,608 before and after**. Their
-  artifacts preserve counts rather than closure path sets, so no reachable-set
-  identity is claimed. The 15:28 attempt ended before its final closure count.
-- Privileged totals remain incomplete: `sudo -n true` returned
-  `sudo: a password is required`. The Podman user namespace did fully read the
-  container tree, but the root-owned Trash backup, five state handover
-  backups, `/var/log/private`, and `/var/log/gdm` remain unreadable and are
-  omitted from the corresponding subtotals. Those paths require an
-  operator-authorized host-root `du --bytes` measurement. The Oct-30 scheduled
-  GC removed 368 store paths; no host-wide no-GC/no-deletion claim is made.
+  15:11 pass measured **4,608**, and the fresh 19:40 pass measured **4,606
+  before and after**. Those newer artifacts preserve counts rather than
+  closure path sets, so no reachable-set identity is claimed. The 15:28
+  attempt ended before its final closure count.
+- Privileged totals remain incomplete in the retained evidence: `sudo -n true`
+  returned `sudo: a password is required`. The operator mentioned later
+  host-root `du` output, but the exact rows and timestamp are not present in
+  the saved artifacts, so those figures are not incorporated. The root-owned
+  Trash backup, five state handover backups, `/var/log/private`, and
+  `/var/log/gdm` therefore still lack independently reviewable privileged
+  sizes. The Oct-30 scheduled GC removed 368 store paths; no host-wide
+  no-GC/no-deletion claim is made.
 
-### Latest baseline-bound recheck (2026-10-30 15:11–15:43 UTC)
+### Earlier baseline-bound rechecks (2026-10-30 15:11–15:43 UTC)
 
 The complete attempt beginning at 15:11:27 captured and reused the exact
 15:11:52 pre-sweep root list (656 entries). Its anchored measurement ran
@@ -571,15 +579,42 @@ check found no `nix-gc.service` journal events since 15:28:24 and the service
 start timestamp still read 00:00 GMT. Partial artifacts and that after-check
 are under
 `docs/evidence/space-hygiene-baseline-gate-2026-10-30/attempt-20261030T152824Z-incomplete/`.
-The 15:11–15:43 journal window also had no GC entries. These observations show
-no scheduled GC during either attempt window, but do not satisfy the required
-root-count bracket. No current baseline-qualified post-GC sweep is available.
+The 15:11–15:43 journal window also had no GC entries. Those attempts are
+non-qualifying historical evidence; the new endpoint-only pass below provides
+a later post-GC bracket.
 
 The retry gate's disposable tests are preserved under
 `docs/evidence/space-hygiene-baseline-gate-2026-10-30/gate-fixtures/` with the
 helper scripts and mock dependencies. They exercise count match/mismatch,
 GC-event rejection, journal-unavailable fail-closed behavior, and the
 contract's count-only acceptance when identities churn at a constant count.
+The added endpoint-only fixture verifies that the anchor still rejects a
+changed after-count when concurrent root polling is disabled.
+
+### Fresh endpoint-only baseline-bound pass (2026-10-30 19:40:41–19:42:18 UTC)
+
+The retry gate preserved the exact sorted root list after reachability warm-up
+and before the complete measurement. The anchored pass then used the saved
+list as `roots_before`, disabled continuous root polling for the accepted
+bracket, and measured `roots_after` once at the end:
+
+- Baseline, `roots_before`, and `roots_after`: **609**; root lists byte-identical.
+- Store paths: **37,539 before and after**; reachable closure counts: **4,606
+  before and after**.
+- Root-list provenance: 30 direct and 579 indirect roots in both endpoints.
+- `gc_unchanged=YES`; no `nix-gc.service` journal event, and its last-start
+  timestamp stayed at 2026-10-30 00:00 GMT.
+- The exact sizes and preserved baseline/before/after lists are in
+  `docs/evidence/space-hygiene-baseline-gate-2026-10-30/attempt-20261030T194041Z-endpoint-only/`.
+
+The preceding 19:20 full pass kept store paths at 37,987 and the reachable
+count at 4,610, but its sampled series ranged 636–641 and its endpoints were
+640→636; no GC event was found. The earlier pass is retained at
+`attempt-20261030T192012Z-root-mismatch/`. This comparison motivated disabling
+the extra sampler only for the accepted bracket; it does not attribute the
+root changes to the sampler or any specific process. The fresh pass is
+post-GC and does not erase the historical scheduled collection described
+above.
 
 ## Read-only commands used
 
@@ -604,6 +639,7 @@ find <dir> -type d -name .git -prune -exec du -sx --bytes {} +  # git history (f
 ls -la --time-style=+%F <dir>                 # dates and names
 readlink -f /etc/nixos                        # resolve config symlink
 sudo -n true                                  # privilege availability probe (password required)
+sudo du -sx --bytes "$HOME/.local/share" "$HOME/.local/share/Trash" "$HOME/.local/state" /var/log /var/log/private /var/log/gdm  # operator-run; exact output not retained
 date -Is                                      # observation timestamps
 systemctl is-active nix-gc.service            # current service state
 nix-store --gc --print-roots | wc -l          # read-only root listing/count
@@ -615,7 +651,7 @@ journalctl -u nix-daemon.service --since ...  # daemon log inspection
 journalctl -u nix-gc.service --since ...      # scheduled GC journal results
 systemctl show nix-gc.service -p ExecMainStartTimestamp  # service start timestamp
 systemctl list-timers --all  # scheduled timer metadata
-timeout 1800s env MAX_ATTEMPTS=3 bash /home/dracon/.cache/space-hygiene/retry-anchored-pass.sh  # bounded, read-only measurements; evidence under cache
+timeout 1800s env MAX_ATTEMPTS=3 SPACE_HYGIENE_LOGDIR=<unique-dir> bash /home/dracon/.cache/space-hygiene/retry-anchored-pass.sh  # bounded, read-only; accepted bracket disables continuous root polling
 ps -eo pid,ppid,stat,etime,args               # process inventory
 ps -p <observed pid> -o pid,ppid,etimes,stat,comm  # process state only
 tmux show-option -g                           # live option read, no changes
@@ -635,14 +671,18 @@ command against surveyed data; the scheduled host GC is separately recorded
 above. The earlier helper's generated-scratch removal is qualified above.
 Workspace-test fixtures remained confined to their temporary test directories.
 
-## Operator follow-up (not run)
+## Operator follow-up: privileged path sizes
 
-Complete host-root totals are still unavailable because `sudo` requires an
-interactive password in this session. To fill the remaining area and protected
-handover measurements, run these read-only commands in a terminal and provide
-the exact output:
+The fresh Nix baseline-bound pass now qualifies, but the protected-path size
+objection remains unresolved in the saved evidence. `sudo` requires an
+interactive password in this session, and the exact output of the operator-run
+privileged measurement is not retained, so the report cannot cite those
+values or the individual sizes of the five state handover backups. Please
+repeat the read-only commands below and include their exact output and the
+measurement timestamp:
 
 ```sh
+date -Is
 sudo du -sx --bytes \
   "$HOME/.local/share" "$HOME/.local/share/Trash" \
   "$HOME/.local/state" /var/log /var/log/private /var/log/gdm
@@ -650,16 +690,7 @@ sudo find "$HOME/.local/state" -type d -iname '*handover*' -print0 \
   | sudo xargs -0 -r du -sx --bytes
 ```
 
-The live Nix-root baseline also changed during the complete 16.5-minute pass.
-When a 40-minute low-activity window with no Nix profile/package updates is
-available, rerun one fresh bounded baseline attempt with this read-only
-invocation:
-
-```sh
-timeout 2400s env MAX_ATTEMPTS=1 bash /home/dracon/.cache/space-hygiene/retry-anchored-pass.sh
-```
-
-No timer or service pause is requested or implied.
+No cleanup, deletion, service pause, or garbage-collection action is requested.
 
 ## Workspace test transcript
 
