@@ -474,10 +474,9 @@ them is flagged for cleaning.
   `docs/evidence/space-hygiene-root-lists-2026-10-30T085316Z/` (line counts
   baseline/before/after: 639/637/640; SHA-256: `f31e682191deead0431f939a6a586678b20ca6e3a305929c3941539590e1e9fc`,
   `039c698886a60e30f5bf45a4b0f0c7b4d669fc3e315b972b3aebd01ca1dee707`,
-  `42a0c38ee82186ab1991dbb9a929b81fbc246a57e04fbf4935e77ea0b1d835d8`);
-  because the anchored counts do not match the saved baseline, that attempt
-  is not
-  accepted. The store path count was 37,535 in the 2026-10-28 22:30 pass,
+  `42a0c38ee82186ab1991dbb9a929b81fbc246a57e04fbf4935e77ea0b1d835d8`).
+  The anchored counts do not match the saved baseline, so the attempt did not
+  qualify. The store path count was 37,535 in the 2026-10-28 22:30 pass,
   peaked at 37,978 in a 16:50 UTC spot reading, measured 37,534→37,534 across
   the 18:03 pass, and measured 37,534 again at 21:23–21:24 UTC. New profile
   generations (`profile-68-link` through `profile-75-link`) were registered
@@ -518,7 +517,11 @@ them is flagged for cleaning.
   a count-only retry, the earlier association between some bursts and
   `-qR` diagnostics is not a universal explanation; the cause of these
   readings remains unknown. The 30-sample count log and retry result are
-  preserved in `docs/evidence/space-hygiene-root-retry-2026-10-30T092716Z/`.
+  preserved in `docs/evidence/space-hygiene-root-retry-2026-10-30T092716Z/`
+  (SHA-256 `samples.txt`:
+  `1ad532c54249a81604cf9bc5293b69db2d2b0488fe3ce6dd0f8901847a8cb852`;
+  `result.txt`:
+  `d370a77480e3ed14ffd827fcb0f4c838d7a9da53609bcaa6ecbe6443d5af9c99`).
 - The historical 2026-10-29 pass measured the reachable closure at **4,604
   paths before and after** and had a byte-identical GC-root list. The latest
   2026-10-30 attempt measured **4,605 reachable paths before and after**, but
@@ -575,6 +578,8 @@ find /nix/var/nix/gcroots/auto -maxdepth 1 -type l -printf '%TY-%Tm-%Td %p -> %l
 find /nix/store -mindepth 1 -maxdepth 1        # store path enumeration
 wc -l docs/evidence/space-hygiene-root-lists-2026-10-30T085316Z/*.txt
 sha256sum docs/evidence/space-hygiene-root-lists-2026-10-30T085316Z/*.txt
+wc -l docs/evidence/space-hygiene-root-retry-2026-10-30T092716Z/*.txt
+sha256sum docs/evidence/space-hygiene-root-retry-2026-10-30T092716Z/*.txt
 ```
 
 `nix-store --gc --print-roots` only prints roots; despite the option name, it
