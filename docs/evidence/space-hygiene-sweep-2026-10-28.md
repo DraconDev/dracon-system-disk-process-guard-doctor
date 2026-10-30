@@ -469,8 +469,12 @@ them is flagged for cleaning.
   anchored attempt on 2026-10-30 saved an attempt-specific 639-root baseline,
   then measured 637 roots before and 640 after. Its full baseline, before, and
   after lists are preserved in
-  `docs/evidence/space-hygiene-root-lists-2026-10-30T085316Z/`; because the
-  anchored counts do not match the saved baseline, that attempt is not
+  `docs/evidence/space-hygiene-root-lists-2026-10-30T085316Z/` (line counts
+  baseline/before/after: 639/637/640; SHA-256: `f31e682191deead0431f939a6a586678b20ca6e3a305929c3941539590e1e9fc`,
+  `039c698886a60e30f5bf45a4b0f0c7b4d669fc3e315b972b3aebd01ca1dee707`,
+  `42a0c38ee82186ab1991dbb9a929b81fbc246a57e04fbf4935e77ea0b1d835d8`);
+  because the anchored counts do not match the saved baseline, that attempt
+  is not
   accepted. The store path count was 37,535 in the 2026-10-28 22:30 pass,
   peaked at 37,978 in a 16:50 UTC spot reading, measured 37,534→37,534 across
   the 18:03 pass, and measured 37,534 again at 21:23–21:24 UTC. New profile
