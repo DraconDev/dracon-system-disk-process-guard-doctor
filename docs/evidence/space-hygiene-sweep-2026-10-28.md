@@ -15,7 +15,7 @@ through 2026-10-29 18:03–18:06 UTC. A later full measurement attempt on
 root-count gate (saved baseline 639; anchored bracket 637→640). It is therefore
 used only as the latest size reading, not as a qualifying baseline pass. The
 current area, agent-tool and off-limits tables use that attempt, except the
-Git-history row, which remains a separate measurement. Live state changed
+Git-history row, which remains a separate measurement, and the container-tree row uses a later `podman unshare du` reading. Live state changed
 during every window, so sizes are exact readings for their stated pass, not an
 atomic filesystem snapshot. All candidate rankings are individually
 pass-labeled; the historical full-pass table is retained separately.
