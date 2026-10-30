@@ -694,11 +694,22 @@ No cleanup, deletion, service pause, or garbage-collection action is requested.
 
 ## Workspace test transcript
 
-The workspace test used the Nix OpenSSL headers and libraries required in this
-shell. The following is the complete 44-line suite-result transcript from the most
-recent bounded `cargo test --workspace --locked` run during this survey;
-aggregate: 2,917 passed, 0 failed, 25 ignored. The subsequent changes were to
-report/evidence files and did not alter Rust source.
+The latest bounded `cargo test --workspace --locked` run exited 0 with 44
+suite-result lines: **2,923 passed, 0 failed, 25 ignored**. Its full output is
+preserved at
+`docs/evidence/space-hygiene-baseline-gate-2026-10-30/workspace-test-20261030T1944Z.log`.
+The command used the Nix OpenSSL headers and libraries shown below. No Rust
+source changed in this report-only work. The 2,917-pass transcript below is an earlier historical run, not the latest
+result. The latest command was:
+
+```text
+$ cd /home/dracon/Dev/dracon-utilities
+$ OPENSSL_INCLUDE_DIR=/nix/store/cqkz127l4l98xgp7p6y1j2cqvyx0w3jl-openssl-3.6.2-dev/include \
+  OPENSSL_LIB_DIR=/nix/store/by19gg2pqp2b1gqphdf6bwk2g3hgak79-openssl-3.6.2/lib \
+  timeout 2400 cargo test --workspace --locked > /home/dracon/.cache/space-hygiene/workspace-test-20261030T1944Z.log 2>&1
+$ echo WORKSPACE_TEST_EXIT=0
+$ awk 'test result lines => 44; passed=2923; failed=0; ignored=25'
+```
 
 ```text
 $ cd /home/dracon/Dev/dracon-utilities
