@@ -651,7 +651,7 @@ journalctl -u nix-daemon.service --since ...  # daemon log inspection
 journalctl -u nix-gc.service --since ...      # scheduled GC journal results
 systemctl show nix-gc.service -p ExecMainStartTimestamp  # service start timestamp
 systemctl list-timers --all  # scheduled timer metadata
-timeout 1800s env MAX_ATTEMPTS=3 SPACE_HYGIENE_LOGDIR=<unique-dir> bash /home/dracon/.cache/space-hygiene/retry-anchored-pass.sh  # bounded, read-only; accepted bracket disables continuous root polling
+timeout 1800s env MAX_ATTEMPTS=3 SPACE_HYGIENE_LOGDIR=/home/dracon/.cache/space-hygiene/attempts/endpoint-only-20261030T1944Z bash /home/dracon/.cache/space-hygiene/retry-anchored-pass.sh  # bounded, read-only; accepted bracket disables continuous root polling
 ps -eo pid,ppid,stat,etime,args               # process inventory
 ps -p <observed pid> -o pid,ppid,etimes,stat,comm  # process state only
 tmux show-option -g                           # live option read, no changes
