@@ -705,7 +705,7 @@ measurement even when nothing is collected. Three consecutive passes at
 23:15–23:39 UTC showed exactly that (609→650, 650→617, 617→644) with no GC
 service run and an unchanged store:
 
-| Attempt | Preserved baseline | `roots_before` | `roots_after` | `/nix/store` entries | `--print-dead` | GC run | Verdict |
+| Attempt | Preserved baseline | `roots_before` | `roots_after` | `/nix/store` entries | `--print-dead` | GC run | Gate outcome |
 |---|---:|---:|---:|---|---|---|---|
 | contract-final #1 | 609 | 609 | 650 | 37,539→37,539 | not captured | no | rejected by root-count proxy |
 | contract-final #2 | 650 | 650 | 617 | 37,539→37,539 | not captured | no | rejected by root-count proxy |

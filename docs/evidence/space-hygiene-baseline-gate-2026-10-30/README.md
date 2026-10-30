@@ -49,6 +49,27 @@ incorrectly wrote to the default live log directory. Those records are not
 host observations and are excluded from all claims. The validated 19:40 pass
 uses a separate, unique log directory preserved in its own evidence folder.
 
+## Qualified v6 pass (2026-10-30 23:40:55 UTC)
+
+The acceptance bracket was rebuilt because GC-root count equality is not a
+collection signal on a live host: `--print-roots` includes Nix daemon transient
+roots for whatever a running process has mapped. Three passes on 2026-10-30
+(609→650, 650→617, 617→644) were rejected by that proxy with an unchanged store
+and no GC run. The v6 rule instead requires: preserved baseline match,
+unchanged `/nix/store` entry count, unchanged `--print-dead` set, and no
+`nix-gc.service` run in the bounded window. It qualified on the first attempt:
+
+- Preserved baseline 618 roots; `roots_before=618`; `/nix/store` 37,539→37,539;
+  `--print-dead` 0→0; journal window `-- No entries --`; service start
+  unchanged at 2026-10-30 00:00 GMT.
+- Root churn +26/−6 from transient video-toolchain roots, reported as a
+  diagnostic rather than a failure.
+
+Artifacts: `attempt-20261030T2340Z-v6-qualified/`. Non-qualifying attempts:
+`attempt-20261030T2315Z-contract-final/`. Fixture-verified behaviour of the new
+rule: `gate-fixtures/v6-acceptance/` (accepts root churn, rejects store
+growth/shrink, dead-set growth, and a GC service run).
+
 ## Workspace verification during the report update
 
 A bounded `cargo test --workspace --locked` run exited 0 with 44 suite-result lines:
