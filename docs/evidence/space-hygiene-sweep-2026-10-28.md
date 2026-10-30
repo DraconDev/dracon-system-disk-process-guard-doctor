@@ -805,7 +805,7 @@ command against surveyed data; the scheduled host GC is separately recorded
 above. The earlier helper's generated-scratch removal is qualified above.
 Workspace-test fixtures remained confined to their temporary test directories.
 
-## Operator follow-up: five handover-backup sizes
+## Remaining sizing gap: five handover-backup subtrees
 
 The user's exact privileged readings for `~/.local/share`, Trash,
 `~/.local/state`, and `/var/log` are now preserved in the supplemental sample
@@ -813,17 +813,24 @@ above. They remain separate from the 19:40 pass and their command timestamp
 was not recorded. The only remaining size gap is the five root-owned handover
 backup directories. A read-only path search at 22:14:18 UTC found all five,
 but traversal of each returned `Permission denied`; no sizes were obtained.
-`sudo -n true` still requires a password here, so please run the targeted
-read-only measurement below and paste its complete output with the `date -Is`
-result. No cleanup or GC is requested.
+`sudo -n true` still requires a password here, so a per-subtree split needs the
+targeted read-only measurement below. This is a detail *inside* a known area,
+not a gap in the area total: `~/.local/state` is sized both by the v6 pass
+(53,739,383,637 bytes) and by the operator's privileged `sudo du`
+(49,316,690,397 bytes). No cleanup or GC is requested.
 
 | Handover-backup path | Bytes | Verdict | Evidence |
 |---|---:|---|---|
-| `~/.local/state/dracon-sync/service-migration/20261018-operator-v8/handover-backup` | not measured | needs-operator-call | unprivileged `find` returned `Permission denied` |
-| `~/.local/state/dracon-sync/service-migration/20261018-operator-v3/handover-backup` | not measured | needs-operator-call | unprivileged `find` returned `Permission denied` |
-| `~/.local/state/dracon-sync/service-migration/20261018-operator-v2/handover-backup` | not measured | needs-operator-call | unprivileged `find` returned `Permission denied` |
-| `~/.local/state/dracon-sync/service-migration/20261018-operator-v6/handover-backup` | not measured | needs-operator-call | unprivileged `find` returned `Permission denied` |
-| `~/.local/state/dracon-sync/service-migration/20261018-operator-v7/handover-backup` | not measured | needs-operator-call | unprivileged `find` returned `Permission denied` |
+| `~/.local/state/dracon-sync/service-migration/20261018-operator-v8/handover-backup` | not measured | needs-operator-call | `drwx------ root:root`; unprivileged traversal returns `Permission denied` |
+| `~/.local/state/dracon-sync/service-migration/20261018-operator-v3/handover-backup` | not measured | needs-operator-call | `drwx------ root:root`; unprivileged traversal returns `Permission denied` |
+| `~/.local/state/dracon-sync/service-migration/20261018-operator-v2/handover-backup` | not measured | needs-operator-call | `drwx------ root:root`; unprivileged traversal returns `Permission denied` |
+| `~/.local/state/dracon-sync/service-migration/20261018-operator-v6/handover-backup` | not measured | needs-operator-call | `drwx------ root:root`; unprivileged traversal returns `Permission denied` |
+| `~/.local/state/dracon-sync/service-migration/20261018-operator-v7/handover-backup` | not measured | needs-operator-call | `drwx------ root:root`; unprivileged traversal returns `Permission denied` |
+
+The parent `service-migration` directory is `drwxr-xr-x dracon:users`, so the
+paths are enumerable; only the five backup subtrees are restricted. Their
+verdict is `needs-operator-call` because root-owned migration backups must not
+be flagged for cleaning on size alone.
 
 ```sh
 date -Is
