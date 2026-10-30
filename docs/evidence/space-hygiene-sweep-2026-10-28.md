@@ -444,22 +444,26 @@ them is flagged for cleaning.
   with 15 transitions, and its first and last samples were 635 and 634. This
   does not satisfy the reported 610-root pre-sweep baseline.
 - The scheduled `nix-gc.service` run at 2026-10-29 00:00 GMT reports **0
-  store paths deleted, 0.00 MiB freed**. The baseline-bound retry observations
-  from 23:08–23:53 UTC had no `nix-gc.service` journal entries; at 23:53 the
-  service was inactive and its last start remained 00:00 GMT. The next timer
-  was scheduled for 2026-10-30 00:00 GMT. This work invoked no collection
-  command, but the earlier scheduled host GC did run, so no host-wide
-  no-GC claim is made.
+  store paths deleted, 0.00 MiB freed**. The next scheduled run, at
+  2026-10-30 00:00 GMT, deleted **368 store paths and freed 2510.01 MiB**.
+  Both were system-timer actions, not commands invoked by this survey. No
+  host-wide no-GC/no-deletion condition can be claimed; the most recent
+  bounded anchored window at 08:53–08:55 UTC had no GC start during its own
+  measurement window.
 - **Acceptance-item status: not yet met.** The reported original pre-sweep
-  count of 610 and the latest completed pass's 634→634 bracket are not equal;
-  the 610 reading was not retained as a separate root-list artifact. The
-  store path count was 37,535 in the 2026-10-28 22:30 pass, peaked at 37,978
-  in a 16:50 UTC spot reading, measured 37,534→37,534 across the 18:03 pass,
-  and measured 37,534 again at 21:23–21:24 UTC. New profile generations
-  (`profile-68-link` through `profile-75-link`) were registered between 11:23
-  and 17:31 UTC on 2026-10-29. The 444-path fall from the 16:50 peak was not
-  associated with a collection event in the checked journal window; its
-  mechanism was not established.
+  reading of 610 has no preserved root-list artifact. The latest completed
+  anchored attempt on 2026-10-30 saved an attempt-specific 639-root baseline,
+  then measured 637 roots before and 640 after. Its full baseline, before, and
+  after lists are preserved in
+  `docs/evidence/space-hygiene-root-lists-2026-10-30T085316Z/`; because the
+  anchored counts do not match the saved baseline, that attempt is not
+  accepted. The store path count was 37,535 in the 2026-10-28 22:30 pass,
+  peaked at 37,978 in a 16:50 UTC spot reading, measured 37,534→37,534 across
+  the 18:03 pass, and measured 37,534 again at 21:23–21:24 UTC. New profile
+  generations (`profile-68-link` through `profile-75-link`) were registered
+  between 11:23 and 17:31 UTC on 2026-10-29. The 444-path fall from the
+  16:50 peak was not associated with a collection event in the checked
+  journal window; its mechanism was not established.
 - A revised bounded retry gate preserves every sorted root-list sample,
   requires five consecutive byte-identical lists, saves that settled list as
   the explicit pre-sweep baseline, and accepts the anchored pass only when
