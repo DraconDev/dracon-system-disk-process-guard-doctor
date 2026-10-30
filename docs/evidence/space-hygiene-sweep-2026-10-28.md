@@ -1,53 +1,51 @@
 # Space-hygiene sweep — beyond the disk audit (2026-10-28)
 
-Report-only for surveyed data. No surveyed candidate was cleaned or deleted,
-and this work invoked no collection command. Earlier anchored-measurement helper
-runs removed only their generated `/tmp` measurement scratch file after
-recording values; that was not candidate cleanup. The helper's scratch-removal
-line was removed before the follow-up stability attempts. The scheduled system
-`nix-gc.service` ran at 2026-10-29 00:00 while the work was paused; its journal
-reports 0 store paths deleted and 0.00 MiB freed. Workspace tests used isolated
-temporary fixtures. The Nix store was sized and compared by reachability only.
+Report-only for surveyed data. This survey invoked no cleanup or garbage-
+collection command. However, the scheduled system `nix-gc.service` ran twice
+while the work was active: the 2026-10-29 run deleted 0 paths, and the
+2026-10-30 run deleted 368 store paths and freed 2510.01 MiB. This external
+collection means the literal host-wide no-GC/no-deletion condition was not
+met; no non-Nix candidate was intentionally cleaned by this survey. Earlier
+anchored-measurement helpers removed only generated `/tmp` scratch files, not
+surveyed candidates. Workspace tests used isolated temporary fixtures.
 
-Primary measurements below began on 2026-10-28 (roughly 15:53–16:05 UTC). Five
-full anchored passes were run through 2026-10-29 18:03–18:06 UTC. That latest
-completed pass recorded equal within-pass values (634 roots before and after)
-but did not match the reported original pre-sweep baseline of 610; it is not
-accepted as meeting the strict baseline check. A new baseline-bound retry is
-in progress; its attempts and current outcome are recorded in the Nix section.
-A scheduled system `nix-gc.service` run during the earlier work window is also
-recorded below. Live state changed during every window, so byte values are
-exact `du --bytes` readings for their stated pass, not an atomic filesystem
-snapshot. Area, agent-tool and off-limits tables currently use the latest
-completed pass (18:03–18:06 UTC), except the Git-history row, which is a
-separate measurement described below. All candidate rankings are
-individually pass-labeled. The sandbox sub-decomposition tables are separate
-and not new global rankings.
+Primary measurements began on 2026-10-28. Five full anchored passes ran
+through 2026-10-29 18:03–18:06 UTC. A later full measurement attempt on
+2026-10-30 08:53–08:55 UTC produced fresh `du --bytes` values but failed the
+root-count gate (saved baseline 639; anchored bracket 637→640). It is therefore
+used only as the latest size reading, not as a qualifying baseline pass. The
+current area, agent-tool and off-limits tables use that attempt, except the
+Git-history row, which remains a separate measurement. Live state changed
+during every window, so sizes are exact readings for their stated pass, not an
+atomic filesystem snapshot. All candidate rankings are individually
+pass-labeled; the historical full-pass table is retained separately.
 
 This supplements `leftover-audit-2026-10-27.md` and
 `cleaner-coverage-gaps-2026-10-27.md`. Area rows intentionally overlap: for
 example, `~/.local/share` includes OpenCode and container storage, and the
 agent-tool total includes OpenCode. Do not add overlapping rows together.
 
-Unprivileged `du` reported permission errors for some protected descendants in
-`~/.local/share`, `~/.local/state`, container storage, Trash, and `/var/log`.
-Those totals are the exact reported accessible subtotals; they are not claimed
-to include unreadable descendants. Passwordless `sudo` was unavailable, so a
-complete privileged measurement remains an operator follow-up.
+Unprivileged `du` reported denied descendants in `~/.local/share`,
+`~/.local/state`, Trash, and `/var/log`. Read-only `podman unshare du` could
+read the UID-mapped container tree (3,461,884,035 bytes, no permission errors),
+but still could not read the root-owned Trash backup, five state handover
+backups, `/var/log/private`, or `/var/log/gdm`. `sudo -n true` reports that a
+password is required, so complete privileged totals remain an operator
+follow-up. Table subtotals are labeled rather than presented as full totals.
 
 ## Swept areas
 
 | Area | Bytes | Verdict | Notes |
 |---|---:|---|---|
-| `~/.local/share` | 27,614,583,320 | needs-operator-call | Unprivileged subtotal; container and Trash descendants denied |
-| `~/.local/state` | 34,992,060,510 | needs-operator-call | Unprivileged subtotal; protected descendants denied |
-| `~/.local/bin` | 3,087,112,036 | keep | User-installed tools |
-| `/nix/store` | 49,161,672,136 | keep | Latest completed anchored pass (not baseline-qualified); 8,366,644,248 estimated unreachable output bytes from the primary pass; see Nix section |
-| Agent-tool state (six named tools) | 31,465,750,447 | keep | Exact sum of the six roots below; overlaps `~/.local/share` |
-| `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data |
-| `/var/log` | 614,934,912 | needs-operator-call | Unprivileged subtotal; `/var/log/private` and `/var/log/gdm` denied |
-| `/var/log/journal` | 603,979,776 | clean-with-approval | `du` size from the latest completed anchored pass; a separate `journalctl --disk-usage` reading at approximately 21:05 UTC reported 475.7M |
-| `~/.local/share/containers` | 243,857,603 | needs-operator-call | Unprivileged subtotal; `containers/storage` separately measured 243,759,299 bytes |
+| `~/.local/share` | 27,615,925,666 | needs-operator-call | `du` subtotal from 08:53; `podman unshare du` read 30,833,970,932 bytes but still denied one root-owned Trash subtree |
+| `~/.local/state` | 41,775,185,055 | needs-operator-call | `du` subtotal from 08:53; `podman unshare du` read 41,775,195,328 bytes but denied five root-owned handover backups |
+| `~/.local/bin` | 3,322,797,452 | keep | User-installed tools; `du` at 08:53 |
+| `/nix/store` | 48,303,274,209 | keep | `du` at 08:53; latest retry failed root-count gate. 8,366,644,248 bytes remains a historical pre-GC unreachable-output estimate; see Nix section |
+| Agent-tool state (six named tools) | 31,840,760,127 | keep | Exact sum of the six latest measured roots below; overlaps `~/.local/share` |
+| `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data; `du` at 08:53 |
+| `/var/log` | 623,448,320 | needs-operator-call | `du` subtotal from 08:53; user-namespace scan also denied `/var/log/private` and `/var/log/gdm` |
+| `/var/log/journal` | 612,368,384 | clean-with-approval | `du` at 08:53; separate `journalctl --disk-usage` reading was 475.7M at approximately 21:05 UTC |
+| `~/.local/share/containers` | 3,461,884,035 | needs-operator-call | `podman unshare du` at 09:11; all descendants readable in that user namespace (0 permission errors) |
 | `~/Backups` | 26,473,384,957 | keep | Backup tree; off-limits to cleaning |
 | `~/dracon/backups` | 19,411,474,935 | keep | Backup bundles; off-limits to cleaning |
 
@@ -55,13 +53,13 @@ complete privileged measurement remains an operator follow-up.
 
 | Tool | Measured path(s) | Bytes | Verdict |
 |---|---|---:|---|
-| Codex | `~/.codex` | 4,258,549,199 | keep |
+| Codex | `~/.codex` | 4,357,852,171 | keep |
 | Hermes | `~/.hermes` | 2,387,521,841 | keep |
-| OpenCode | `~/.local/share/opencode` + `~/.opencode` | 13,332,068,891 | keep |
-| Pi | `~/.pi` | 6,244,179,700 | keep |
+| OpenCode | `~/.local/share/opencode` + `~/.opencode` | 13,332,394,851 | keep |
+| Pi | `~/.pi` | 6,519,560,448 | keep |
 | Zcode | `~/.zcode` | 2,826,633,061 | keep |
 | Kilocode | `~/.kilocode` | 2,416,797,755 | keep |
-| **Total** | Six named tools, no shared roots | **31,465,750,447** | keep |
+| **Total** | Six named tools, no shared roots | **31,840,760,127** | keep |
 
 The OpenCode total combines 12,429,660,938 bytes at `~/.local/share/opencode`
 and 902,407,953 bytes at `~/.opencode`. The separate `mimocode` directory below
@@ -73,10 +71,11 @@ Every ranked candidate row has one verdict from
 `{keep, clean-with-approval, needs-operator-call}`; the auxiliary spot-check
 and decomposition tables carry their own verdicts in a verdict column, so no
 row in this report asserts a verdict outside that set.
-The latest completed full-pass ranking is from 18:03–18:06 UTC; it is not
-baseline-qualified. Its top three by exact `du --bytes` readings are
-**15,656,917,210 / 12,186,624,107 / 6,983,789,017 bytes**; that table appears
-below as "Latest completed full anchored pass". The first table below is the original first sweep
+The latest measured top three are from the 2026-10-30 08:53–08:55 UTC attempt
+(not baseline-qualified): **22,366,383,926 / 12,186,624,107 /
+6,983,789,017 bytes** by exact `du --bytes` readings. They appear in the small
+current-reading table below; historical full-pass rankings follow. The first
+table below is the original first sweep
 report (15:53–16:05 UTC) with top three **10,932,233,354 / 6,983,789,017 /
 5,946,756,827 bytes**; rows 1, 3 and 5 carry the first report's readings and
 row 12 was re-measured in the 20:17 UTC resample. The first-sweep readings are
@@ -317,13 +316,13 @@ they need an operator review rather than a cleanup recommendation.
 
 | Path | Size | Verdict |
 |---|---:|---|
-| `~/Videos` | 30,401,010,987 bytes | keep |
-| `~/Pictures` | 51,124,689 bytes | keep |
+| `~/Videos` | 30,525,966,728 bytes | keep |
+| `~/Pictures` | 59,912,248 bytes | keep |
 | Git history in 27 `.git` directories under `~/Dev` | 63,432,860,650 bytes | keep |
 | `~/Backups` | 26,473,384,957 bytes | keep |
 | `~/dracon/backups` | 19,411,474,935 bytes | keep |
-| `~/.config` | 16,860,648,231 bytes | keep |
-| `~/.dracon` | 4,245,086,077 bytes | keep |
+| `~/.config` | 17,128,916,899 bytes | keep |
+| `~/.dracon` | 4,140,473,573 bytes | keep |
 | NixOS configuration target `~/.dracon/nixos` (`/etc/nixos` symlink) | 297,401 bytes | keep |
 
 Every row except the Git-history row is an exact `du --bytes` reading from the
