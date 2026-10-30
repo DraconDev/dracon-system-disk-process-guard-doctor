@@ -531,10 +531,11 @@ them is flagged for cleaning.
   `result.txt`:
   `d370a77480e3ed14ffd827fcb0f4c838d7a9da53609bcaa6ecbe6443d5af9c99`).
 - The historical 2026-10-29 pass measured the reachable closure at **4,604
-  paths before and after** and had a byte-identical GC-root list. The latest
-  2026-10-30 attempt measured **4,605 reachable paths before and after**, but
-  its artifacts preserve counts rather than closure path sets; no reachable-
-  set identity is claimed for either pass.
+  paths before and after** and had a byte-identical GC-root list. The 08:53
+  2026-10-30 attempt measured **4,605 reachable paths before and after**; the
+  later complete 15:11 pass measured **4,608 before and after**. Their
+  artifacts preserve counts rather than closure path sets, so no reachable-set
+  identity is claimed. The 15:28 attempt ended before its final closure count.
 - Privileged totals remain incomplete: `sudo -n true` returned
   `sudo: a password is required`. The Podman user namespace did fully read the
   container tree, but the root-owned Trash backup, five state handover
