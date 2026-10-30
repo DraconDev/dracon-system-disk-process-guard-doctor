@@ -1,6 +1,6 @@
 # Retry-gate regression rerun — 2026-10-30
 
-The current `retry-anchored-pass.sh` was exercised with the disposable mocks under `../gate-fixtures/`:
+The current `retry-anchored-pass.sh` was exercised with disposable mocks; per-case output and root lists are in this folder, and the mock executables are retained under `../` in the existing `gate-fixtures` evidence.
 
 | Case | Exit | Result |
 |---|---:|---|
