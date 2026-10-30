@@ -1,0 +1,10 @@
+pre_sweep_baseline_at=2026-10-30T14:35:41Z
+pre_sweep_baseline_count=1
+pre_sweep_baseline_file=/tmp/space-hygiene-gate-regression-20261030/logs/journal-unavailable/baseline-20261030T143541Z.txt
+roots_before=1
+roots_after=1
+roots_unchanged=YES
+root_set_identical=YES
+store_paths_before=100
+store_paths_after=100
+pass_seconds=1

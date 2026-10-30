@@ -1,0 +1,2 @@
+awk: cmd. line:1: {s+=$1;n++} END{print tag"|"n"|"s"}
+awk: cmd. line:1:                                  ^ unterminated string

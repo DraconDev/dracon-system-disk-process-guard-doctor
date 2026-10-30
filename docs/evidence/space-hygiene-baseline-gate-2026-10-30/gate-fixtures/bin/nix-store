@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = --gc ] && [ "${2:-}" = --print-roots ]; then
+  printf '%s\n' '/nix/var/nix/profiles/system -> /nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-system'
+elif [ "${1:-}" = -qR ]; then
+  printf '%s\n' "${2:-/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-system}"
+else
+  echo "unexpected nix-store arguments: $*" >&2
+  exit 2
+fi

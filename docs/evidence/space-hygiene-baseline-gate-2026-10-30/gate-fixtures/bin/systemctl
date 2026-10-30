@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = show ]; then
+  printf '%s\n' 'Fri 2026-10-30 00:00:00 GMT'
+else
+  echo "unexpected systemctl arguments: $*" >&2
+  exit 2
+fi

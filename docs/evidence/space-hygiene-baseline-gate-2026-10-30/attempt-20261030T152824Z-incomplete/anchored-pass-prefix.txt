@@ -1,0 +1,9 @@
+=== anchored pass v5 start 2026-10-30T15:28:49+00:00 ===
+warmup_reachable=4610
+pre_sweep_baseline_at=2026-10-30T15:28:49Z
+pre_sweep_baseline_count=639
+pre_sweep_baseline_file=/home/dracon/.cache/space-hygiene/attempts/baseline-20261030T152824Z.txt
+roots_before=639
+roots_before_direct=32
+roots_before_indirect=607
+store_paths_before=37987

@@ -1,0 +1,17 @@
+=== attempt 1 @ 20261030T151112Z ===
+observation_window_start=2026-10-30T15:11:12Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT gc_start_before_status=0
+pre_sweep_baseline_at=2026-10-30T15:11:13Z pre_sweep_baseline_count=1 baseline_file=/tmp/space-hygiene-gate-regression-20261030/logs/immediate-journal-unavailable/baseline-20261030T151112Z.txt
+attempt 1: starting anchored pass from preserved baseline
+attempt 1: pass exit=0
+pre_sweep_baseline_at=2026-10-30T15:11:13Z
+pre_sweep_baseline_count=1
+pre_sweep_baseline_file=/tmp/space-hygiene-gate-regression-20261030/logs/immediate-journal-unavailable/baseline-20261030T151112Z.txt
+roots_before=1
+roots_after=1
+roots_unchanged=YES
+root_set_identical=YES
+store_paths_before=100
+store_paths_after=100
+pass_seconds=1
+preserved_baseline_count=1 run_baseline_count=1 roots_before=1 roots_after=1 baseline_matches_before=YES gc_unchanged=UNKNOWN
+attempt 1: no-GC condition unavailable or violated; aborting retries
