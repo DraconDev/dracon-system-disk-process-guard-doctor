@@ -48,3 +48,11 @@ an initial fixture integration invocation that used mocked `nix-store` but
 incorrectly wrote to the default live log directory. Those records are not
 host observations and are excluded from all claims. The validated 19:40 pass
 uses a separate, unique log directory preserved in its own evidence folder.
+
+## Workspace verification during the report update
+
+A bounded `cargo test --workspace --locked` run exited 0 with 44 suite-result lines:
+2,923 passed, 0 failed, 25 ignored. The complete output is preserved in
+`workspace-test-20261030T1944Z.log`. This verification does not change the
+host measurement claim; it covers the workspace after the report/evidence
+updates.
