@@ -525,7 +525,10 @@ du -x --max-depth=1 --bytes <dir>             # breakdowns
 podman unshare du -sx --bytes <path>          # UID-mapped read-only subtotal
 podman image inspect --format '{{.Id}}|{{join .RepoTags ","}}|{{.Size}}' <id>
 podman system df --format json                # image/backend accounting
+podman container ls -a --size                  # container inventory
 docker image inspect --format '{{join .RepoTags ","}}|{{.Id}}|{{.Size}}' <id>
+docker container ls -a --size                 # container inventory
+docker system df                              # human-readable accounting
 curl --silent --show-error --unix-socket /var/run/docker.sock http://localhost/system/df
 find <dir> -type f -printf '%s %TY-%Tm-%Td %p\n'  # file sizes and dates
 find <dir> -mindepth 1 -maxdepth 1 -type d    # sandbox enumeration
