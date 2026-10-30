@@ -627,6 +627,28 @@ command against surveyed data; the scheduled host GC is separately recorded
 above. The earlier helper's generated-scratch removal is qualified above.
 Workspace-test fixtures remained confined to their temporary test directories.
 
+## Operator follow-up (not run)
+
+Complete host-root totals are still unavailable because `sudo` requires an
+interactive password in this session. To fill the remaining area and protected
+handover measurements, run these read-only commands in a terminal and provide
+the exact output:
+
+```sh
+sudo du -sx --bytes \
+  "$HOME/.local/share" "$HOME/.local/share/Trash" \
+  "$HOME/.local/state" /var/log /var/log/private /var/log/gdm
+sudo find "$HOME/.local/state" -type d -iname '*handover*' -print0 \
+  | sudo xargs -0 -r du -sx --bytes
+```
+
+The live Nix-root baseline also changed during the complete 16.5-minute pass.
+When a 40-minute low-activity window with no Nix profile/package updates is
+available, rerun one fresh bounded baseline attempt; the read-only invocation
+is `timeout 2400s env MAX_ATTEMPTS=1 bash
+/home/dracon/.cache/space-hygiene/retry-anchored-pass.sh`. No timer or service
+pause is requested or implied.
+
 ## Workspace test transcript
 
 The workspace test used the Nix OpenSSL headers and libraries required in this
