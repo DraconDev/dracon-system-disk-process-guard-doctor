@@ -1,0 +1,184 @@
+=== attempt 1 @ 20261029T162928Z ===
+attempt 1: root list did not reach five identical readings; skipping pass
+=== attempt 2 @ 20261029T163145Z ===
+attempt 2: root list did not reach five identical readings; skipping pass
+=== attempt 3 @ 20261029T163359Z ===
+attempt 3: root list did not reach five identical readings; skipping pass
+all 3 attempts exhausted without an unchanged bracket
+=== attempt 1 @ 20261029T164059Z ===
+attempt 1: root list did not reach five identical readings; skipping pass
+all 1 attempts exhausted without an unchanged bracket
+=== attempt 1 @ 20261029T164434Z ===
+attempt 1: root list did not reach five identical readings; skipping pass
+=== attempt 2 @ 20261029T164655Z ===
+attempt 2: root list did not reach five identical readings; skipping pass
+all 2 attempts exhausted without an unchanged bracket
+=== attempt 1 @ 20261029T174428Z ===
+attempt 1: root list did not reach five identical readings; skipping pass
+all 1 attempts exhausted without an unchanged bracket
+=== attempt 1 @ 20261029T174735Z ===
+attempt 1: root list did not reach five identical readings; skipping pass
+=== attempt 2 @ 20261029T174959Z ===
+attempt 2: root list did not reach five identical readings; skipping pass
+all 2 attempts exhausted without an unchanged bracket
+=== attempt 1 @ 20261029T175333Z ===
+attempt 1: root list stable; starting anchored pass
+attempt 1: pass exit=0
+roots_before=634
+store_paths_before=37534
+roots_after=634
+store_paths_after=37534
+roots_unchanged=YES
+root_set_identical=YES
+root_series_samples=30
+root_series_min=633
+root_series_max=637
+root_series_constant=NO
+root_series_transitions=15
+pass_seconds=181
+attempt 1: SUCCESS - root count and root set unchanged
+=== attempt 1 @ 20261029T230802Z ===
+pre_sweep_baseline_at=2026-10-29T23:08:02Z pre_sweep_baseline_count=646
+attempt 1: root list did not reach five identical readings; skipping pass
+all 1 attempts exhausted without an unchanged bracket
+=== attempt 1 @ 20261029T231942Z ===
+observation_window_start=2026-10-29T23:19:42Z gc_last_start_before=Thu 2026-10-29 00:00:00 GMT
+attempt 1: root list did not reach five identical readings; skipping pass
+all 1 attempts exhausted without an unchanged bracket
+=== attempt 1 @ 20261029T232956Z ===
+observation_window_start=2026-10-29T23:29:56Z gc_last_start_before=Thu 2026-10-29 00:00:00 GMT
+attempt 1: root list did not reach five identical readings; skipping pass
+=== attempt 2 @ 20261029T233955Z ===
+observation_window_start=2026-10-29T23:39:55Z gc_last_start_before=Thu 2026-10-29 00:00:00 GMT
+attempt 2: root list did not reach five identical readings; skipping pass
+all 2 attempts exhausted without an unchanged bracket
+=== attempt 1 @ 20261029T235057Z ===
+observation_window_start=2026-10-29T23:50:57Z gc_last_start_before=Thu 2026-10-29 00:00:00 GMT
+attempt 1: root list did not reach five identical readings; skipping pass
+all 1 attempts exhausted without an unchanged bracket
+=== attempt 1 @ 20261030T000221Z ===
+observation_window_start=2026-10-30T00:02:21Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT
+attempt 1: root list did not reach five identical readings; skipping pass
+=== attempt 2 @ 20261030T001240Z ===
+observation_window_start=2026-10-30T00:12:40Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT
+attempt 2: root list did not reach five identical readings; skipping pass
+=== attempt 3 @ 20261030T002306Z ===
+observation_window_start=2026-10-30T00:23:06Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT
+attempt 3: root list did not reach five identical readings; skipping pass
+all 3 attempts exhausted without an unchanged bracket
+=== attempt 1 @ 20261030T003550Z ===
+observation_window_start=2026-10-30T00:35:50Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT
+pre_sweep_baseline_at=2026-10-30T00:46:02Z pre_sweep_baseline_count=613 baseline_file=/home/dracon/.cache/space-hygiene/attempts/baseline-20261030T003550Z.txt
+attempt 1: root list stable; starting anchored pass
+attempt 1: pass exit=0
+roots_before=613
+store_paths_before=37914
+roots_after=610
+store_paths_after=37538
+roots_unchanged=NO
+root_set_identical=NO
+root_series_samples=49
+root_series_min=611
+root_series_max=619
+root_series_constant=NO
+root_series_transitions=24
+pass_seconds=344
+pre_sweep_baseline_count=613 roots_before=613 roots_after=610 gc_unchanged=YES
+attempt 1: pass did not match preserved baseline count or GC window; will retry with a fresh preserved baseline
+=== attempt 2 @ 20261030T005147Z ===
+observation_window_start=2026-10-30T00:51:47Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT
+attempt 2: root list did not reach five identical readings; skipping pass
+=== attempt 3 @ 20261030T010143Z ===
+observation_window_start=2026-10-30T01:01:43Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT
+pre_sweep_baseline_at=2026-10-30T01:09:02Z pre_sweep_baseline_count=641 baseline_file=/home/dracon/.cache/space-hygiene/attempts/baseline-20261030T010143Z.txt
+attempt 3: root list stable; starting anchored pass
+=== attempt 1 @ 20261030T010935Z ===
+observation_window_start=2026-10-30T01:09:35Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT
+attempt 3: pass exit=0
+roots_before=641
+store_paths_before=37538
+roots_after=616
+store_paths_after=37538
+roots_unchanged=NO
+root_set_identical=NO
+root_series_samples=38
+root_series_min=616
+root_series_max=646
+root_series_constant=NO
+root_series_transitions=16
+pass_seconds=233
+pre_sweep_baseline_count=641 roots_before=641 roots_after=616 gc_unchanged=YES
+attempt 3: pass did not match preserved baseline count or GC window; will retry with a fresh preserved baseline
+all 3 attempts exhausted without an unchanged bracket
+attempt 1: root list did not reach five identical readings; skipping pass
+all 1 attempts exhausted without an unchanged bracket
+=== attempt 1 @ 20261030T082840Z ===
+observation_window_start=2026-10-30T08:28:40Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT
+attempt 1: root list did not reach five identical readings; skipping pass
+=== attempt 2 @ 20261030T084329Z ===
+observation_window_start=2026-10-30T08:43:29Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT
+pre_sweep_baseline_at=2026-10-30T08:53:16Z pre_sweep_baseline_count=639 baseline_file=/home/dracon/.cache/space-hygiene/attempts/baseline-20261030T084329Z.txt
+attempt 2: root list stable; starting anchored pass
+attempt 2: pass exit=0
+roots_before=637
+store_paths_before=37536
+roots_after=640
+store_paths_after=37536
+roots_unchanged=NO
+root_set_identical=NO
+root_series_samples=20
+root_series_min=637
+root_series_max=640
+root_series_constant=NO
+root_series_transitions=13
+pass_seconds=116
+pre_sweep_baseline_count=639 roots_before=637 roots_after=640 gc_unchanged=YES
+attempt 2: pass did not match preserved baseline count or GC window; will retry with a fresh preserved baseline
+=== attempt 3 @ 20261030T085512Z ===
+observation_window_start=2026-10-30T08:55:12Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT
+attempt 3: root list did not reach five identical readings; skipping pass
+all 3 attempts exhausted without an unchanged bracket
+=== attempt 1 @ 20261030T092716Z ===
+observation_window_start=2026-10-30T09:27:16Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT
+attempt 1: root list did not reach five identical readings; skipping pass
+all 1 attempts exhausted without an unchanged bracket
+=== attempt 1 @ 20261030T113127Z ===
+observation_window_start=2026-10-30T11:31:27Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT
+attempt 1: root list did not reach five identical readings; skipping pass
+all 1 attempts exhausted without an unchanged bracket
+=== attempt 1 @ 20261030T114647Z ===
+observation_window_start=2026-10-30T11:46:47Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT
+attempt 1: root list did not reach five identical readings; skipping pass
+all 1 attempts exhausted without an unchanged bracket
+=== attempt 1 @ 20261030T135913Z ===
+observation_window_start=2026-10-30T13:59:13Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT
+=== attempt 1 @ 20261030T143555Z ===
+observation_window_start=2026-10-30T14:35:55Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT gc_start_before_status=0
+attempt 1: root count did not reach five equal readings; no measurement pass started
+all 1 attempts exhausted without a qualifying bounded pass
+=== attempt 1 @ 20261030T151127Z ===
+observation_window_start=2026-10-30T15:11:27Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT gc_start_before_status=0
+pre_sweep_baseline_at=2026-10-30T15:11:52Z pre_sweep_baseline_count=656 baseline_file=/home/dracon/.cache/space-hygiene/attempts/baseline-20261030T151127Z.txt
+attempt 1: starting anchored pass from preserved baseline
+attempt 1: pass exit=0
+pre_sweep_baseline_at=2026-10-30T15:11:52Z
+pre_sweep_baseline_count=656
+pre_sweep_baseline_file=/home/dracon/.cache/space-hygiene/attempts/baseline-20261030T151127Z.txt
+roots_before=656
+store_paths_before=37983
+roots_after=636
+store_paths_after=37987
+roots_unchanged=NO
+root_set_identical=NO
+root_series_samples=110
+root_series_min=623
+root_series_max=2719
+root_series_constant=NO
+root_series_transitions=79
+pass_seconds=991
+preserved_baseline_count=656 run_baseline_count=656 roots_before=656 roots_after=636 baseline_matches_before=YES gc_unchanged=YES
+attempt 1: baseline or post-pass count differed; retrying with a fresh preserved baseline
+=== attempt 2 @ 20261030T152824Z ===
+observation_window_start=2026-10-30T15:28:24Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT gc_start_before_status=0
+pre_sweep_baseline_at=2026-10-30T15:28:49Z pre_sweep_baseline_count=639 baseline_file=/home/dracon/.cache/space-hygiene/attempts/baseline-20261030T152824Z.txt
+attempt 2: starting anchored pass from preserved baseline

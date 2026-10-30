@@ -1,0 +1,8 @@
+observation_window_start=2026-10-30T14:35:39Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT gc_start_before_status=0
+warmup_reachable=1
+2026-10-30T14:35:39Z sample=1 roots=1 equal_count_streak=1
+2026-10-30T14:35:40Z sample=2 roots=1 equal_count_streak=2
+2026-10-30T14:35:40Z sample=3 roots=1 equal_count_streak=3
+2026-10-30T14:35:40Z sample=4 roots=1 equal_count_streak=4
+2026-10-30T14:35:40Z sample=5 roots=1 equal_count_streak=5
+pre_sweep_baseline_at=2026-10-30T14:35:40Z pre_sweep_baseline_count=1 baseline_file=/tmp/space-hygiene-gate-regression-20261030/logs/gc-event/baseline-20261030T143539Z.txt

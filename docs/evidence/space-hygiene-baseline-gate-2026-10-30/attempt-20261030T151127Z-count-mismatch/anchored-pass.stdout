@@ -1,0 +1,96 @@
+awk: cmd. line:1: {s+=$1;n++} END{print tag"|"n"|"s"}
+awk: cmd. line:1:                                  ^ unterminated string
+=== anchored pass v5 start 2026-10-30T15:11:52+00:00 ===
+warmup_reachable=4608
+pre_sweep_baseline_at=2026-10-30T15:11:52Z
+pre_sweep_baseline_count=656
+pre_sweep_baseline_file=/home/dracon/.cache/space-hygiene/attempts/baseline-20261030T151127Z.txt
+roots_before=656
+roots_before_direct=31
+roots_before_indirect=625
+store_paths_before=37983
+agent_codex|4359922893|/home/dracon/.codex
+agent_hermes|2387521841|/home/dracon/.hermes
+agent_kilocode|2416797755|/home/dracon/.kilocode
+agent_opencode_home|902407953|/home/dracon/.opencode
+agent_opencode_share|12429986898|/home/dracon/.local/share/opencode
+agent_pi|6718498843|/home/dracon/.pi
+agent_zcode|2826633061|/home/dracon/.zcode
+area_backups|26473384957|/home/dracon/Backups
+area_chat|7321716379|/home/dracon/chat
+area_containers|243857603|/home/dracon/.local/share/containers
+area_containers_store|243759299|/home/dracon/.local/share/containers/storage
+area_dracon_backups|19411474935|/home/dracon/dracon/backups
+area_local_bin|3090902012|/home/dracon/.local/bin
+area_local_share|27619278169|/home/dracon/.local/share
+area_local_state|46184695068|/home/dracon/.local/state
+area_nix_store|50983998714|/nix/store
+area_varlog|623494784|/var/log
+area_varlog_journal|612368384|/var/log/journal
+cand_chat_pi_kimi|6983789017|/home/dracon/chat/pi/kimi
+cand_codex_packages|2118979232|/home/dracon/.codex/packages
+cand_codex_sessions|1120760642|/home/dracon/.codex/sessions
+cand_gates_today|26620198568|/home/dracon/.local/state/dracon/sync/gates/browser-extensions-shared
+cand_mimocode_snapshot|2645718475|/home/dracon/.local/share/mimocode/snapshot
+cand_muse_sessions|3701928542|/home/dracon/.local/share/muse/sessions
+cand_opencode_snapshot|5898491422|/home/dracon/.local/share/opencode/snapshot
+cand_pnpm_store|2833801709|/home/dracon/.local/share/pnpm/store
+cand_protection_repair|5942225851|/home/dracon/.local/state/dracon/protection-repair-2026-10-20/verification-target
+cand_rtk_history|1613910016|/home/dracon/.local/share/rtk/history.db
+cand_trash|553895998|/home/dracon/.local/share/Trash
+cand_writer_fence|12186624107|/home/dracon/.local/state/dracon-sync/qualification/canonical-writer-fence-2026-10-27
+off_config|17209139838|/home/dracon/.config
+off_dracon|4115169665|/home/dracon/.dracon
+off_etc_nixos|18|/etc/nixos
+off_nixos_config|297401|/home/dracon/.dracon/nixos
+off_pictures|64687182|/home/dracon/Pictures
+off_videos|30742497732|/home/dracon/Videos
+sandboxes_2026-10-28|244|24361132055
+sandboxes_all|356|24406573225
+sandboxes_older_than_2026-10-28|112|57585810
+reachable_end=4608
+roots_after=636
+roots_after_direct=31
+roots_after_indirect=605
+store_paths_after=37987
+--- comparison ---
+roots_unchanged=NO
+root_set_identical=NO
+root_set_added:
+  + {censored} -> /nix/store/cqk6vygf5wy16kqd4mkivrydk0vvv767-xxHash-0.8.3
+  + {censored} -> /nix/store/v8k5wk7kfkapi231pq31yf1y79gnhm3z-rsync-3.4.1
+  + {censored} -> /nix/store/ymq77dg4zhnfvbpsqdkspgdqxm9b9zc1-popt-1.19
+root_set_removed:
+  - {censored} -> /nix/store/1jy31jm70hj264lqnfq4krnfc8kxavbh-libopenmpt-0.8.6
+  - {censored} -> /nix/store/2kmhkbnxifr65wqkfxyx2lrswsyjwb4n-ffmpeg-8.0-lib
+  - {censored} -> /nix/store/39l6rhxg9qb07q3862p4zcr2s4146p1r-glibc-2.40-224-dev
+  - {censored} -> /nix/store/59idhib53hf6ya05faycdg5mx9slhv5d-libass-0.17.4
+  - {censored} -> /nix/store/5y7w1p8qv41v2mdb8hrqj0j73aj8m4i6-openapv-0.2.0.4
+  - {censored} -> /nix/store/62ncar0vs12b8minv012cna9icyq5l54-nerd-fonts-meslo-lg-3.4.0+1.21
+  - {censored} -> /nix/store/7rkqz7lhnm0zci07g5bx2mm7993rpapx-ffmpeg-8.0-bin
+  - {censored} -> /nix/store/80gp135rj4fp692cppypmc2qb7p6alsc-libssh-0.11.4
+  - {censored} -> /nix/store/9q0ah902348jm3y4v4m975sia92lmb8h-rustup-1.28.2
+  - {censored} -> /nix/store/ajm5ymmrinjz2r1x8z6hvcj7kjqph9c5-librist-0.2.11
+  - {censored} -> /nix/store/ipr6y28viyqkhkg58rdvy27m01q5j5nh-gcc-14.3.0
+  - {censored} -> /nix/store/iz5lckcsg66r223si2gck7csk2hihj0m-binutils-wrapper-2.44
+  - {censored} -> /nix/store/k4nl08bgqqvis62ipjbaiciaxxn0wmps-srt-1.5.4
+  - {censored} -> /nix/store/khyv8w66lm4wajz2i93wjrcp55v0jzv1-cjson-1.7.19
+  - {censored} -> /nix/store/mc5phzxsq1a7l15il4zam170y75k8y4v-mpdecimal-4.0.1
+  - {censored} -> /nix/store/pb8wkah26dfqc4wxfs4gh3pdnhlpnpy6-tmuxplugin-resurrect-unstable-2022-05-01
+  - {censored} -> /nix/store/pl4w16kb4r14sjlmxk3x08g55810qzj2-empire-0.1.0
+  - {censored} -> /nix/store/pr57ppp1dqygkr4lvq6f3wp53syfhqp9-vid.stab-1.1.1-unstable-2025-08-21
+  - {censored} -> /nix/store/w61x471c7dqfg4jhi0ckfdy9g43rfn80-zimg-3.0.6
+  - {censored} -> /nix/store/wc5blyz7y5zhwjbf1k6zzkkqm6zz76vb-mbedtls-3.6.6
+  - {censored} -> /nix/store/wd129m6378f59pmnkfk9x1nq5nfcvprg-libbluray-1.3.4
+  - {censored} -> /nix/store/wqz7p0qbclb33clq94qgai48dymkldy8-v4l-utils-1.32.0
+  - {censored} -> /nix/store/z8swvjc65kbn2jr8qi26xkkrkkdbvxgf-mpg123-1.33.4
+root_series_samples=110
+root_series_min=623
+root_series_max=2719
+root_series_distinct=      6 623       3 624       1 625       1 629       1 630       1 635       2 636       1 638       4 639       1 640       1 641       2 642       2 643       3 644       3 645       1 648       2 649       8 650       4 651       6 652       5 653       4 654       8 655      11 656       5 657       2 659       3 660       2 661       1 662       1 2639       1 2657       1 2685       1 2696       1 2697       1 2699       1 2703       1 2704       3 2706       1 2710       1 2712       1 2713       1 2714       1 2719 
+root_series_constant=NO
+root_series_transitions=79
+root_series_first=2026-10-30T15:11:55Z 656
+root_series_last=2026-10-30T15:28:18Z 636
+pass_seconds=991
+=== anchored pass v5 end 2026-10-30T15:28:23+00:00 ===

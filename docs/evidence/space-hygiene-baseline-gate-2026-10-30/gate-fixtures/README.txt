@@ -1,0 +1,1 @@
+Disposable mock fixtures for verifying the report-only Nix retry gate. These emulate stable root listings, no journal events, root-count mismatch, GC journal events, and journal access failure; they do not inspect or modify Nix store state. Fixture directory intentionally left in place as temporary evidence.

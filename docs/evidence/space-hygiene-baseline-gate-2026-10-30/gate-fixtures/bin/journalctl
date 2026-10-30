@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "${MOCK_JOURNAL_FAIL:-NO}" = YES ]; then
+  echo 'Access denied to journal' >&2
+  exit 1
+fi
+if [ "${MOCK_GC_EVENT:-NO}" = YES ]; then
+  echo 'nix-gc.service: Starting Nix Garbage Collector'
+else
+  echo '-- No entries --'
+fi

@@ -1,0 +1,5 @@
+attempt2_start=2026-10-30T15:28:24Z
+service_start_baseline=Fri 2026-10-30 00:00:00 GMT
+service_start_observed_at=Fri 2026-10-30 00:00:00 GMT
+journal_since_attempt2_start:
+-- No entries --
