@@ -1,0 +1,73 @@
+=== anchored pass v5 start 2026-10-30T19:20:26+00:00 ===
+warmup_reachable=4610
+pre_sweep_baseline_at=2026-10-30T19:20:26Z
+pre_sweep_baseline_count=640
+pre_sweep_baseline_file=/home/dracon/.cache/space-hygiene/attempts/baseline-20261030T192012Z.txt
+roots_before=640
+roots_before_direct=32
+roots_before_indirect=608
+store_paths_before=37987
+agent_codex|4358470189|/home/dracon/.codex
+agent_hermes|2387521841|/home/dracon/.hermes
+agent_kilocode|2416797755|/home/dracon/.kilocode
+agent_opencode_home|902407953|/home/dracon/.opencode
+agent_opencode_share|12429986898|/home/dracon/.local/share/opencode
+agent_pi|6840258558|/home/dracon/.pi
+agent_zcode|2826633061|/home/dracon/.zcode
+area_backups|26473384957|/home/dracon/Backups
+area_chat|7321716379|/home/dracon/chat
+area_containers|243857603|/home/dracon/.local/share/containers
+area_containers_store|243759299|/home/dracon/.local/share/containers/storage
+area_dracon_backups|19411474935|/home/dracon/dracon/backups
+area_local_bin|3090902012|/home/dracon/.local/bin
+area_local_share|27622605153|/home/dracon/.local/share
+area_local_state|45663431429|/home/dracon/.local/state
+area_nix_store|50993583694|/nix/store
+area_varlog|606780928|/var/log
+area_varlog_journal|595591168|/var/log/journal
+cand_chat_pi_kimi|6983789017|/home/dracon/chat/pi/kimi
+cand_codex_packages|2118979232|/home/dracon/.codex/packages
+cand_codex_sessions|1120760642|/home/dracon/.codex/sessions
+cand_gates_today|26254315416|/home/dracon/.local/state/dracon/sync/gates/browser-extensions-shared
+cand_mimocode_snapshot|2645718475|/home/dracon/.local/share/mimocode/snapshot
+cand_muse_sessions|3701928542|/home/dracon/.local/share/muse/sessions
+cand_opencode_snapshot|5898491422|/home/dracon/.local/share/opencode/snapshot
+cand_pnpm_store|2833801709|/home/dracon/.local/share/pnpm/store
+cand_protection_repair|5942225851|/home/dracon/.local/state/dracon/protection-repair-2026-10-20/verification-target
+cand_rtk_history|1616748544|/home/dracon/.local/share/rtk/history.db
+cand_trash|553895998|/home/dracon/.local/share/Trash
+cand_writer_fence|12186624107|/home/dracon/.local/state/dracon-sync/qualification/canonical-writer-fence-2026-10-27
+git_history|27|61887348460
+off_config|16909594163|/home/dracon/.config
+off_dracon|4112711190|/home/dracon/.dracon
+off_etc_nixos|18|/etc/nixos
+off_nixos_config|297401|/home/dracon/.dracon/nixos
+off_pictures|67565294|/home/dracon/Pictures
+off_videos|30743674509|/home/dracon/Videos
+sandboxes_2026-10-28|254|23999310185
+sandboxes_all|366|24056895995
+sandboxes_older_than_2026-10-28|112|57585810
+reachable_end=4610
+roots_after=636
+roots_after_direct=32
+roots_after_indirect=604
+store_paths_after=37987
+--- comparison ---
+roots_unchanged=NO
+root_set_identical=NO
+root_set_added:
+root_set_removed:
+  - {censored} -> /nix/store/5clh7mqw6lwi9hqn8lfv8i6shrph7z1y-libxslt-1.1.45
+  - {censored} -> /nix/store/l1ni6ib44vqggqqar0da5rb28zwkni2i-chromium-unwrapped-149.0.7827.200
+  - {censored} -> /nix/store/mxyll8f2h6ajjkch8z402j0v3mi14kz6-chromium-149.0.7827.200-sandbox
+  - {censored} -> /nix/store/pb8wkah26dfqc4wxfs4gh3pdnhlpnpy6-tmuxplugin-resurrect-unstable-2022-05-01
+root_series_samples=18
+root_series_min=636
+root_series_max=641
+root_series_distinct=      3 636       1 637       3 638       1 639       5 640       5 641 
+root_series_constant=NO
+root_series_transitions=9
+root_series_first=2026-10-30T19:20:27Z 639
+root_series_last=2026-10-30T19:22:04Z 636
+pass_seconds=103
+=== anchored pass v5 end 2026-10-30T19:22:09+00:00 ===

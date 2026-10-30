@@ -1,0 +1,2 @@
+-qR /nix/store/fixture-path
+--gc --print-roots

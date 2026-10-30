@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -eu
+for arg in "$@"; do path=$arg; done
+printf '1\t%s\n' "$path"

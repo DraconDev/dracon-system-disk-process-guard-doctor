@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Fixture intentionally reports no sandbox or .git descendants.
+exit 0
