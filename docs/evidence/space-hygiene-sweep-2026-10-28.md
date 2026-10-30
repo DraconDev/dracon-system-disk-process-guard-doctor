@@ -551,7 +551,11 @@ The complete attempt beginning at 15:11:27 captured and reused the exact
 `store_paths_before=37983`, `store_paths_after=37987`, and 4,608 warmed reachable
 paths. The root-count series contained 110 samples, ranged from 623 to 2,719,
 and had 79 transitions. The before/after root lists differ, so this measured
-pass is not accepted despite `gc_unchanged=YES`. The evidence bundle is
+pass is not accepted despite `gc_unchanged=YES`. Its Git-history aggregation
+also emitted an AWK parse error, so the 27-repository history size remains the
+separate 20:31 measurement rather than a row from this pass. A `printf`-based
+aggregator correction passed `bash -n` and a small sum fixture, but has not
+been run over the host tree. The evidence bundle is
 `docs/evidence/space-hygiene-baseline-gate-2026-10-30/attempt-20261030T151127Z-count-mismatch/`.
 
 A second attempt began at 15:28:24 with a new preserved baseline of 639 and
