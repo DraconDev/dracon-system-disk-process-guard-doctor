@@ -508,6 +508,16 @@ them is flagged for cleaning.
   `docs/evidence/space-hygiene-root-lists-2026-10-30T085316Z/`. The next retry
   after 08:55 did not reach five equal counts and started no pass. No
   baseline-qualified post-GC measurement is available.
+- A subsequent count-only retry ran 2026-10-30 09:27:16–09:43:07 UTC. Its 30
+  sorted-root samples ranged from 631 to 3,102, with a maximum equal-count
+  streak of two; bursts reached 3,099–3,102 and later 2,674–2,697. It did not
+  reach the five-count baseline gate, so it started no anchored pass and ran
+  no reachability query. The GC journal had no entries in this interval and
+  the service's last start remained 00:00 GMT. Since these bursts occurred in
+  a count-only retry, the earlier association between some bursts and
+  `-qR` diagnostics is not a universal explanation; the cause of these
+  readings remains unknown. The 30-sample count log and retry result are
+  preserved in `docs/evidence/space-hygiene-root-retry-2026-10-30T092716Z/`.
 - The historical 2026-10-29 pass measured the reachable closure at **4,604
   paths before and after** and had a byte-identical GC-root list. The latest
   2026-10-30 attempt measured **4,605 reachable paths before and after**, but
