@@ -543,6 +543,36 @@ them is flagged for cleaning.
   operator-authorized host-root `du --bytes` measurement. The Oct-30 scheduled
   GC removed 368 store paths; no host-wide no-GC/no-deletion claim is made.
 
+### Latest baseline-bound recheck (2026-10-30 15:11–15:43 UTC)
+
+The complete attempt beginning at 15:11:27 captured and reused the exact
+15:11:52 pre-sweep root list (656 entries). Its anchored measurement ran
+15:11:52–15:28:23 and recorded `roots_before=656`, `roots_after=636`,
+`store_paths_before=37983`, `store_paths_after=37987`, and 4,608 warmed reachable
+paths. The root-count series contained 110 samples, ranged from 623 to 2,719,
+and had 79 transitions. The before/after root lists differ, so this measured
+pass is not accepted despite `gc_unchanged=YES`. The evidence bundle is
+`docs/evidence/space-hygiene-baseline-gate-2026-10-30/attempt-20261030T151127Z-count-mismatch/`.
+
+A second attempt began at 15:28:24 with a new preserved baseline of 639 and
+started its anchored pass at 15:28:49. The 30-minute outer timeout ended before
+an after-count or completed measurement record was captured. Its partial
+`du` file is retained only for spot readings (including the 29,454,836,584-byte
+gate tree); it is not a full or baseline-qualified pass. The later read-only
+check found no `nix-gc.service` journal events since 15:28:24 and the service
+start timestamp still read 00:00 GMT. Partial artifacts and that after-check
+are under
+`docs/evidence/space-hygiene-baseline-gate-2026-10-30/attempt-20261030T152824Z-incomplete/`.
+The 15:11–15:43 journal window also had no GC entries. These observations show
+no scheduled GC during either attempt window, but do not satisfy the required
+root-count bracket. No current baseline-qualified post-GC sweep is available.
+
+The retry gate's disposable tests are preserved under
+`docs/evidence/space-hygiene-baseline-gate-2026-10-30/gate-fixtures/` with the
+helper scripts and mock dependencies. They exercise count match/mismatch,
+GC-event rejection, journal-unavailable fail-closed behavior, and the
+contract's count-only acceptance when identities churn at a constant count.
+
 ## Read-only commands used
 
 This list contains only read-only measurement and inspection commands. The
@@ -600,9 +630,10 @@ Workspace-test fixtures remained confined to their temporary test directories.
 ## Workspace test transcript
 
 The workspace test used the Nix OpenSSL headers and libraries required in this
-shell. The following is the complete 44-line suite-result transcript from the
-bounded `cargo test --workspace --locked` invocation that closed this sweep;
-aggregate: 2,917 passed, 0 failed, 25 ignored.
+shell. The following is the complete 44-line suite-result transcript from the most
+recent bounded `cargo test --workspace --locked` run during this survey;
+aggregate: 2,917 passed, 0 failed, 25 ignored. The subsequent changes were to
+report/evidence files and did not alter Rust source.
 
 ```text
 $ cd /home/dracon/Dev/dracon-utilities
