@@ -445,9 +445,13 @@ flagged for cleaning.
   processes were resumed; their running states and settings were verified. A
   fresh read-only check at 09:24 UTC on 2026-10-30 found the default tmux
   server active with `@continuum-save-interval 5`, `/tmp/tpd` running, and 16
-  `tmux-persist-daemon` processes. The exact original three daemon PIDs cannot
-  be matched amid later process churn, but no paused autosave state is
-  observable and no further restoration action was needed.
+  `tmux-persist-daemon` processes. A further read-only check at 19:58 UTC
+  found the `wez` server with 52 windows, the interval still 5, 16 helper
+  processes, and one `bash /tmp/tpd` process; the `/tmp/tpd` path itself was
+  absent. No process or service was changed. The helper processes are active,
+  but whether the absent legacy script path is intentional is not established.
+  The exact original three daemon PIDs cannot be matched amid later process
+  churn.
 - A wider stability gate was then applied: instead of five readings, the retry
   loop was run with twenty samples 30 seconds apart, and it would start the
   anchored pass only once the sorted root list had been byte-identical five
