@@ -15,7 +15,8 @@ through 2026-10-29 18:03–18:06 UTC. A later full measurement attempt on
 root-count gate (saved baseline 639; anchored bracket 637→640). It is therefore
 used only as the latest size reading, not as a qualifying baseline pass. The
 current area, agent-tool and off-limits tables use that attempt, except the
-Git-history row, which remains a separate measurement, and the container-tree row uses a later
+Git-history row, which remains a separate measurement, and the container-tree
+row uses a later
 `podman unshare du` reading. Live state changed
 during every window, so sizes are exact readings for their stated pass, not an
 atomic filesystem snapshot. All candidate rankings are individually
@@ -561,6 +562,8 @@ tmux show-option -g                           # live option read, no changes
 ls -1 /nix/var/nix/gcroots/auto               # registered root symlinks
 find /nix/var/nix/gcroots/auto -maxdepth 1 -type l -printf '%TY-%Tm-%Td %p -> %l\n'
 find /nix/store -mindepth 1 -maxdepth 1        # store path enumeration
+wc -l docs/evidence/space-hygiene-root-lists-2026-10-30T085316Z/*.txt
+sha256sum docs/evidence/space-hygiene-root-lists-2026-10-30T085316Z/*.txt
 ```
 
 `nix-store --gc --print-roots` only prints roots; despite the option name, it
