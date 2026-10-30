@@ -73,9 +73,15 @@ and decomposition tables carry their own verdicts in a verdict column, so no
 row in this report asserts a verdict outside that set.
 The latest measured top three are from the 2026-10-30 08:53–08:55 UTC attempt
 (not baseline-qualified): **22,366,383,926 / 12,186,624,107 /
-6,983,789,017 bytes** by exact `du --bytes` readings. They appear in the small
-current-reading table below; historical full-pass rankings follow. The first
-table below is the original first sweep
+6,983,789,017 bytes** by exact `du --bytes` readings. The current-reading table is below; historical full-pass rankings follow.
+
+| # | Path | Bytes | Verdict |
+|---|---|---:|---|
+| 1 | `~/.local/state/dracon/sync/gates/browser-extensions-shared` | 22,366,383,926 | needs-operator-call |
+| 2 | `~/.local/state/dracon-sync/qualification/canonical-writer-fence-2026-10-27` | 12,186,624,107 | needs-operator-call |
+| 3 | `~/chat/pi/kimi` | 6,983,789,017 | needs-operator-call |
+ The next
+table is the original first sweep
 report (15:53–16:05 UTC) with top three **10,932,233,354 / 6,983,789,017 /
 5,946,756,827 bytes**; rows 1, 3 and 5 carry the first report's readings and
 row 12 was re-measured in the 20:17 UTC resample. The first-sweep readings are
