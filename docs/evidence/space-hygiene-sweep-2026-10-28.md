@@ -511,6 +511,11 @@ restoration are described in the Nix section above, not presented as read-only.
 ```text
 du -sx --bytes <path>                         # byte measurements
 du -x --max-depth=1 --bytes <dir>             # breakdowns
+podman unshare du -sx --bytes <path>          # UID-mapped read-only subtotal
+podman image inspect --format '{{.Id}}|{{join .RepoTags ","}}|{{.Size}}' <id>
+podman system df --format json                # image/backend accounting
+docker image inspect --format '{{join .RepoTags ","}}|{{.Id}}|{{.Size}}' <id>
+curl --silent --show-error --unix-socket /var/run/docker.sock http://localhost/system/df
 find <dir> -type f -printf '%s %TY-%Tm-%Td %p\n'  # file sizes and dates
 find <dir> -mindepth 1 -maxdepth 1 -type d    # sandbox enumeration
 find <dir> -type d -name .git -prune -exec du -sx --bytes {} +  # git history (find's -prune only stops descent; it removes nothing)
@@ -538,10 +543,10 @@ find /nix/store -mindepth 1 -maxdepth 1        # store path enumeration
 ```
 
 `nix-store --gc --print-roots` only prints roots; despite the option name, it
-does not run collection. No cleanup, apply, or collection command was executed
-against surveyed data. The earlier helper's generated-scratch removal is
-qualified above. Workspace-test fixtures remained confined to their temporary
-test directories.
+does not run collection. This survey invoked no cleanup, apply, or collection
+command against surveyed data; the scheduled host GC is separately recorded
+above. The earlier helper's generated-scratch removal is qualified above.
+Workspace-test fixtures remained confined to their temporary test directories.
 
 ## Workspace test transcript
 
