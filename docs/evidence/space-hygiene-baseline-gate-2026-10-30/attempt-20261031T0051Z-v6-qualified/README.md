@@ -60,6 +60,6 @@ and journal records are the direct no-GC evidence. All three are reported
 because none substitutes for the others.
 
 No cleanup, collection, or GC command was invoked by this survey. The three
-`scheduled` GC runs on this host were the system timer's, recorded in the main
+scheduled GC runs on this host were the system timer's, recorded in the main
 report with their own journal output preserved under
 `../post-pass-confirmation-20261031T0034Z/`.
