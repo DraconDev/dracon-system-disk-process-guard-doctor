@@ -1,7 +1,8 @@
 # Gate-log disk leak — root-cause fix and reclamation (2026-10-31)
 
 The pre-push gate log root was leaking full source snapshots and had reached
-**41.6 GB** (38.8 GB of it orphaned snapshots). This fixes the two mechanisms
+**41.6 GB** (38.28 GB of it orphaned snapshots by exact measurement; ~41.8 GB
+counting the twelfth, whose size is an estimate). This fixes the two mechanisms
 that caused it and reclaims the space. Free space on `/` went from **86.6 GB to
 152.0 GB** at the final reading (**+60.9 GiB**, 91% → 84% used; the intermediate
 readings and why they move are in [Free space](#free-space)). The daemon ran
@@ -102,7 +103,7 @@ running. The readings, each with its own timestamp:
 | Explicit sweep | 11:04:53Z | 0 reaped | 1 preserved (`eeX4YC`) | `reap-live-run-2.txt` |
 | Final recheck | 12:40:20Z | **0** | **0** | `final-state-1240.txt` (recovered from commit `b9d4aa3`) |
 | Post-verification scan | 14:04:53Z | **0** | 1 (`OTQjdk`) | `final-state-1405.txt` |
-| Audit-hour scans | ~13:30Z, ~13:38Z | **0** | 1 (`r90mfQ`, then `4Hzjog`) | live read-only scan |
+| Audit-hour scans | ~13:30Z–15:30Z | **0** | 0–1, rotating (`r90mfQ`, `4Hzjog`, `OTQjdk`, `qIonKX`, `HeYAAq`) | `live-scan-latest.txt` |
 
 The two zero and one readings are all correct at their own timestamps: at
 12:40:20 no push was mid-flight, so nothing was live; by 14:04:53 a fresh push
@@ -262,14 +263,17 @@ Two honest limits remain, and they are why the reap sweep still exists:
 
 | Reading | Count | Bytes | Backing |
 |---|---:|---:|---|
-| Pre-work (~09:45Z) | 698 | 12,895,651,392 | in-run measurement, **not** persisted at the time — see `pre-work-spools.txt` |
-| Post-work (10:21Z) | 771 | 15,155,605,713 | `post-work-baseline.txt` |
+| Pre-work (~09:45Z) | 698 | 12,895,651,392 | in-run measurement, **not** persisted at the time — see `pre-work-spools.txt` || Post-work (10:21Z) | 771 | 15,155,605,713 | `post-work-baseline.txt` |
 | Later re-check (11:23Z) | 784 | 15,236,143,720 | `pre-work-spools.txt` |
 
 The pre-work row carries a provenance caveat stated in `pre-work-spools.txt`: the
 figure was measured during this goal but not written to a file at the time, so it
 has no independent artefact. It is not used by any contract item, and the
 growing trend is established by the two persisted readings rather than by it.
+Note also that the objective's own parenthetical estimate of "~14 GiB across 698
+dirs" is larger than what that reading recorded: 12,895,651,392 bytes = **12.0
+GiB** over 698 dirs. The dir count matches; the byte estimate in the objective was
+high by ~2 GiB. The measured figure is what this document reports.
 
 **They are growing and this goal deliberately did not stop that.**
 `reap_abandoned_spools()` returns `0` and `sweep_epoch_spools(apply = true)`
