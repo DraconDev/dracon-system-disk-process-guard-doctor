@@ -84,7 +84,7 @@ known.
 | `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data; v6.2 pass |
 | `/var/log` | 581,679,616 | needs-operator-call | v6.2 unprivileged subtotal; the operator privileged `sudo du` total was 598,374,272, with `/var/log/private` and `/var/log/gdm` each 0 |
 | `/var/log/journal` | 570,425,344 | clean-with-approval | v6.2 pass; separate `journalctl --disk-usage` reading was 475.7M at approximately 21:05 UTC |
-| `~/.local/share/containers` | 243,857,603 | needs-operator-call | v6.2 pass; `containers/storage` 243,759,299. A 2026-10-30 09:11 `podman unshare du` of the UID-mapped tree read 3,461,884,035 |
+| `~/.local/share/containers` | 243,857,603 | needs-operator-call | v6.2 pass; `containers/storage` 243,759,299. Two different `podman unshare du` readings of the UID-mapped store exist: 3,461,884,035 (taken 2026-10-30 09:11) and 3,461,785,731 (recorded in the container inventory from an earlier run); see that note |
 | `~/Backups` | 26,473,384,957 | keep | Backup tree; off-limits to cleaning |
 | `~/dracon/backups` | 21,594,713,333 | keep | Backup bundles; off-limits to cleaning |
 
@@ -146,9 +146,15 @@ is an additional candidate, not a substitute for any of the six named tools.
 | `alpine:3.20` | 7,807,582 | keep | Docker image inspect `Size` |
 | Docker build cache | 71,261,146 | keep | Docker `/system/df` API; 2 entries |
 | Podman image storage | 250,748,103 | keep | `podman system df --format json` `RawSize`; 2 images, 0 containers |
-| `~/.local/share/containers/storage` | 3,461,785,731 | needs-operator-call | `podman unshare du`; 0 permission errors, nested within the area row |
+| `~/.local/share/containers/storage` | 3,461,785,731 | needs-operator-call | `podman unshare du`, an earlier run than the 09:11 reading; 0 permission errors, nested within the area row |
 | Untagged Podman image `6232b387…` | 80,694,099 | needs-operator-call | Exact image-inspect size; no repo tag |
 | `docker.io/library/ubuntu:24.04` (Podman) | 80,702,836 | keep | Exact image-inspect size |
+
+The two `podman unshare du` figures for the same UID-mapped store
+(3,461,785,731 here and 3,461,884,035 in the area row, taken at 09:11) differ by
+98,304 bytes. Both are exact readings from separate runs; the difference is
+attributed to live writes between them and is not reconciled further. They are
+not summed with each other.
 
 Backend totals are storage accounting and are not added to their per-image
 rows. Docker reports two local volumes at 0 bytes; Podman reports one local
@@ -681,17 +687,24 @@ their observed outcomes:
 |---|---:|---|
 | Root churn only (roots added/removed, store and dead set unchanged) | 0 | Accepted — root churn correctly treated as diagnostic |
 | Identical inputs repeated | 0 | Accepted — no false rejection |
+| Empty journal window (`-- No entries --`) | 0 | Accepted, and `journal_gc_records=0` — the placeholder is not counted as a GC record |
 | `/nix/store` grew | 1 | Rejected — collection evidence present |
 | `/nix/store` shrank | 1 | Rejected — collection evidence present |
 | Dead set grew | 1 | Rejected — collection evidence present |
-| `nix-gc.service` journal event present | 2 | Rejected — no-GC condition violated |
+| `nix-gc.service` journal event present | 2 | Rejected — no-GC condition violated (`journal_gc_records=1`) |
 
 Those are logic tests against mock dependencies, not host observations. They
 show the repaired rule tolerates the harmless churn that made the old proxy
-unusable while still rejecting an actual store change or a GC run. Additional
-fixtures retained from the earlier rule exercise count match/mismatch,
-GC-event rejection, journal-unavailable fail-closed behavior, and the
-endpoint-only bracket.
+unusable while still rejecting an actual store change or a GC run, and that the
+journal accounting distinguishes an empty window from a real GC record. The
+first live run of the identity-logging rule over-counted the empty-window
+placeholder; that run is preserved at
+`attempt-20261031T0048Z-v6-journal-count-bug/` and the corrected rule was
+re-verified by the fixtures above before the authoritative re-run.
+
+Additional fixtures retained from the earlier rule exercise count
+match/mismatch, GC-event rejection, journal-unavailable fail-closed behavior,
+and the endpoint-only bracket.
 
 ### Fresh endpoint-only baseline-bound pass (2026-10-30 19:40:41–19:42:18 UTC)
 
