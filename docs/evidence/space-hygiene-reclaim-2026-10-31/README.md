@@ -169,7 +169,16 @@ read from its own surviving `manifest.json`. The eleven exact rows sum to
 | Mid (`final-state-1240.txt`, 12:40:20Z) | 139,338,043,392 | 130G free, 85% used | 2,322,211,102 | gate tree at its lowest |
 | Quiet-hours dip (`final-state-1405.txt`, 14:04:53Z) | 109,017,239,552 | 102G free, 89% used | 5,957,715,195 | see below |
 | **Final (`verification-build-cache.txt`, 14:10:33Z)** | **152,042,856,448** | **142G free, 84% used** | 5,957,715,195 | **contract measurement** |
+
+The **Final** row above (14:10:33Z, 152.0 GB) predates the 15s -> 25s constant
+change. The **Post-revision** row is the current reading on the shipped
+revision: 147,038,625,792 bytes, which is +60,408,717,312 (+56.3 GiB) over the
+86,629,908,480 baseline and clears the 40 GiB requirement on its own. Free
+space on this host moves continuously, so both readings are quoted rather
+than presenting the larger, older one as current.
+
 | **Delta (final vs before)** | **+65,412,947,968 (+60.9 GiB)** | 91% → 84% | **−35.7 GB** | recorded in `verification-build-cache.txt` |
+| **Post-revision (16:11:22Z)** | **147,038,625,792** | 136G free, 85% used | *see note* | **current shipped revision** (after the 25s constant); delta vs before +60,408,717,312 (+56.3 GiB) |
 
 Two movements in this table need explaining, because a bare table would look
 inconsistent:
@@ -298,7 +307,11 @@ authority there needs its own goal, not a side effect of this one.
 ## Why the push keeps failing
 
 Evidence with timestamps in `push-failure-evidence.txt`; journal excerpts, not
-commands this goal ran.
+commands this goal ran. Sections 1-5 of that file hold the exact journald lines
+for every timestamp below (the original 203-line capture predated them and
+contained only the Oct-31 unpushed alerts and publication-owned excerpts; the
+addendum records the lines that back this section, with the
+`journalctl -u dracon-sync-operator.service` source stated).
 
 - **The backlog reached ~3,478 unpushed commits** on 2026-10-28 — the daemon
   logged `🚨 ALERT: … has 3478 unpushed commits (threshold: 50). Something may

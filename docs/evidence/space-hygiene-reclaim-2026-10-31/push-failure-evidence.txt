@@ -226,3 +226,11 @@ Source: journalctl -u dracon-sync-operator.service (system journal).
 ## 4. Push recovery, 2026-10-31 11:45:50 and 13:17:17
 2026-10-31T11:45:50+00:00 nixos dracon-sync[579784]: ✅ push recovered for /home/dracon/Dev/browser-extensions-shared
 2026-10-31T13:17:17+00:00 nixos dracon-sync[579784]: ✅ push recovered for /home/dracon/Dev/browser-extensions-shared
+
+## 5. The 1593-unpushed backstop and the second 91-ahead line
+2026-10-28T00:16:24+00:00 nixos dracon-sync[1583026]: ⏸️  daemon backstop: 1593 unpushed commits pending push >300s, skipping auto-commit for /home/dracon/Dev/browser-extensions-shared
+2026-10-28T12:31:23+00:00 nixos dracon-sync[1642878]: ⏫ /home/dracon/Dev/browser-extensions-shared scaling push timeout 900s → 5400s (91 commits ahead)
+
+## 6. Live post-revision free-space reading (2026-10-31T16:11:14Z)
+# taken after the SIGTERM_GRACE 15s -> 25s commit, i.e. the current shipped revision
+free_bytes=147074056192
