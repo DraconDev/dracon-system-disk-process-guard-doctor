@@ -543,17 +543,21 @@ flagged for cleaning.
   2026-10-30 00:00 GMT, deleted **368 store paths and freed 2510.01 MiB**.
   Both were system-timer actions, not commands invoked by this survey. No
   host-wide no-GC/no-deletion condition can be claimed. The 19:20 pass had no
-  GC event but failed its 640→636 root bracket. The fresh 19:40 pass had no GC
-  journal event, the service start remained at 00:00 GMT, and the preserved
-  609-root baseline matched both endpoints. At 09:11 UTC the next timer was
+  GC event but failed its 640→636 root bracket. The 19:40 pass had no GC
+  journal event, the service start remained at 00:00 GMT, and its preserved
+  609-root baseline matched both of its endpoints. At 09:11 UTC the next timer was
   scheduled for 2026-10-31 00:00 GMT; no timer change was made.
-- **Fresh bounded-pass gate: met; original sweep baseline remains
-  unreconstructed.** The reported original pre-sweep reading of 610 has no
-  preserved root-list artifact. The fresh 19:40 post-GC pass instead saved a
-  609-root baseline, measured 609 before and after with byte-identical lists,
-  held store paths at 37,539, and had no GC service/journal event in its
-  bounded window. This satisfies the new bounded-pass check without rewriting
-  the historical 610→634 record. The 08:53 completed anchored attempt saved
+- **Bounded-pass gate: met by direct no-collection evidence; original sweep
+  baseline remains unreconstructed.** The reported original pre-sweep reading
+  of 610 has no preserved root-list artifact. The 19:40 post-GC pass saved a
+  609-root baseline and held store paths at 37,539 with byte-identical endpoint
+  lists, but its 609→609 root equality was in the same unsatisfiable class as
+  the later attempts. The current evidence is the v6 pass (2026-10-30 23:40:55
+  UTC): preserved 618-root baseline matching `roots_before`, `/nix/store`
+  37,539→37,539, `--print-dead` 0→0, and no `nix-gc.service` run in the window,
+  with +26/−6 root churn recorded as a diagnostic. This satisfies the
+  bounded-pass check without rewriting the historical 610→634 record. See
+  “Qualified v6 pass” under the Nix section. The 08:53 completed anchored attempt saved
   an attempt-specific 639-root baseline, then measured 637 roots before and
   640 after. Its full baseline, before, and after lists are preserved in
   `docs/evidence/space-hygiene-root-lists-2026-10-30T085316Z/` (line counts
