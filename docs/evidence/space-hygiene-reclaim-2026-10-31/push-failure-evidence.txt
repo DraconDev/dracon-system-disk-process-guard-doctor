@@ -201,3 +201,28 @@ passed=314 failed=127 running=9 cancelled=8  (9 'running' with dead owners is th
    1  Error: snapshot dependency installation exited 1; see /home/dracon/.local/state/dracon/sync/gates/browser-extensions-shared/dracon-pre-push.otAfID/366
    1  Error: snapshot dependency installation exited 1; see /home/dracon/.local/state/dracon/sync/gates/browser-extensions-shared/dracon-pre-push.1Oo2TL/439
    1  Error: snapshot dependency installation exited 1; see /home/dracon/.local/state/dracon/sync/gates/browser-extensions-shared/dracon-pre-push.IbDtMd/986
+
+==========================================================================
+EVIDENCE-COMPLETION ADDENDUM 2026-10-31T16:2x Z
+The original capture above recorded the Oct-31 118-123 unpushed alerts and
+the publication-owned excerpts. The lines cited by the README's root-cause
+section were NOT in this file; they are appended verbatim from journald here.
+Source: journalctl -u dracon-sync-operator.service (system journal).
+==========================================================================
+
+## 1. Backlog peak: ~3,478 unpushed commits, 2026-10-28 02:57:26
+2026-10-28T02:57:14+00:00 nixos dracon-sync[1583026]: 🚨 ALERT: /home/dracon/Dev/browser-extensions-shared has 3476 unpushed commits (threshold: 50). Something may be wrong with push.
+2026-10-28T02:57:21+00:00 nixos dracon-sync[1583026]: 🚨 ALERT: /home/dracon/Dev/browser-extensions-shared has 3477 unpushed commits (threshold: 50). Something may be wrong with push.
+2026-10-28T02:57:26+00:00 nixos dracon-sync[1583026]: 🚨 ALERT: /home/dracon/Dev/browser-extensions-shared has 3478 unpushed commits (threshold: 50). Something may be wrong with push.
+
+## 2. 3,309 and 3,466 ahead readings (backlog before the drain)
+2026-10-28T00:16:24+00:00 nixos dracon-sync[1583026]: ⏫ /home/dracon/Dev/browser-extensions-shared scaling push timeout 900s → 5400s (3309 commits ahead)
+2026-10-28T01:58:00+00:00 nixos dracon-sync[1583026]: 🚨 ALERT: /home/dracon/Dev/browser-extensions-shared has 3466 unpushed commits (threshold: 50). Something may be wrong with push.
+2026-10-28T01:58:59+00:00 nixos dracon-sync[1583026]: ⏫ /home/dracon/Dev/browser-extensions-shared scaling push timeout 900s → 5400s (3466 commits ahead)
+
+## 3. The 91-commits-ahead late-stage lines (not the peak)
+2026-10-29T09:59:51+00:00 nixos dracon-sync[1642878]: ⏫ /home/dracon/Dev/browser-extensions-shared scaling push timeout 900s → 5400s (91 commits ahead)
+
+## 4. Push recovery, 2026-10-31 11:45:50 and 13:17:17
+2026-10-31T11:45:50+00:00 nixos dracon-sync[579784]: ✅ push recovered for /home/dracon/Dev/browser-extensions-shared
+2026-10-31T13:17:17+00:00 nixos dracon-sync[579784]: ✅ push recovered for /home/dracon/Dev/browser-extensions-shared

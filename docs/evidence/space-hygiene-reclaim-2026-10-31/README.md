@@ -33,8 +33,15 @@ journal shows the backlog reaching **~3,478 unpushed commits** on 2026-10-28
 attempt had to validate a backlog orders of magnitude larger than a normal one —
 and it retried that backlog on every pass. 458 attempts are on record: 314
 passed, 127 failed, 9 `running` with
-dead owners, 8 cancelled. The nine `running` ones are exactly the leak
-population — a pass that was killed, not a pass that failed.
+dead owners, 8 cancelled. The leak population is **11** dead-owner attempts
+holding a snapshot — the 11 rows of `dead-owner-snapshot-inventory.txt`
+(`reaping_candidates=11`), which are **8 `running` + 3 `cancelled`**. The three
+`cancelled` rows matter: a `cancelled` attempt got far enough to *begin* its
+cleanup and was still killed mid-removal. That is direct evidence for the
+mechanism this goal fixes — the SIGTERM handler ran or was about to, and the 2s
+grace expired before the multi-gigabyte tree was gone. (Nine attempts carry a
+`running` manifest in total; the tenth has no snapshot child, so it is not part
+of the leak population.)
 
 The push failure is *why* the leak kept refilling: every retry allocated a fresh
 snapshot, failed the deadline, and left it behind. Diagnosing it is in scope;
@@ -46,7 +53,7 @@ fixing it is not.
 |---|---|---|
 | Dead-owner reap sweep | `scripts/git-hooks/attempt-reaper.mjs` (new) | Deletes `snapshot-*`, `toolchains` and `source.tar` from attempts whose owner is provably gone and which are older than a 900s floor; keeps the gate logs; drops the whole attempt only past a 7-day TTL |
 | Reap on attempt start | `scripts/git-hooks/run-push-gates.mjs` | Runs the sweep before allocating a new attempt, so the root self-heals instead of needing a cron job |
-| SIGTERM grace 2s → 15s | `dracon-sync/src/git/ops.rs` | Best-effort: lets a hook that is *between* gates run its handler and shortens how long a timed-out group outlives its deadline. It cannot rescue a hook blocked mid-gate (see below) — the reap sweep is what actually removes the snapshot |
+| SIGTERM grace 2s → 25s | `dracon-sync/src/git/ops.rs` | Sized above the measured ~21s cost of one snapshot removal and below the settle bound (a 2s-deadline operation must settle inside 30s). It lets a hook that is *between* gates run its handler; it cannot rescue a hook blocked mid-gate (see below) — the reap sweep is what actually removes the snapshot |
 
 **Liveness is decided by `/proc/<pid>/cmdline`, not a bare PID probe.** A
 recycled PID must not make a dead attempt look permanent — and the first version
@@ -266,7 +273,8 @@ Two honest limits remain, and they are why the reap sweep still exists:
 
 | Reading | Count | Bytes | Backing |
 |---|---:|---:|---|
-| Pre-work (~09:45Z) | 698 | 12,895,651,392 | in-run measurement, **not** persisted at the time — see `pre-work-spools.txt` || Post-work (10:21Z) | 771 | 15,155,605,713 | `post-work-baseline.txt` |
+| Pre-work (~09:45Z) | 698 | 12,895,651,392 | in-run measurement, **not** persisted at the time — see `pre-work-spools.txt` |
+| Post-work (10:21Z) | 771 | 15,155,605,713 | `post-work-baseline.txt` |
 | Later re-check (11:23Z) | 784 | 15,236,143,720 | `pre-work-spools.txt` |
 
 The pre-work row carries a provenance caveat stated in `pre-work-spools.txt`: the
