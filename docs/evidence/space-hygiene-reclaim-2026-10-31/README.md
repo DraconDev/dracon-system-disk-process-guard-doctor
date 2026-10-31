@@ -225,27 +225,30 @@ reclaimed.
 
 ## The grace, and what it is sized to
 
-`SIGTERM_GRACE` is now **60s**, sized to the measured cleanup cost rather than
-guessed:
+`SIGTERM_GRACE` is now **25s**, sized between two real bounds rather than guessed:
 
-- The 2026-10-31 sweep removed eleven multi-gigabyte snapshots over ~235s, i.e.
-  **~21s per removal**. An attempt can hold more than one `snapshot-<sha>` (one
-  per distinct pushed revision) plus `toolchains`, so a single snapshot's cost is
-  the floor, not the whole job.
-- 60s is roughly **3x that measurement**, which covers a multi-snapshot attempt
-  and absorbs the I/O slowdown documented under heavy fleet load (a 93s push hook
-  stretching to 15m on a saturated box).
-- The cost is bounded and is only paid on the timeout path, which has already
-  blown its own deadline by hundreds of seconds.
+- **Lower bound — the measured cleanup cost.** The 2026-10-31 sweep removed
+  eleven multi-gigabyte snapshots over ~235s, i.e. **~21s per removal**. A grace
+  at or below 21s cannot be "large enough for a multi-gigabyte tree removal"; the
+  old 2s value is precisely why the snapshot survived.
+- **Upper bound — the settle contract.** The grace is paid *after* an operation
+  has already blown its deadline, so it directly lengthens how long a timed-out
+  publication takes to settle.
+  `owned_commit_tests::cancelled_or_timed_out_publication_kills_owned_hook_descendants`
+  requires a 2s-deadline operation to settle within 30s, which caps the grace at
+  ~28s. A first attempt at 60s failed that test — a real contract, not a test to
+  loosen — so the value was brought into the window instead of the bound being
+  relaxed.
+- 25s sits inside it: above the 21s measurement, and 2s + 25s = 27s settles
+  inside the 30s bound (measured at 27.70s in the passing run).
 
-Two tests hold this in place, and both are **non-vacuous in the direction that
-matters**: temporarily restoring the old 15s value fails
-`grace_is_long_enough_for_hook_cleanup` (45s floor, tied to the ~21s
-measurement) *and* `trapping_child_gets_the_documented_grace_before_sigkill`,
-whose fixture now spends **22s** — slightly more than one real snapshot removal —
-cleaning up, failing with `the trap handler never ran, so cleanup was pre-empted
-by SIGKILL`. That is the exact failure that caused the leak, reproduced by
-shortening the constant.
+Two tests hold it in place, and both are **non-vacuous in the direction that
+matters**. Temporarily restoring 15s fails `grace_is_long_enough_for_hook_cleanup`
+(24s floor, tied to the ~21s measurement) *and*
+`trapping_child_gets_the_documented_grace_before_sigkill`, whose fixture now
+spends **21s** — one real snapshot removal — cleaning up, failing with `the trap
+handler never ran, so cleanup was pre-empted by SIGKILL`. That is the exact
+failure that caused the leak, reproduced by shortening the constant.
 
 Two honest limits remain, and they are why the reap sweep still exists:
 
@@ -253,9 +256,9 @@ Two honest limits remain, and they are why the reap sweep still exists:
   gate runs, and no signal handler executes while the thread sits in that call.
   No grace length can rescue a hook killed *mid-gate*; the sweep removes that
   snapshot on the next attempt regardless.
-- The grace covers one hook's own cleanup, not an unbounded tree. A miss is still
-  a miss — which is why the sweep, not the grace, is what guarantees the disk is
-  reclaimed.
+- The grace covers **one** removal's worth of time. An attempt holding several
+  `snapshot-<sha>` directories can still exceed it — which is why the sweep, not
+  the grace, is what guarantees the disk is reclaimed.
 
 ## Epoch spools — inventoried, not deleted
 
