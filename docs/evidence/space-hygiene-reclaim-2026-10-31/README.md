@@ -200,8 +200,9 @@ the only snapshot present belonged to a push that was live at that moment (see
 [the live-owner table](#reclaimed)).
 
 Free space keeps moving after the final reading above, because this host is in
-continuous use. Two of the readings in the table clear the 40 GiB bar and two do
-not, so the honest statement is per reading, not a blanket one:
+continuous use. Four of the five readings in the table clear the 40 GiB bar and
+the 14:04:53Z dip does not, so the honest statement is per reading, not a
+blanket one:
 
 | Reading | Delta vs the 86,629,908,480 baseline | Clears 40 GiB? |
 |---|---:|---|
@@ -221,27 +222,39 @@ correctly forbidden to touch. The leak-specific signal stayed clean throughout:
 by the final reading, which is measured after that verification overhead is
 reclaimed.
 
-## What the grace does and does not do
+## The grace, and what it is sized to
 
-The 15s `SIGTERM_GRACE` is **best-effort, and it is not the fix**. Stating this
-plainly because an earlier version of this document implied otherwise:
+`SIGTERM_GRACE` is now **60s**, sized to the measured cleanup cost rather than
+guessed:
 
-- The measured cost of the cleanup is **~21s per snapshot** (the live sweep
-  removed eleven snapshots over ~235s). 15s is therefore *less* than the real
-  work, so the grace does not reliably complete a multi-gigabyte removal either.
+- The 2026-10-31 sweep removed eleven multi-gigabyte snapshots over ~235s, i.e.
+  **~21s per removal**. An attempt can hold more than one `snapshot-<sha>` (one
+  per distinct pushed revision) plus `toolchains`, so a single snapshot's cost is
+  the floor, not the whole job.
+- 60s is roughly **3x that measurement**, which covers a multi-snapshot attempt
+  and absorbs the I/O slowdown documented under heavy fleet load (a 93s push hook
+  stretching to 15m on a saturated box).
+- The cost is bounded and is only paid on the timeout path, which has already
+  blown its own deadline by hundreds of seconds.
+
+Two tests hold this in place, and both are **non-vacuous in the direction that
+matters**: temporarily restoring the old 15s value fails
+`grace_is_long_enough_for_hook_cleanup` (45s floor, tied to the ~21s
+measurement) *and* `trapping_child_gets_the_documented_grace_before_sigkill`,
+whose fixture now spends **22s** — slightly more than one real snapshot removal —
+cleaning up, failing with `the trap handler never ran, so cleanup was pre-empted
+by SIGKILL`. That is the exact failure that caused the leak, reproduced by
+shortening the constant.
+
+Two honest limits remain, and they are why the reap sweep still exists:
+
 - The hook is normally **blocked inside a synchronous `execFileSync`** while a
-  gate runs. No signal handler executes while the thread sits in that call, so
-  no grace length — 2s, 15s, or 60s — lets it run its handler mid-gate.
-- What 15s does buy: a hook that is *between* gates gets a realistic window to
-  finish its `finally`/handler path, and a timed-out group outlives its deadline
-  for less time than before.
-
-**The effective cleanup is the reap sweep**, which is why the leak is actually
-closed: the snapshot is removed by the next attempt regardless of whether the
-killed process ever ran a handler. The regression test proves the constant is
-honoured (a child trapping SIGTERM with a 5s cleanup survives at 15s and is
-killed at 2s), which is the property the constant can be held to; it does not
-claim 15s is sufficient for an arbitrary multi-GB tree.
+  gate runs, and no signal handler executes while the thread sits in that call.
+  No grace length can rescue a hook killed *mid-gate*; the sweep removes that
+  snapshot on the next attempt regardless.
+- The grace covers one hook's own cleanup, not an unbounded tree. A miss is still
+  a miss — which is why the sweep, not the grace, is what guarantees the disk is
+  reclaimed.
 
 ## Epoch spools — inventoried, not deleted
 
