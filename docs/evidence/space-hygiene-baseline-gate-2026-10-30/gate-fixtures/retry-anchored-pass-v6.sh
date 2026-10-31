@@ -131,8 +131,12 @@ for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
     "$baseline_count" "$reported_baseline" "$roots_before" "$roots_after" "${added:-0}" "${removed:-0}" "$baseline_matches_before" "$store_before" "$store_after" "$dead_before" "$dead_after" "${no_collection:-UNKNOWN}" "$gc_unchanged" | tee -a "$LOGDIR/attempts.log"
   # Record the GC service identity on both sides so the no-GC verdict is
   # reviewable from the log alone, not only from the in-memory comparison.
-  printf 'gc_identity gc_start_before=%s gc_start_after=%s journal_window_entries=%s\n' \
-    "$gc_start_before" "$gc_start_after" "$(grep -c . "$gc_window" 2>/dev/null || echo 0)" | tee -a "$LOGDIR/attempts.log"
+  # journalctl writes a literal "-- No entries --" placeholder for an empty
+  # window, so count only real GC records, not non-empty lines.
+  journal_events=$(grep -cE 'nix-gc\.service:|nix-gc-start|Nix Garbage Collector' "$gc_window" 2>/dev/null || true)
+  case "${journal_events:-}" in ''|*[!0-9]*) journal_events=0 ;; esac
+  printf 'gc_identity gc_start_before=%s gc_start_after=%s journal_gc_records=%s\n' \
+    "$gc_start_before" "$gc_start_after" "$journal_events" | tee -a "$LOGDIR/attempts.log"
 
   if [ "$rc" -eq 0 ] && [ "$reported_baseline" = "$baseline_count" ] && \
      [ "$roots_before" = "$baseline_count" ] && [ "$baseline_matches_before" = YES ] && \
