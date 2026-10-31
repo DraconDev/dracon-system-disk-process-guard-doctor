@@ -78,9 +78,12 @@ revision* `778f4977…`: `1wnl3J` at 3,496,489,294 and `y4jzyJ` at 3,542,177,120
 bytes. A snapshot is a plain `git archive` extraction of one revision plus
 whatever build output its gates produced before the kill, so the same revision
 lands within a few percent of these two — but the exact figure is not
-recoverable and is not claimed. The total across all twelve therefore lies
-between **41,775,833,658** and **41,821,521,484** bytes (41.78–41.82 GB), of
-which **38,279,344,364 bytes are exact** and only the twelfth row is estimated.
+recoverable and is not claimed. The derivation is recorded in
+`rn6DEt-estimate.txt`, including the two exact same-revision measurements it is
+built from. The total across all twelve therefore lies between
+**41,775,833,658** and **41,821,521,484** bytes (41.78–41.82 GB, computed as the
+eleven exact bytes plus each same-revision bound), of which **38,279,344,364
+bytes are exact** and only the twelfth row is estimated.
 
 Gate logs were **not** deleted — 444 attempts held only logs and were left
 untouched. The snapshots were removed by the new sweep itself, not by a manual
@@ -114,8 +117,9 @@ while live-owner snapshots are preserved rather than reaped.** One attempt
 floor, at which point the next sweep removed it — the floor working as designed,
 not a miss.
 
-The 12:40:20Z reading predates a rework that overwrote `final-state.txt`, so it
-is preserved as `final-state-1240.txt` with the block recovered verbatim from
+The 12:40:20Z reading predates a rework that overwrote the single
+`final-state.txt` file that used to hold it (that filename no longer exists), so
+it is preserved as `final-state-1240.txt` with the block recovered verbatim from
 the commit that first recorded it; the later 14:04:53Z scan is
 `final-state-1405.txt`. Each row above cites the file that actually holds its
 numbers.
@@ -157,7 +161,7 @@ read from its own surviving `manifest.json`. The eleven exact rows sum to
 | Mid (`final-state-1240.txt`, 12:40:20Z) | 139,338,043,392 | 130G free, 85% used | 2,322,211,102 | gate tree at its lowest |
 | Quiet-hours dip (`final-state-1405.txt`, 14:04:53Z) | 109,017,239,552 | 102G free, 89% used | 5,957,715,195 | see below |
 | **Final (`verification-build-cache.txt`, 14:10:33Z)** | **152,042,856,448** | **142G free, 84% used** | 5,957,715,195 | **contract measurement** |
-| **Delta (final vs before)** | **+65,412,947,968 (+60.9 GiB)** | 91% → 84% | **−35.7 GB** | |
+| **Delta (final vs before)** | **+65,412,947,968 (+60.9 GiB)** | 91% → 84% | **−35.7 GB** | recorded in `verification-build-cache.txt` |
 
 Two movements in this table need explaining, because a bare table would look
 inconsistent:
@@ -187,11 +191,11 @@ the only snapshot present belonged to a push that was live at that moment (see
 [the live-owner table](#reclaimed)).
 
 Free space keeps moving after the final reading above, because this host is in
-continuous use. That does not weaken the result: an independent re-measurement
-at 14:2xZ still found **146,721,972,224** free — **+55.96 GiB** over the
-baseline — and further readings through the afternoon stayed around the same
-level. The bar is 40 GiB; every reading since the deletions has cleared it by
-roughly 15 GiB or more.
+continuous use. That does not weaken the result: a later re-measurement at
+14:35:22Z (`recheck-late.txt`) found **143,355,793,408** free —
+**+56,725,884,928 bytes = 52.8 GiB** over the baseline, and a further reading in
+the afternoon was of the same order. The bar is 40 GiB; every reading since the
+deletions has cleared it.
 
 ## What the grace does and does not do
 

@@ -1,0 +1,6 @@
+# late free-space recheck, so the 'still above the bar' claim has its own file
+captured_at=2026-10-31T14:35:22+00:00
+free_bytes=143355793408
+/dev/nvme0n1p2  907G  727G  134G  85% /
+pre_work_baseline_bytes=86629908480
+delta_vs_pre_work_bytes=56725884928

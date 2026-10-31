@@ -1,0 +1,18 @@
+# rn6DEt was reaped by the 10:15:27 sweep, which logged its age (1059s) but not
+# its byte count, and the directory was already gone when it could be measured.
+# Its SHA is exact (from its own surviving manifest.json in the attempt dir):
+rn6DEt_sha=778f49770547a8886939dcadc0ec3b87b4021058
+# Two OTHER attempts reaped the SAME revision and were measured exactly before
+# removal, so they bound the estimate:
+same_revision_low_attempt=1wnl3J
+same_revision_low_bytes=3496489294
+same_revision_high_attempt=y4jzyJ
+same_revision_high_bytes=3542177120
+estimate_mean_bytes=3519333207
+# exact total of the eleven measured snapshots:
+eleven_exact_bytes=38279344364
+# therefore the twelve-snapshot total is bounded:
+total_low_bytes=41775833658
+total_high_bytes=41821521484
+# low  = 38279344364 + 3496489294
+# high = 38279344364 + 3542177120
