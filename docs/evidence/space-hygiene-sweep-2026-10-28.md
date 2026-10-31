@@ -38,6 +38,14 @@ authoritative v6.2 pass (2026-10-31 00:51:55–00:55:46 UTC) reports:
 | `nix-gc.service` start timestamp | `Sat 2026-10-31 00:00:00 GMT` | unchanged |
 | Bounded journal window for that unit | — | 0 GC records (`-- No entries --`) |
 
+A later read-only recheck at 2026-10-31 01:39:55 UTC re-measured the same
+criterion after the amendment was recorded and found it unchanged — `/nix/store`
+37,539 entries, `--print-dead` 0, `nix-gc.service` start still
+`Sat 2026-10-31 00:00:00 GMT` — while `--print-roots` read 609, a 29-root swing
+that confirms the abandoned instrument was measuring live daemon state rather
+than collection. Evidence: `post-amendment-recheck-20261031T013955Z.txt` under
+the same bundle directory.
+
 Root churn of +0/−1 is reported as a diagnostic, not as a gate. These four
 measurements are independent of each other: any collection would remove store
 paths and enlarge the dead set, and any service invocation would move the start
