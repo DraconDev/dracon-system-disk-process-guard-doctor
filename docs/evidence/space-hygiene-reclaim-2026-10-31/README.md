@@ -66,10 +66,13 @@ Gate logs were **not** deleted — 444 attempts held only logs and were left
 untouched. The snapshots were removed by the new sweep itself, not by a manual
 `rm`, which is the point: the mechanism that leaked them now cleans them.
 
-Live-owner attempts were never touched. During the run one attempt
-(`dracon-pre-push.hKHTkv`) had a live owner and was preserved; its name is
-recorded in `live-owner-preserved.txt` and the sweep log in
-`reap-live-run.txt`.
+Live-owner attempts were never touched. During the run
+`dracon-pre-push.gySgA8` had a live owner and was preserved across every sweep.
+One attempt (`dracon-pre-push.hKHTkv`) was killed mid-run; it stayed in place
+until it passed the 900s floor and the next sweep removed it, which is the floor
+working as designed rather than a miss. The recheck after that reports
+**0** dead-owner snapshots and 1 live-owner snapshot. Sweep logs are in
+`reap-live-run.txt` and `reap-live-run-2.txt`.
 
 ## Free space
 
@@ -128,8 +131,9 @@ by a still-running previous attempt.
 
 - Not fixed: the push failure itself, which needs its own goal.
 - Not fixed: epoch-spool accumulation (deliberately fail-closed).
-- The 44 workspace test suites and clippy are recorded in
-  `workspace-gates.txt`.
+- All gates green: `cargo test --workspace --locked` exit 0 with **45 suites,
+  2,926 passed, 0 failed**, and `cargo clippy --workspace --locked -- -D
+  warnings` exit 0. Raw output in `workspace-gates.txt`.
 - Only this host's `browser-extensions-shared` log root is a pre-push gate
   root; the reaper is generic over `DRACON_GATE_LOG_ROOT` and would cover any
   other repo that adopts the hook.
