@@ -39,9 +39,11 @@ holding a snapshot — the 11 rows of `dead-owner-snapshot-inventory.txt`
 `cancelled` rows matter: a `cancelled` attempt got far enough to *begin* its
 cleanup and was still killed mid-removal. That is direct evidence for the
 mechanism this goal fixes — the SIGTERM handler ran or was about to, and the 2s
-grace expired before the multi-gigabyte tree was gone. (Nine attempts carry a
-`running` manifest in total; the tenth has no snapshot child, so it is not part
-of the leak population.)
+grace expired before the multi-gigabyte tree was gone. (The census reports
+`running=9` manifests overall while the reaping set holds 8 `running` rows: one
+`running` attempt has no `snapshot-*` child left, so it carries no orphaned bytes
+and is outside the leak population. The 3 `cancelled` rows make up the rest of
+the 11.)
 
 The push failure is *why* the leak kept refilling: every retry allocated a fresh
 snapshot, failed the deadline, and left it behind. Diagnosing it is in scope;
@@ -169,7 +171,6 @@ read from its own surviving `manifest.json`. The eleven exact rows sum to
 | Mid (`final-state-1240.txt`, 12:40:20Z) | 139,338,043,392 | 130G free, 85% used | 2,322,211,102 | gate tree at its lowest |
 | Quiet-hours dip (`final-state-1405.txt`, 14:04:53Z) | 109,017,239,552 | 102G free, 89% used | 5,957,715,195 | see below |
 | **Final (`verification-build-cache.txt`, 14:10:33Z)** | **152,042,856,448** | **142G free, 84% used** | 5,957,715,195 | **contract measurement** |
-
 | **Delta (final vs before)** | **+65,412,947,968 (+60.9 GiB)** | 91% → 84% | **−35.7 GB** | recorded in `verification-build-cache.txt` |
 | **Post-revision (`post-revision-free.txt`, 2026-10-31T16:12:23Z)** | **146,767,671,296** | 136G free | *see note* | **current shipped revision** (after the 25s constant); delta vs before +60,137,762,816 (+56.0 GiB) |
 

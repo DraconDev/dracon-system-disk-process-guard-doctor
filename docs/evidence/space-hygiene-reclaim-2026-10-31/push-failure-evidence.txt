@@ -193,7 +193,13 @@ Oct 30 22:39:02 nixos dracon-sync[579784]: ⚠️ /home/dracon/Dev/browser-exten
 1793143244 = 2026-10-27T23:20:44Z ; 1793182422 = 2026-10-28T10:13:42Z
 
 ## attempt manifest outcome distribution (all 458 attempts)
-passed=314 failed=127 running=9 cancelled=8  (9 'running' with dead owners is the leak population)
+passed=314 failed=127 running=9 cancelled=8
+# CORRECTED 2026-10-31: the parenthetical here previously read "(9 'running' with
+# dead owners is the leak population)". That was wrong and is retracted: the census
+# has running=9 manifests overall, but the reaping set is 11 rows = 8 running +
+# 3 cancelled (dead-owner-snapshot-inventory.txt: reaping_candidates=11). One
+# running attempt has no snapshot-* child, so it holds no orphaned bytes. The 3
+# cancelled rows prove a handler was killed mid-removal.
 
 ## error field of failed attempts (top 5 distinct)
    5  Error: dependency workspace packages/extension-forms failed to build (exit 1); see /home/dracon/.local/state/dracon/sync/gates/browser-extensions-shar
