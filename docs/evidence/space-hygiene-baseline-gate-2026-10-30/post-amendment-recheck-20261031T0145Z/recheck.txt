@@ -1,0 +1,7 @@
+captured_at=2026-10-31T01:39:55+00:00
+# read-only re-verification of the operator-approved no-collection criterion
+store_entries=37539
+print_dead=0
+gc_service_start=Sat 2026-10-31 00:00:00 GMT
+gc_start_target=3112467173386
+print_roots=609  # diagnostic only; transient roots churn
