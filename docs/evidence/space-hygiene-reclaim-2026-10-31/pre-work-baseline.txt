@@ -2,3 +2,5 @@ captured_at=2026-10-31T09:45:06+00:00
 # pre-work baseline
 free_bytes=86629908480
 df_h="/dev/nvme0n1p2  907G  780G   81G  91% /"
+gates_bytes=41620229638
+attempt_dirs=458
