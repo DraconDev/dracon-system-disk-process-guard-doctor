@@ -751,8 +751,10 @@ The v6 pass therefore measures the invariant directly:
   **0 → 0**.
 - No `nix-gc.service` run: the bounded journal window returned `-- No entries --`
   and the service start timestamp stayed at 2026-10-30 00:00 GMT.
-- `nix-gc.service` was not invoked by this survey at any point; the only GC runs
-  on this host were the system timer's, recorded above.
+- `nix-gc.service` was not invoked by this survey in any of its bounded windows,
+  and this survey never ran a collection command. The only GC runs it *recorded*
+  were the system timer's (three, listed below); other timers or manual runs
+  outside the checked journal windows are outside what this evidence covers.
 
 Full artifacts, including both preserved root lists, both dead-set files and the
 root-churn diffs, are in
@@ -760,20 +762,25 @@ root-churn diffs, are in
 The non-qualifying attempts are retained under
 `attempt-20261030T2315Z-contract-final/`.
 
-A post-pass confirmation, read-only, at 2026-10-31 00:34:48 UTC: the scheduled
-timer ran again at 00:00:00 GMT (after the v6 pass ended) and reported **0 store
-paths deleted, 0.00 MiB freed**; the store entry count was still **37,539**,
-`--print-roots` 638 and `--print-dead` 0. So the store state the v6 pass measured
-was still intact roughly 45 minutes later, and the intervening timer found
-nothing to collect.
+A post-pass confirmation was captured read-only at 2026-10-31 00:48:23 UTC: the
+scheduled timer had run again at 00:00:00 GMT (after the v6 passes ended) and
+reported **0 store paths deleted, 0.00 MiB freed**; the store entry count was
+still **37,539** and `--print-dead` was 0. So the store state the passes measured
+was still intact, and the intervening timer found nothing to collect. The full
+capture, including the raw `journalctl` excerpt below and the live counters, is
+preserved at
+`docs/evidence/space-hygiene-baseline-gate-2026-10-30/post-pass-confirmation-20261031T0034Z/post-pass-check.txt`.
 
-Full journal record of `nix-gc.service` for the three scheduled runs:
+`grep -E 'Starting Nix Garbage|store paths deleted|Finished Nix Garbage'` over
+`journalctl -u nix-gc.service` returned exactly these three scheduled runs:
 
 ```text
 Oct 29 00:04:41  0 store paths deleted, 0.00 MiB freed
 Oct 30 00:01:45  368 store paths deleted, 2510.01 MiB freed
 Oct 31 00:02:34  0 store paths deleted, 0.00 MiB freed
 ```
+
+That is a filtered excerpt of the unit's journal, not the complete unit log.
 
 One nuance the evidence supports and this report does not overstate: the
 `--print-dead` set is empty because the boot generation holds every store path
