@@ -161,11 +161,11 @@ Every ranked candidate row has one verdict from
 `{keep, clean-with-approval, needs-operator-call}`; the auxiliary spot-check
 and decomposition tables carry their own verdicts in a verdict column, so no
 row in this report asserts a verdict outside that set.
-The latest per-path top three are from the v6 qualified pass
-(2026-10-30 23:40:55 UTC onward):
-**34,312,946,681 / 12,186,624,107 / 6,983,789,017 bytes** by exact
-`du --bytes` readings, with **30,906,069,120 bytes** of `~/Videos` and
-**16,985,596,547 bytes** of `~/.config` following as sized-but-never-flagged
+The latest per-path top three are from the v6.2 pass
+(2026-10-31 00:51:55 UTC onward):
+**38,713,470,604 / 12,186,624,107 / 6,983,789,017 bytes** by exact
+`du --bytes` readings, with **30,982,800,481 bytes** of `~/Videos` and
+**16,969,215,167 bytes** of `~/.config` following as sized-but-never-flagged
 media and live config. The first-ranked figure is the whole gate tree; the
 per-sandbox subset sums below it are nested and must not be added to it.
 These are point-in-time readings, not an atomic filesystem snapshot. Historical
@@ -173,17 +173,17 @@ full-pass rankings follow.
 
 | # | Path | Bytes | Verdict |
 |---|---|---:|---|
-| 1 | `~/.local/state/dracon/sync/gates/browser-extensions-shared` (whole-tree `du`) | 34,312,946,681 | needs-operator-call |
+| 1 | `~/.local/state/dracon/sync/gates/browser-extensions-shared` (whole-tree `du`) | 38,713,470,604 | needs-operator-call |
 | 2 | `~/.local/state/dracon-sync/qualification/canonical-writer-fence-2026-10-27` | 12,186,624,107 | needs-operator-call |
 | 3 | `~/chat/pi/kimi` | 6,983,789,017 | needs-operator-call |
 
-Gate-tree decomposition from the same v6 pass: `sandboxes_all` covered 379
-directories totalling 32,115,525,943 bytes, split as 267 directories dated
-2026-10-28 at 32,057,940,133 bytes and 112 older directories at 57,585,810
+Gate-tree decomposition from the same v6.2 pass: `sandboxes_all` covered 382
+directories totalling 36,516,049,535 bytes, split as 270 directories dated
+2026-10-28 at 36,458,463,725 bytes and 112 older directories at 57,585,810
 bytes. Those subsets are nested inside the whole-tree row and are not additive
 with it; the whole-tree reading is larger because it also covers non-sandbox
 content. The writer-fence candidate measured 12,186,624,107 bytes for the
-second consecutive pass.
+third consecutive pass.
 
 The original first-sweep ranking (15:53–16:05 UTC) follows as historical
 context, with top three **10,932,233,354 / 6,983,789,017 / 5,946,756,827
@@ -425,17 +425,17 @@ they need an operator review rather than a cleanup recommendation.
 
 | Path | Size | Verdict |
 |---|---:|---|
-| `~/Videos` | 30,906,069,120 bytes | keep |
-| `~/Pictures` | 69,140,898 bytes | keep |
-| Git history in 27 `.git` directories under `~/Dev` | 62,507,435,454 bytes | keep |
+| `~/Videos` | 30,982,800,481 bytes | keep |
+| `~/Pictures` | 69,856,098 bytes | keep |
+| Git history in 27 `.git` directories under `~/Dev` | 62,489,140,027 bytes | keep |
 | `~/Backups` | 26,473,384,957 bytes | keep |
 | `~/dracon/backups` | 21,594,713,333 bytes | keep |
-| `~/.config` | 16,985,596,547 bytes | keep |
-| `~/.dracon` | 4,130,290,544 bytes | keep |
+| `~/.config` | 16,969,215,167 bytes | keep |
+| `~/.dracon` | 4,161,916,092 bytes | keep |
 | NixOS configuration target `~/.dracon/nixos` (`/etc/nixos` symlink) | 297,401 bytes | keep |
 
-Every row is an exact `du --bytes` reading from the v6 qualified pass
-(2026-10-30 23:40:55 UTC onward); the Git-history row sums the 27 discovered
+Every row is an exact `du --bytes` reading from the v6.2 pass
+(2026-10-31 00:51:55 UTC onward); the Git-history row sums the 27 discovered
 `.git` directories and excludes working-tree files. Media, Git history, backup
 bundles, and live configuration all carry `keep` verdicts only; none is
 flagged for cleaning.
