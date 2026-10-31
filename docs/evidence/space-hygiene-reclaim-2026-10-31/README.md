@@ -92,10 +92,16 @@ snapshots created *after* the pre-work reading — the tree grew from 41.6 GB to
 
 `dracon-staging-*` directories under `~/Dev/**/.git`:
 
-| Reading | Count | Bytes |
-|---|---:|---:|
-| Pre-work (2026-10-31 09:45Z window; `pre-work-spools.txt`) | 698 | 12,895,651,392 |
-| Post-work (2026-10-31 10:21Z) | 771 | 15,155,605,713 |
+| Reading | Count | Bytes | Backing |
+|---|---:|---:|---|
+| Pre-work (~09:45Z) | 698 | 12,895,651,392 | in-run measurement, **not** persisted at the time — see `pre-work-spools.txt` |
+| Post-work (10:21Z) | 771 | 15,155,605,713 | `post-work-baseline.txt` |
+| Later re-check (11:23Z) | 784 | 15,236,143,720 | `pre-work-spools.txt` |
+
+The pre-work row carries a provenance caveat stated in `pre-work-spools.txt`: the
+figure was measured during this goal but not written to a file at the time, so it
+has no independent artefact. It is not used by any contract item, and the
+growing trend is established by the two persisted readings rather than by it.
 
 **They are growing and this goal deliberately did not stop that.**
 `reap_abandoned_spools()` returns `0` and `sweep_epoch_spools(apply = true)`
