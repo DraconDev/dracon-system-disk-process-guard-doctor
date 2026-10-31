@@ -30,16 +30,23 @@ the list churns during any multi-minute measurement on this host even when
 nothing is collected. At 23:15–23:39 UTC the added/removed roots were repeatedly
 the same video-encode toolchain (`ffmpeg`, `libvpx`, `svt-av1`, `libass`,
 `libopenmpt`, `zvbi`, `openjpeg`, `wl-clipboard`) appearing and disappearing;
-three otherwise-clean passes there read 609→650, 650→617 and 617→644.
+three otherwise-clean passes there read 609→650, 650→617 and 617→644 — all
+preserved, the third under
+`attempt-20261030T2332Z-contract-final2/`.
 
-The current qualified pass is the **v6** run at 23:40:55–23:49:0x UTC. It
-measures the claimed invariant directly instead of by root-count equality: the
-`/nix/store` entry count stayed **37,539 → 37,539**, the `--print-dead` set (what
-a collection would delete; printing it deletes nothing) stayed **0 → 0**, the
-preserved 618-root pre-sweep baseline matched `roots_before` exactly, and there
-was no `nix-gc.service` run in the bounded window. Root churn of +26/−6 is
-reported as a diagnostic. Evidence is in
-`docs/evidence/space-hygiene-baseline-gate-2026-10-30/attempt-20261030T2340Z-v6-qualified/`.
+The authoritative pass is the **v6.2** run at 2026-10-31 00:51:55–00:55:46 UTC.
+It measures the claimed invariant directly instead of by root-count equality:
+the `/nix/store` entry count stayed **37,539 → 37,539**, the `--print-dead` set
+(what a collection would delete; printing it deletes nothing) stayed **0 → 0**,
+the preserved 638-root pre-sweep baseline was byte-identical to `roots_before`
+(SHA-256 `c43ad840…`), the `nix-gc.service` start timestamp was unchanged
+before and after (`Sat 2026-10-31 00:00:00 GMT`), and the bounded journal window
+contained **0** GC records. Root churn of +0/−1 is reported as a diagnostic.
+Evidence is in
+`docs/evidence/space-hygiene-baseline-gate-2026-10-30/attempt-20261031T0051Z-v6-qualified/`.
+An earlier v6 pass (2026-10-30 23:40:55 UTC, baseline 618) also qualified and is
+retained at `attempt-20261030T2340Z-v6-qualified/`; the tables below use the
+newer run.
 
 The area, agent-tool and off-limits tables use this v6 pass. Its rows for
 `~/.local/share`, `~/.local/state`, and `/var/log` are pass-specific unprivileged
@@ -69,15 +76,15 @@ known.
 
 | Area | Bytes | Verdict | Notes |
 |---|---:|---|---|
-| `~/.local/share` | 30,840,087,166 | needs-operator-call | Operator privileged `sudo du` full-area total; the v6 unprivileged pass read 27,623,172,341 |
-| `~/.local/state` | 53,739,383,637 | needs-operator-call | v6 unprivileged pass reading; the operator privileged `sudo du` full-area total was 49,316,690,397 (live growth between readings). Five root-owned handover backups still lack individual sizes |
-| `~/.local/bin` | 3,090,902,820 | keep | v6 pass |
-| `/nix/store` | 48,312,514,794 | keep | v6 pass; store paths 37,539→37,539 and `--print-dead` 0→0 across the pass. 8,366,644,248 bytes remains a historical pre-GC unreachable-output estimate; see Nix section |
-| Agent-tool state (six named tools) | 32,220,378,149 | keep | Exact sum of the six roots in the v6 pass; overlaps `~/.local/share` |
-| `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data; v6 pass |
-| `/var/log` | 615,233,280 | needs-operator-call | v6 unprivileged subtotal; the operator privileged `sudo du` total was 598,374,272, with `/var/log/private` and `/var/log/gdm` each 0 |
-| `/var/log/journal` | 603,979,776 | clean-with-approval | v6 pass; separate `journalctl --disk-usage` reading was 475.7M at approximately 21:05 UTC |
-| `~/.local/share/containers` | 243,857,603 | needs-operator-call | v6 pass; `containers/storage` separately 243,759,299. An earlier `podman unshare du` of the UID-mapped tree read 3,461,884,035 bytes |
+| `~/.local/share` | 30,840,087,166 | needs-operator-call | Operator privileged `sudo du` full-area total; the v6.2 unprivileged pass read 27,626,278,939 |
+| `~/.local/state` | 58,139,938,674 | needs-operator-call | v6.2 pass; the operator privileged `sudo du` total was 49,316,690,397 at an earlier time. Five root-owned handover backups still lack individual sizes |
+| `~/.local/bin` | 3,090,902,820 | keep | v6.2 pass |
+| `/nix/store` | 48,312,514,794 | keep | v6.2 pass; store entries 37,539→37,539, `--print-dead` 0→0, no GC record in window. 8,366,644,248 bytes remains a historical pre-GC unreachable-output estimate; see Nix section |
+| Agent-tool state (six named tools) | 32,239,156,313 | keep | Exact sum of the six roots in the v6.2 pass; overlaps `~/.local/share` |
+| `~/chat` | 7,321,716,379 | needs-operator-call | Agent conversation/session data; v6.2 pass |
+| `/var/log` | 581,679,616 | needs-operator-call | v6.2 unprivileged subtotal; the operator privileged `sudo du` total was 598,374,272, with `/var/log/private` and `/var/log/gdm` each 0 |
+| `/var/log/journal` | 570,425,344 | clean-with-approval | v6.2 pass; separate `journalctl --disk-usage` reading was 475.7M at approximately 21:05 UTC |
+| `~/.local/share/containers` | 243,857,603 | needs-operator-call | v6.2 pass; `containers/storage` 243,759,299. A 2026-10-30 09:11 `podman unshare du` of the UID-mapped tree read 3,461,884,035 |
 | `~/Backups` | 26,473,384,957 | keep | Backup tree; off-limits to cleaning |
 | `~/dracon/backups` | 21,594,713,333 | keep | Backup bundles; off-limits to cleaning |
 
@@ -117,13 +124,13 @@ $ sudo du -sx --bytes /var/log
 
 | Tool | Measured path(s) | Bytes | Verdict |
 |---|---|---:|---|
-| Codex | `~/.codex` | 4,361,912,455 | keep |
+| Codex | `~/.codex` | 4,361,912,869 | keep |
 | Hermes | `~/.hermes` | 2,387,521,841 | keep |
 | OpenCode | `~/.local/share/opencode` + `~/.opencode` | 13,332,394,851 | keep |
-| Pi | `~/.pi` | 6,895,118,186 | keep |
+| Pi | `~/.pi` | 6,919,259,995 | keep |
 | Zcode | `~/.zcode` | 2,826,633,061 | keep |
 | Kilocode | `~/.kilocode` | 2,416,797,755 | keep |
-| **Total** | Six named tools, no shared roots | **32,220,378,149** | keep |
+| **Total** | Six named tools, no shared roots | **32,239,156,313** | keep |
 
 The OpenCode total combines 12,429,986,898 bytes at `~/.local/share/opencode`
 and 902,407,953 bytes at `~/.opencode`. The separate `mimocode` directory below

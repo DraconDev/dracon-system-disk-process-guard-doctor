@@ -1,0 +1,3 @@
+observation_window_start=2026-10-31T00:48:52Z gc_last_start_before=Sat 2026-10-31 00:00:00 GMT gc_start_before_status=0
+warmup_reachable=4606
+pre_sweep_baseline_at=2026-10-31T00:49:08Z pre_sweep_baseline_count=634 baseline_file=/home/dracon/.cache/space-hygiene/attempts/contract-v6-1-Y1031T004852Z/baseline-20261031T004852Z.txt
