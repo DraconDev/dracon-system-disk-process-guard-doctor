@@ -570,9 +570,10 @@ flagged for cleaning.
 - **Bounded-pass gate: met by direct no-collection evidence; original sweep
   baseline remains unreconstructed.** The reported original pre-sweep reading
   of 610 has no preserved root-list artifact. The 19:40 post-GC pass saved a
-  609-root baseline and held store paths at 37,539 with byte-identical endpoint
-  lists, but its 609→609 root equality was in the same unsatisfiable class as
-  the later attempts. The current evidence is the v6.2 pass (2026-10-31 00:51:55
+  609-root baseline and reported 609→609 with byte-identical endpoint lists
+  (`attempt-20261030T194041Z-endpoint-only/`). That bracket met count equality,
+  but count equality is not a collection signal here, so it is retained as a
+  satisfied-and-superseded pass rather than as the current evidence. The current evidence is the v6.2 pass (2026-10-31 00:51:55
   UTC): preserved 638-root baseline byte-identical to `roots_before`, `/nix/store`
   37,539→37,539, `--print-dead` 0→0, an unchanged `nix-gc.service` start
   timestamp and 0 GC records in the bounded journal window, with +0/−1 root
