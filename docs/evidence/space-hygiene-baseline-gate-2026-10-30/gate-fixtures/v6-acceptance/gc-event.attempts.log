@@ -1,0 +1,23 @@
+=== attempt 1 @ 20261031T005150Z ===
+observation_window_start=2026-10-31T00:51:50Z gc_last_start_before=Sat 2026-10-31 00:00:00 GMT gc_start_before_status=0
+pre_sweep_baseline_at=2026-10-31T00:51:51Z pre_sweep_baseline_count=2 baseline_file=/tmp/sh-v6-fixture-nUZqk7/log3-gc-event/baseline-20261031T005150Z.txt
+attempt 1: starting anchored pass from preserved baseline
+attempt 1: pass exit=0
+pre_sweep_baseline_at=2026-10-31T00:51:51Z
+pre_sweep_baseline_count=2
+pre_sweep_baseline_file=/tmp/sh-v6-fixture-nUZqk7/log3-gc-event/baseline-20261031T005150Z.txt
+roots_before=2
+store_paths_before=3
+roots_after=2
+store_paths_after=3
+roots_unchanged=YES
+root_set_identical=YES
+root_series_samples=0
+root_series_min=NOT_SAMPLED
+root_series_max=NOT_SAMPLED
+root_series_constant=NOT_SAMPLED
+root_series_transitions=NOT_SAMPLED
+pass_seconds=0
+preserved_baseline_count=2 run_baseline_count=2 roots_before=2 roots_after=2 root_churn_added=0 root_churn_removed=0 baseline_matches_before=YES store_paths=3->3 dead_paths=1->1 no_collection_evidence=YES gc_unchanged=NO
+gc_identity gc_start_before=Sat 2026-10-31 00:00:00 GMT gc_start_after=Sat 2026-10-31 00:00:00 GMT journal_gc_records=1
+attempt 1: no-GC condition unavailable or violated; aborting retries
