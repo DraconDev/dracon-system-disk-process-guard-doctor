@@ -3,11 +3,9 @@
 The pre-push gate log root was leaking full source snapshots and had reached
 **41.6 GB** (38.8 GB of it orphaned snapshots). This fixes the two mechanisms
 that caused it and reclaims the space. Free space on `/` went from **86.6 GB to
-145.2 GB** (+58.6 GB) at the post-deletion reading, and stands at **139.3 GB**
-(+52.7 GB vs the pre-work baseline) at the final reading — the higher number is
-the moment right after the explicit deletions, the lower one is after several
-hours of other work on the host; the contract is measured against the final
-reading. The daemon ran throughout.
+152.0 GB** at the final reading (**+60.9 GiB**, 91% → 84% used; the intermediate
+readings and why they move are in [Free space](#free-space)). The daemon ran
+throughout.
 
 Read-only measurements only, except for the deletions listed in
 [Reclaimed](#reclaimed). No daemon stop or pause. The epoch-spool reaper was not
