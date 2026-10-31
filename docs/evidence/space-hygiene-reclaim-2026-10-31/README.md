@@ -3,7 +3,11 @@
 The pre-push gate log root was leaking full source snapshots and had reached
 **41.6 GB** (38.8 GB of it orphaned snapshots). This fixes the two mechanisms
 that caused it and reclaims the space. Free space on `/` went from **86.6 GB to
-145.2 GB** (+58.6 GB) with the daemon running throughout.
+145.2 GB** (+58.6 GB) at the post-deletion reading, and stands at **139.3 GB**
+(+52.7 GB vs the pre-work baseline) at the final reading — the higher number is
+the moment right after the explicit deletions, the lower one is after several
+hours of other work on the host; the contract is measured against the final
+reading. The daemon ran throughout.
 
 Read-only measurements only, except for the deletions listed in
 [Reclaimed](#reclaimed). No daemon stop or pause. The epoch-spool reaper was not
@@ -24,11 +28,13 @@ The snapshot survived, and `manifest.json` still said `"status": "running"` with
 a dead `ownerPid`. Nothing ever reaped those directories.
 
 **2. A hook that cannot finish in the deadline it is given.** The gate runs a
-full copy, install and 4-gate pass per *distinct pushed revision*. This repo is
-**124 commits ahead of upstream**, so a push attempt has to validate a backlog
-far larger than a normal one. 458 attempts are on record: 314 passed, 127
-failed, 9 `running` with dead owners, 8 cancelled. The nine `running` ones are
-exactly the leak population — a pass that was killed, not a pass that failed.
+full copy, install and 4-gate pass per *distinct pushed revision*. The daemon's
+journal records the backlog at **91 commits ahead** on 2026-10-28 12:31:23 and
+again on 2026-10-29 09:59:51, each time scaling its push timeout 900s → 5400s in
+response; a push attempt therefore had to validate a backlog far larger than a
+normal one. 458 attempts are on record: 314 passed, 127 failed, 9 `running` with
+dead owners, 8 cancelled. The nine `running` ones are exactly the leak
+population — a pass that was killed, not a pass that failed.
 
 The push failure is *why* the leak kept refilling: every retry allocated a fresh
 snapshot, failed the deadline, and left it behind. Diagnosing it is in scope;
@@ -40,7 +46,7 @@ fixing it is not.
 |---|---|---|
 | Dead-owner reap sweep | `scripts/git-hooks/attempt-reaper.mjs` (new) | Deletes `snapshot-*`, `toolchains` and `source.tar` from attempts whose owner is provably gone and which are older than a 900s floor; keeps the gate logs; drops the whole attempt only past a 7-day TTL |
 | Reap on attempt start | `scripts/git-hooks/run-push-gates.mjs` | Runs the sweep before allocating a new attempt, so the root self-heals instead of needing a cron job |
-| SIGTERM grace 2s → 15s | `dracon-sync/src/git/ops.rs` | Named `SIGTERM_GRACE` constant; a hook removing a multi-GB tree now has time to finish |
+| SIGTERM grace 2s → 15s | `dracon-sync/src/git/ops.rs` | Best-effort: lets a hook that is *between* gates run its handler and shortens how long a timed-out group outlives its deadline. It cannot rescue a hook blocked mid-gate (see below) — the reap sweep is what actually removes the snapshot |
 
 **Liveness is decided by `/proc/<pid>/cmdline`, not a bare PID probe.** A
 recycled PID must not make a dead attempt look permanent — and the first version
@@ -57,10 +63,25 @@ reported immediately before removal.
 
 | Item | Bytes | Reversibility proof |
 |---|---:|---|
-| 11 orphaned gate-attempt snapshots (owner dead) | 38,279,344,364 | Every snapshot's revision SHA verified with `git cat-file -e <sha>^{commit}` in this repo *before* deletion — all 11 present in history. The trees are rebuildable from the recorded revision. **Provenance:** 10 were removed by live hook invocations at 10:03:30–10:07:25, i.e. by the new sweep running inside real pushes, not by a manual `rm`; the 11th (`rn6DEt`) at 10:15:27 was an explicit sweep invocation. Proof in `sweep-timing-proof.txt`: each directory's manifest `started` is days old while its mtime is the removal second. |
+| 11 orphaned gate-attempt snapshots, exact sizes (owner dead) | 38,279,344,364 | Every snapshot's revision SHA verified with `git cat-file -e <sha>^{commit}` in this repo *before* deletion — all 11 present in history (per-row proof in `dead-owner-snapshot-inventory.txt`, `in_hist: true`; the SHAs are reproduced in [Snapshot provenance and SHA verification](#snapshot-provenance-and-sha-verification) below). The trees are rebuildable from the recorded revision. **Provenance:** all 11 were removed by live hook invocations at 10:03:30–10:07:25, i.e. by the new sweep running inside real pushes, not by a manual `rm`. Proof in `sweep-timing-proof.txt`: each directory's manifest `started` is days old while its mtime is the removal second. |
+| 12th snapshot, `rn6DEt` — **estimated**, see note | ~3,519,333,207 | SHA `778f49770547a8886939dcadc0ec3b87b4021058` read from this attempt's surviving `manifest.json` and verified present with `git cat-file -e`; the snapshot itself was already gone by the time it could be measured. **Provenance:** removed by the explicit sweep invocation at 10:15:27 (`reap-live-run.txt`: `reaped: dracon-pre-push.rn6DEt age=1059s`), not by a live hook. |
 | `qualification/canonical-writer-fence-2026-10-27/target` | 12,186,607,915 | Cargo target dir (`CACHEDIR.TAG` present); rebuilt on demand by `cargo build` |
 | `protection-repair-2026-10-20/verification-target` | 5,942,225,851 | Cargo target dir (`CACHEDIR.TAG` present); rebuilt on demand |
 | `~/.local/share/pnpm/store/v10` | 1,884,541,110 | Installed pnpm is 11.5.1 and `pnpm store path` resolves to `store/v11`; no file under `~/.config` or any `package.json` references `store/v10` |
+
+**Twelve snapshots were removed, not eleven.** The exact measured total is
+38,279,344,364 bytes across 11 snapshots whose size was captured before
+removal. `rn6DEt` is the twelfth: it was reaped by the 10:15:27 sweep, which
+reports its age but not its byte count, and its directory had already been
+removed, so **its size is an estimate and is labelled as one everywhere it
+appears**. The estimate is the mean of the two exact measurements of the *same
+revision* `778f4977…`: `1wnl3J` at 3,496,489,294 and `y4jzyJ` at 3,542,177,120
+bytes. A snapshot is a plain `git archive` extraction of one revision plus
+whatever build output its gates produced before the kill, so the same revision
+lands within a few percent of these two — but the exact figure is not
+recoverable and is not claimed. The total across all twelve therefore lies
+between **41,775,833,658** and **41,821,521,484** bytes (41.78–41.82 GB), of
+which **38,279,344,364 bytes are exact** and only the twelfth row is estimated.
 
 Gate logs were **not** deleted — 444 attempts held only logs and were left
 untouched. The snapshots were removed by the new sweep itself, not by a manual
