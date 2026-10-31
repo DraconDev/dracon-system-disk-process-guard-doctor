@@ -1,0 +1,24 @@
+=== attempt 1 @ 20261031T004852Z ===
+observation_window_start=2026-10-31T00:48:52Z gc_last_start_before=Sat 2026-10-31 00:00:00 GMT gc_start_before_status=0
+pre_sweep_baseline_at=2026-10-31T00:49:08Z pre_sweep_baseline_count=634 baseline_file=/home/dracon/.cache/space-hygiene/attempts/contract-v6-1-Y1031T004852Z/baseline-20261031T004852Z.txt
+attempt 1: starting anchored pass from preserved baseline
+attempt 1: pass exit=0
+pre_sweep_baseline_at=2026-10-31T00:49:08Z
+pre_sweep_baseline_count=634
+pre_sweep_baseline_file=/home/dracon/.cache/space-hygiene/attempts/contract-v6-1-Y1031T004852Z/baseline-20261031T004852Z.txt
+roots_before=634
+store_paths_before=37539
+roots_after=639
+store_paths_after=37539
+roots_unchanged=NO
+root_set_identical=NO
+root_series_samples=0
+root_series_min=NOT_SAMPLED
+root_series_max=NOT_SAMPLED
+root_series_constant=NOT_SAMPLED
+root_series_transitions=NOT_SAMPLED
+pass_seconds=147
+preserved_baseline_count=634 run_baseline_count=634 roots_before=634 roots_after=639 root_churn_added=5 root_churn_removed=0 baseline_matches_before=YES store_paths=37539->37539 dead_paths=0->0 no_collection_evidence=YES gc_unchanged=YES
+gc_identity gc_start_before=Sat 2026-10-31 00:00:00 GMT gc_start_after=Sat 2026-10-31 00:00:00 GMT journal_window_entries=1
+attempt 1: SUCCESS - preserved pre-sweep baseline matched, /nix/store and --print-dead set unchanged, no nix-gc.service run in window
+note: GC-root count changed by +5/-0 (daemon transient roots); reported as diagnostic, not a collection signal
