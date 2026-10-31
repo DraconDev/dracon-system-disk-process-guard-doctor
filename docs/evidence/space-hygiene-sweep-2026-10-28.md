@@ -10,16 +10,28 @@ met; no non-Nix candidate was intentionally cleaned by this survey. Earlier
 anchored-measurement helpers removed only generated `/tmp` scratch files, not
 surveyed candidates. Workspace tests used isolated temporary fixtures.
 
-**Pre-sweep baseline, stated exactly.** The originally reported 610-root
-pre-sweep reading has no preserved artifact and is not reproducible; it is kept
-in the pass history as a historical record only. The qualifying evidence is a
-preserved baseline per pass: the authoritative v6.2 pass saved 638 roots before
-measuring and matched that list to `roots_before` byte-for-byte. That comparison
-is *within-pass* by construction, and this report does not claim otherwise. What
-it does establish is that the run started from, and stayed on, a baseline other
-passes can be compared against — which is the reproducibility the 610 reading
-never had. The host-wide "no GC ever ran during the sweep" claim is false and
-is not made: the system timer ran, as recorded above and in the Nix section.
+**Contract status, stated without hedging.** One clause of the verification
+contract is **not met**: "`nix-store --gc --print-roots | wc -l` is unchanged
+from the pre-sweep reading, proving no garbage collection ran." The 610-root
+pre-sweep reading has no preserved artifact and is not reproducible, the
+authoritative pass reads `roots_before=638` / `roots_after=637`, and a scheduled
+`nix-gc.service` run deleted 368 store paths inside the sweep window. Neither
+the equality nor the literal "no garbage collection ran" condition holds, and
+this report does not claim it does. The system timer's three runs are recorded
+above and in the Nix section.
+
+What the evidence does support is a **different** criterion, proposed as an
+amendment for the operator to accept or reject: a preserved per-pass baseline
+(the v6.2 pass saved 638 roots before measuring and matched that list to
+`roots_before` byte-for-byte, SHA-256 `c43ad840…`) together with a direct
+no-collection measurement — `/nix/store` entries 37,539→37,539, `--print-dead`
+0→0, an unchanged `nix-gc.service` start timestamp, and 0 GC records in the
+bounded journal window. The root-count equality was abandoned because
+`--print-roots` also lists the Nix daemon's transient roots, so it churns on
+this host even when nothing is collected; three consecutive attempts failed it
+with the store contents unchanged. That is a measured defect in the clause, not
+a reason to call the clause satisfied. The substitute is labelled as a
+substitute everywhere it appears.
 
 Primary measurements began on 2026-10-28. Five historical full anchored passes ran
 through 2026-10-29 18:03–18:06 UTC. On 2026-10-30, several passes failed the
@@ -567,19 +579,22 @@ flagged for cleaning.
   journal event, the service start remained at 00:00 GMT, and its preserved
   609-root baseline matched both of its endpoints. At 09:11 UTC the next timer was
   scheduled for 2026-10-31 00:00 GMT; no timer change was made.
-- **Bounded-pass gate: met by direct no-collection evidence; original sweep
-  baseline remains unreconstructed.** The reported original pre-sweep reading
-  of 610 has no preserved root-list artifact. The 19:40 post-GC pass saved a
-  609-root baseline and reported 609→609 with byte-identical endpoint lists
-  (`attempt-20261030T194041Z-endpoint-only/`). That bracket met count equality,
-  but count equality is not a collection signal here, so it is retained as a
-  satisfied-and-superseded pass rather than as the current evidence. The current evidence is the v6.2 pass (2026-10-31 00:51:55
-  UTC): preserved 638-root baseline byte-identical to `roots_before`, `/nix/store`
-  37,539→37,539, `--print-dead` 0→0, an unchanged `nix-gc.service` start
-  timestamp and 0 GC records in the bounded journal window, with +0/−1 root
-  churn recorded as a diagnostic. This satisfies the bounded-pass check without
-  rewriting the historical 610→634 record. See “Qualified v6 passes” under the
-  Nix section. The 08:53 completed anchored attempt saved
+- **No-collection check: the original contract clause is NOT met; a substitute
+  measurement is offered and awaits operator acceptance.** Stated without
+  hedging: the clause "`nix-store --gc --print-roots | wc -l` is unchanged from
+  the pre-sweep reading" is unmet. The 610 pre-sweep reading has no preserved
+  artifact, the authoritative pass reads `roots_before=638` / `roots_after=637`
+  (`roots_unchanged=NO`), and a scheduled `nix-gc.service` run deleted 368 store
+  paths inside the sweep window — so neither the equality nor the literal
+  "no garbage collection ran" condition holds, and this report does not claim
+  otherwise. The v6.2 pass instead measures collection directly: preserved
+  638-root baseline byte-identical to `roots_before` (SHA-256 `c43ad840…`),
+  `/nix/store` 37,539→37,539, `--print-dead` 0→0, an unchanged `nix-gc.service`
+  start timestamp, and 0 GC records in the bounded journal window, with +0/−1
+  root churn as a diagnostic. That is a *different* criterion, not a
+  satisfaction of the clause above, and it is recorded here as a proposed
+  amendment for the operator to accept or reject. See “Qualified v6 passes”
+  under the Nix section for the artifacts. The 08:53 completed anchored attempt saved
   an attempt-specific 639-root baseline, then measured 637 roots before and
   640 after. Its full baseline, before, and after lists are preserved in
   `docs/evidence/space-hygiene-root-lists-2026-10-30T085316Z/` (line counts
@@ -642,13 +657,16 @@ flagged for cleaning.
   before and after**. Those newer artifacts preserve counts rather than
   closure path sets, so no reachable-set identity is claimed. The 15:28
   attempt ended before its final closure count.
-- Privileged totals remain incomplete in the retained evidence: `sudo -n true`
-  returned `sudo: a password is required`. The operator mentioned later
-  host-root `du` output, but the exact rows and timestamp are not present in
-  the saved artifacts, so those figures are not incorporated. The root-owned
-  Trash backup, five state handover backups, `/var/log/private`, and
-  `/var/log/gdm` therefore still lack independently reviewable privileged
-  sizes. The Oct-30 scheduled GC removed 368 store paths; no host-wide
+- Privileged totals come from the operator's pasted `sudo du -sx --bytes`
+  output, preserved verbatim in “Supplemental operator-pasted privileged
+  sample (2026-10-30)” above and in the read-only command list: `~/.local/share`
+  30,840,087,166; `~/.local/state` 49,316,690,397; `~/.local/share/Trash`
+  553,982,709; `/var/log` 598,374,272; `/var/log/private` 0; `/var/log/gdm` 0.
+  What is still missing is not the privileged reading from `/` but a per-subtree
+  split of five root-owned state handover backups under `/root`-descended
+  paths, which needs an interactive `sudo` that `sudo -n true` reported as
+  unavailable. Those rows carry `needs-operator-call` with the exact command.
+  The Oct-30 scheduled GC removed 368 store paths; no host-wide
   no-GC/no-deletion claim is made.
 
 ### Earlier baseline-bound rechecks (2026-10-30 15:11–15:43 UTC)
