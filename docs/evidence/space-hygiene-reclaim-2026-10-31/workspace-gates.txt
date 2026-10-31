@@ -1,1 +1,4 @@
 # workspace gates, 2026-10-31T15:44:42+00:00 - after SIGTERM_GRACE raised 2s -> 25s
+cargo_test_exit=0
+suites=44
+passed=2926 failed=0
