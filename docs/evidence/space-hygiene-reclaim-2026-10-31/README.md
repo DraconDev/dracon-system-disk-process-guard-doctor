@@ -172,6 +172,7 @@ read from its own surviving `manifest.json`. The eleven exact rows sum to
 
 | **Delta (final vs before)** | **+65,412,947,968 (+60.9 GiB)** | 91% → 84% | **−35.7 GB** | recorded in `verification-build-cache.txt` |
 | **Post-revision (16:11:22Z)** | **147,038,625,792** | 136G free, 85% used | *see note* | **current shipped revision** (after the 25s constant); delta vs before +60,408,717,312 (+56.3 GiB) |
+
 The **Final** row above (14:10:33Z, 152.0 GB) predates the 15s -> 25s constant
 change. The **Post-revision** row is the current reading on the shipped
 revision: 147,038,625,792 bytes, which is +60,408,717,312 (+56.3 GiB) over the
