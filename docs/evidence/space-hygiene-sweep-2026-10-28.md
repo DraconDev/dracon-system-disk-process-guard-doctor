@@ -13,8 +13,8 @@ surveyed candidates. Workspace tests used isolated temporary fixtures.
 **Pre-sweep baseline, stated exactly.** The originally reported 610-root
 pre-sweep reading has no preserved artifact and is not reproducible; it is kept
 in the pass history as a historical record only. The qualifying evidence is a
-preserved baseline per pass: the v6 pass saved 618 roots before measuring and
-matched that list to `roots_before` byte-for-byte. That comparison is
+preserved baseline per pass: the authoritative v6.2 pass saved 638 roots before
+measuring and matched that list to `roots_before` byte-for-byte. That comparison is
 *within-pass* by construction, and this report does not claim otherwise. What
 it does establish is that the run started from, and stayed on, a baseline other
 passes can be compared against — which is the reproducibility the 610 reading
@@ -566,12 +566,13 @@ flagged for cleaning.
   of 610 has no preserved root-list artifact. The 19:40 post-GC pass saved a
   609-root baseline and held store paths at 37,539 with byte-identical endpoint
   lists, but its 609→609 root equality was in the same unsatisfiable class as
-  the later attempts. The current evidence is the v6 pass (2026-10-30 23:40:55
-  UTC): preserved 618-root baseline matching `roots_before`, `/nix/store`
-  37,539→37,539, `--print-dead` 0→0, and no `nix-gc.service` run in the window,
-  with +26/−6 root churn recorded as a diagnostic. This satisfies the
-  bounded-pass check without rewriting the historical 610→634 record. See
-  “Qualified v6 pass” under the Nix section. The 08:53 completed anchored attempt saved
+  the later attempts. The current evidence is the v6.2 pass (2026-10-31 00:51:55
+  UTC): preserved 638-root baseline byte-identical to `roots_before`, `/nix/store`
+  37,539→37,539, `--print-dead` 0→0, an unchanged `nix-gc.service` start
+  timestamp and 0 GC records in the bounded journal window, with +0/−1 root
+  churn recorded as a diagnostic. This satisfies the bounded-pass check without
+  rewriting the historical 610→634 record. See “Qualified v6 passes” under the
+  Nix section. The 08:53 completed anchored attempt saved
   an attempt-specific 639-root baseline, then measured 637 roots before and
   640 after. Its full baseline, before, and after lists are preserved in
   `docs/evidence/space-hygiene-root-lists-2026-10-30T085316Z/` (line counts
@@ -885,9 +886,9 @@ backup directories. A read-only path search at 22:14:18 UTC found all five,
 but traversal of each returned `Permission denied`; no sizes were obtained.
 `sudo -n true` still requires a password here, so a per-subtree split needs the
 targeted read-only measurement below. This is a detail *inside* a known area,
-not a gap in the area total: `~/.local/state` is sized both by the v6 pass
-(53,739,383,637 bytes) and by the operator's privileged `sudo du`
-(49,316,690,397 bytes). No cleanup or GC is requested.
+not a gap in the area total: `~/.local/state` is sized both by the v6.2 pass
+(58,139,938,674 bytes) and by the operator's privileged `sudo du`
+(49,316,690,397 bytes at an earlier time). No cleanup or GC is requested.
 
 | Handover-backup path | Bytes | Verdict | Evidence |
 |---|---:|---|---|
