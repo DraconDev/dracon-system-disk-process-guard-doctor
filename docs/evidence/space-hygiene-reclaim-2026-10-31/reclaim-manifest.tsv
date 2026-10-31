@@ -1,0 +1,8 @@
+# Reclaim plan 2026-10-31T10:14:07+00:00
+# 1. orphaned gate-attempt bulk (snapshot-*/toolchains/source.tar), owner dead, sha in history
+bulk_total_bytes	0
+# 2. dead cargo target dirs
+target\t/home/dracon/.local/state/dracon-sync/qualification/canonical-writer-fence-2026-10-27/target\t12186607915\thas-CACHEDIR.TAG
+target\t/home/dracon/.local/state/dracon/protection-repair-2026-10-20/verification-target\t5942225851\thas-CACHEDIR.TAG
+# 3. pnpm store v10
+pnpm\t/home/dracon/.local/share/pnpm/store/v10\t1884541110\tpnpm=11.5.1

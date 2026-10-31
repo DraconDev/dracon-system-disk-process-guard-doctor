@@ -1,0 +1,6 @@
+captured_at=2026-10-31T10:21:13+00:00
+free_bytes=145216069632
+/dev/nvme0n1p2  907G  725G  136G  85% /
+gates_bytes=8655046424
+spool_dirs=771
+spool_bytes=15155605713
