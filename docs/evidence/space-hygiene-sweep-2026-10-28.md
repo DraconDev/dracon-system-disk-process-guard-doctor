@@ -730,8 +730,10 @@ service run and an unchanged store:
 The added and removed roots in those diffs were the same video-encode toolchain
 (`ffmpeg`, `libvpx`, `svt-av1`, `libass`, `libopenmpt`, `zvbi`, `openjpeg`,
 `wl-clipboard`) appearing and disappearing; the v6 pass recorded +26/−6 churn.
-A read-only check found no process holding those store paths at sampling time,
-so the registrations were transient runtime roots, not collection effects.
+A read-only `/proc/<pid>/maps` check at 23:32 UTC found no process holding any
+of those store paths, which is consistent with transient runtime roots rather
+than collection effects; that check was taken after the attempts, so it does not
+pin each registration to a specific process.
 
 The v6 pass therefore measures the invariant directly:
 
