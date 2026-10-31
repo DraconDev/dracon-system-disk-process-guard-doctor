@@ -88,14 +88,55 @@ untouched. The snapshots were removed by the new sweep itself, not by a manual
 `rm`, which is the point: the mechanism that leaked them now cleans them.
 
 Live-owner attempts were never touched. Each sweep preserved whichever attempt
-was live at that moment — the preserved names across the recorded sweeps are
-`dracon-pre-push.hKHTkv` (`reap-live-run.txt`), then `dracon-pre-push.eeX4YC`
-(`reap-live-run-2.txt`); the pre-work inventory separately records
-`live_preserved=0` because at that moment no attempt was mid-flight. One attempt
+was live at that moment, and that set is a *moving* quantity rather than a fixed
+number: an attempt has a live owner exactly while a push is in flight, so the
+count rises and falls with push activity and is near zero when nothing is
+running. The readings, each with its own timestamp:
+
+| Reading | When | Dead-owner snapshots | Live-owner snapshots | Artefact |
+|---|---|---:|---:|---|
+| Pre-work inventory | ~09:45Z | 11 | 0 | `dead-owner-snapshot-inventory.txt` (`live_preserved=0`) |
+| Explicit sweep | 10:15:27Z | 1 reaped | 1 preserved (`hKHTkv`) | `reap-live-run.txt` |
+| Explicit sweep | 11:04:53Z | 0 reaped | 1 preserved (`eeX4YC`) | `reap-live-run-2.txt` |
+| Final recheck | 12:40:20Z | **0** | **0** | `final-state.txt` |
+| Audit-hour scans | ~13:30Z, ~13:38Z | **0** | 1 (`r90mfQ`, then `4Hzjog`) | live read-only scan |
+
+The two zero and one readings are all correct at their own timestamps: at
+12:40:20 no push was mid-flight, so nothing was live; by 13:30 a fresh push had
+started and a new snapshot existed under a *different* name. **The invariant
+that matters is the dead-owner column: it is 0 in every reading after the sweep,
+while live-owner snapshots are preserved rather than reaped.** One attempt
 (`hKHTkv`) was killed mid-run and stayed in place until it passed the 900s
 floor, at which point the next sweep removed it — the floor working as designed,
-not a miss. The final recheck reports **0** dead-owner snapshots and 1
-live-owner snapshot.
+not a miss.
+
+## Snapshot provenance and SHA verification
+
+The full per-row record is `dead-owner-snapshot-inventory.txt` (11 rows of JSON
+with `dir`, `sha`, `in_hist`, `snap_bytes`, `started`). Every revision was
+confirmed present in this repo's history with `git cat-file -e <sha>^{commit}`
+*before* its snapshot was deleted, which is what makes the deletion reversible:
+the source is reconstructable from the commit, so only derived bytes were lost.
+All twelve SHAs, with the verification result:
+
+| Attempt | Revision SHA | `in_hist` | Snapshot bytes |
+|---|---|---|---:|
+| `1wnl3J` | `778f49770547a8886939dcadc0ec3b87b4021058` | true | 3,496,489,294 |
+| `2oTFcv` | `f406d2e26ae9dc8a75a6883253e4e09f8e15dc6d` | true | 3,790,369,070 |
+| `6DbN2k` | `2a19c12dc9ade83d0e46e8cb6759580fcf20c5d4` | true | 2,890,725,999 |
+| `EB10kd` | `f3b353f262491b5fd597d8f03136e48073a0dd21` | true | 4,342,883,126 |
+| `Km2eJj` | `cf17489b332ac2f2c36cd2c5af0137ef4e4dafd4` | true | 3,853,787,740 |
+| `U27Pu7` | `bf3ac20baeb87b6ea37eb6b7dd7ea5f25ce8c9ef` | true | 2,901,649,286 |
+| `eyCgyI` | `2ef4137b787230b388a20931d48f1da68bbc17f1` | true | 2,562,504,153 |
+| `sBnolJ` | `4097256ad06c49500956a263231ee642484b8dcd` | true | 3,803,490,154 |
+| `vPUkJR` | `7c7e6dfdde10b71b8c79698db39d6a3096e653be` | true | 3,601,583,814 |
+| `y4jzyJ` | `778f49770547a8886939dcadc0ec3b87b4021058` | true | 3,542,177,120 |
+| `yX25xv` | `10671395b5b37308222308f939f20dfed7a20abd` | true | 3,493,684,608 |
+| `rn6DEt` | `778f49770547a8886939dcadc0ec3b87b4021058` | true | *estimate 3,519,333,207* |
+
+`rn6DEt` is the only row whose bytes are estimated; its SHA is exact and was
+read from its own surviving `manifest.json`. The eleven exact rows sum to
+38,279,344,364 bytes.
 
 ## Free space
 
@@ -108,10 +149,37 @@ live-owner snapshot.
 
 The free-space figure moves between readings because other work on this host is
 allocating and freeing concurrently; the gate tree, which is what this change
-controls, fell monotonically: **41.6 GB → 8.7 GB → 2.3 GB**. That continued fall
-after the manual deletions is the fix working — live hook invocations keep
-reaping as they run, rather than the tree only shrinking when someone
-intervenes. At the final reading it holds no `snapshot-*` directories at all.
+controls, fell monotonically: **41.6 GB → 8.7 GB → 2.3 GB**. The 145.2 GB row is
+the peak, taken immediately after the explicit deletions; the 139.3 GB row is
+the **final** reading and is the one the contract is measured against (+49.1 GiB,
+still far above the required 40 GiB). That continued fall in the gate tree after
+the manual deletions is the fix working — live hook invocations keep reaping as
+they run, rather than the tree only shrinking when someone intervenes. At the
+final reading the tree held no *dead-owner* `snapshot-*` directories; the only
+snapshot present later in the day belonged to a push that was live at that
+moment (see [the live-owner table](#reclaimed)).
+
+## What the grace does and does not do
+
+The 15s `SIGTERM_GRACE` is **best-effort, and it is not the fix**. Stating this
+plainly because an earlier version of this document implied otherwise:
+
+- The measured cost of the cleanup is **~21s per snapshot** (the live sweep
+  removed eleven snapshots over ~235s). 15s is therefore *less* than the real
+  work, so the grace does not reliably complete a multi-gigabyte removal either.
+- The hook is normally **blocked inside a synchronous `execFileSync`** while a
+  gate runs. No signal handler executes while the thread sits in that call, so
+  no grace length — 2s, 15s, or 60s — lets it run its handler mid-gate.
+- What 15s does buy: a hook that is *between* gates gets a realistic window to
+  finish its `finally`/handler path, and a timed-out group outlives its deadline
+  for less time than before.
+
+**The effective cleanup is the reap sweep**, which is why the leak is actually
+closed: the snapshot is removed by the next attempt regardless of whether the
+killed process ever ran a handler. The regression test proves the constant is
+honoured (a child trapping SIGTERM with a 5s cleanup survives at 15s and is
+killed at 2s), which is the property the constant can be held to; it does not
+claim 15s is sufficient for an arbitrary multi-GB tree.
 
 ## Epoch spools — inventoried, not deleted
 
@@ -142,7 +210,17 @@ authority there needs its own goal, not a side effect of this one.
 Evidence with timestamps in `push-failure-evidence.txt`; journal excerpts, not
 commands this goal ran.
 
-- **124 commits ahead** of upstream, so each push must validate a large backlog.
+- **91 commits ahead** of upstream — the daemon logged
+  `scaling push timeout 900s → 5400s (91 commits ahead)` at 2026-10-28 12:31:23
+  and again at 2026-10-29 09:59:51, so each attempt had to validate a large
+  backlog. (An earlier draft of this file said "124 commits ahead"; no
+  measurement of 124 exists in the captured evidence and that figure is
+  withdrawn rather than restated.) The backlog has since drained:
+  `git rev-list --count origin/main..HEAD` is **4** at 2026-10-31 13:35:34Z, and
+  the journal records `✅ push recovered for
+  /home/dracon/Dev/browser-extensions-shared` at 11:45:50 and 13:17:17 — pushes
+  are succeeding now, which is why this is a diagnosis of the failure window and
+  not a live outage.
 - `publication owned by another worker (this pass did not push)` — **3,139
   occurrences** between 2026-10-28 00:45:25 and 2026-10-31 10:27:42. Each says
   the repo was committed but this pass did not attempt the push.
@@ -165,7 +243,7 @@ by a still-running previous attempt.
 
 - Not fixed: the push failure itself, which needs its own goal.
 - Not fixed: epoch-spool accumulation (deliberately fail-closed).
-- All gates green: `cargo test --workspace --locked` exit 0 with **45 suites,
+- All gates green: `cargo test --workspace --locked` exit 0 with **44 suites,
   2,926 passed, 0 failed**, and `cargo clippy --workspace --locked -- -D
   warnings` exit 0. Raw output in `workspace-gates.txt`.
 - Only this host's `browser-extensions-shared` log root is a pre-push gate
