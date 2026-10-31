@@ -27,10 +27,11 @@ a dead `ownerPid`. Nothing ever reaped those directories.
 
 **2. A hook that cannot finish in the deadline it is given.** The gate runs a
 full copy, install and 4-gate pass per *distinct pushed revision*. The daemon's
-journal records the backlog at **91 commits ahead** on 2026-10-28 12:31:23 and
-again on 2026-10-29 09:59:51, each time scaling its push timeout 900s → 5400s in
-response; a push attempt therefore had to validate a backlog far larger than a
-normal one. 458 attempts are on record: 314 passed, 127 failed, 9 `running` with
+journal shows the backlog reaching **~3,478 unpushed commits** on 2026-10-28
+(`🚨 ALERT: … has 3478 unpushed commits (threshold: 50)`, 02:57:26), so a push
+attempt had to validate a backlog orders of magnitude larger than a normal one —
+and it retried that backlog on every pass. 458 attempts are on record: 314
+passed, 127 failed, 9 `running` with
 dead owners, 8 cancelled. The nine `running` ones are exactly the leak
 population — a pass that was killed, not a pass that failed.
 
@@ -236,17 +237,25 @@ authority there needs its own goal, not a side effect of this one.
 Evidence with timestamps in `push-failure-evidence.txt`; journal excerpts, not
 commands this goal ran.
 
-- **91 commits ahead** of upstream — the daemon logged
-  `scaling push timeout 900s → 5400s (91 commits ahead)` at 2026-10-28 12:31:23
-  and again at 2026-10-29 09:59:51, so each attempt had to validate a large
-  backlog. (An earlier draft of this file said "124 commits ahead"; no
-  measurement of 124 exists in the captured evidence and that figure is
-  withdrawn rather than restated.) The backlog has since drained:
-  `git rev-list --count origin/main..HEAD` is **4** at 2026-10-31 13:35:34Z, and
-  the journal records `✅ push recovered for
-  /home/dracon/Dev/browser-extensions-shared` at 11:45:50 and 13:17:17 — pushes
-  are succeeding now, which is why this is a diagnosis of the failure window and
-  not a live outage.
+- **The backlog reached ~3,478 unpushed commits** on 2026-10-28 — the daemon
+  logged `🚨 ALERT: … has 3478 unpushed commits (threshold: 50). Something may
+  be wrong with push.` at 02:57:26, and had already gone as far as skipping
+  auto-commit (`⏸️ daemon backstop: 1593 unpushed commits pending push >300s`) at
+  00:16:24. This is the real scale of the failure that fed the leak: each attempt
+  had to validate a backlog orders of magnitude beyond one push.
+- As it slowly drained, the daemon logged
+  `scaling push timeout 900s → 5400s (N commits ahead)` — e.g. `(3309 commits
+  ahead)` at 2026-10-28 00:16:24 and `(3466 commits ahead)` at 01:58:59 while the
+  backlog was still growing, then `(91 commits ahead)` at 2026-10-28 12:31:23 and
+  again at 2026-10-29 09:59:51 once it had drained. The 91 lines are quoted as
+  examples of the late stage, **not** as a peak; the peak was ~3,478.
+  (An earlier draft of this file said "124 commits ahead"; no measurement of 124
+  exists in the captured evidence and that figure is withdrawn rather than
+  restated.) The backlog has since drained: `git rev-list --count
+  origin/main..HEAD` is **4** at 2026-10-31 13:35:34Z, and the journal records
+  `✅ push recovered for /home/dracon/Dev/browser-extensions-shared` at 11:45:50
+  and 13:17:17 — pushes are succeeding now, which is why this is a diagnosis of
+  the failure window and not a live outage.
 - `publication owned by another worker (this pass did not push)` — **3,139
   occurrences** between 2026-10-28 00:45:25 and 2026-10-31 10:27:42. Each says
   the repo was committed but this pass did not attempt the push.
