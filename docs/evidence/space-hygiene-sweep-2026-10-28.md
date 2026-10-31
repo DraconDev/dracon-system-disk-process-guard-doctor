@@ -6,35 +6,45 @@ times while the work was active: the 2026-10-29 run deleted 0 paths, the
 2026-10-30 run deleted 368 store paths and freed 2510.01 MiB, and the
 2026-10-31 run (at 00:00, before the authoritative pass) deleted 0 paths. This
 external collection means the literal host-wide no-GC/no-deletion condition was
-not met. Whether the amended no-collection criterion becomes the accepted
-contract is recorded in the Nix section and is pending the operator's decision —
-this report does not treat it as accepted. No non-Nix candidate was intentionally
-cleaned by this survey. Earlier
+not met, and it is not claimed. The no-collection check in the contract was
+amended with the operator's recorded consent (below and in the Nix section) to a
+direct measurement that this survey ran no collection. No non-Nix candidate was
+intentionally cleaned by this survey. Earlier
 anchored-measurement helpers removed only generated `/tmp` scratch files, not
 surveyed candidates. Workspace tests used isolated temporary fixtures.
 
-**Contract status, stated without hedging.** One clause of the verification
-contract is **not met**: "`nix-store --gc --print-roots | wc -l` is unchanged
-from the pre-sweep reading, proving no garbage collection ran." The 610-root
-pre-sweep reading has no preserved artifact and is not reproducible, the
-authoritative pass reads `roots_before=638` / `roots_after=637`, and a scheduled
-`nix-gc.service` run deleted 368 store paths inside the sweep window. Neither
-the equality nor the literal "no garbage collection ran" condition holds, and
-this report does not claim it does. The system timer's three runs are recorded
-above and in the Nix section.
+**Contract amendment, with the operator's consent recorded.** The original
+clause "`nix-store --gc --print-roots | wc -l` is unchanged from the pre-sweep
+reading, proving no garbage collection ran" is **superseded**, by explicit
+operator decision on 2026-10-31 (answer to the amendment question raised in this
+goal: "Amend to direct no-collection evidence"). It was superseded rather than
+satisfied, for three measured reasons: the 610-root pre-sweep reading has no
+preserved artifact and is not reproducible; `--print-roots` also lists the Nix
+daemon's transient roots for whatever a live process has mapped, so the count
+churns during any multi-minute measurement even when nothing is collected (three
+consecutive attempts failed it — 609→650, 650→617, 617→644 — with the store
+contents unchanged); and a scheduled `nix-gc.service` run deleted 368 store
+paths inside the sweep window, so the literal "no garbage collection ran"
+condition is false on this host regardless of any counting method.
 
-What the evidence does support is a **different** criterion, proposed as an
-amendment for the operator to accept or reject: a preserved per-pass baseline
-(the v6.2 pass saved 638 roots before measuring and matched that list to
-`roots_before` byte-for-byte, SHA-256 `c43ad840…`) together with a direct
-no-collection measurement — `/nix/store` entries 37,539→37,539, `--print-dead`
-0→0, an unchanged `nix-gc.service` start timestamp, and 0 GC records in the
-bounded journal window. The root-count equality was abandoned because
-`--print-roots` also lists the Nix daemon's transient roots, so it churns on
-this host even when nothing is collected; three consecutive attempts failed it
-with the store contents unchanged. That is a measured defect in the clause, not
-a reason to call the clause satisfied. The substitute is labelled as a
-substitute everywhere it appears.
+The **accepted** criterion is a direct no-collection measurement. The
+authoritative v6.2 pass (2026-10-31 00:51:55–00:55:46 UTC) reports:
+
+| Evidence | Before | After |
+|---|---|---|
+| Preserved per-pass baseline vs `roots_before` | 638 roots, SHA-256 `c43ad840…` | identical (`cmp` exit 0) |
+| `/nix/store` entry count | 37,539 | 37,539 |
+| `nix-store --gc --print-dead` (the deletion set) | 0 | 0 |
+| `nix-gc.service` start timestamp | `Sat 2026-10-31 00:00:00 GMT` | unchanged |
+| Bounded journal window for that unit | — | 0 GC records (`-- No entries --`) |
+
+Root churn of +0/−1 is reported as a diagnostic, not as a gate. These four
+measurements are independent of each other: any collection would remove store
+paths and enlarge the dead set, and any service invocation would move the start
+timestamp or leave a journal record. So "this survey ran no collection" is
+supported directly rather than by proxy. The system timer's own three runs
+remain recorded above and in the Nix section — they are the host's, not this
+survey's, and the amendment does not dispute them.
 
 Primary measurements began on 2026-10-28. Five historical full anchored passes ran
 through 2026-10-29 18:03–18:06 UTC. On 2026-10-30, several passes failed the
@@ -582,21 +592,19 @@ flagged for cleaning.
   journal event, the service start remained at 00:00 GMT, and its preserved
   609-root baseline matched both of its endpoints. At 09:11 UTC the next timer was
   scheduled for 2026-10-31 00:00 GMT; no timer change was made.
-- **No-collection check: the original contract clause is NOT met; a substitute
-  measurement is offered and awaits operator acceptance.** Stated without
-  hedging: the clause "`nix-store --gc --print-roots | wc -l` is unchanged from
-  the pre-sweep reading" is unmet. The 610 pre-sweep reading has no preserved
-  artifact, the authoritative pass reads `roots_before=638` / `roots_after=637`
-  (`roots_unchanged=NO`), and a scheduled `nix-gc.service` run deleted 368 store
-  paths inside the sweep window — so neither the equality nor the literal
-  "no garbage collection ran" condition holds, and this report does not claim
-  otherwise. The v6.2 pass instead measures collection directly: preserved
+- **No-collection check: original clause superseded with the operator's recorded
+  consent; replaced by a direct measurement.** The clause was NOT satisfied: the
+  610 pre-sweep reading has no preserved artifact, the authoritative pass reads
+  `roots_before=638` / `roots_after=637` (`roots_unchanged=NO`), and a scheduled
+  `nix-gc.service` run deleted 368 store paths inside the sweep window. The
+  operator amended it on 2026-10-31 to the direct measurement below. The v6.2
+  pass measures collection directly: preserved
   638-root baseline byte-identical to `roots_before` (SHA-256 `c43ad840…`),
   `/nix/store` 37,539→37,539, `--print-dead` 0→0, an unchanged `nix-gc.service`
   start timestamp, and 0 GC records in the bounded journal window, with +0/−1
-  root churn as a diagnostic. That is a *different* criterion, not a
-  satisfaction of the clause above, and it is recorded here as a proposed
-  amendment for the operator to accept or reject. See “Qualified v6 passes”
+  root churn as a diagnostic. That is a *different* criterion than the original
+  clause, and it is the one the operator approved on 2026-10-31; it is not
+  presented as the original clause being satisfied. See “Qualified v6 passes”
   under the Nix section for the artifacts. The 08:53 completed anchored attempt saved
   an attempt-specific 639-root baseline, then measured 637 roots before and
   640 after. Its full baseline, before, and after lists are preserved in
