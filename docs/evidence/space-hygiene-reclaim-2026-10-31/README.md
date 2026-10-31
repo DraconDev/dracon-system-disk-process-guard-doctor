@@ -170,6 +170,8 @@ read from its own surviving `manifest.json`. The eleven exact rows sum to
 | Quiet-hours dip (`final-state-1405.txt`, 14:04:53Z) | 109,017,239,552 | 102G free, 89% used | 5,957,715,195 | see below |
 | **Final (`verification-build-cache.txt`, 14:10:33Z)** | **152,042,856,448** | **142G free, 84% used** | 5,957,715,195 | **contract measurement** |
 
+| **Delta (final vs before)** | **+65,412,947,968 (+60.9 GiB)** | 91% → 84% | **−35.7 GB** | recorded in `verification-build-cache.txt` |
+| **Post-revision (16:11:22Z)** | **147,038,625,792** | 136G free, 85% used | *see note* | **current shipped revision** (after the 25s constant); delta vs before +60,408,717,312 (+56.3 GiB) |
 The **Final** row above (14:10:33Z, 152.0 GB) predates the 15s -> 25s constant
 change. The **Post-revision** row is the current reading on the shipped
 revision: 147,038,625,792 bytes, which is +60,408,717,312 (+56.3 GiB) over the
@@ -177,8 +179,6 @@ revision: 147,038,625,792 bytes, which is +60,408,717,312 (+56.3 GiB) over the
 space on this host moves continuously, so both readings are quoted rather
 than presenting the larger, older one as current.
 
-| **Delta (final vs before)** | **+65,412,947,968 (+60.9 GiB)** | 91% → 84% | **−35.7 GB** | recorded in `verification-build-cache.txt` |
-| **Post-revision (16:11:22Z)** | **147,038,625,792** | 136G free, 85% used | *see note* | **current shipped revision** (after the 25s constant); delta vs before +60,408,717,312 (+56.3 GiB) |
 
 Two movements in this table need explaining, because a bare table would look
 inconsistent:
