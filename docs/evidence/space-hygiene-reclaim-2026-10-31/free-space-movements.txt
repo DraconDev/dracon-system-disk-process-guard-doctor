@@ -23,3 +23,11 @@ gates_now=2325241758                # live measurement at time of this file
 #                              reaper/hook - this is the fix working, and it is the
 #                              only part of the 17.8 GiB that is attributable.
 #   remainder                : ~15.5 GiB of concurrent host activity, unmeasured.
+#
+# delta of every reading in the README free-space table, vs pre-work baseline
+pre_work_baseline=86629908480
+delta_102113Z=58586161152   # 54.56 GiB  clears40GiB=yes
+delta_124020Z=52708134912   # 49.09 GiB  clears40GiB=yes
+delta_140453Z=22387331072   # 20.85 GiB  clears40GiB=NO
+delta_141033Z=65412947968   # 60.92 GiB  clears40GiB=yes
+delta_143522Z=56725884928   # 52.83 GiB  clears40GiB=yes
