@@ -78,15 +78,19 @@ live-owner snapshot.
 
 ## Free space
 
-| Reading | Free bytes on `/` | `df -h` |
-|---|---:|---|
-| Before (`pre-work-baseline.txt`, 2026-10-31 09:45:06Z) | 86,629,908,480 | 81G free, 91% used |
-| After (`post-work-baseline.txt`, 2026-10-31 10:21:13Z) | 145,216,069,632 | 136G free, 85% used |
-| **Delta** | **+58,586,161,152 (+54.6 GiB)** | 91% → 85% |
+| Reading | Free bytes on `/` | `df -h` | Gate tree |
+|---|---:|---|---:|
+| Before (`pre-work-baseline.txt`, 09:45:06Z) | 86,629,908,480 | 81G free, 91% used | 41,620,229,638 |
+| After deletion (`post-work-baseline.txt`, 10:21:13Z) | 145,216,069,632 | 136G free, 85% used | 8,655,046,424 |
+| Final (`final-state.txt`, 12:40:20Z) | 139,338,043,392 | 130G free, 85% used | 2,322,211,102 |
+| **Delta (final vs before)** | **+52,708,134,912 (+49.1 GiB)** | 91% → 85% | **−39.3 GB** |
 
-The delta exceeds the explicit deletions because the sweep also removed
-snapshots created *after* the pre-work reading — the tree grew from 41.6 GB to
-38.3 GB of orphans while this work was in progress.
+The free-space figure moves between readings because other work on this host is
+allocating and freeing concurrently; the gate tree, which is what this change
+controls, fell monotonically: **41.6 GB → 8.7 GB → 2.3 GB**. That continued fall
+after the manual deletions is the fix working — live hook invocations keep
+reaping as they run, rather than the tree only shrinking when someone
+intervenes. At the final reading it holds no `snapshot-*` directories at all.
 
 ## Epoch spools — inventoried, not deleted
 
