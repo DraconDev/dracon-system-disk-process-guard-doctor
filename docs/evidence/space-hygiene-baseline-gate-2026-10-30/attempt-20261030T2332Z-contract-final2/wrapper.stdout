@@ -1,0 +1,24 @@
+=== attempt 1 @ 20261030T233216Z ===
+observation_window_start=2026-10-30T23:32:16Z gc_last_start_before=Fri 2026-10-30 00:00:00 GMT gc_start_before_status=0
+warmup_reachable=4606
+pre_sweep_baseline_at=2026-10-30T23:32:33Z pre_sweep_baseline_count=617 baseline_file=/home/dracon/.cache/space-hygiene/attempts/contract-final2-Y1030T233216Z/baseline-20261030T233216Z.txt
+attempt 1: starting anchored pass from preserved baseline
+attempt 1: pass exit=0
+pre_sweep_baseline_at=2026-10-30T23:32:33Z
+pre_sweep_baseline_count=617
+pre_sweep_baseline_file=/home/dracon/.cache/space-hygiene/attempts/contract-final2-Y1030T233216Z/baseline-20261030T233216Z.txt
+roots_before=617
+store_paths_before=37539
+roots_after=644
+store_paths_after=37539
+roots_unchanged=NO
+root_set_identical=NO
+root_series_samples=0
+root_series_min=NOT_SAMPLED
+root_series_max=NOT_SAMPLED
+root_series_constant=NOT_SAMPLED
+root_series_transitions=NOT_SAMPLED
+pass_seconds=410
+preserved_baseline_count=617 run_baseline_count=617 roots_before=617 roots_after=644 baseline_matches_before=YES gc_unchanged=YES
+attempt 1: baseline or post-pass count differed; retrying with a fresh preserved baseline
+all 1 attempts exhausted without a qualifying bounded pass
