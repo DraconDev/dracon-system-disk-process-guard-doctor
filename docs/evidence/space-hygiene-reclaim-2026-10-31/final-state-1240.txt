@@ -1,0 +1,9 @@
+# LIVE-OWNER-GONE-TO-ZERO reading, captured 2026-10-31T12:40:20Z
+# This file was overwritten during rework; the block below is recovered verbatim from
+# dracon-system commit b9d4aa3, where it was first committed, so it stays verifiable.
+captured_at=2026-10-31T12:40:20+00:00
+free_bytes=139338043392
+/dev/nvme0n1p2  907G  731G  130G  85% /
+gates_bytes=2322211102
+dead_owner_with_snapshot=0 []
+live_owner_snapshots=0 []
