@@ -10,3 +10,4 @@ free_before=128144011264
 free_after=152042856448
 freed=23898845184
 incremental_now_exists=no
+delta_vs_pre_work_bytes=65412947968
