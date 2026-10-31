@@ -10,7 +10,11 @@ throughout.
 
 Read-only measurements only, except for the deletions listed in
 [Reclaimed](#reclaimed). No daemon stop or pause. The epoch-spool reaper was not
-touched.
+touched during this gate-log sweep. Subsequent epoch-spool work is a separate,
+still-unqualified follow-up: its earlier presence-only/rescue sampling is not a
+durable recovery guarantee. See the safety hold in
+`dracon-sync/docs/evidence/epoch-spool-reclaim-2026-10-31/SAFETY-HOLD.md` in the
+sibling checkout. This report's gate-log results do not qualify that reaper.
 
 ## Root cause
 
