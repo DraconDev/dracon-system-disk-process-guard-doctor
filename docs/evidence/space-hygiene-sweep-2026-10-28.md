@@ -847,16 +847,25 @@ sudo du -sx --bytes \
 The latest bounded `cargo test --workspace --locked` run exited 0 with 44
 suite-result lines: **2,923 passed, 0 failed, 25 ignored**. Its full output is
 preserved at
-`docs/evidence/space-hygiene-baseline-gate-2026-10-30/workspace-test-20261030T1944Z.log`.
+`docs/evidence/space-hygiene-baseline-gate-2026-10-30/workspace-test-20261031T0015Z.log`.
+
+An immediately preceding run exited 101 on one test,
+`git::tests::test_push_with_retries_ssh_succeeds_no_fallback`, which failed with
+`git test-push timeout ... after 5s idle (20s hard cap)`. The host load average
+was 52.6 on 16 cores at the time. That test passed in isolation 30 seconds later
+(1 passed, 0 failed) and the full suite then passed unchanged, so this is
+recorded as a load-induced flake, not a regression; the gate itself was not
+weakened or narrowed. Both logs are retained
+(`workspace-test-20261030T2355Z.log` for the failing run).
 The command used the Nix OpenSSL headers and libraries shown below. No Rust
 source changed in this report-only work. The 2,917-pass transcript below is an earlier historical run, not the latest
 result. The latest command was:
 
 ```text
 $ cd /home/dracon/Dev/dracon-utilities
-$ OPENSSL_INCLUDE_DIR=/nix/store/cqkz127l4l98xgp7p6y1j2cqvyx0w3jl-openssl-3.6.2-dev/include \
-  OPENSSL_LIB_DIR=/nix/store/by19gg2pqp2b1gqphdf6bwk2g3hgak79-openssl-3.6.2/lib \
-  timeout 2400 cargo test --workspace --locked > /home/dracon/.cache/space-hygiene/workspace-test-20261030T1944Z.log 2>&1
+$ OPENSSL_INCLUDE_DIR=<nix openssl dev>/include \
+  OPENSSL_LIB_DIR=<nix openssl lib>/lib \
+  timeout 2400 cargo test --workspace --locked > /home/dracon/.cache/space-hygiene/workspace-test-20261031T0015Z.log 2>&1
 ```
 
 Result: exit 0; 44 suites; 2,923 passed, 0 failed, 25 ignored.
