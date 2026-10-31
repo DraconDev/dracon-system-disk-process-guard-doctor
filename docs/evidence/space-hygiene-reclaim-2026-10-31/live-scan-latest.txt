@@ -1,0 +1,4 @@
+# live read-only scan, 2026-10-31T15:30:59+00:00
+snapshot_dirs=0
+dead_owner_with_snapshot=0 []
+live_owner_snapshots=0 []
