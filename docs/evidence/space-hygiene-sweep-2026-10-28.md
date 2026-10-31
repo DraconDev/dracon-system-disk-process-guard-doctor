@@ -718,7 +718,7 @@ root changes to the sampler or any specific process. The fresh pass is
 post-GC and does not erase the historical scheduled collection described
 above.
 
-### Qualified v6 pass — direct no-collection evidence (2026-10-30 23:40:55 UTC)
+### Qualified v6 passes — direct no-collection evidence
 
 The GC-root count is **not** a collection signal on this host, and the earlier
 brackets that required it were measuring the wrong thing. `nix-store --gc
@@ -732,8 +732,10 @@ service run and an unchanged store:
 |---|---:|---:|---:|---|---|---|---|
 | contract-final #1 | 609 | 609 | 650 | 37,539→37,539 | not captured | no | rejected by root-count proxy |
 | contract-final #2 | 650 | 650 | 617 | 37,539→37,539 | not captured | no | rejected by root-count proxy |
-| contract-final2 | 617 | 617 | 644 | 37,539→37,539 | not captured | no | rejected by root-count proxy |
-| **v6 qualified** | **618** | **618** | 638 | **37,539→37,539** | **0→0** | no | **accepted** |
+| contract-final2 | 617 | 617 | 644 | 37,539→37,539 | not captured | no | rejected by root-count proxy (`attempt-20261030T2332Z-contract-final2/`) |
+| v6 (2026-10-30 23:40) | 618 | 618 | 638 | 37,539→37,539 | 0→0 | no | accepted |
+| journal-count-bug run (00:48) | 634 | 634 | 639 | 37,539→37,539 | 0→0 | no | accepted; superseded |
+| **v6.2 (00:51, authoritative)** | **638** | **638** | 637 | **37,539→37,539** | **0→0** | no | **accepted** |
 
 The added and removed roots in those diffs were the same video-encode toolchain
 (`ffmpeg`, `libvpx`, `svt-av1`, `libass`, `libopenmpt`, `zvbi`, `openjpeg`,
@@ -745,22 +747,30 @@ pin each registration to a specific process.
 
 The v6 pass therefore measures the invariant directly:
 
-- Preserved 618-root pre-sweep baseline matched `roots_before` byte-for-byte.
+The authoritative run is the v6.2 pass (2026-10-31 00:51:55–00:55:46 UTC,
+`pass_seconds=231`):
+
+- Preserved 638-root pre-sweep baseline was byte-identical to `roots_before`
+  (SHA-256 `c43ad84071a7569bfc688327c87926099e735e7ff3b3c1aceaee627ee38cd28c`
+  for both files).
 - `/nix/store` entry count: **37,539 → 37,539** (a collection would remove paths).
 - `nix-store --gc --print-dead` (the deletion set; printing deletes nothing):
   **0 → 0**.
-- No `nix-gc.service` run: the bounded journal window returned `-- No entries --`
-  and the service start timestamp stayed at 2026-10-30 00:00 GMT.
-- `nix-gc.service` was not invoked by this survey in any of its bounded windows,
-  and this survey never ran a collection command. The only GC runs it *recorded*
-  were the system timer's (three, listed below); other timers or manual runs
-  outside the checked journal windows are outside what this evidence covers.
+- `nix-gc.service` start timestamp unchanged across the pass
+  (`Sat 2026-10-31 00:00:00 GMT` before and after) and **0** GC records in the
+  bounded journal window (`-- No entries --`). The wrapper now writes that
+  identity evidence to `attempts.log` as a `gc_identity` line, so the no-GC
+  verdict is reviewable from the log rather than only in-memory.
+- Root churn +0/−1, reported as a diagnostic.
 
-Full artifacts, including both preserved root lists, both dead-set files and the
-root-churn diffs, are in
-`docs/evidence/space-hygiene-baseline-gate-2026-10-30/attempt-20261030T2340Z-v6-qualified/`.
-The non-qualifying attempts are retained under
-`attempt-20261030T2315Z-contract-final/`.
+Artifacts: `attempt-20261031T0051Z-v6-qualified/` (authoritative),
+`attempt-20261030T2340Z-v6-qualified/` (earlier qualifying pass),
+`attempt-20261031T0048Z-v6-journal-count-bug/` (a pass whose `gc_identity` line
+counted `journalctl`'s `-- No entries --` placeholder as one record; the counter
+was corrected to count real GC records and the pass re-run — it was accepted on
+the store/dead-set/identity evidence, and the corrected run supersedes it), and
+`attempt-20261030T2315Z-contract-final/` plus
+`attempt-20261030T2332Z-contract-final2/` for the rejected proxy attempts.
 
 A post-pass confirmation was captured read-only at 2026-10-31 00:48:23 UTC: the
 scheduled timer had run again at 00:00:00 GMT (after the v6 passes ended) and
