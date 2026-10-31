@@ -1,6 +1,6 @@
-captured_at=2026-10-31T12:40:20+00:00
-free_bytes=139338043392
-/dev/nvme0n1p2  907G  731G  130G  85% /
-gates_bytes=2322211102
+captured_at=2026-10-31T14:04:53+00:00
+free_bytes=109017239552
+/dev/nvme0n1p2  907G  759G  102G  89% /
+gates_bytes=5957715195
 dead_owner_with_snapshot=0 []
-live_owner_snapshots=0 []
+live_owner_snapshots=1 ['dracon-pre-push.OTQjdk']
