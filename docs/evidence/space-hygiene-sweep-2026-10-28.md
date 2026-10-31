@@ -48,10 +48,15 @@ An earlier v6 pass (2026-10-30 23:40:55 UTC, baseline 618) also qualified and is
 retained at `attempt-20261030T2340Z-v6-qualified/`; the tables below use the
 newer run.
 
-The area, agent-tool and off-limits tables use this v6.2 pass. Its rows for
-`~/.local/share`, `~/.local/state`, and `/var/log` are pass-specific unprivileged
-readings; the operator-pasted privileged full-area totals are recorded
-separately below and are the better area-level size where they exist. Live state
+The area, agent-tool and off-limits tables use this v6.2 pass. Every byte value
+in them comes from one of four sources, each labelled where it appears: a v6.2
+`du --bytes` reading present in `run-20261031T005155Z.txt`; an operator-pasted
+privileged `sudo du` reading (recorded in the supplemental table below); an
+explicitly attributed read-only `podman unshare du` reading (container store);
+or a labelled historical estimate (`8,366,644,248` bytes) or `journalctl
+--disk-usage` figure (475.7M). Rows for `~/.local/share`, `~/.local/state`, and
+`/var/log` give the operator's privileged full-area total as the headline size,
+with the pass-specific unprivileged reading noted beside it. Live state
 changed during every window, so sizes are exact
 readings for their stated pass, not an atomic filesystem snapshot. Historical
 full-pass tables are retained separately.
@@ -336,7 +341,8 @@ bytes. These live scopes overlap; no cleanup was attempted.
 
 ### Historical full anchored pass (not baseline-qualified; 2026-10-29 18:03–18:06 UTC)
 
-This pass is the authoritative one. It was started only after the root list had
+This pass was the authoritative run until the v6.2 pass superseded it; it is
+retained as historical context. It was started only after the root list had
 been observed byte-identical across five consecutive 30-second readings
 (samples 15–19 at 18:01:01–18:03:07 UTC, all 634 roots; the readings are
 31–32 seconds apart because each sample costs the command's own runtime on
@@ -786,14 +792,16 @@ the store/dead-set/identity evidence, and the corrected run supersedes it), and
 `attempt-20261030T2315Z-contract-final/` plus
 `attempt-20261030T2332Z-contract-final2/` for the rejected proxy attempts.
 
-A post-pass confirmation was captured read-only at 2026-10-31 00:48:23 UTC: the
-scheduled timer had run again at 00:00:00 GMT (after the v6 passes ended) and
-reported **0 store paths deleted, 0.00 MiB freed**; the store entry count was
-still **37,539** and `--print-dead` was 0. So the store state the passes measured
-was still intact, and the intervening timer found nothing to collect. The full
+A read-only confirmation was captured at 2026-10-31 00:48:23 UTC, which is after
+the 23:40 v6 pass and before the 00:52 v6.2 bracket: the scheduled timer had run
+at 00:00:00 GMT and reported **0 store paths deleted, 0.00 MiB freed**; the store
+entry count was still **37,539** and `--print-dead` was 0. The v6.2 bracket then
+independently re-measured the same store (37,539→37,539, dead set 0→0), so the
+continuity is confirmed on both sides of that timer run rather than by this
+capture alone. The full
 capture, including the raw `journalctl` excerpt below and the live counters, is
 preserved at
-`docs/evidence/space-hygiene-baseline-gate-2026-10-30/post-pass-confirmation-20261031T0034Z/post-pass-check.txt`.
+`docs/evidence/space-hygiene-baseline-gate-2026-10-30/post-pass-confirmation-20261031T0048Z/post-pass-check.txt`.
 
 `grep -E 'Starting Nix Garbage|store paths deleted|Finished Nix Garbage'` over
 `journalctl -u nix-gc.service` returned exactly these three scheduled runs:

@@ -1,0 +1,3 @@
+root_entries=638/638/637
+wc_l_lines=638/638/637
+note=baseline and before are byte-identical (cmp exit 0); after differs by one removed transient root
