@@ -9,6 +9,17 @@ met; no non-Nix candidate was intentionally cleaned by this survey. Earlier
 anchored-measurement helpers removed only generated `/tmp` scratch files, not
 surveyed candidates. Workspace tests used isolated temporary fixtures.
 
+**Pre-sweep baseline, stated exactly.** The originally reported 610-root
+pre-sweep reading has no preserved artifact and is not reproducible; it is kept
+in the pass history as a historical record only. The qualifying evidence is a
+preserved baseline per pass: the v6 pass saved 618 roots before measuring and
+matched that list to `roots_before` byte-for-byte. That comparison is
+*within-pass* by construction, and this report does not claim otherwise. What
+it does establish is that the run started from, and stayed on, a baseline other
+passes can be compared against — which is the reproducibility the 610 reading
+never had. The host-wide "no GC ever ran during the sweep" claim is false and
+is not made: the system timer ran, as recorded above and in the Nix section.
+
 Primary measurements began on 2026-10-28. Five historical full anchored passes ran
 through 2026-10-29 18:03–18:06 UTC. On 2026-10-30, several passes failed the
 literal GC-root-count bracket. The cause is now established and is a defect in
