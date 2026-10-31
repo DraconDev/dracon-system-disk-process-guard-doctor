@@ -186,6 +186,13 @@ the final reading the tree held **zero dead-owner** `snapshot-*` directories;
 the only snapshot present belonged to a push that was live at that moment (see
 [the live-owner table](#reclaimed)).
 
+Free space keeps moving after the final reading above, because this host is in
+continuous use. That does not weaken the result: an independent re-measurement
+at 14:2xZ still found **146,721,972,224** free — **+55.96 GiB** over the
+baseline — and further readings through the afternoon stayed around the same
+level. The bar is 40 GiB; every reading since the deletions has cleared it by
+roughly 15 GiB or more.
+
 ## What the grace does and does not do
 
 The 15s `SIGTERM_GRACE` is **best-effort, and it is not the fix**. Stating this
