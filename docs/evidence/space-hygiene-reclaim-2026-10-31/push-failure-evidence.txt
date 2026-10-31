@@ -1,0 +1,8 @@
+# browser-extensions-shared push-failure evidence (read-only journal excerpts)
+
+## 'publication owned by another worker' — first and last in window
+Oct 28 00:45:25 nixos dracon-sync[1583026]: ⏳ /home/dracon/Dev/browser-extensions-shared committed; publication owned by another worker (this pass did not push)
+Oct 28 00:45:33 nixos dracon-sync[1583026]: ⏳ /home/dracon/Dev/browser-extensions-shared committed; publication owned by another worker (this pass did not push)
+...
+Oct 31 10:27:18 nixos dracon-sync[579784]: ⏳ /home/dracon/Dev/browser-extensions-shared committed; publication owned by another worker (this pass did not push)
+Oct 31 10:27:42 nixos dracon-sync[579784]: ⏳ /home/dracon/Dev/browser-extensions-shared committed; publication owned by another worker (this pass did not push)
