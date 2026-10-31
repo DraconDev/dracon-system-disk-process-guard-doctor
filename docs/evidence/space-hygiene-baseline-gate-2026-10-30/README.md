@@ -49,7 +49,7 @@ incorrectly wrote to the default live log directory. Those records are not
 host observations and are excluded from all claims. The validated 19:40 pass
 uses a separate, unique log directory preserved in its own evidence folder.
 
-## Qualified v6 pass (2026-10-30 23:40:55 UTC)
+## Qualified v6.2 pass (2026-10-31 00:51:55 UTC) — authoritative
 
 The acceptance bracket was rebuilt because GC-root count equality is not a
 collection signal on a live host: `--print-roots` includes Nix daemon transient
@@ -59,16 +59,26 @@ and no GC run. The v6 rule instead requires: preserved baseline match,
 unchanged `/nix/store` entry count, unchanged `--print-dead` set, and no
 `nix-gc.service` run in the bounded window. It qualified on the first attempt:
 
-- Preserved baseline 618 roots; `roots_before=618`; `/nix/store` 37,539→37,539;
-  `--print-dead` 0→0; journal window `-- No entries --`; service start
-  unchanged at 2026-10-30 00:00 GMT.
-- Root churn +26/−6 from transient video-toolchain roots, reported as a
-  diagnostic rather than a failure.
+- Preserved baseline 638 roots, byte-identical to `roots_before`
+  (SHA-256 `c43ad840…`); `/nix/store` 37,539→37,539; `--print-dead` 0→0;
+  `nix-gc.service` start unchanged at `Sat 2026-10-31 00:00:00 GMT` with
+  0 GC records in the bounded journal window.
+- Root churn +0/−1, reported as a diagnostic rather than a failure.
 
-Artifacts: `attempt-20261030T2340Z-v6-qualified/`. Non-qualifying attempts:
-`attempt-20261030T2315Z-contract-final/`. Fixture-verified behaviour of the new
-rule: `gate-fixtures/v6-acceptance/` (accepts root churn, rejects store
-growth/shrink, dead-set growth, and a GC service run).
+Artifacts:
+- `attempt-20261031T0051Z-v6-qualified/` — authoritative run.
+- `attempt-20261030T2340Z-v6-qualified/` — earlier qualifying pass (baseline 618).
+- `attempt-20261031T0048Z-v6-journal-count-bug/` — a pass whose `gc_identity`
+  line counted journalctl's empty-window placeholder as a GC record; the counter
+  was corrected and the pass re-run.
+- `attempt-20261030T2315Z-contract-final/` and
+  `attempt-20261030T2332Z-contract-final2/` — the rejected root-count-proxy attempts.
+- `post-pass-confirmation-20261031T0034Z/` — the raw `nix-gc.service` journal
+  excerpt and live counters captured after the passes.
+
+Fixture-verified behaviour of the rule: `gate-fixtures/v6-acceptance/` (accepts
+root churn, an empty journal window, and repeated identical inputs; rejects
+store growth/shrink, dead-set growth, and a real GC record).
 
 ## Workspace verification during the report update
 
