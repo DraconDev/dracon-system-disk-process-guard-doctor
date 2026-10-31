@@ -1,9 +1,10 @@
 # Space-hygiene sweep — beyond the disk audit (2026-10-28)
 
 Report-only for surveyed data. This survey invoked no cleanup or garbage-
-collection command. However, the scheduled system `nix-gc.service` ran twice
-while the work was active: the 2026-10-29 run deleted 0 paths, and the
-2026-10-30 run deleted 368 store paths and freed 2510.01 MiB. This external
+collection command. However, the scheduled system `nix-gc.service` ran three
+times while the work was active: the 2026-10-29 run deleted 0 paths, the
+2026-10-30 run deleted 368 store paths and freed 2510.01 MiB, and the
+2026-10-31 run (after the qualifying pass) deleted 0 paths. This external
 collection means the literal host-wide no-GC/no-deletion condition was not
 met; no non-Nix candidate was intentionally cleaned by this survey. Earlier
 anchored-measurement helpers removed only generated `/tmp` scratch files, not
@@ -751,6 +752,21 @@ root-churn diffs, are in
 `docs/evidence/space-hygiene-baseline-gate-2026-10-30/attempt-20261030T2340Z-v6-qualified/`.
 The non-qualifying attempts are retained under
 `attempt-20261030T2315Z-contract-final/`.
+
+A post-pass confirmation, read-only, at 2026-10-31 00:34:48 UTC: the scheduled
+timer ran again at 00:00:00 GMT (after the v6 pass ended) and reported **0 store
+paths deleted, 0.00 MiB freed**; the store entry count was still **37,539**,
+`--print-roots` 638 and `--print-dead` 0. So the store state the v6 pass measured
+was still intact roughly 45 minutes later, and the intervening timer found
+nothing to collect.
+
+Full journal record of `nix-gc.service` for the three scheduled runs:
+
+```text
+Oct 29 00:04:41  0 store paths deleted, 0.00 MiB freed
+Oct 30 00:01:45  368 store paths deleted, 2510.01 MiB freed
+Oct 31 00:02:34  0 store paths deleted, 0.00 MiB freed
+```
 
 One nuance the evidence supports and this report does not overstate: the
 `--print-dead` set is empty because the boot generation holds every store path
