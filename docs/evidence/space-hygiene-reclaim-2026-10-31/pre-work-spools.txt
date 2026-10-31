@@ -1,0 +1,14 @@
+# epoch-spool inventory
+# NOTE ON PROVENANCE: the pre-work reading below was taken during this goal
+# (2026-10-31 ~09:45Z) but was NOT written to a file at the time, so it has no
+# independent artefact. It is recorded here as an in-run measurement, marked
+# accordingly, and is NOT used for any contract item. The post-work reading is
+# backed by post-work-baseline.txt.
+pre_work_captured_at=2026-10-31T09:45Z (unpersisted; in-run measurement only)
+pre_work_spool_dirs=698
+pre_work_spool_bytes=12895651392
+
+# fresh reading, persisted:
+captured_at=2026-10-31T11:23:42+00:00
+spool_dirs=784
+spool_bytes=15236143720

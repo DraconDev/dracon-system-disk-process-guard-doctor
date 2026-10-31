@@ -57,7 +57,7 @@ reported immediately before removal.
 
 | Item | Bytes | Reversibility proof |
 |---|---:|---|
-| 11 orphaned gate-attempt snapshots (owner dead) | 38,279,344,364 | Every snapshot's revision SHA verified with `git cat-file -e <sha>^{commit}` in this repo *before* deletion — all 11 present in history. The trees are rebuildable from the recorded revision. |
+| 11 orphaned gate-attempt snapshots (owner dead) | 38,279,344,364 | Every snapshot's revision SHA verified with `git cat-file -e <sha>^{commit}` in this repo *before* deletion — all 11 present in history. The trees are rebuildable from the recorded revision. **Provenance:** 10 were removed by live hook invocations at 10:03:30–10:07:25, i.e. by the new sweep running inside real pushes, not by a manual `rm`; the 11th (`rn6DEt`) at 10:15:27 was an explicit sweep invocation. Proof in `sweep-timing-proof.txt`: each directory's manifest `started` is days old while its mtime is the removal second. |
 | `qualification/canonical-writer-fence-2026-10-27/target` | 12,186,607,915 | Cargo target dir (`CACHEDIR.TAG` present); rebuilt on demand by `cargo build` |
 | `protection-repair-2026-10-20/verification-target` | 5,942,225,851 | Cargo target dir (`CACHEDIR.TAG` present); rebuilt on demand |
 | `~/.local/share/pnpm/store/v10` | 1,884,541,110 | Installed pnpm is 11.5.1 and `pnpm store path` resolves to `store/v11`; no file under `~/.config` or any `package.json` references `store/v10` |
@@ -66,13 +66,15 @@ Gate logs were **not** deleted — 444 attempts held only logs and were left
 untouched. The snapshots were removed by the new sweep itself, not by a manual
 `rm`, which is the point: the mechanism that leaked them now cleans them.
 
-Live-owner attempts were never touched. During the run
-`dracon-pre-push.gySgA8` had a live owner and was preserved across every sweep.
-One attempt (`dracon-pre-push.hKHTkv`) was killed mid-run; it stayed in place
-until it passed the 900s floor and the next sweep removed it, which is the floor
-working as designed rather than a miss. The recheck after that reports
-**0** dead-owner snapshots and 1 live-owner snapshot. Sweep logs are in
-`reap-live-run.txt` and `reap-live-run-2.txt`.
+Live-owner attempts were never touched. Each sweep preserved whichever attempt
+was live at that moment — the preserved names across the recorded sweeps are
+`dracon-pre-push.hKHTkv` (`reap-live-run.txt`), then `dracon-pre-push.eeX4YC`
+(`reap-live-run-2.txt`); the pre-work inventory separately records
+`live_preserved=0` because at that moment no attempt was mid-flight. One attempt
+(`hKHTkv`) was killed mid-run and stayed in place until it passed the 900s
+floor, at which point the next sweep removed it — the floor working as designed,
+not a miss. The final recheck reports **0** dead-owner snapshots and 1
+live-owner snapshot.
 
 ## Free space
 
@@ -92,7 +94,7 @@ snapshots created *after* the pre-work reading — the tree grew from 41.6 GB to
 
 | Reading | Count | Bytes |
 |---|---:|---:|
-| Pre-work (2026-10-31 09:45Z window) | 698 | 12,895,651,392 |
+| Pre-work (2026-10-31 09:45Z window; `pre-work-spools.txt`) | 698 | 12,895,651,392 |
 | Post-work (2026-10-31 10:21Z) | 771 | 15,155,605,713 |
 
 **They are growing and this goal deliberately did not stop that.**
@@ -118,7 +120,8 @@ commands this goal ran.
   `2026-10-27T23:20:44Z` and `2026-10-28T10:13:42Z`.
 - `ordinary staging absolute deadline expired; candidate retained`
   (e.g. 2026-10-30 14:30:38) — the exact event that leaks a snapshot.
-- Of 140 failed gate runs, the recorded errors are dominated by `dependency
+- Of the **127** failed attempts (of 458 total: 314 passed, 127 failed, 9
+  `running`, 8 cancelled), the recorded errors are dominated by `dependency
   workspace packages/extension-forms failed to build (exit 1)` and `snapshot
   dependency installation exited 1`, i.e. the build, not the network.
 
