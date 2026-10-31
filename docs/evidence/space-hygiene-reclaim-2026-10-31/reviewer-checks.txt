@@ -1,0 +1,12 @@
+# reviewer-requested checks (run after review)
+epoch_spool_last_commit=2026-10-26 22:48:19 +0000
+epoch_spool_uncommitted=0
+ops_rs_commits:
+  515ce68b 1 file(s) in src/git/ops.rs DELTA:+8/-9 | EXT:rs
+  ef629389 1 file(s) in src/git/ops.rs DELTA:+81/-0 | EXT:rs
+  53037836 1 file(s) in src/git/ops.rs DELTA:+14/-3 | EXT:rs
+ops_uncommitted=0
+gate_hook_commits:
+  ff8d841c9a 1 file(s) in scripts/git-hooks/attempt-reaper.mjs DELTA:+1/-1 | EXT:mjs
+  f30cd64d73 1 file(s) in scripts/git-hooks/attempt-reaper.mjs DELTA:+20/-4 | EXT:mjs
+gate_hooks_uncommitted=0
