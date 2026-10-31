@@ -4,7 +4,7 @@ Report-only for surveyed data. This survey invoked no cleanup or garbage-
 collection command. However, the scheduled system `nix-gc.service` ran three
 times while the work was active: the 2026-10-29 run deleted 0 paths, the
 2026-10-30 run deleted 368 store paths and freed 2510.01 MiB, and the
-2026-10-31 run (after the qualifying pass) deleted 0 paths. This external
+2026-10-31 run (at 00:00, before the authoritative pass) deleted 0 paths. This external
 collection means the literal host-wide no-GC/no-deletion condition was not
 met; no non-Nix candidate was intentionally cleaned by this survey. Earlier
 anchored-measurement helpers removed only generated `/tmp` scratch files, not
