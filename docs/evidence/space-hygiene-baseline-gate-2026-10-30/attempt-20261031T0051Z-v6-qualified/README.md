@@ -37,6 +37,8 @@ pass, was the defect.
 | `meas-*.dead-before` / `.dead-after` | `--print-dead` sets, both empty |
 | `meas-*.roots-added` / `.roots-removed` | Root-churn diff (diagnostic) |
 | `run-*.txt` | Full pass output: every area/candidate byte reading and gate field |
+| `root-list-sha256.txt` | SHA-256 of the three root lists (baseline and before are identical) |
+| `root-list-counts.txt` | Root-entry counts 638/638/637 with the `wc -l` values |
 | `attempts.log` | Wrapper decision, including the `gc_identity` line |
 | `gc-window-*.txt` | `-- No entries --` |
 | `wrapper.stdout` | Wrapper console output |
@@ -62,4 +64,4 @@ because none substitutes for the others.
 No cleanup, collection, or GC command was invoked by this survey. The three
 scheduled GC runs on this host were the system timer's, recorded in the main
 report with their own journal output preserved under
-`../post-pass-confirmation-20261031T0034Z/`.
+`../post-pass-confirmation-20261031T0048Z/`.

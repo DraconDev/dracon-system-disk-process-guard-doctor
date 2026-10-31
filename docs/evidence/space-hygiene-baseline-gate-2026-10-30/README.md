@@ -73,7 +73,7 @@ Artifacts:
   was corrected and the pass re-run.
 - `attempt-20261030T2315Z-contract-final/` and
   `attempt-20261030T2332Z-contract-final2/` — the rejected root-count-proxy attempts.
-- `post-pass-confirmation-20261031T0034Z/` — the raw `nix-gc.service` journal
+- `post-pass-confirmation-20261031T0048Z/` — the raw `nix-gc.service` journal
   excerpt and live counters captured after the passes.
 
 Fixture-verified behaviour of the rule: `gate-fixtures/v6-acceptance/` (accepts
