@@ -15,6 +15,11 @@ still-unqualified follow-up: its earlier presence-only/rescue sampling is not a
 durable recovery guarantee. See the safety hold in
 `dracon-sync/docs/evidence/epoch-spool-reclaim-2026-10-31/SAFETY-HOLD.md` in the
 sibling checkout. This report's gate-log results do not qualify that reaper.
+A later read-only planning query (`dracon-sync repair spools --json`, exit 0)
+is preserved in `epoch-planning-dry-run-20261031.json`: `applied=false`,
+`max_age_secs=3600`, 316 aged spools / 784,442,304 bytes across four rows.
+That installed-command, age-filtered observation is **not** the corrected
+reaper's full-fleet before-drain baseline or an eligibility proof.
 
 ## Root cause
 
