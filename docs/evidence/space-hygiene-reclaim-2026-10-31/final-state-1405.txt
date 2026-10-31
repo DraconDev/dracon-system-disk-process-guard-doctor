@@ -1,3 +1,4 @@
+# reading captured 2026-10-31T14:04:53Z
 captured_at=2026-10-31T14:04:53+00:00
 free_bytes=109017239552
 /dev/nvme0n1p2  907G  759G  102G  89% /

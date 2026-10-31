@@ -96,17 +96,28 @@ running. The readings, each with its own timestamp:
 | Pre-work inventory | ~09:45Z | 11 | 0 | `dead-owner-snapshot-inventory.txt` (`live_preserved=0`) |
 | Explicit sweep | 10:15:27Z | 1 reaped | 1 preserved (`hKHTkv`) | `reap-live-run.txt` |
 | Explicit sweep | 11:04:53Z | 0 reaped | 1 preserved (`eeX4YC`) | `reap-live-run-2.txt` |
-| Final recheck | 12:40:20Z | **0** | **0** | `final-state.txt` |
+| Final recheck | 12:40:20Z | **0** | **0** | `final-state-1240.txt` (recovered from commit `b9d4aa3`) |
+| Post-verification scan | 14:04:53Z | **0** | 1 (`OTQjdk`) | `final-state-1405.txt` |
 | Audit-hour scans | ~13:30Z, ~13:38Z | **0** | 1 (`r90mfQ`, then `4Hzjog`) | live read-only scan |
 
 The two zero and one readings are all correct at their own timestamps: at
-12:40:20 no push was mid-flight, so nothing was live; by 13:30 a fresh push had
-started and a new snapshot existed under a *different* name. **The invariant
+12:40:20 no push was mid-flight, so nothing was live; by 14:04:53 a fresh push
+had started and a new snapshot existed under a *different* name (`OTQjdk`).
+Every live snapshot observed across the day carried a new name — `hKHTkv`,
+`eeX4YC`, `r90mfQ`, `4Hzjog`, `OTQjdk`, `qIonKX` — which is itself the evidence
+that these are transient in-flight attempts rather than a fixed set being
+carried. **The invariant
 that matters is the dead-owner column: it is 0 in every reading after the sweep,
 while live-owner snapshots are preserved rather than reaped.** One attempt
 (`hKHTkv`) was killed mid-run and stayed in place until it passed the 900s
 floor, at which point the next sweep removed it — the floor working as designed,
 not a miss.
+
+The 12:40:20Z reading predates a rework that overwrote `final-state.txt`, so it
+is preserved as `final-state-1240.txt` with the block recovered verbatim from
+the commit that first recorded it; the later 14:04:53Z scan is
+`final-state-1405.txt`. Each row above cites the file that actually holds its
+numbers.
 
 ## Snapshot provenance and SHA verification
 
@@ -142,8 +153,8 @@ read from its own surviving `manifest.json`. The eleven exact rows sum to
 |---|---:|---|---:|---|
 | Before (`pre-work-baseline.txt`, 09:45:06Z) | 86,629,908,480 | 81G free, 91% used | 41,620,229,638 | contract baseline |
 | After deletion (`post-work-baseline.txt`, 10:21:13Z) | 145,216,069,632 | 136G free, 85% used | 8,655,046,424 | post-deletion peak |
-| Mid (`final-state.txt`, 12:40:20Z) | 139,338,043,392 | 130G free, 85% used | 2,322,211,102 | gate tree at its lowest |
-| Quiet-hours dip (`final-state.txt`, 14:04:53Z) | 109,017,239,552 | 102G free, 89% used | 5,957,715,195 | see below |
+| Mid (`final-state-1240.txt`, 12:40:20Z) | 139,338,043,392 | 130G free, 85% used | 2,322,211,102 | gate tree at its lowest |
+| Quiet-hours dip (`final-state-1405.txt`, 14:04:53Z) | 109,017,239,552 | 102G free, 89% used | 5,957,715,195 | see below |
 | **Final (`verification-build-cache.txt`, 14:10:33Z)** | **152,042,856,448** | **142G free, 84% used** | 5,957,715,195 | **contract measurement** |
 | **Delta (final vs before)** | **+65,412,947,968 (+60.9 GiB)** | 91% → 84% | **−35.7 GB** | |
 
@@ -243,7 +254,7 @@ commands this goal ran.
   from 2026-10-28 00:16 onward; stuck-push ledger entries decode to
   `2026-10-27T23:20:44Z` and `2026-10-28T10:13:42Z`.
 - `ordinary staging absolute deadline expired; candidate retained`
-  (e.g. 2026-10-30 14:30:38) — the exact event that leaks a snapshot.
+  (e.g. 2026-10-30 14:34:38) — the exact event that leaks a snapshot.
 - Of the **127** failed attempts (of 458 total: 314 passed, 127 failed, 9
   `running`, 8 cancelled), the recorded errors are dominated by `dependency
   workspace packages/extension-forms failed to build (exit 1)` and `snapshot
