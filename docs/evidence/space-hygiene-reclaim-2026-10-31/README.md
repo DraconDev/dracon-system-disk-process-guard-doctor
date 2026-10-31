@@ -246,7 +246,7 @@ commands this goal ran.
 
 - **The backlog reached ~3,478 unpushed commits** on 2026-10-28 — the daemon
   logged `🚨 ALERT: … has 3478 unpushed commits (threshold: 50). Something may
-  be wrong with push.` at 02:57:26, and had already gone as far as skipping
+  be wrong with push.` at 2026-10-28 02:57:26, and had already gone as far as skipping
   auto-commit (`⏸️ daemon backstop: 1593 unpushed commits pending push >300s`) at
   00:16:24. This is the real scale of the failure that fed the leak: each attempt
   had to validate a backlog orders of magnitude beyond one push.
