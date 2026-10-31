@@ -1,0 +1,25 @@
+# free-space movements around the final reading, 2026-10-31T14:59:29+00:00
+#
+# Only the movements marked OWNER=dracon-goal are caused by this work. Everything
+# else moved on its own: this host runs the sync daemon, other agents and builds
+# concurrently, and nothing here instrumented them. Stated so no reader assumes the
+# cache deletion explains the whole rise.
+#
+t_1404_free=109017239552            # OWNER=dracon-goal reading, final-state-1405.txt
+t_1404_gates=5957715195             # gate tree at that moment, final-state-1405.txt
+t_1405_free_journal=100900000000    # journal-reported available, ~14:05:57 (reported by audit)
+t_1010_free_before_rm=128144011264  # verification-build-cache.txt free_before
+t_1010_free_after_rm=152042856448   # verification-build-cache.txt free_after
+incremental_deleted=22928966855     # OWNER=dracon-goal
+gates_now=2325241758                # live measurement at time of this file
+#
+# RAW ARITHMETIC (what the numbers allow, no attribution invented):
+#   1404 -> 1410 free_before : +19,126,771,712 bytes (+17.8 GiB) NOT caused by any
+#                              command this goal ran; that window contains only
+#                              read-only measurements until the rm at 14:10:27.
+#   1410 free_before -> after: +23,898,845,184 bytes = the incremental cache rm.
+#   gate tree 1404 -> now    : -3,632,473,437 bytes; the live 3.7 GB snapshot
+#                              (OTQjdk) completed its push and was cleaned by the
+#                              reaper/hook - this is the fix working, and it is the
+#                              only part of the 17.8 GiB that is attributable.
+#   remainder                : ~15.5 GiB of concurrent host activity, unmeasured.
