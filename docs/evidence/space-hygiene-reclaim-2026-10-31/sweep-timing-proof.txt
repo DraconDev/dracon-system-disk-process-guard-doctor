@@ -1,0 +1,18 @@
+# proof that the live hook ran the sweep (not a manual rm)
+# reaper committed 2026-10-31T09:49:31Z (2f1f1ae3b4); daemon pushes continuously afterwards
+# For each of the 11 snapshot-bearing dirs: manifest 'started' is days old, but the
+# DIRECTORY mtime is 10:03-10:07 -- deleting a child bumps the parent dir mtime, so this
+# is the timestamp at which each snapshot was removed by a live hook invocation.
+dir                      manifest_started        dir_mtime_after_reap
+2oTFcv                   2026-10-30T14:36:12.422Z 2026-10-31 10:03:55
+U27Pu7                   2026-10-28T11:13:55.989Z 2026-10-31 10:06:02
+1wnl3J                   2026-10-31T09:17:55.051Z 2026-10-31 10:03:30
+Km2eJj                   2026-10-29T19:17:42.433Z 2026-10-31 10:05:31
+6DbN2k                   2026-10-28T11:52:56.229Z 2026-10-31 10:04:31
+rn6DEt                   2026-10-31T09:48:01.955Z 2026-10-31 10:15:27
+sBnolJ                   2026-10-29T23:17:42.044Z 2026-10-31 10:06:45
+vPUkJR                   2026-10-30T23:21:56.782Z 2026-10-31 10:07:03
+EB10kd                   2026-10-30T19:31:52.850Z 2026-10-31 10:04:59
+eyCgyI                   2026-10-30T00:08:40.704Z 2026-10-31 10:06:15
+y4jzyJ                   2026-10-31T09:32:58.874Z 2026-10-31 10:07:15
+yX25xv                   2026-10-29T16:03:02.036Z 2026-10-31 10:07:25
