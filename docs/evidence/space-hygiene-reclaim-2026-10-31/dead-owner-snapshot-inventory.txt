@@ -1,0 +1,14 @@
+reaping_candidates=11 live_preserved=0
+orphan_snapshot_bytes=38279344364
+
+{"dir": "dracon-pre-push.1wnl3J", "status": "cancelled", "pid": 1568241, "alive": false, "sha": "778f49770547a8886939dcadc0ec3b87b4021058", "in_hist": true, "snap_bytes": 3496489294, "started": "2026-10-31T09:17:55.051Z"}
+{"dir": "dracon-pre-push.2oTFcv", "status": "running", "pid": 673521, "alive": false, "sha": "f406d2e26ae9dc8a75a6883253e4e09f8e15dc6d", "in_hist": true, "snap_bytes": 3790369070, "started": "2026-10-30T14:36:12.422Z"}
+{"dir": "dracon-pre-push.6DbN2k", "status": "running", "pid": 1480708, "alive": false, "sha": "2a19c12dc9ade83d0e46e8cb6759580fcf20c5d4", "in_hist": true, "snap_bytes": 2890725999, "started": "2026-10-28T11:52:56.229Z"}
+{"dir": "dracon-pre-push.EB10kd", "status": "running", "pid": 134569, "alive": false, "sha": "f3b353f262491b5fd597d8f03136e48073a0dd21", "in_hist": true, "snap_bytes": 4342883126, "started": "2026-10-30T19:31:52.850Z"}
+{"dir": "dracon-pre-push.Km2eJj", "status": "running", "pid": 2331233, "alive": false, "sha": "cf17489b332ac2f2c36cd2c5af0137ef4e4dafd4", "in_hist": true, "snap_bytes": 3853787740, "started": "2026-10-29T19:17:42.433Z"}
+{"dir": "dracon-pre-push.U27Pu7", "status": "running", "pid": 3873411, "alive": false, "sha": "bf3ac20baeb87b6ea37eb6b7dd7ea5f25ce8c9ef", "in_hist": true, "snap_bytes": 2901649286, "started": "2026-10-28T11:13:55.989Z"}
+{"dir": "dracon-pre-push.eyCgyI", "status": "running", "pid": 2658321, "alive": false, "sha": "2ef4137b787230b388a20931d48f1da68bbc17f1", "in_hist": true, "snap_bytes": 2562504153, "started": "2026-10-30T00:08:40.704Z"}
+{"dir": "dracon-pre-push.sBnolJ", "status": "running", "pid": 868144, "alive": false, "sha": "4097256ad06c49500956a263231ee642484b8dcd", "in_hist": true, "snap_bytes": 3803490154, "started": "2026-10-29T23:17:42.044Z"}
+{"dir": "dracon-pre-push.vPUkJR", "status": "cancelled", "pid": 2493709, "alive": false, "sha": "7c7e6dfdde10b71b8c79698db39d6a3096e653be", "in_hist": true, "snap_bytes": 3601583814, "started": "2026-10-30T23:21:56.782Z"}
+{"dir": "dracon-pre-push.y4jzyJ", "status": "running", "pid": 2134612, "alive": false, "sha": "778f49770547a8886939dcadc0ec3b87b4021058", "in_hist": true, "snap_bytes": 3542177120, "started": "2026-10-31T09:32:58.874Z"}
+{"dir": "dracon-pre-push.yX25xv", "status": "cancelled", "pid": 455579, "alive": false, "sha": "10671395b5b37308222308f939f20dfed7a20abd", "in_hist": true, "snap_bytes": 3493684608, "started": "2026-10-29T16:03:02.036Z"}
