@@ -4,8 +4,8 @@ Report-only for surveyed data. This survey invoked no cleanup or garbage-
 collection command. However, the scheduled system `nix-gc.service` ran three
 times while the work was active: the 2026-10-29 run deleted 0 paths, the
 2026-10-30 run deleted 368 store paths and freed 2510.01 MiB, and the
-2026-10-31 run (at 00:00, before the authoritative pass) deleted 0 paths. This external
-collection means the literal host-wide no-GC/no-deletion condition was not
+2026-10-31 run (at 00:00, before the authoritative pass) deleted 0 paths. This
+external collection means the literal host-wide no-GC/no-deletion condition was not
 met; no non-Nix candidate was intentionally cleaned by this survey. Earlier
 anchored-measurement helpers removed only generated `/tmp` scratch files, not
 surveyed candidates. Workspace tests used isolated temporary fixtures.
@@ -14,8 +14,8 @@ surveyed candidates. Workspace tests used isolated temporary fixtures.
 pre-sweep reading has no preserved artifact and is not reproducible; it is kept
 in the pass history as a historical record only. The qualifying evidence is a
 preserved baseline per pass: the authoritative v6.2 pass saved 638 roots before
-measuring and matched that list to `roots_before` byte-for-byte. That comparison is
-*within-pass* by construction, and this report does not claim otherwise. What
+measuring and matched that list to `roots_before` byte-for-byte. That comparison
+is *within-pass* by construction, and this report does not claim otherwise. What
 it does establish is that the run started from, and stayed on, a baseline other
 passes can be compared against — which is the reproducibility the 610 reading
 never had. The host-wide "no GC ever ran during the sweep" claim is false and
@@ -48,7 +48,7 @@ An earlier v6 pass (2026-10-30 23:40:55 UTC, baseline 618) also qualified and is
 retained at `attempt-20261030T2340Z-v6-qualified/`; the tables below use the
 newer run.
 
-The area, agent-tool and off-limits tables use this v6 pass. Its rows for
+The area, agent-tool and off-limits tables use this v6.2 pass. Its rows for
 `~/.local/share`, `~/.local/state`, and `/var/log` are pass-specific unprivileged
 readings; the operator-pasted privileged full-area totals are recorded
 separately below and are the better area-level size where they exist. Live state
