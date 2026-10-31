@@ -2,3 +2,9 @@
 cargo_test_exit=101
 suites=31
 passed=1894 failed=1
+clippy_exit=0
+
+## contract 2: git::ops tests on the 60s constant
+test git::ops::sigterm_grace_tests::grace_is_long_enough_for_hook_cleanup ... ok
+test git::ops::sigterm_grace_tests::term_ignoring_child_is_still_killed_after_the_grace ... ok
+test git::ops::sigterm_grace_tests::trapping_child_gets_the_documented_grace_before_sigkill ... ok
