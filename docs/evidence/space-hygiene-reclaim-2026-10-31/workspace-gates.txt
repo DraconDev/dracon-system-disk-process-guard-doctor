@@ -1,6 +1,6 @@
-# workspace gates, 2026-10-31T11:04:25+00:00
+# workspace gates (final re-run after the GroupKillGuard edit), 2026-10-31T12:40:15+00:00
 workspace_test_exit=0
-workspace_suites=45
+workspace_suites=44
 workspace_passed=2926 workspace_failed=0
 clippy_exit=0
 
@@ -8,17 +8,4 @@ clippy_exit=0
 test git::ops::sigterm_grace_tests::grace_is_long_enough_for_hook_cleanup ... ok
 test git::ops::sigterm_grace_tests::term_ignoring_child_is_still_killed_after_the_grace ... ok
 test git::ops::sigterm_grace_tests::trapping_child_gets_the_documented_grace_before_sigkill ... ok
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 1538 filtered out; finished in 41.25s
-
-## contract 1: reap tests
-✔ reap removes the bulk of an attempt whose owner is dead (6.82849ms)
-✔ reap never touches an attempt whose owner is live (1.56184ms)
-✔ reap skips an attempt younger than the snapshot floor (2.918163ms)
-✔ reap drops the whole attempt only past the retention TTL (6.7221ms)
-✔ recycled pid is not a live owner when its cmdline is a different process (8.97282ms)
-✔ isLiveGateOwner is false for a dead pid and for pid 0 (0.296239ms)
-✔ real predicate does not over-reject a live runner argv (complement to the substring guard) (160.443ms)
-✔ reap ignores non-attempt entries and its own attempt (4.522844ms)
-ℹ tests 8
-ℹ pass 8
-ℹ fail 0
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 1538 filtered out; finished in 32.09s
