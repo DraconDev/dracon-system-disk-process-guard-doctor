@@ -1,0 +1,6 @@
+# post-revision free-space reading
+captured_at=2026-10-31T16:12:23Z
+revision=HEAD of dracon-sync with SIGTERM_GRACE=25s (commit 6815e2b + follow-up fix)
+free_bytes=146767671296
+baseline_free_bytes=86629908480
+delta_bytes=60137762816
