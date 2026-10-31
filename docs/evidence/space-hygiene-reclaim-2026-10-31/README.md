@@ -118,7 +118,7 @@ floor, at which point the next sweep removed it — the floor working as designe
 not a miss.
 
 The 12:40:20Z reading predates a rework that overwrote the single
-`final-state.txt` file that used to hold it (that filename no longer exists), so
+final-state.txt file that used to hold it (that filename no longer exists), so
 it is preserved as `final-state-1240.txt` with the block recovered verbatim from
 the commit that first recorded it; the later 14:04:53Z scan is
 `final-state-1405.txt`. Each row above cites the file that actually holds its
