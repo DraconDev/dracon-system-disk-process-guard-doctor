@@ -1,11 +1,2 @@
-# workspace gates (final re-run after the GroupKillGuard edit), 2026-10-31T12:40:15+00:00
-workspace_test_exit=0
-workspace_suites=44
-workspace_passed=2926 workspace_failed=0
-clippy_exit=0
-
-## contract 2: sigterm grace tests
-test git::ops::sigterm_grace_tests::grace_is_long_enough_for_hook_cleanup ... ok
-test git::ops::sigterm_grace_tests::term_ignoring_child_is_still_killed_after_the_grace ... ok
-test git::ops::sigterm_grace_tests::trapping_child_gets_the_documented_grace_before_sigkill ... ok
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 1538 filtered out; finished in 32.09s
+# workspace gates, 2026-10-31T13:52:57+00:00
+# each block is: <command> ; exit code captured with $? into this file
