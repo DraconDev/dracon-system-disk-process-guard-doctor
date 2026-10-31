@@ -129,6 +129,10 @@ for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
   fi
   printf 'preserved_baseline_count=%s run_baseline_count=%s roots_before=%s roots_after=%s root_churn_added=%s root_churn_removed=%s baseline_matches_before=%s store_paths=%s->%s dead_paths=%s->%s no_collection_evidence=%s gc_unchanged=%s\n' \
     "$baseline_count" "$reported_baseline" "$roots_before" "$roots_after" "${added:-0}" "${removed:-0}" "$baseline_matches_before" "$store_before" "$store_after" "$dead_before" "$dead_after" "${no_collection:-UNKNOWN}" "$gc_unchanged" | tee -a "$LOGDIR/attempts.log"
+  # Record the GC service identity on both sides so the no-GC verdict is
+  # reviewable from the log alone, not only from the in-memory comparison.
+  printf 'gc_identity gc_start_before=%s gc_start_after=%s journal_window_entries=%s\n' \
+    "$gc_start_before" "$gc_start_after" "$(grep -c . "$gc_window" 2>/dev/null || echo 0)" | tee -a "$LOGDIR/attempts.log"
 
   if [ "$rc" -eq 0 ] && [ "$reported_baseline" = "$baseline_count" ] && \
      [ "$roots_before" = "$baseline_count" ] && [ "$baseline_matches_before" = YES ] && \

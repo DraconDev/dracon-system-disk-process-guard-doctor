@@ -1,0 +1,17 @@
+captured_at=2026-10-31T00:48:23+00:00
+--- journalctl -u nix-gc.service (Starting/Finished/deleted lines) ---
+Oct 29 00:00:00 nixos systemd[1]: Starting Nix Garbage Collector...
+Oct 29 00:04:41 nixos nix-gc-start[2489649]: 0 store paths deleted, 0.00 MiB freed
+Oct 29 00:04:41 nixos systemd[1]: Finished Nix Garbage Collector.
+Oct 30 00:00:00 nixos systemd[1]: Starting Nix Garbage Collector...
+Oct 30 00:01:45 nixos nix-gc-start[2382501]: 368 store paths deleted, 2510.01 MiB freed
+Oct 30 00:01:45 nixos systemd[1]: Finished Nix Garbage Collector.
+Oct 31 00:00:00 nixos systemd[1]: Starting Nix Garbage Collector...
+Oct 31 00:02:34 nixos nix-gc-start[3406819]: 0 store paths deleted, 0.00 MiB freed
+Oct 31 00:02:34 nixos systemd[1]: Finished Nix Garbage Collector.
+--- service start ---
+Sat 2026-10-31 00:00:00 GMT
+--- read-only counters ---
+store_entries=37539
+print_roots=637
+print_dead=0
