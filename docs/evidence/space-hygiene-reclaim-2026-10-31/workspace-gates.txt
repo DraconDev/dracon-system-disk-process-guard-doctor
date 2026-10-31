@@ -2,3 +2,10 @@
 cargo_test_exit=0
 suites=44
 passed=2926 failed=0
+clippy_exit=0
+
+## contract 2: the grace tests and the settle-bound test on the 25s constant
+test git::ops::sigterm_grace_tests::grace_is_long_enough_for_hook_cleanup ... ok
+test git::ops::sigterm_grace_tests::term_ignoring_child_is_still_killed_after_the_grace ... ok
+test git::ops::sigterm_grace_tests::trapping_child_gets_the_documented_grace_before_sigkill ... ok
+test sync::owned_commit_tests::cancelled_or_timed_out_publication_kills_owned_hook_descendants ... ok
