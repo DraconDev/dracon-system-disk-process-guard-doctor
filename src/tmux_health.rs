@@ -635,7 +635,7 @@ async fn collect(
         {
             s.save.state = SaveState::Shared;
             s.save.reason =
-                "shared snapshot directory: fresh evidence cannot be attributed to this server"
+                "shared snapshot evidence: fresh evidence cannot be attributed to this server"
                     .into();
         }
     }

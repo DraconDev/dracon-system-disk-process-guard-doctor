@@ -191,6 +191,11 @@ async fn multiple_servers_do_not_borrow_other_producers_or_evidence() {
         .servers
         .iter()
         .all(|s| s.save.state == SaveState::Shared));
+    f.replies.get_mut(&b).unwrap().directory = f.temp.path().join("save2").display().to_string();
+    fs::remove_file(f.temp.path().join("save2/snapshot")).unwrap();
+    fs::hard_link(f.temp.path().join("save1/snapshot"), f.temp.path().join("save2/snapshot")).unwrap();
+    let linked = collect(&f.probe(), &f.roots, &f.replies.keys().cloned().collect::<Vec<_>>(), f.now, 900).await;
+    assert!(linked.servers.iter().all(|s| s.save.state == SaveState::Shared));
 }
 
 #[tokio::test]
