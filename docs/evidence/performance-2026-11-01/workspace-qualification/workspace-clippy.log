@@ -320,3 +320,4 @@ command=timeout 1200 cargo clippy --workspace --locked -- -D warnings
     Checking dracon-warden v0.113.16 (/tmp/performance-workspace-20261101T231731Z/dracon-warden)
     Checking git2 v0.21.0
     Checking dracon-git v94.7.2
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2m 29s
