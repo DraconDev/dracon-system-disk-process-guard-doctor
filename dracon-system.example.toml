@@ -226,6 +226,28 @@ mem_psi_full_warn = 10.0
 # thrash signature. Healthy ~0/s, thrashing six digits.
 mem_swapin_warn_pages_per_sec = 1000
 memory_pressure_sustain_secs = 120
+
+# Independent REPORT-ONLY sustained service charged-memory growth, even when
+# host pressure is healthy. No kill/resume/restart/quota/admission action.
+# cgroup-v2 memory.current includes cache/kernel, not RSS/PSS or a proven leak;
+# memory.swap.current is separately measured. Missing data stays unknown.
+# Actual boot/manager/InvocationID/cgroup/main-PID identity must remain stable.
+monitor_service_memory_growth = true
+service_memory_growth_window_secs = 600 # clamped to 60..86400 seconds
+service_memory_growth_min_mb = 256      # positive MiB increase over the window
+# Canonical .service Ids, explicit manager; at most 16 deduplicated targets.
+# Empty list disables collection without disabling other guard monitoring.
+# Lists are TOML-only: the Nix scalar policy override map supports the three
+# bool/integer knobs above; custom lists use its unmanaged/custom-policy path.
+service_memory_growth_targets = [
+    "system:dracon-sync-operator.service",
+    "user:dracon-system-guard.service",
+    "user:xdg-desktop-portal.service",
+]
+# History is capped at 32 points/target. Growth must span both window halves;
+# a burst/plateau is not sustained growth. Drops, missing data, incarnation
+# changes or gaps > half a window reset it. Use a window > 2x guard interval.
+# A fresh `guard once` can only report warmup/unavailable, not daemon history.
 auto_renice_on_memory = true
 bias_oom_on_pressure = true
 cap_offenders_cpu_percent = 0
