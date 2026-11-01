@@ -1,0 +1,17 @@
+cwd=/tmp/performance-workspace-20261101T231731Z
+started_at=2026-11-01T23:23:45.424611+00:00
+command=timeout 1800 cargo test --workspace --locked
+   Compiling syn v2.0.119
+   Compiling typenum v1.20.1
+   Compiling version_check v0.9.5
+   Compiling getrandom v0.2.17
+   Compiling generic-array v0.14.7
+   Compiling zerovec v0.11.8
+   Compiling zeroize_derive v1.5.0
+   Compiling rand_core v0.6.4
+   Compiling subtle v2.6.1
+   Compiling tinystr v0.8.4
+   Compiling crypto-common v0.1.7
+   Compiling futures-sink v0.3.34
+   Compiling futures-channel v0.3.34
+   Compiling rustversion v1.0.23
