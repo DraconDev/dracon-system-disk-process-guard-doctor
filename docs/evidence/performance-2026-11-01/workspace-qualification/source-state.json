@@ -385,7 +385,7 @@
     "dracon-warden/src/security/tests/massive_secret_scan.rs": "ffbd60c403ba554463937cab4782ef8002d9bd416992063fb0a7df54217acf6e",
     "dracon-warden/src/security/tests/pattern_integrity.rs": "58b85b2031487f4813571fb3047737cf4d52265b4bda6979bcd9025963b3af47",
     "dracon-warden/src/security/tests/plaintext_sibling_test.rs": "b7028e7c8a63fa5181f8f4a12f9ec7ab3ec6ed178f47fd967b614eb4345f76b2",
-    "dracon-warden/src/security/tests/redos_stress_test.rs": "f0fea587c236592d123b58ccbfd37ee8b71c82689b39c488d3a4f5f93a2d7c2f",
+    "dracon-warden/src/security/tests/redos_stress_test.rs": "a4d78b5771b861dc7d78e0af6a983ff3bd2f2e77c23452ac777d2044d05363b2",
     "dracon-warden/src/security/tests/registry_credentials_test.rs": "837a19612220e6c94bc2ad1568720e39b11dada29ad6ece8cfcca11ed52e4533",
     "dracon-warden/src/security/tests/restore_test.rs": "6fe6164cdfcfdb71f4c6098fe5962a9694219e7f9db2c7728d5fbfbfaa8c1d58",
     "dracon-warden/src/security/tests/scanner_edge_cases_test.rs": "ae0b86ccfac9c0d1ac820c5a29ddd7a40a90afc7137389e84a8a29d84e09728d",
@@ -401,5 +401,14 @@
     "dracon-warden/tests/integration_test.rs": "0911bfaa8f65609fa151d49d55166b6f7649b2039e7f181b68f1d7e6aef1978f",
     "dracon-warden/tests/storage_stream.rs": "f9b51741e0cf8516e460b29260dec8c59bb45b3ffdd3dd1b8d8f9949e76528d1",
     "dracon-warden/tests/write_fence.rs": "d290d2ce5c1651899e8863110b63bad71a2cf16fc713bfe645444f9826f4a8cc"
-  }
+  },
+  "checkout_filter_corrections": [
+    {
+      "path": "dracon-warden/src/security/tests/redos_stress_test.rs",
+      "clone_checkout_sha256": "f0fea587c236592d123b58ccbfd37ee8b71c82689b39c488d3a4f5f93a2d7c2f",
+      "canonical_sha256": "a4d78b5771b861dc7d78e0af6a983ff3bd2f2e77c23452ac777d2044d05363b2",
+      "reason": "checkout filter transformed clone; restoring exact canonical source bytes before any gate"
+    }
+  ],
+  "canonical_source_comparison_at": "2026-11-01T23:20:20.957626+00:00"
 }
