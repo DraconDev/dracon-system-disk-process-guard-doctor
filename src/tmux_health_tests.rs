@@ -434,6 +434,22 @@ fn cksum_protocol_and_policy_compatibility() {
     assert!(crate::policy::normalize_guard_policy(&mut g).is_empty());
 }
 
+// Special files must be rejected before opening them for I/O, even in an
+// otherwise valid configured directory. All created endpoints are disposable.
+#[test]
+fn snapshot_file_selection_rejects_special_files_and_symlinks() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("pipe");
+    let name = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+    fs::write(temp.path().join("regular"), "safe fixture").unwrap();
+    symlink("regular", temp.path().join("link")).unwrap();
+    let dir = open_dir(temp.path(), unsafe { libc::geteuid() }).unwrap();
+    assert!(at(&dir, "pipe").is_err());
+    assert!(at(&dir, "link").is_err());
+    assert_eq!(read(at(&dir, "regular").unwrap(), 64).unwrap(), b"safe fixture");
+}
+
 #[tokio::test]
 async fn budgets_and_parser_failures_are_explicit() {
     assert!(parse_reply("1\t/socket\t/dir\t\n").is_ok());
