@@ -561,6 +561,43 @@ Everything is configurable in the `[guard]` table of the policy file; see
 machine-readable snapshot (disk state, memory `observed` vs stabilized
 `pressure`, zombies, offenders).
 
+### Tmux persistence health (report only)
+
+`doctor` and `doctor --json` expose per-socket `tmux_persistence` observations,
+without changing strict-mode requirements or running recovery. Configure
+`[guard].tmux_persistence_sockets` with explicit absolute socket paths for
+multiple servers (at most eight). An empty list selects the current `$TMUX`
+socket, or the standard `$TMUX_TMPDIR`/`/tmp` default socket outside tmux; it
+does not discover every server. This is a doctor check, not a new guard loop.
+`tmux_persistence_max_save_age_secs` defaults to 900, clamped to 60–86400.
+
+Server replies, proc starttime and listening-socket ownership are bracketed;
+unavailable ownership or mismatched/replaced endpoints remain unavailable.
+The producer adapter recognizes `~/.local/bin/tmux-persist-daemon`'s per-socket
+POSIX-cksum lock/PID convention and verifies its argv, UID and `$TMUX` server
+binding. It does not search all processes or imply that other producers are
+absent. A stopped registered producer is reported with **unknown cause**;
+existing/sleeping means only existence, never useful autosave work.
+
+Save evidence uses the server's explicit `@resurrect-dir`, not guessed plugin
+defaults. It reports `last` snapshot age/identity and bounded pane-record
+evidence; this does not validate restoration, scrollback backup, periodic
+execution or who wrote the file. Shared directories/files across selected
+servers cannot establish attribution. Future or pre-server-incarnation saves
+are unavailable. Stale evidence despite a running producer is visible, but
+**does not diagnose why**: resurrect can intentionally keep the old snapshot
+when contents are unchanged. The optional continuum timestamp is a launch
+marker, not a completed-save receipt.
+
+Inspection is bounded by eight sockets, 128 server fd links, capped proc/file
+reads and per-query/inspection deadlines. It never signals observed processes,
+runs save scripts, restarts services or changes options/snapshots; deadline
+cleanup owns only its query client. It does not propose SIGCONT as a signal-mask
+fix. Missing permissions, unsupported paths/producers or provenance are reported
+as unknown, not healthy. Paths with whitespace may lack proc socket-table
+provenance and are reported unavailable. The Nix scalar policy override map
+supports the age setting; socket arrays use TOML/custom unmanaged policy.
+
 ### Sustained service memory growth (report only)
 
 `monitor_service_memory_growth = true` independently observes configured
