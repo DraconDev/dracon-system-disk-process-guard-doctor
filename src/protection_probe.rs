@@ -621,7 +621,7 @@ mod tests {
             group: job.group.clone(),
         };
         let other = ProcSample {
-            swap_mb: 0,
+            swap_mb: Some(0),
             pid: 99,
             ppid: 1,
             command: "dracon-probe".into(),

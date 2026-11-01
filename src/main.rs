@@ -664,8 +664,12 @@ pub(crate) struct MemoryReport {
     /// The stabilized classification used for notifications and mitigation:
     /// "ok" | "warn" | "critical".
     pub(crate) pressure: String,
-    /// Top RSS offenders for diagnostics and optional pressure mitigation.
+    /// Top resident + swapped footprint lower bounds. The legacy field name
+    /// is retained for JSON consumers; unknown swap is explicit on each row.
     pub(crate) top_rss: Vec<ProcSample>,
+    /// Eligible, identity-verified samples whose swap could not be measured,
+    /// including those outside the shortlist. Rankings may be incomplete.
+    pub(crate) swap_samples_unavailable: usize,
     /// ADDED 2026-08-10 (v0.112.36): actions taken this pass, e.g.
     /// "renice svelte-check=10", "oom-bias node=250".
     pub(crate) limited: Vec<String>,
@@ -733,7 +737,8 @@ pub(crate) struct ProcSample {
     /// few MiB resident while holding tens of GiB in swap. The mitigation
     /// ranking uses RSS + swap (see `memory_pressure_footprint_mb`), and
     /// this is the swapped half of that figure.
-    pub(crate) swap_mb: u64,
+    /// None means unmeasured/unavailable, not a measured zero.
+    pub(crate) swap_mb: Option<u64>,
     /// Current Unix nice value from `ps ni`, captured before any limiter
     /// changes it so memory-pressure release can restore the original value.
     pub(crate) nice: i32,
@@ -742,31 +747,65 @@ pub(crate) struct ProcSample {
     pub(crate) starttime: u64,
 }
 
-/// The footprint that decides who is an offender: resident PLUS swapped.
-///
-/// ADDED 2026-10-22: the kernel evicts pages under pressure, so the process
-/// holding the most memory is often the one with the LEAST resident. Ranking
-/// by RSS alone therefore throttles the wrong processes (and misses the
-/// swap hogs entirely) exactly when memory is short.
+/// Measured footprint lower bound, not an assertion of zero swap when unknown.
+/// The optional measurement remains on the row and incomplete coverage is
+/// reported separately, including unknown samples outside the shortlist.
 pub(crate) fn memory_pressure_footprint_mb(sample: &ProcSample) -> u64 {
-    sample.rss_mb.saturating_add(sample.swap_mb)
+    sample.rss_mb.saturating_add(sample.swap_mb.unwrap_or(0))
 }
 
-/// The swapped-out footprint of a process, in MiB.
-///
-/// ADDED 2026-10-22: `VmSwap` from `/proc/<pid>/status`. None when the
-/// process is gone or the field is unreadable — the caller then treats the
-/// swap as unknown rather than as zero, so a missing reading never makes a
-/// heavy process look small.
-pub(crate) fn read_proc_swap_mb(pid: i32) -> Option<u64> {
-    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
-    for line in status.lines() {
-        if let Some(rest) = line.strip_prefix("VmSwap:") {
-            let kb: u64 = rest.split_whitespace().next()?.parse().ok()?;
-            return Some(kb / 1024);
-        }
+const MAX_PROCESS_STATUS_BYTES: usize = 64 * 1024;
+const MEMORY_OFFENDER_LIMIT: usize = 5;
+
+/// Read a bounded VmSwap measurement. Missing fields, malformed units and
+/// unreadable/truncated status files are unknown, never measured zero.
+fn read_proc_swap_mb_from(root: &Path, pid: i32) -> Option<u64> {
+    let file = fs::File::open(root.join(pid.to_string()).join("status")).ok()?;
+    let mut status = String::new();
+    file.take((MAX_PROCESS_STATUS_BYTES + 1) as u64)
+        .read_to_string(&mut status)
+        .ok()?;
+    if status.len() > MAX_PROCESS_STATUS_BYTES {
+        return None;
     }
-    Some(0)
+    let mut fields = status.lines().filter_map(|line| line.strip_prefix("VmSwap:"));
+    let mut parts = fields.next()?.split_whitespace();
+    let kb = parts.next()?.parse::<u64>().ok()?;
+    if parts.next()? != "kB" || parts.next().is_some() || fields.next().is_some() {
+        return None;
+    }
+    Some(kb / 1024)
+}
+
+/// Select only after EVERY verified sample has had its swap read attempted.
+/// Storage is bounded to five rows; ties are PID-ordered rather than ps-order
+/// dependent. Unknown measurements retain their RSS lower bound and are counted
+/// even when the corresponding process does not make the shortlist.
+fn memory_pressure_offenders(
+    samples: &[ProcSample],
+    exempt: &HashSet<String>,
+) -> (Vec<ProcSample>, usize) {
+    let mut top = Vec::with_capacity(MEMORY_OFFENDER_LIMIT + 1);
+    let mut unavailable = 0;
+    for p in samples {
+        if exempt.contains(&p.command) || is_kernel_process(&p.command) {
+            continue;
+        }
+        unavailable += usize::from(p.swap_mb.is_none());
+        top.push(p.clone());
+        top.sort_by(|a, b| {
+            memory_pressure_footprint_mb(b)
+                .cmp(&memory_pressure_footprint_mb(a))
+                .then_with(|| a.pid.cmp(&b.pid))
+        });
+        top.truncate(MEMORY_OFFENDER_LIMIT);
+    }
+    (top, unavailable)
+}
+
+fn memory_offender_description(p: &ProcSample) -> String {
+    let swap = p.swap_mb.map(|mb| format!("{mb}MiB")).unwrap_or_else(|| "unknown".into());
+    format!("{} pid={} rss={}MiB swap={swap}", p.command, p.pid, p.rss_mb)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1322,7 +1361,7 @@ pub(crate) fn parse_ps_output(output: &str) -> Vec<ProcSample> {
             let command = parts.next()?.to_string();
             let args = parts.collect::<Vec<_>>().join(" ");
             Some(ProcSample {
-                swap_mb: 0,
+                swap_mb: None,
                 pid,
                 ppid,
                 cpu_percent,
@@ -1946,18 +1985,37 @@ async fn process_samples() -> Result<Vec<ProcSample>> {
     // incarnation. Command lines are intentionally not part of this
     // broad scan; `load_process_cmdline` reads a bounded value only
     // after a row has been selected for diagnostics.
-    Ok(parsed
+    let root = Path::new("/proc");
+    Ok(verified_process_samples_with(root, parsed, |pid| {
+        read_proc_swap_mb_from(root, pid)
+    }))
+}
+
+/// Complete the existing process-table scan, before any consumer shortlists it.
+/// Swap is sampled once per verified row, with bounded reads, and bracketed by
+/// incarnation checks. A recycled/exited/unverifiable PID cannot inherit the
+/// old row's footprint; an unreadable swap field alone retains an unknown row.
+/// The ps input itself is capped by MAX_PROCESS_SAMPLE_OUTPUT_BYTES.
+fn verified_process_samples_with(
+    root: &Path,
+    parsed: Vec<ProcSample>,
+    mut read_swap: impl FnMut(i32) -> Option<u64>,
+) -> Vec<ProcSample> {
+    parsed
         .into_iter()
-        .filter_map(
-            |mut p| match read_proc_identity(Path::new("/proc"), p.pid) {
-                Ok(identity) if identity.comm == p.command => {
-                    p.starttime = identity.starttime;
-                    Some(p)
-                }
-                _ => None,
-            },
-        )
-        .collect())
+        .filter_map(|mut p| {
+            let before = read_proc_identity(root, p.pid).ok()?;
+            if before.comm != p.command {
+                return None;
+            }
+            p.swap_mb = read_swap(p.pid);
+            if read_proc_identity(root, p.pid).ok()? != before {
+                return None;
+            }
+            p.starttime = before.starttime;
+            Some(p)
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -6370,40 +6428,12 @@ async fn check_memory_pressure(
         true
     };
 
-    // Top offenders (skipping kernel threads and exempt names).
-    //
-    // ADDED 2026-10-22: ranked by resident PLUS swapped, and the swapped
-    // half is read for the candidates only (five `/proc/<pid>/status`
-    // reads, not one per process). RSS alone misses the largest processes
-    // once the kernel has evicted their pages.
+    // Swap is already sampled for every identity-verified process in the
+    // existing process-table pass. Never discard low-RSS rows before that
+    // measurement: the biggest swapped offender may be mostly nonresident.
     let exempt = parse_kinds(&guard.process_exempt_names);
-    let mut top_rss: Vec<ProcSample> = all_processes
-        .iter()
-        .filter(|p| !exempt.contains(&p.command) && !is_kernel_process(&p.command))
-        .cloned()
-        .fold(Vec::new(), |mut acc, p| {
-            if acc.len() < 5
-                || memory_pressure_footprint_mb(&p)
-                    > acc
-                        .last()
-                        .map(|x: &ProcSample| memory_pressure_footprint_mb(x))
-                        .unwrap_or(0)
-            {
-                acc.push(p);
-                acc.sort_by_key(|b| std::cmp::Reverse(memory_pressure_footprint_mb(b)));
-                acc.truncate(5);
-            }
-            acc
-        })
-        .into_iter()
-        .map(load_process_cmdline)
-        .collect();
-    // Fill in the swapped half for the candidates, then re-rank: a process
-    // that is mostly swapped can overtake a bigger resident one.
-    for sample in &mut top_rss {
-        sample.swap_mb = read_proc_swap_mb(sample.pid).unwrap_or(0);
-    }
-    top_rss.sort_by_key(|b| std::cmp::Reverse(memory_pressure_footprint_mb(b)));
+    let (offenders, swap_samples_unavailable) = memory_pressure_offenders(all_processes, &exempt);
+    let top_rss: Vec<ProcSample> = offenders.into_iter().map(load_process_cmdline).collect();
 
     // ── Limiting (ADDED 2026-08-10, v0.112.36) ──────────────────
     // Deprioritize (never kill) the offenders while pressure lasts;
@@ -7014,23 +7044,14 @@ async fn check_memory_pressure(
     if pressure_changed && pressure != "ok" {
         let offenders: String = top_rss
             .iter()
-            .map(|p| {
-                if p.swap_mb > 0 {
-                    format!(
-                        "{} pid={} {}MiB+{}MiB swap",
-                        p.command, p.pid, p.rss_mb, p.swap_mb
-                    )
-                } else {
-                    format!("{} pid={} {}MiB", p.command, p.pid, p.rss_mb)
-                }
-            })
+            .map(memory_offender_description)
             .collect::<Vec<_>>()
             .join(", ");
         send_notification(
             guard,
             "Dracon System Guard - Memory Pressure",
             &format!(
-                "[{}] mem available {}%, swap used {}%{} top: {}",
+                "[{}] mem available {}%, swap used {}%{} top: {}; swap measurements unavailable: {} (ranking uses footprint lower bounds)",
                 pressure,
                 mem_available_percent,
                 swap_used_percent,
@@ -7041,7 +7062,8 @@ async fn check_memory_pressure(
                     "(none)".to_string()
                 } else {
                     offenders
-                }
+                },
+                swap_samples_unavailable
             ),
         )
         .await;
@@ -7065,7 +7087,7 @@ async fn check_memory_pressure(
             },
             "memory/pressure",
             format!(
-                "{}: observed={}, mem available {}%, swap used {}%, PSI full {:?}, top rss: {}",
+                "{}: observed={}, mem available {}%, swap used {}%, PSI full {:?}, top footprint lower bounds: {}; swap measurements unavailable: {}",
                 pressure,
                 observed_pressure,
                 mem_available_percent,
@@ -7073,9 +7095,10 @@ async fn check_memory_pressure(
                 psi_full_avg10,
                 top_rss
                     .iter()
-                    .map(|p| format!("{}={}MiB", p.command, p.rss_mb))
+                    .map(memory_offender_description)
                     .collect::<Vec<_>>()
-                    .join(",")
+                    .join(","),
+                swap_samples_unavailable
             ),
         ));
     }
@@ -7088,6 +7111,7 @@ async fn check_memory_pressure(
         observed_pressure: observed_pressure.to_string(),
         pressure,
         top_rss,
+        swap_samples_unavailable,
         limited,
         pressure_reaped,
         forgotten_trees: forgotten.candidates,

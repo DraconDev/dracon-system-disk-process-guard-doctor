@@ -1155,7 +1155,7 @@ fn sweep_stranded_oom_descendants_restores_only_post_bias_children() {
     fs::create_dir(tmp.join("105/oom_score_adj")).expect("create failing child oom fixture");
 
     let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
-        swap_mb: 0,
+        swap_mb: Some(0),
         pid,
         ppid,
         cpu_percent: 0.0,
@@ -1268,7 +1268,7 @@ fn sweep_stranded_oom_descendants_uses_nearest_biased_ancestor() {
     write_process_fixture(&tmp, 202, "inner", 92, Some(250), None);
     write_process_fixture(&tmp, 203, "nested-child", 93, Some(250), None);
     let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
-        swap_mb: 0,
+        swap_mb: Some(0),
         pid,
         ppid,
         cpu_percent: 0.0,
@@ -5401,7 +5401,7 @@ fn sweep_stranded_oom_descendants_drops_a_defunct_child() {
     .expect("write zombie stat fixture");
 
     let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
-        swap_mb: 0,
+        swap_mb: Some(0),
         pid,
         ppid,
         cpu_percent: 0.0,
@@ -5465,7 +5465,7 @@ fn sweep_stranded_oom_descendants_restores_a_released_roots_children() {
     write_process_fixture(&tmp, 403, "late-child", 63, Some(250), None);
 
     let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
-        swap_mb: 0,
+        swap_mb: Some(0),
         pid,
         ppid,
         cpu_percent: 0.0,
