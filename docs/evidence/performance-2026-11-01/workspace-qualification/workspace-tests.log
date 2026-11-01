@@ -206,3 +206,4 @@ command=timeout 1800 cargo test --workspace --locked
    Compiling hostname v0.4.2
    Compiling dracon-system-lib v94.2.7
    Compiling dracon-system v0.112.51 (/tmp/performance-workspace-20261101T231731Z/dracon-system)
+   Compiling dracon-warden v0.113.16 (/tmp/performance-workspace-20261101T231731Z/dracon-warden)
