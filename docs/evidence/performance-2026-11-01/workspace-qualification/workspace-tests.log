@@ -165,3 +165,9 @@ command=timeout 1800 cargo test --workspace --locked
    Compiling foreign-types v0.3.2
    Compiling console v0.16.6
    Compiling h2 v0.4.19
+   Compiling ansi-str v0.9.0
+   Compiling idna v1.1.0
+   Compiling openssl-macros v0.1.1
+   Compiling native-tls v0.2.18
+   Compiling rustls v0.23.46
+   Compiling chrono v0.4.45
