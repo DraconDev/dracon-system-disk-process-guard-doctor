@@ -196,3 +196,13 @@ command=timeout 1800 cargo test --workspace --locked
    Compiling hyper-rustls v0.27.9
    Compiling tower-http v0.6.11
    Compiling reqwest v0.12.28
+   Compiling notify-rust v4.18.0
+   Compiling libgit2-sys v0.18.8+1.9.7
+   Compiling openssl-probe v0.1.6
+   Compiling dracon-sync v0.113.96 (/tmp/performance-workspace-20261101T231731Z/dracon-sync)
+   Compiling terminal_size v0.4.4
+   Compiling urlencoding v2.1.3
+   Compiling ssh2 v0.9.6
+   Compiling hostname v0.4.2
+   Compiling dracon-system-lib v94.2.7
+   Compiling dracon-system v0.112.51 (/tmp/performance-workspace-20261101T231731Z/dracon-system)
