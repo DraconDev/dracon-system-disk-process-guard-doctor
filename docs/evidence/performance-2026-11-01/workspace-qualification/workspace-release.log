@@ -272,3 +272,21 @@ command=timeout 2400 cargo build --release --locked
    Compiling hyper-tls v0.6.0
    Compiling hyper-rustls v0.27.9
    Compiling ansi-str v0.9.0
+   Compiling rand_chacha v0.3.1
+   Compiling fluent v0.16.1
+   Compiling tower-http v0.6.11
+   Compiling crossterm v0.29.0
+   Compiling rust-embed v8.12.0
+   Compiling poly1305 v0.8.0
+   Compiling chacha20 v0.9.1
+   Compiling arc-swap v1.9.2
+   Compiling bstr v1.13.1
+   Compiling hashbrown v0.14.5
+   Compiling unicode-segmentation v1.13.3
+   Compiling lazy_static v1.5.0
+   Compiling iana-time-zone v0.1.65
+   Compiling chrono v0.4.45
+   Compiling i18n-embed v0.14.1
+   Compiling dashmap v5.5.3
+   Compiling comfy-table v7.2.2
+   Compiling reqwest v0.12.28
