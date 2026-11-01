@@ -252,6 +252,16 @@ auto_renice_on_memory = true
 bias_oom_on_pressure = true
 cap_offenders_cpu_percent = 0
 
+# Doctor-only tmux persistence observations; no recovery, saves or option writes.
+# Empty uses current $TMUX socket, otherwise the standard TMUX_TMPDIR socket.
+# Configure explicit absolute sockets for multi-server inspection (max 8).
+# Needs observable @resurrect-dir; plugin defaults are not guessed.
+# Producer adapter recognizes ~/.local/bin/tmux-persist-daemon's per-socket lock.
+# Sleeping means existence only. Old snapshots can be intentionally unchanged.
+# Lists use TOML/custom policy; the Nix scalar override map supports age only.
+tmux_persistence_sockets = []
+tmux_persistence_max_save_age_secs = 900 # clamped to 60..86400
+
 # Monitor large log files
 # log_dirs is a comma-separated list; `~` expands to the service user's
 # home. There are three states, and they are deliberately distinguishable:
