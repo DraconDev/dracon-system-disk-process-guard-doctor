@@ -23,7 +23,7 @@ were used. Production `src/zram.rs` is unchanged.
   **13:53:20.681 UTC**; H27 zram byte counters are **13:53:51.550 UTC**, not an
   atomic joint sample.
 - **S0–S2:** [raw host capture](zram/host.json), three sequential observations
-  from **19:03:32.784 to 19:03:42.824 UTC**. Each individual read has start/end
+  from **19:03:32.784149 to 19:03:42.822519 UTC**. Each individual read has start/end
   UTC and monotonic timestamps, source path, raw text/hash or explicit error.
   The capture is bounded to three observations, five-second waits, four devices
   and 256 KiB/read; the outer command deadline was 45 seconds. These reads do
@@ -102,7 +102,7 @@ lower-priority file; extant file allocation can persist after pressure falls.
 
 Historical **activity** evidence is stronger than occupancy alone: H12 at
 **13:51:19.729 UTC** reported memory PSI `full avg10=78.09%` and I/O PSI
-`full avg10=81.52%`; H38 at **13:56:14.375 UTC** reported a five-second sample
+`full avg10=81.52%`; H38 at **13:56:14.441 UTC** reported a five-second sample
 of **27,885 combined swap-in/out pages/s** and **10,872 major faults/s**.
 Combined directions are not a swap-in rate; major faults also include
 file-backed faults. These asynchronous observations support severe incident
