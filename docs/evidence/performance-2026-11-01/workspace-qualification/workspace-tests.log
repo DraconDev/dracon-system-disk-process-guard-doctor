@@ -15,3 +15,5 @@ command=timeout 1800 cargo test --workspace --locked
    Compiling futures-sink v0.3.34
    Compiling futures-channel v0.3.34
    Compiling rustversion v1.0.23
+   Compiling zeroize v1.9.0
+   Compiling futures-macro v0.3.34
