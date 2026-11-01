@@ -1753,6 +1753,14 @@ pub(crate) fn normalize_guard_policy_with_home(
     // never negative), pinning the state machine at warn on a healthy box.
     floor!(mem_swapin_warn_pages_per_sec, 1);
     floor!(memory_pressure_sustain_secs, 30);
+    band!(tmux_persistence_max_save_age_secs, 60, 86_400);
+    let old_socket_count = policy.tmux_persistence_sockets.len();
+    policy.tmux_persistence_sockets.sort();
+    policy.tmux_persistence_sockets.dedup();
+    policy.tmux_persistence_sockets.truncate(8);
+    if old_socket_count != policy.tmux_persistence_sockets.len() {
+        adjusted.push("tmux_persistence_sockets");
+    }
     floor!(service_memory_growth_window_secs, 60);
     ceil!(service_memory_growth_window_secs, 86_400);
     floor!(service_memory_growth_min_mb, 1);

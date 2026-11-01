@@ -38,6 +38,7 @@ mod protection_probe;
 #[cfg(test)]
 mod protection_tests;
 mod service_growth;
+mod tmux_health;
 pub(crate) use doctor::*;
 mod events;
 pub(crate) use events::*;
@@ -584,6 +585,7 @@ pub(crate) struct DoctorReport {
     /// referenced by the NixOS `swapDevices` config. Unknown (unreadable
     /// config) never fails this — it only fails on concrete findings.
     pub(crate) swap_ok: bool,
+    pub(crate) tmux_persistence: tmux_health::Report,
 }
 
 #[derive(Debug, Clone)]
