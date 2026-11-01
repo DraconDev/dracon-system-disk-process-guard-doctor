@@ -170,3 +170,5 @@ command=timeout 2400 cargo build --release --locked
    Compiling rustc-hash v2.1.3
    Compiling type-map v0.5.1
    Compiling zvariant v5.15.0
+   Compiling rustc_version v0.4.1
+   Compiling uuid v1.26.1
