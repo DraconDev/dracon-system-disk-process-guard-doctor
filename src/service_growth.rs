@@ -325,7 +325,7 @@ trait Probe {
     async fn properties(&self, manager: Manager, units: &[String]) -> Result<String, String>;
 }
 struct Systemd;
-async fn capped_output(reader: impl AsyncRead + Unpin, limit: usize) -> std::io::Result<Vec<u8>> {
+pub(crate) async fn capped_output(reader: impl AsyncRead + Unpin, limit: usize) -> std::io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     reader
         .take((limit + 1) as u64)

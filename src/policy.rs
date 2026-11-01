@@ -192,6 +192,11 @@ pub(crate) struct GuardPolicy {
     pub(crate) service_memory_growth_min_mb: u64,
     #[serde(default = "crate::service_growth::default_targets")]
     pub(crate) service_memory_growth_targets: Vec<String>,
+    /// Doctor-only read-only tmux diagnostics. Empty uses current/standard socket.
+    #[serde(default)]
+    pub(crate) tmux_persistence_sockets: Vec<String>,
+    #[serde(default = "crate::tmux_health::default_max_age")]
+    pub(crate) tmux_persistence_max_save_age_secs: u64,
     // ADDED 2026-08-10 (v0.112.36): during memory pressure, deprioritize
     // the top RSS offenders (graduated nice, reversible when pressure
     // drops). The runtime requires CAP_SYS_NICE so a user service cannot
@@ -584,6 +589,8 @@ impl Default for GuardPolicy {
             service_memory_growth_window_secs: default_service_memory_growth_window_secs(),
             service_memory_growth_min_mb: default_service_memory_growth_min_mb(),
             service_memory_growth_targets: crate::service_growth::default_targets(),
+            tmux_persistence_sockets: Vec::new(),
+            tmux_persistence_max_save_age_secs: crate::tmux_health::default_max_age(),
             auto_renice_on_memory: default_true(),
             bias_oom_on_pressure: default_true(),
             cap_offenders_cpu_percent: 0,
