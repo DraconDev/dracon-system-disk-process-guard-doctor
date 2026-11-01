@@ -123,7 +123,11 @@ impl Probe for Fake<'_> {
     async fn query(&self, socket: &Path) -> Result<Reply, String> {
         self.calls.borrow_mut().push(socket.into());
         let count = self.calls.borrow().len();
-        if count == 1 { if let Some(delay) = self.delay_first { tokio::time::sleep(delay).await; } }
+        if count == 1 {
+            if let Some(delay) = self.delay_first {
+                tokio::time::sleep(delay).await;
+            }
+        }
         if count == 2 {
             if let Some(f) = self.after.borrow_mut().take() {
                 f();
@@ -143,7 +147,12 @@ async fn fresh_stale_and_stopped_are_distinct_facts_not_recovery_predicates() {
     let a = f.add(1, 10, 'S');
     let b = f.add(2, 1200, 'S');
     let c = f.add(3, 10, 'T');
-    f.replies.get_mut(&b).unwrap().marker = f.now.duration_since(UNIX_EPOCH).unwrap().as_secs().to_string();
+    f.replies.get_mut(&b).unwrap().marker = f
+        .now
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        .to_string();
     let probe = f.probe();
     let report = collect(&probe, &f.roots, &[a, b, c], f.now, 900).await;
     assert_eq!(report.servers[0].save.state, SaveState::Fresh);
@@ -199,13 +208,27 @@ async fn multiple_servers_do_not_borrow_other_producers_or_evidence() {
         .all(|s| s.save.state == SaveState::Shared));
     f.replies.get_mut(&b).unwrap().directory = f.temp.path().join("save2").display().to_string();
     fs::remove_file(f.temp.path().join("save2/snapshot")).unwrap();
-    fs::hard_link(f.temp.path().join("save1/snapshot"), f.temp.path().join("save2/snapshot")).unwrap();
+    fs::hard_link(
+        f.temp.path().join("save1/snapshot"),
+        f.temp.path().join("save2/snapshot"),
+    )
+    .unwrap();
     // One server rejects the file as predating its own incarnation. Physical
     // identity must still prevent the other server claiming exclusive evidence.
     let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as u64;
     f.process(102, 3595 * ticks, 'S');
-    let linked = collect(&f.probe(), &f.roots, &f.replies.keys().cloned().collect::<Vec<_>>(), f.now, 900).await;
-    assert!(linked.servers.iter().all(|s| s.save.state == SaveState::Shared));
+    let linked = collect(
+        &f.probe(),
+        &f.roots,
+        &f.replies.keys().cloned().collect::<Vec<_>>(),
+        f.now,
+        900,
+    )
+    .await;
+    assert!(linked
+        .servers
+        .iter()
+        .all(|s| s.save.state == SaveState::Shared));
 }
 
 #[tokio::test]
@@ -241,7 +264,9 @@ async fn missing_or_untrusted_provenance_is_unknown_not_healthy() {
                 symlink("201", f.roots.proc.join("201")).unwrap();
             }
             "reused_server_pid" => f.process(101, 300, 'S'),
-            "partial_record" => fs::write(f.temp.path().join("save1/snapshot"), "pane\tpartial").unwrap(),
+            "partial_record" => {
+                fs::write(f.temp.path().join("save1/snapshot"), "pane\tpartial").unwrap()
+            }
             "bad_command" => {
                 fs::write(
                     f.roots.proc.join("201/cmdline"),
@@ -287,7 +312,16 @@ async fn missing_or_untrusted_provenance_is_unknown_not_healthy() {
         }
         let report = collect(&f.probe(), &f.roots, &[socket], f.now, 900).await;
         let row = &report.servers[0];
-        if ["no_pid", "bad_command", "missing_env", "pid_reuse", "indeterminate_process", "reused_server_pid"].contains(&mode) {
+        if [
+            "no_pid",
+            "bad_command",
+            "missing_env",
+            "pid_reuse",
+            "indeterminate_process",
+            "reused_server_pid",
+        ]
+        .contains(&mode)
+        {
             assert_eq!(row.producer.state, ProducerState::Unavailable, "{mode}");
         } else if mode == "missing_process" {
             assert_eq!(row.producer.state, ProducerState::Missing);
@@ -364,11 +398,18 @@ async fn inspection_is_query_only_and_preserves_owned_files_and_socket() {
 // Earlier sockets may consume time; later fresh saves must not look future-dated.
 #[tokio::test]
 async fn delayed_first_server_does_not_shift_later_save_freshness() {
-    let mut f = Fixture::new(); let a = f.add(1, 10, 'S'); let b = f.add(2, 10, 'S');
-    let mut probe = f.probe(); probe.delay_first = Some(Duration::from_millis(1100));
+    let mut f = Fixture::new();
+    let a = f.add(1, 10, 'S');
+    let b = f.add(2, 10, 'S');
+    let mut probe = f.probe();
+    probe.delay_first = Some(Duration::from_millis(1100));
     probe.after.replace(Some(Box::new(|| {
-        File::options().write(true).open(f.temp.path().join("save2/snapshot")).unwrap()
-            .set_modified(f.now + Duration::from_secs(1)).unwrap();
+        File::options()
+            .write(true)
+            .open(f.temp.path().join("save2/snapshot"))
+            .unwrap()
+            .set_modified(f.now + Duration::from_secs(1))
+            .unwrap();
     })));
     let rows = collect(&probe, &f.roots, &[a, b], f.now, 900).await;
     assert_eq!(rows.servers[1].save.state, SaveState::Fresh);

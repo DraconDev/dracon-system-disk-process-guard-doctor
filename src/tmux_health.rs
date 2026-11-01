@@ -334,16 +334,29 @@ fn producer(roots: &Roots, server: &Reply, server_starttime: u64) -> Producer {
             .filter(|p| *p > 0)
             .ok_or_else(|| Error::other("invalid registered PID"))?;
         match fs::symlink_metadata(roots.proc.join(pid.to_string())) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Producer {
-                state: ProducerState::Missing, pid: Some(pid), starttime: None, process_state: None,
-                reason: "registered PID absent; other producers not searched".into(),
-            }),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Producer {
+                    state: ProducerState::Missing,
+                    pid: Some(pid),
+                    starttime: None,
+                    process_state: None,
+                    reason: "registered PID absent; other producers not searched".into(),
+                })
+            }
             Err(e) => return Err(e),
-            Ok(m) if !m.is_dir() => return Err(Error::other("registered process directory provenance unavailable")),
-            Ok(_) => {},
+            Ok(m) if !m.is_dir() => {
+                return Err(Error::other(
+                    "registered process directory provenance unavailable",
+                ))
+            }
+            Ok(_) => {}
         }
         let (id, state) = identity(roots, pid)?;
-        if id.starttime < server_starttime { return Err(Error::other("registered producer predates current server generation")); }
+        if id.starttime < server_starttime {
+            return Err(Error::other(
+                "registered producer predates current server generation",
+            ));
+        }
         let cmd = bytes(&roots.proc.join(format!("{pid}/cmdline")), RECORD)?;
         let argv: Vec<_> = cmd.split(|b| *b == 0).filter(|v| !v.is_empty()).collect();
         let script = roots.producer.as_os_str().as_bytes();
@@ -613,7 +626,8 @@ async fn collect(
     let mut servers = Vec::new();
     for socket in sockets.iter().take(MAX_SERVERS) {
         let Some(observed_now) = now.checked_add(started.elapsed()) else {
-            servers.push(Server::unknown(socket, "collection clock overflow")); continue;
+            servers.push(Server::unknown(socket, "collection clock overflow"));
+            continue;
         };
         let observed = tokio::time::timeout(
             Duration::from_secs(3),
@@ -638,10 +652,15 @@ async fn collect(
         }
     }
     for s in &mut servers {
-        let shared_file = s.save.device.zip(s.save.inode).is_some_and(|key| file_counts.get(&key).is_some_and(|n| *n > 1));
-        if shared_file || s.save
-            .directory_identity
-            .is_some_and(|key| counts.get(&key).is_some_and(|n| *n > 1))
+        let shared_file = s
+            .save
+            .device
+            .zip(s.save.inode)
+            .is_some_and(|key| file_counts.get(&key).is_some_and(|n| *n > 1));
+        if shared_file
+            || s.save
+                .directory_identity
+                .is_some_and(|key| counts.get(&key).is_some_and(|n| *n > 1))
         {
             s.save.state = SaveState::Shared;
             s.save.reason =
