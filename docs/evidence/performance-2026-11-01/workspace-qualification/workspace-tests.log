@@ -179,3 +179,4 @@ command=timeout 1800 cargo test --workspace --locked
    Compiling openssl-probe v0.2.1
    Compiling zbus_names v4.3.4
    Compiling hyper-util v0.1.20
+   Compiling multiversion-macros v0.9.0
