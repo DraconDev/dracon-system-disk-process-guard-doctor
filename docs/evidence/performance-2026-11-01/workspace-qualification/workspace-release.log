@@ -305,3 +305,10 @@ command=timeout 2400 cargo build --release --locked
    Compiling salsa20 v0.10.2
    Compiling secrecy v0.8.0
    Compiling pin-project-internal v1.1.13
+   Compiling openssl-probe v0.1.6
+   Compiling base64 v0.21.7
+   Compiling signature v2.2.0
+   Compiling io_tee v0.1.1
+   Compiling strsim v0.10.0
+   Compiling i18n-embed-fl v0.7.0
+   Compiling age-core v0.10.0
