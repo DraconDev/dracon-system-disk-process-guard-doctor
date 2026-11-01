@@ -27,6 +27,10 @@ COMMANDS = {
     ],
 }
 
+# Re-run the exact unfinished gates after a harness interruption, preserving
+# prior logs/results rather than replacing successful or interrupted evidence.
+COMMANDS['remaining'] = COMMANDS['workspace'][2:]
+
 
 def stamp():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
