@@ -187,3 +187,20 @@ fields do not silently become healthy zero. See [tests](zram/tests.log).
 **No amount of RAM saving is promised.** Current and historical compression
 ratios differ; workloads, allocator overhead, disk latency and evacuation costs
 must be measured before any tuning recommendation can be justified.
+
+## Reproducibility and review
+
+Recompute from the **stored** observations without new host measurements:
+
+```sh
+timeout 60 python3 -m unittest discover -s docs/evidence/performance-2026-11-01/zram -p 'test_*.py' -v
+timeout 30 python3 docs/evidence/performance-2026-11-01/zram/analyse.py
+timeout 30 python3 docs/evidence/performance-2026-11-01/zram/verify.py
+```
+
+[Verification log](zram/verification.log) and [command/source hashes](zram/verification.json)
+retain the checks. The [read-only rehearsal](zram/review.md) identified and
+corrected the draft's MemTotal/exact-capacity claim; its execution limitations
+are explicit. Reproduction updates derived evidence only, not proc/sysfs or
+configuration. Future host captures must be saved separately; do not overwrite
+this dated baseline. Production-parser repair is not claimed by this report.
