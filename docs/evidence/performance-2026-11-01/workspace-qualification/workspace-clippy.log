@@ -277,3 +277,12 @@ command=timeout 1200 cargo clippy --workspace --locked -- -D warnings
     Checking chacha20poly1305 v0.10.1
     Checking tempfile v3.27.0
    Compiling proc-macro-error v1.0.4
+    Checking rand v0.8.8
+    Checking notify-rust v4.18.0
+    Checking clap v4.6.7
+    Checking toml v0.8.23
+    Checking regex v1.13.1
+    Checking cookie-factory v0.3.3
+    Checking polyval v0.6.2
+    Checking hkdf v0.12.4
+    Checking pbkdf2 v0.12.2
