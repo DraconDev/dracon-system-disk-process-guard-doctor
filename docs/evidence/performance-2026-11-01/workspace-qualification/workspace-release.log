@@ -269,3 +269,6 @@ command=timeout 2400 cargo build --release --locked
    Compiling clap_builder v4.6.7
    Compiling console v0.16.6
    Compiling clap_derive v4.6.7
+   Compiling hyper-tls v0.6.0
+   Compiling hyper-rustls v0.27.9
+   Compiling ansi-str v0.9.0
