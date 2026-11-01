@@ -88,9 +88,9 @@ not a guessed compression ratio, is the basis of this assessment.
 
 ## Incident versus later observations
 
-H27 directly measured **64,697,733,120 original bytes (60.255 GiB)**,
-**12,972,688,106 compressed bytes (12.081 GiB)** and
-**13,342,056,448 allocated bytes (12.425 GiB)**. Payload and effective
+H27 directly measured **64,697,733,120 original bytes (60.254 GiB)**,
+**12,972,688,106 compressed bytes (12.082 GiB)** and
+**13,342,056,448 allocated bytes (12.426 GiB)**. Payload and effective
 allocation ratios were **4.987×** and **4.849×** respectively
 (`derived.json.incident`). The original export's formatted `disksize: 60.9 GB`
 is rounded; no exact historical sysfs disksize was preserved there.

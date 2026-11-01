@@ -24,5 +24,7 @@
   },
   "baseline_revision": "41414a77509ae336fb058ab56f2c10983f0816c8",
   "production_zram_source_unchanged": true,
-  "assessment_sha256": "4605b29731876a043caffbd84ac046a2c48b99b83e660d437f26732788b2a4bc"
+  "assessment_sha256": "04f495b7a5d59545bdbd7f5abdc999f82fea43fc554056048f6f69734761fde4",
+  "correction_verified_at": "2026-11-01T23:14:17.561963+00:00",
+  "correction": "H27 displayed GiB equivalents verified independently with Decimal; raw bytes retained; eight fixtures and stored-evidence verification pass."
 }
