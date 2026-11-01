@@ -1,0 +1,7 @@
+cwd=/tmp/performance-workspace-20261101T231731Z
+started_at=2026-11-01T23:56:11.642875+00:00
+command=timeout 2400 cargo build --release --locked
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on build directory
