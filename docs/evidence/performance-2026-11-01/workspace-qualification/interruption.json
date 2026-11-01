@@ -1,0 +1,6 @@
+{
+  "observed_at": "2026-11-01T23:56:04.458375+00:00",
+  "reason": "Parent command wrapper aborted during release compilation; workspace test and clippy exit receipts retained; orphaned bounded cargo build observed still compiling. No exit status inferred. No process signalled. Exact build reissued to obtain a trustworthy exit receipt before deny.",
+  "interrupted_log": "workspace-release-interrupted.log",
+  "interrupted_gate_exit": null
+}
