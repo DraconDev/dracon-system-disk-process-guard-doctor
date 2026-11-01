@@ -539,6 +539,15 @@ quiet and non-destructive:
   (120 s). Swap occupancy alone is **not** pressure — low available memory
   and/or PSI/swap-in thrash is required. Hard CPU caps
   (`cap_offenders_cpu_percent`) are off by default.
+- **Swap-aware memory offenders**: the existing process scan measures swap
+  before selecting the five largest resident-plus-swapped footprint lower
+  bounds, so mostly swapped processes cannot disappear behind an RSS-first
+  shortlist. Each status read is bounded and bracketed by process-incarnation
+  checks. Unknown swap remains JSON `null`, not a measured zero;
+  `memory.swap_samples_unavailable` counts eligible unknowns even outside the
+  shortlist. The legacy `memory.top_rss` JSON name is retained. Events and
+  notifications disclose incomplete measurements; mitigation safety gates and
+  authority are unchanged.
 - **Stateful, rate-limited alerts**: entry/escalation/recovery notify once;
   unchanged conditions emit at most every `report_repeat_secs` (30 min).
   Heavy-process alerts are keyed by pid + process start time, so a persistent
