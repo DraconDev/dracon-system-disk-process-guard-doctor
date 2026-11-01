@@ -160,3 +160,6 @@ command=timeout 900 cargo test --locked -p dracon-system memory_sampling_tests -
    Compiling litrs v1.0.0
    Compiling anstyle v1.0.14
    Compiling anstream v1.0.0
+   Compiling document-features v0.2.12
+   Compiling rayon v1.12.0
+   Compiling zbus v5.19.0
