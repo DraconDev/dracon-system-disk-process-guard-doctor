@@ -22,6 +22,26 @@
       "exit": 0,
       "log": "workspace-tests.log",
       "log_sha256": "42fc0d0b508aeb7d0347c2f5cb52cd1bb6b2a2f65e7fc1103347f53be4c17374"
+    },
+    {
+      "name": "workspace-clippy",
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--locked",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "timeout_seconds": 1200,
+      "cwd": "/tmp/performance-workspace-20261101T231731Z",
+      "started_at": "2026-11-01T23:47:40.191610+00:00",
+      "finished_at": "2026-11-01T23:50:10.247492+00:00",
+      "elapsed_seconds": 150.05604167934507,
+      "exit": 0,
+      "log": "workspace-clippy.log",
+      "log_sha256": "855513c6c6df26334c16a88dd18c2da64ecdde6806ce05caaa0567bf21c082c5"
     }
   ]
 }
