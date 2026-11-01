@@ -147,3 +147,9 @@ command=timeout 1800 cargo test --workspace --locked
    Compiling icu_provider v2.3.1
    Compiling libz-sys v1.1.31
    Compiling tracing-attributes v0.1.31
+   Compiling tracing v0.1.44
+   Compiling ring v0.17.14
+   Compiling enumflags2_derive v0.7.12
+   Compiling arrayvec v0.7.8
+   Compiling vte v0.14.1
+   Compiling enumflags2 v0.7.12
