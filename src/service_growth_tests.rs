@@ -85,11 +85,13 @@ fn sustained_growth_exposes_counter_baseline_elapsed_window_and_rate() {
 fn a_single_burst_plateau_or_resident_swap_migration_is_not_sustained_growth() {
     let g = guard();
     let start = Instant::now();
-    for mode in ["early_burst", "late_burst", "migration", "flat"] {
+    for mode in ["early_burst", "late_burst", "noisy_early_burst", "noisy_late_burst", "migration", "flat"] {
         let mut tracker = Tracker::default();
         for secs in (0..=180).step_by(15) {
             let row = match mode {
                 "early_burst" => observation(if secs == 0 { 100 } else { 500 }, Some(0)),
+                "noisy_early_burst" => observation(if secs == 0 { 100 } else { 500 + secs / 60 }, Some(0)),
+                "noisy_late_burst" => observation(if secs < 60 { 100 + secs / 30 } else { 500 + secs / 60 }, Some(0)),
                 "late_burst" => observation(if secs < 60 { 100 } else { 500 }, Some(0)),
                 "migration" => observation(500 - secs, Some(secs)),
                 _ => observation(500, Some(0)),
@@ -357,6 +359,7 @@ async fn collector_reads_fixture_counters_and_only_queries_explicit_manager() {
         .unwrap()
     );
     let mut runtime = crate::GuardRuntimeState::default();
+    runtime.oom_biased_pids.insert(99, (0, ProcessIdentity { comm: "protected".into(), starttime: 55 }));
     let snapshot = runtime.oom_biased_pids.clone();
     let report = runtime
         .service_memory_growth
@@ -369,7 +372,7 @@ async fn collector_reads_fixture_counters_and_only_queries_explicit_manager() {
 
 #[tokio::test]
 async fn manager_and_process_races_or_cgroup_replacement_make_sample_unavailable() {
-    for changed in ["invocation", "pid_reuse", "cgroup"] {
+    for changed in ["invocation", "pid_reuse", "migration", "cgroup"] {
         let fixture = Fixture::new();
         let mut probe = FakeProbe::new(fixture.properties());
         match changed {
@@ -381,6 +384,7 @@ async fn manager_and_process_races_or_cgroup_replacement_make_sample_unavailable
                 )
             }
             "pid_reuse" => probe.after = RefCell::new(Some(Box::new(|| fixture.process(101)))),
+            "migration" => probe.after = RefCell::new(Some(Box::new(|| fs::write(fixture.roots.proc.join("7/cgroup"), "0::/system.slice/unrelated.service\n").unwrap()))),
             _ => {
                 probe.after = RefCell::new(Some(Box::new(|| {
                     let path = fixture.roots.cgroup.join("system.slice/probe.service");
