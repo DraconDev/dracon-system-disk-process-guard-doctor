@@ -1,0 +1,109 @@
+{
+  "source_path": "/home/dracon/.dracon/convos/pi-session-2026-11-01T13-49-49-892Z_01a1975f-a3c4-761d-8c9c-be8dac106191.html",
+  "source_sha256": "1df4911481c881a372a60fd40359fdad48273d35706b3cff96efe7cef7950867",
+  "selection": "raw tool results, no assistant interpretations",
+  "observations": [
+    {
+      "entry_index": 9,
+      "timestamp": "2026-11-01T13:51:05.435Z",
+      "role": "toolResult",
+      "text": "=== uptime/load ===\n 13:51:05  up 37 days 14:25,  70 users,  load average: 47.76, 57.64, 40.44\n\n=== memory ===\n               total        used        free      shared  buff/cache   available\nMem:            30Gi        28Gi       192Mi        39Mi       3.1Gi       1.6Gi\nSwap:          124Gi        68Gi        56Gi\n\n=== top CPU ===\n%CPU %MEM COMMAND\n42.2  3.3 rust-lld\n35.0  0.0 kswapd0\n34.9  1.0 bun\n18.1  0.0 rtk\n17.1  0.1 dracon-sync\n15.9  0.5 MainThread\n11.0  0.2 MainThread\n10.8  0.8 chrome\n10.1  0.0 rustc\n 9.9  0.8 pi\n 9.7  0.0 pi\n"
+    },
+    {
+      "entry_index": 12,
+      "timestamp": "2026-11-01T13:51:19.729Z",
+      "role": "toolResult",
+      "text": "=== PSI (pressure) ===\n-- /proc/pressure/cpu\nsome avg10=4.52 avg60=8.38 avg300=9.32 total=1200848196199\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n-- /proc/pressure/memory\nsome avg10=84.25 avg60=63.50 avg300=64.40 total=269162865057\nfull avg10=78.09 avg60=56.18 avg300=58.58 total=180843132914\n-- /proc/pressure/io\nsome avg10=91.61 avg60=81.62 avg300=76.91 total=853092053901\nfull avg10=81.52 avg60=65.85 avg300=62.96 total=323694252277\n\n=== procs ===\n31\n\n=== top MEM ===\n  1228.9 MB    3.9  rust-lld\n   944.7 MB    3.0  .xdg-desktop-po\n   465.7 MB    1.4  chrome\n   403.3 MB    1.2  pi\n   399.4 MB    1.2  rustc\n   370.2 MB    1.1  pi\n   299.1 MB    0.9  bun\n   270.4 MB    0.8  pi\n   258.8 MB    0.8  chrome\n   252.7 MB    0.8  pi\n   239.9 MB    0.7  .plasmashell-wr\n   215.9 MB    0.6  pi\n   197.7 MB    0.6  MainThread\n   196.7 MB    0.6  git\n   171.7 MB    0.5  pi\n"
+    },
+    {
+      "entry_index": 16,
+      "timestamp": "2026-11-01T13:51:41.403Z",
+      "role": "toolResult",
+      "text": "=== meminfo key ===\nMemTotal:       31914628 kB\nMemFree:          312812 kB\nMemAvailable:    2630348 kB\nCached:          3076552 kB\nSwapCached:        21676 kB\nSwapTotal:      130936824 kB\nSwapFree:       58567148 kB\nDirty:            202108 kB\nShmem:             43116 kB\nSReclaimable:     588704 kB\nCommitted_AS:   128700708 kB\nShmemHugePages:        0 kB\nShmemPmdMapped:        0 kB\n\n=== top RSS (robust, ps sorted) ===\n      869 MB  pid 1642075  .xdg-desktop-po\n      495 MB  pid 3740163  rustc\n      465 MB  pid 1733831  chrome\n      310 MB  pid 3636081  pi\n      285 MB  pid 2805957  pi\n      274 MB  pid 2626037  pi\n      256 MB  pid 1326060  chrome\n      236 MB  pid 967517   bun\n      235 MB  pid 3789907  rustc\n      228 MB  pid 1556577  pi\n      215 MB  pid 4048791  pi\n      214 MB  pid 3770265  pi\n      210 MB  pid 1552818  pi\n      196 MB  pid 3786107  MainThread\n      182 MB  pid 1631176  pi\n      171 MB  pid 4119877  chrome\n      163 MB  pid 3721686  pi\n      155 MB  pid 2537680  .plasmashell-wr\n      154 MB  pid 3750546  pi\n      147 MB  pid 1554127  pi\n\n=== container? ===\nsystemd\nnone\n\n\nCommand exited with code 1"
+    },
+    {
+      "entry_index": 18,
+      "timestamp": "2026-11-01T13:52:17.460Z",
+      "role": "toolResult",
+      "text": "=== /proc numeric dirs vs ps count ===\n921\nps -e count:\n31\n\n=== pid namespace ===\npid:[4026531836]\n\n=== /proc/stat scheduling ===\nprocs_running 43\nprocs_blocked 11\nloadavg:\n63.56 59.89 42.45 31/4533 3800544\n\n=== hidepid / proc mounts ===\nproc /proc proc rw,nosuid,nodev,noexec,relatime 0 0\n"
+    },
+    {
+      "entry_index": 25,
+      "timestamp": "2026-11-01T13:53:20.681Z",
+      "role": "toolResult",
+      "text": "=== ZFS ARC (explains RAM not in Cached) ===\n\n=== disk IO top talkers ===\niotop not available\n\n=== swap devices ===\nFilename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n/dev/zram0                              partition\t63827964\t63582644\t5\n/mnt/data/swapfile                      file\t\t67108860\t9523016\t\t-1\n\n=== filesystem types of interest ===\n/sys/fs/fuse/connections fusectl rw,nosuid,nodev,noexec,relatime\n/run/user/1000/doc fuse.portal rw,nosuid,nodev,relatime,user_id=1000,group_id=100\n/run/user/1000/kio-fuse-IeBOQm fuse.kio-fuse rw,nosuid,nodev,relatime,user_id=1000,group_id=100\n"
+    },
+    {
+      "entry_index": 27,
+      "timestamp": "2026-11-01T13:53:51.550Z",
+      "role": "toolResult",
+      "text": "=== zram device ===\ndisksize: 60.9 GB\norig_data_size: 60.3 GB\ncompr_data_size: 12.1 GB\nmem_used_total: 12.4 GB\nraw mm_stat: 64697733120 12972688106 13342056448        0 20484837376    68569 5460791150   169009 1269117655\n\n=== slab (zsmalloc holds zram) ===\nSlab:            2142572 kB\nSReclaimable:     633784 kB\nSUnreclaim:      1508788 kB\n"
+    },
+    {
+      "entry_index": 28,
+      "timestamp": "2026-11-01T13:53:51.550Z",
+      "role": "toolResult",
+      "text": "top - 13:53:51 up 37 days, 14:28,  2 users,  load average: 63.08, 61.08, 44.58\nTasks: 905 total,   7 running, 871 sleeping,  12 stopped,  15 zombie\n%Cpu(s): 28.6 us, 31.0 sy,  7.2 ni, 11.9 id, 19.1 wa,  1.3 hi,  0.9 si,  0.0 st \nMiB Mem :  31166.6 total,    854.0 free,  29082.2 used,   2996.1 buff/cache     \nMiB Swap: 127868.0 total,  57094.5 free,  70773.5 used.   2084.4 avail Mem \n\n    PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND\n3816176 dracon    20   0   71.8g 283316  34640 S 112.3   0.9   0:06.99 bun\n    137 root      20   0       0      0      0 D  79.8   0.0    13d+4h kswapd0\n1733831 dracon    20   0 1450.5g 454448  52360 S  44.0   1.4  16:55.18 chrome\n1642075 dracon    20   0   39.1g 965900   4112 S  31.1   3.0     20,44 .xdg-de+\n3595688 dracon    30  10 3267596 119804  23828 S  24.2   0.4 196:17.20 dracon-+\n3562977 root      20   0       0      0      0 I  21.5   0.0   0:59.73 kworker+\n3546265 root      20   0       0      0      0 R  18.3   0.0   0:30.13 kworker+\n3814634 dracon    39  19 1977816 274548 274424 S  18.3   0.9   0:02.34 git\n3821724 dracon    20   0 1448.7g 243936 145348 S  18.3   0.8   0:00.77 chromium\n2278350 dracon    20   0 1267128  23364  15880 S  17.8   0.1   0:04.01 ai-auto+\n3820957 dracon    20   0   53.1g 269244 201624 S  16.8   0.8   0:01.14 chromium\n      1 root      20   0   27292   9972   4292 S  16.0   0.0      7,15 systemd\n1554127 dracon    20   0   10.9g 481960  25896 S  16.0   1.5      9,55 pi\n3467005 dracon    20   0   12.8g 151020  34820 S  16.0   0.5   0:19.92 MainThr+\n 967517 dracon    20   0   90.1g 238000  10620 S  13.8   0.7 198:01.80 bun\n3721641 dracon    20   0 1505876  69584  47012 S  13.6   0.2   0:45.80 MainThr+\n3825266 dracon    39  19 2685708 127004  61440 R  11.9   0.4   0:00.48 MainThr+\n3740163 dracon    20   0 3146352 299504   4204 S  11.6   0.9   0:25.47 rustc\n"
+    },
+    {
+      "entry_index": 30,
+      "timestamp": "2026-11-01T13:54:48.053Z",
+      "role": "toolResult",
+      "text": "=== swap/zram tuning ===\nvm.swappiness                60\nvm.page-cluster              0\nvm.vfs_cache_pressure        75\nvm.min_free_kbytes           67584\nvm.watermark_scale_factor    125\nvm.overcommit_memory         0\nvm.overcommit_ratio          50\n\n=== zram alg/priority ===\nlzo-rle lzo lz4 lz4hc [zstd] deflate 842 \n=== kswapd CPU time ===\n    137 kswapd0         37-14:28:57 13-04:03:13 D\n"
+    },
+    {
+      "entry_index": 33,
+      "timestamp": "2026-11-01T13:55:27.204Z",
+      "role": "toolResult",
+      "text": "=== zram units ===\n  UNIT                   LOAD   ACTIVE SUB    DESCRIPTION\n  dev-zram0.swap         loaded active active Compressed Swap on /dev/zram0\n  mnt-data-swapfile.swap loaded active active /mnt/data/swapfile\n\nLegend: LOAD   \u2192 Reflects whether the unit definition was properly loaded.\n        ACTIVE \u2192 The high-level unit activation state, i.e. generalization of SUB.\n        SUB    \u2192 The low-level unit activation state, values depend on unit type.\n\n2 loaded units listed. Pass --all to see loaded but inactive units, too.\nTo show all installed unit files use 'systemctl list-unit-files'.\n\n=== zram-generator config ===\n[zram0]\ncompression-algorithm=zstd\nswap-priority=5\nzram-size=200 / 100 * ram\n\n=== nixos zram/swap settings ===\n/etc/nixos/configuration.nix:16:  # Swap managed explicitly via zram and swapDevices below. NixOS's\n/etc/nixos/configuration.nix:17:  # swapDevices setting does not disable systemd's GPT auto-discovery, so\n/etc/nixos/configuration.nix:108:  zramSwap = {\n/etc/nixos/configuration.nix:125:  swapDevices = lib.mkForce [\n/etc/nixos/configuration.nix:138:  # The old values (swappiness=10, page-cluster default) were tuned for\n/etc/nixos/configuration.nix:140:  # - swappiness=10 forced the kernel to evict page cache / stall in direct\n/etc/nixos/configuration.nix:148:  # CHANGED 2026-09-25: swappiness 150 -> 60. Permanently overcommitted box\n/etc/nixos/configuration.nix:153:    \"vm.swappiness\" = 60;              # resident working set over zram churn\n/etc/nixos/hardware-configuration.nix:27:  swapDevices =\n\n=== huge files possibly held open ===\n23M\t/home/dracon/.dracon/convos/trajectory-2026-10-01-090006.json\n21M\t/home/dracon/.dracon/convos/pi-session-2026-09-26T17-17-50-466Z_01a0deb9-2401-70ba-89fc-5450ed4545a6.html\n9.5M\t/home/dracon/.dracon/convos/pi-session-2026-09-27T20-59-36-477Z_01a0e4aa-889b-7257-b640-183c052ae1e9.html\n1.8M\t/home/dracon/.dracon/convos/pi-session-2026-10-08T18-30-08-542Z_01a11cc7-a59e-717a-91c2-7268c646842d.html\n592K\t/home/dracon/.dracon/convos/pi-session-2026-10-12T12-20-42-370Z_01a1300e-db01-7465-a7ab-a556ff81d19b.html\n"
+    },
+    {
+      "entry_index": 35,
+      "timestamp": "2026-11-01T13:55:32.821Z",
+      "role": "toolResult",
+      "text": "  };\n\n  # --- ZRAM ---\n  # CHANGED 2026-09-04: memoryPercent 150 -> 200 for work-over-fps.\n  # Box was critical: 30G RAM + 45G zram both ~100% full (1.7G avail,\n  # 284M swap free, 3.3x zstd ratio). +15G zram headroom; disk swap\n  # below acts as overflow so OOM-killer doesn't fire during builds.\n  # Previous: 2026-08-25 100 -> 150 after Aug 25 swap-thrash incident.\n  zramSwap = {\n    enable = true;\n    algorithm = \"zstd\";\n    memoryPercent = 200;\n    priority = 5;\n  };\n\n  # --- SWAP ---\n  # CHANGED 2026-09-26: 64G swapfile moved from / (nvme, ~91% full) to\n  # /mnt/data (SATA, 349G free). Same overflow role behind zram (prio 5\n  # fills first, disk prio 1 only after). NixOS auto-creates the file on\n  # rebuild; systemd orders it after the /mnt/data mount, and the mount\n  # itself is now boot-required (no `nofail`), which is the guarantee.\n  # After the first reboot on this config: verify with `swapon -s`\n  # (expect zram + partition + /mnt/data/swapfile), then `sudo rm /swapfile`\n  # to reclaim 64G on the nvme. Until that reboot, this changes nothing.\n  # (2026-09-04: file was /swapfile on nvme; the nvme partition entry stays.)\n  swapDevices = lib.mkForce [\n    {\n      device = \"/dev/disk/by-uuid/5021c67f-4e1f-4a52-94a4-52ca9325d4ef\";\n      priority = 1;\n    }\n    {\n      device = \"/mnt/data/swapfile\";\n      size = 65536;\n      priority = 1;\n    }\n  ];\n\n  # MEMORY PERFORMANCE TUNING (CHANGED 2026-08-25, zram-heavy workload).\n  # The old values (swappiness=10, page-cluster default) were tuned for\n  # DISK swap, not zram \u2014 they made the Aug 25 thrash worse:\n  # - swappiness=10 forced the kernel to evict page cache / stall in direct\n  #   reclaim instead of moving cold anon pages into compressed RAM (3.9x).\n  # - page-cluster=3 means 8-page (32KiB) read bursts from swap; correct for\n  #   NVMe swap, wasteful latency for zram random access. Must be 0.\n  # - watermark_scale_factor=125 wakes kswapd earlier so reclaim happens in\n  #   the background instead of stalling allocations at the low watermark.\n  # - watermark_boost_factor=0 avoids extra synchronous reclaim bursts after\n  #   fragmentation events (desktop/dev workload, no hugepage requirements).\n  # CHANGED 2026-09-25: swappiness 150 -> 60. Permanently overcommitted box\n  # (40 agents); 150 evicted hot anon pages into zram and faulted them right\n  # back (kswapd ~37%, heavy swap churn). 60 keeps the working set resident;\n  # zram still absorbs genuinely cold pages.\n  boot.kernel.sysctl = {\n    \"vm.swappiness\" = 60;              # resident working set over zram churn\n    \"vm.page-cluster\" = 0;             # no readahead burst for zram (random access)\n    \"vm.watermark_scale_factor\" = 125; # kswapd starts earlier, smoother under load\n    \"vm.watermark_boost_factor\" = 0;   # no boost-driven reclaim stalls\n    \"vm.vfs_cache_pressure\" = 75;      # unchanged: keep retaining dentry/inode cache\n  };\n\n\n  # --- POWER: sleep is fully disabled on this box. ---\n  # History: PowerDevil auto-suspended despite IdleAction=ignore and\n  # ~/.config/powerdevilrc autoSuspendIdleTimeoutSec=0 (it slept Aug 19/22 2026\n  # overnight while long-running agent jobs were active). Config-level persuasion\n  # does not stick, so sleep is now blocked at the systemd unit level: masking\n  # these targets makes `systemctl suspend`, KDE Leave->Sleep, power-key sleep,\n  # PowerDevil idle suspend \u2014 every path \u2014 fail outright.\n  # To ever sleep again: remove this list and nixos-rebuild switch.\n  systemd.suppressedSystemUnits = [\n    \"sleep.target\"\n    \"suspend.target\"\n    \"hibernate.target\"\n    \"hybrid-sleep.target\"\n    \"suspend-then-hibernate.target\"\n\n[35 more lines in file. Use offset=175 to continue.]"
+    },
+    {
+      "entry_index": 38,
+      "timestamp": "2026-11-01T13:56:14.441Z",
+      "role": "toolResult",
+      "text": "=== swap churn: majfaults / pgmajfault rate ===\nmajor faults/sec: 10872\nswap IO pages/sec: 27885\n\n=== reclaim activity (5s) ===\npgsteal_kswapd 101480473987\npgsteal_direct 68791583779\npgscan_kswapd 125955785712\npgscan_direct 94961527174\npgscan_direct_throttle 0\n\n=== oom events ===\noom_kill 23\ncompact_stall 193077741\nthp_fault_alloc 17591\n"
+    },
+    {
+      "entry_index": 43,
+      "timestamp": "2026-11-01T14:00:32.814Z",
+      "role": "toolResult",
+      "text": "=== leaked portal 1642075 ===\n/nix/store/05qq2jsjrkl2plqb1paqrabs94dri12m-xdg-desktop-portal-1.20.4/libexec/xdg-desktop-portal \nRSS: 685 MB\nopen files: 27\ntop fds by size:\n\n=== its parent ===\n   1224       1 37-14:34:51 systemd\n"
+    },
+    {
+      "entry_index": 48,
+      "timestamp": "2026-11-01T14:01:30.326Z",
+      "role": "toolResult",
+      "text": "=== tmux-persist-daemon script ===\n#!/usr/bin/env bash\n# Persistent tmux autosave daemon.\n#\n# Why this replaces the plugin's status-bar trigger:\n# continuum normally schedules saves by putting `#(continuum_save.sh)` in\n# status-right and relying on status-interval to re-evaluate it. But status\n# options are only expanded when a client actually DRAWS the status bar. With\n# no client attached -- which is the normal state for a persistent, detached\n# setup -- nothing ever expands it, so no save ever happens. That is why the\n# newest snapshot sat at 2026-07-17 for over two months.\n#\n# This loop is independent of clients: it runs from tmux server start (see\n# ~/.dracon/nixos/terminal/tmux.conf) and keeps saving whether or not anyone\n# is looking.\n#\n# Single-instance guarded by a pidfile, so reloading the tmux config does not\n# spawn duplicates. The save script applies its own 5-minute gate, so calling\n# it every 60s is cheap and guarantees a save lands within ~6 minutes of a\n# change.\n\nset -u\n\nINTERVAL=\"${TMUX_PERSIST_INTERVAL:-60}\"\nPIDFILE=\"${XDG_RUNTIME_DIR:-/tmp}/tmux-persist-$$.pid\"\n\n# Which server this daemon serves. `run-shell -b` from a tmux.conf sets $TMUX\n# to that server's socket, so each server gets its own daemon; without $TMUX\n# fall back to the default socket. All tmux calls go through `t` so a stale\n# environment can never aim this daemon at the wrong server.\nSOCKPATH=\"${TMUX:-}\"\nSOCKPATH=\"${SOCKPATH%%,*}\"\nif [ -z \"$SOCKPATH\" ]; then\n    SOCKPATH=\"${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)/default\"\nfi\nt() { tmux -S \"$SOCKPATH\" \"$@\"; }\n\n# No server on our socket (scratch server gone, socket file stale): exit\n# instead of idling forever as a zombie that trims nothing.\nt list-sessions >/dev/null 2>&1 || exit 0\n\n# Single-instance guard, one per socket.\n#\n# The original keyed the lock on `tmux display-message -p '#{pid}'`, which is\n# the CLIENT pid -- and it is empty when nothing is attached. Every detached\n# start therefore computed the same (useless) key and `mkdir` succeeded again,\n# so a rebuild left nine daemons running. Key on the socket instead: it is\n# stable for the lifetime of a server and identical across all clients.\n#\n# Two more fixes in this guard. The EXIT trap used to be armed BEFORE the lock\n# was acquired, so a duplicate that found the lock held and exited via `exit 0`\n# ran cleanup and DELETED the live owner's lock -- every config reload then\n# added another daemon, which is how five ended up running with no lock at\n# all. And a contender that found the lock held but the pid file not yet\n# written stole the lock from a winner mid-startup. Now the trap is armed only\n# after acquiring, cleanup removes the lock only if we own it, and an empty\n# pid means \"freshly claimed, back off\".\nSOCKKEY=\"$(printf '%s' \"$SOCKPATH\" | cksum | cut -d' ' -f1)\"\nLOCK=\"/tmp/tmux-persist-$(id -u)-${SOCKKEY}.lock\"\n\nif ! mkdir \"$LOCK\" 2>/dev/null; then\n\n=== why stopped? SIGSTOP trace ===\n-- 3959321 wchan=do_signal_stop sigblk_ignored:\n     SigPnd:\t0000000000000000\n     ShdPnd:\t0000000000010000\n     SigBlk:\t0000000000010000\n     SigIgn:\t0000000000300004\n     SigCgt:\t0000000043817efb\n-- 2097700 wchan=do_signal_stop sigblk_ignored:\n     SigPnd:\t0000000000000000\n     ShdPnd:\t0000000000010000\n     SigBlk:\t0000000000010000\n     SigIgn:\t0000000000300004\n     SigCgt:\t0000000043817efb\n"
+    },
+    {
+      "entry_index": 50,
+      "timestamp": "2026-11-01T14:02:22.441Z",
+      "role": "toolResult",
+      "text": "=== BEFORE ===\navailable: 1189 MB\nmajfault: 60201103213\n\n=== 1) terminating leaked xdg-desktop-portal 1642075 (685 MB, 15d) ===\nSIGTERM sent\nexited after 8s\n\n=== 2) resuming 12 frozen tmux-persist-daemons (unblocks SIGCHLD -> reaps zombies) ===\n  CONT 2097700   -> S\n  CONT 2232026   -> S\n  CONT 2401676   -> S\n  CONT 2530944   -> S\n  CONT 3612623   -> S\n  CONT 3650269   -> S\n  CONT 3823892   -> S\n  CONT 3842364   -> S\n  CONT 3959321   -> S\n  CONT 4099744   -> S\n  CONT 4114598   -> S\n  CONT 4172127   -> S\n"
+    },
+    {
+      "entry_index": 52,
+      "timestamp": "2026-11-01T14:02:41.871Z",
+      "role": "toolResult",
+      "text": "=== zombies now ===\n  zombie:  650717  650116 Z    xinput\n  zombie: 2717550 2717485 Z    sleep\n  zombie: 2846975  250296 Zs   codex\ntotal zombies: 3\n\n=== stopped now ===\ntotal stopped: 0\n\n=== portals now ===\n       19 MB pid 1164213  up 23-18:28:40    .xdg-desktop-po\n        4 MB pid 1384730  up 23-18:19:24    .xdg-desktop-po\n       19 MB pid 3997655  up 00:14          .xdg-desktop-po\n\n=== tmux autosave alive? ===\n  pid 2097700: S 4-09:46:29\n  pid 3959321: S 10-05:28:22\n  pid 4172127: S 10-05:19:35\n"
+    },
+    {
+      "entry_index": 53,
+      "timestamp": "2026-11-01T14:02:41.871Z",
+      "role": "toolResult",
+      "text": "=== AFTER memory ===\n  RAM available: 6859 MB  (used 24307 MB)\n  swap used: 31569 MB\n\n=== zram ===\n  orig: 26.7 GB  compressed: 7.9 GB  RAM used: 8.6 GB\n  compress ratio: 3.39x\n\n=== load / pressure ===\n32.58 52.28 48.90 8/4441 4012851\n/proc/pressure/memory:some avg10=7.03 avg60=35.18 avg300=55.94 total=269575843461\n/proc/pressure/memory:full avg10=5.98 avg60=30.83 avg300=50.41 total=181218677494\n/proc/pressure/io:some avg10=37.79 avg60=61.28 avg300=74.80 total=853615540962\n/proc/pressure/io:full avg10=21.52 avg60=45.84 avg300=61.03 total=324128204063\n\n=== churn (5s sample) ===\n  major faults/sec: 25432\n"
+    },
+    {
+      "entry_index": 55,
+      "timestamp": "2026-11-01T14:03:57.662Z",
+      "role": "toolResult",
+      "text": "=== STABILITY CHECK (45s later) ===\n  RAM available: 4260 MB\n  swap used: 31201 MB\n  load: 20.94 43.57 46.09\n\n=== swap devices ===\n  /dev/zram0               used: 27.3 GB\n  /mnt/data/swapfile       used: 3.2 GB\n\n=== zram RAM footprint ===\n  holds 26.7 GB of pages in 8.1 GB RAM (3.41x)\n\n=== kswapd0 now ===\n    137 R    35.0 13-04:04:21 kswapd0\n"
+    }
+  ]
+}

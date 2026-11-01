@@ -1,0 +1,21 @@
+{
+  "observed_at": "2026-11-01T15:16:27.248247+00:00",
+  "path": "/home/dracon/.dracon/utilities/system/dracon-system.toml",
+  "historical_policy_proven": false,
+  "explicit_guard_fields": {
+    "monitor_memory": true,
+    "mem_available_warn_percent": 15,
+    "swap_used_warn_percent": 50,
+    "mem_psi_full_warn": 10.0,
+    "memory_pressure_sustain_secs": 120,
+    "auto_renice_on_memory": true,
+    "bias_oom_on_pressure": true,
+    "cap_offenders_cpu_percent": 50,
+    "process_exempt_names": "systemd,dbus-daemon,Xorg,kwin_wayland,plasmashell,minimax-code,pi,wezterm,wezterm-gui,chrome"
+  },
+  "absent_fields": [
+    "mem_swapin_warn_pages_per_sec",
+    "reap_orphans_on_pressure",
+    "reap_stale_dev_servers"
+  ]
+}
