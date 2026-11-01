@@ -47,7 +47,7 @@ below use that observed value, not an assumption about historical page size.
 
 | Quantity | Meaning | S0 observation, approximately 19:03:32 UTC |
 |---|---|---|
-| Logical capacity | `disksize`, addressable uncompressed block-device size; not committed RAM | **65,359,839,232 bytes = 60.871 GiB**. Exactly twice contemporaneous `MemTotal` (**32,679,919,616 bytes = 30.436 GiB**); not twice-RAM physical consumption. |
+| Logical capacity | `disksize`, addressable uncompressed block-device size; not committed RAM | **65,359,839,232 bytes = 60.871 GiB**. Approximately twice contemporaneous `MemTotal` (**32,680,579,072 bytes = 30.436 GiB**); not twice-RAM physical consumption. |
 | Stored original data | `mm_stat[0]`, represented uncompressed data; not a physical allocation | **26,198,777,856 bytes = 24.400 GiB**. |
 | Compressed payload | `mm_stat[1]`, compressed data size | **7,979,230,525 bytes = 7.431 GiB**. |
 | Driver-reported RAM allocation | `mm_stat[2]`, physical allocation including allocator effects; not logical size | **8,168,927,232 bytes = 7.608 GiB**. Not a complete accounting of every host/kernel/compressor overhead or CPU cost. |
