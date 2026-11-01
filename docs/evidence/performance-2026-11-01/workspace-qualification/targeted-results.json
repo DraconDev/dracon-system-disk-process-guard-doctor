@@ -1,0 +1,73 @@
+{
+  "environment": {
+    "CARGO_BUILD_JOBS": "2",
+    "CARGO_INCREMENTAL": "0",
+    "CARGO_TARGET_DIR": "/tmp/performance-workspace-20261101T231731Z/target",
+    "DRACON_EPOCH_TEST_HELPER": "/tmp/performance-workspace-20261101T231731Z/target/debug/dracon-sync"
+  },
+  "results": [
+    {
+      "name": "attribution",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "dracon-system",
+        "memory_sampling_tests",
+        "--",
+        "--nocapture"
+      ],
+      "timeout_seconds": 900,
+      "cwd": "/tmp/performance-workspace-20261101T231731Z",
+      "started_at": "2026-11-01T23:20:30.739682+00:00",
+      "finished_at": "2026-11-01T23:23:24.984188+00:00",
+      "elapsed_seconds": 174.24566721217707,
+      "exit": 0,
+      "log": "attribution.log",
+      "log_sha256": "a156ca5e394fb17a67ccd21de21b285f44a6f93424355711191e3be6c0003b9c"
+    },
+    {
+      "name": "growth",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "dracon-system",
+        "service_growth",
+        "--",
+        "--nocapture"
+      ],
+      "timeout_seconds": 300,
+      "cwd": "/tmp/performance-workspace-20261101T231731Z",
+      "started_at": "2026-11-01T23:23:24.994695+00:00",
+      "finished_at": "2026-11-01T23:23:29.268366+00:00",
+      "elapsed_seconds": 4.273673267103732,
+      "exit": 0,
+      "log": "growth.log",
+      "log_sha256": "8c5f46c97dcd8d48a16025de0cb897f7fbf1e39410a2afbce9c572ab67ab0b02"
+    },
+    {
+      "name": "persistence",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "dracon-system",
+        "tmux_health",
+        "--",
+        "--nocapture"
+      ],
+      "timeout_seconds": 300,
+      "cwd": "/tmp/performance-workspace-20261101T231731Z",
+      "started_at": "2026-11-01T23:23:29.268857+00:00",
+      "finished_at": "2026-11-01T23:23:34.585447+00:00",
+      "elapsed_seconds": 5.316594847943634,
+      "exit": 0,
+      "log": "persistence.log",
+      "log_sha256": "b84f637412ce19c9f1db0446bc1ced41e20f0fcefe73e6ae936a3e92f37914b1"
+    }
+  ]
+}

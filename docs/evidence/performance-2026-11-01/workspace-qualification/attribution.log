@@ -197,3 +197,30 @@ command=timeout 900 cargo test --locked -p dracon-system memory_sampling_tests -
    Compiling toml v0.8.23
    Compiling fs2 v0.4.3
    Compiling dracon-system v0.112.51 (/tmp/performance-workspace-20261101T231731Z/dracon-system)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 53s
+     Running unittests src/main.rs (target/debug/deps/dracon_system-f1c208809e9b5874)
+
+running 8 tests
+test memory_sampling_tests::empty_selection_and_footprint_overflow_are_safe ... ok
+test memory_sampling_tests::exemptions_and_kernel_threads_never_become_memory_offenders ... ok
+test memory_sampling_tests::initial_identity_failure_does_not_read_swap_or_fabricate_samples ... ok
+test memory_sampling_tests::process_churn_across_swap_read_discards_the_sample ... ok
+test memory_sampling_tests::swap_parser_rejects_missing_malformed_and_oversized_status ... ok
+test memory_sampling_tests::swapped_offender_outside_rss_shortlist_is_selected ... ok
+test memory_sampling_tests::swapping_and_equal_footprints_are_independent_of_input_order ... ok
+test memory_sampling_tests::unknown_swap_is_not_a_measured_zero_even_outside_shortlist ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 736 filtered out; finished in 0.05s
+
+     Running tests/events_cli.rs (target/debug/deps/events_cli-8e7213f8a4ad4cd7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/guard_service.rs (target/debug/deps/guard_service-785e44f6b350c63a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+

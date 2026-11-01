@@ -1,0 +1,31 @@
+cwd=/tmp/performance-workspace-20261101T231731Z
+started_at=2026-11-01T23:23:29.268857+00:00
+command=timeout 300 cargo test --locked -p dracon-system tmux_health -- --nocapture
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.22s
+     Running unittests src/main.rs (target/debug/deps/dracon_system-f1c208809e9b5874)
+
+running 9 tests
+test tmux_health::tests::budgets_and_parser_failures_are_explicit ... ok
+test tmux_health::tests::cksum_protocol_and_policy_compatibility ... ok
+test tmux_health::tests::delayed_first_server_does_not_shift_later_save_freshness ... ok
+test tmux_health::tests::fresh_stale_and_stopped_are_distinct_facts_not_recovery_predicates ... ok
+test tmux_health::tests::inspection_is_query_only_and_preserves_owned_files_and_socket ... ok
+test tmux_health::tests::missing_or_untrusted_provenance_is_unknown_not_healthy ... ok
+test tmux_health::tests::multiple_servers_do_not_borrow_other_producers_or_evidence ... ok
+test tmux_health::tests::query_bracket_rejects_server_and_producer_lifecycle_races ... ok
+test tmux_health::tests::snapshot_file_selection_rejects_special_files_and_symlinks ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 735 filtered out; finished in 4.97s
+
+     Running tests/events_cli.rs (target/debug/deps/events_cli-8e7213f8a4ad4cd7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/guard_service.rs (target/debug/deps/guard_service-785e44f6b350c63a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+
