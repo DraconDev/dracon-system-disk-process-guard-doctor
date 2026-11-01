@@ -744,4 +744,12 @@ test missing_explicit_policy_exits_with_config_status ... ok
 test readme_documents_the_reload_path ... ok
 test shipped_unit_wires_execreload_to_sighup ... ok
 test status_reports_canonical_fallback_when_no_policy_exists ... ok
-test status_reports_explicit_policy_override_in_human_and_json_modes ... 
+test status_reports_explicit_policy_override_in_human_and_json_modes ... ok
+test status_reports_first_discovered_policy_in_human_and_json_modes ... ok
+test status_reports_missing_explicit_policy_override ... ok
+test unit_per_pass_comment_agrees_with_the_readme ... ok
+test watchdog_execstart_matches_install_destination ... ok
+test watchdog_unit_carries_baseline_sandbox ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.53s
+
