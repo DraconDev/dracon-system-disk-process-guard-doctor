@@ -42,3 +42,13 @@ command=timeout 2400 cargo build --release --locked
    Compiling subtle v2.6.1
    Compiling tinystr v0.8.4
    Compiling pkg-config v0.3.34
+   Compiling slab v0.4.12
+   Compiling lock_api v0.4.14
+   Compiling bitflags v2.13.2
+   Compiling parking_lot v0.12.5
+   Compiling vcpkg v0.2.15
+   Compiling errno v0.3.14
+   Compiling signal-hook-registry v1.4.8
+   Compiling crossbeam-utils v0.8.23
+   Compiling futures-sink v0.3.34
+   Compiling thiserror v1.0.69
