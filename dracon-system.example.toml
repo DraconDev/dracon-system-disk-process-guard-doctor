@@ -244,8 +244,8 @@ service_memory_growth_targets = [
     "user:dracon-system-guard.service",
     "user:xdg-desktop-portal.service",
 ]
-# History is capped at 32 points/target. Growth must span both window halves;
-# a burst/plateau is not sustained growth. Drops, missing data, incarnation
+# History is capped at 32 points/target. Each half must contribute >=1/4 of
+# both total growth and the minimum above: burst/near-plateau is not sustained. Drops, missing data, incarnation
 # changes or gaps > half a window reset it. Use a window > 2x guard interval.
 # A fresh `guard once` can only report warmup/unavailable, not daemon history.
 auto_renice_on_memory = true

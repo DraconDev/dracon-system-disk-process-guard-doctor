@@ -39,8 +39,10 @@ are described as reset/release, not proven cumulative-counter resets.
 
 Default window: 600 seconds; minimum growth: 256 MiB. Keep time-spaced samples
 and a predecessor at the window boundary, not an unbounded per-cycle list.
-Require sufficient elapsed time and positive growth in both halves of the
-window, not merely a high endpoint. A single burst followed by a plateau must
+Require sufficient elapsed time and meaningful growth in both halves of the
+window, not merely a high endpoint. Each half must contribute at least one
+quarter of the observed delta and one quarter of the configured minimum;
+a dominant burst plus negligible drift does not satisfy this balance. A single burst followed by a plateau must
 not become sustained growth. Flat RSS/swap migration must not become growth.
 This conservative detector may miss noisy/short-lived growth; it must never
 claim that sustained growth proves a leak or compare across missing evidence.

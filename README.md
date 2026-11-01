@@ -571,8 +571,9 @@ fallback to another manager. Set an empty list or disable the flag to stop
 this observation without changing other guard behavior.
 
 The default `service_memory_growth_window_secs = 600` and
-`service_memory_growth_min_mb = 256` require positive growth in both halves
-of a sufficiently observed window. Rates use elapsed monotonic time, not poll
+`service_memory_growth_min_mb = 256` require meaningful growth in both halves
+of a sufficiently observed window: each half contributes at least one quarter
+of both the observed increase and the configured minimum. Rates use elapsed monotonic time, not poll
 counts. This is a conservative observation of **cgroup-v2 charged resident RAM
 (including cache/kernel) plus swap**, not process RSS/PSS or a leak diagnosis.
 The counters are sequential observations, not an atomic snapshot. RSS/swap
