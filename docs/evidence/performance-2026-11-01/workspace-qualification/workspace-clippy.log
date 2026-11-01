@@ -243,3 +243,5 @@ command=timeout 1200 cargo clippy --workspace --locked -- -D warnings
     Checking encoding_rs v0.8.41
     Checking toml_edit v0.22.27
     Checking clap_builder v4.6.7
+    Checking zbus v5.19.0
+   Compiling clap_derive v4.6.7
