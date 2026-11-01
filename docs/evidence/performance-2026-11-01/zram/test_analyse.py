@@ -26,6 +26,23 @@ class Calculations(unittest.TestCase):
         self.assertIsNone(a.ratio(100, 0))
         self.assertEqual(a.ratio(0, 100), 0)
 
+    def test_frame_keeps_logical_capacity_separate_and_read_errors_unknown(self):
+        path = '/sys/block/zram0'
+        sample = dict(started_at='fixture', reads={
+            path + '/mm_stat': dict(text='800 200 250', error=None),
+            path + '/disksize': dict(text='4096', error=None),
+        })
+        row = a.frame(sample, path)
+        self.assertEqual(row['logical_capacity_bytes'], 4096)
+        self.assertEqual(row['ram_bytes'], 250)
+        self.assertEqual(row['original_fraction_of_logical_capacity'], 800 / 4096)
+        self.assertEqual(row['ram_fraction_of_logical_capacity'], 250 / 4096)
+        sample['reads'][path + '/disksize']['error'] = 'unavailable'
+        row = a.frame(sample, path)
+        self.assertIsNone(row['logical_capacity_bytes'])
+        self.assertIsNone(row['ram_fraction_of_logical_capacity'])
+        self.assertEqual(row['ram_bytes'], 250)
+
     def test_swap_units_priority_and_allocated_slots(self):
         parsed = a.swaps('Filename Type Size Used Priority\n/dev/zram0 partition 1024 512 5\n/disk/swap file 2048 10 -1\n')
         self.assertEqual(parsed[0]['capacity_bytes'], 1024 * 1024)
