@@ -561,6 +561,47 @@ Everything is configurable in the `[guard]` table of the policy file; see
 machine-readable snapshot (disk state, memory `observed` vs stabilized
 `pressure`, zombies, offenders).
 
+### Sustained service memory growth (report only)
+
+`monitor_service_memory_growth = true` independently observes configured
+`service_memory_growth_targets`: by default the system sync-operator service
+and the user guard and xdg-desktop-portal services. Targets use explicit
+`system:canonical.service` or `user:canonical.service` names; there is no
+fallback to another manager. Set an empty list or disable the flag to stop
+this observation without changing other guard behavior.
+
+The default `service_memory_growth_window_secs = 600` and
+`service_memory_growth_min_mb = 256` require positive growth in both halves
+of a sufficiently observed window. Rates use elapsed monotonic time, not poll
+counts. This is a conservative observation of **cgroup-v2 charged resident RAM
+(including cache/kernel) plus swap**, not process RSS/PSS or a leak diagnosis.
+The counters are sequential observations, not an atomic snapshot. RSS/swap
+migration with unchanged total and a one-off burst followed by a plateau do
+not establish sustained growth.
+
+Boot ID, manager/UID, InvocationID, cgroup directory identity and main-process
+PID/starttime bind a series. Restart, PID reuse, missing measurements, clock
+or sampling discontinuities and footprint drops reset its comparison. Unknown
+counters remain JSON `null`; missing manager/accounting/namespace evidence is
+reported as unavailable, not healthy or zero. History is capped at 16 services
+and 32 points each, with bounded batched `systemctl show` output/deadlines and
+bounded descriptor-relative, no-symlink counter reads. Windows are clamped to
+60–86400 seconds; choose one greater than twice `interval_secs`.
+
+`service_memory_growth` in guard JSON exposes current and baseline counters,
+identity/provenance, elapsed window, delta and MiB/min. Human reports show the
+same status/window/rate. The daemon emits rate-limited `memory/service-growth`
+events; it does not kill, resume, restart, renice, apply quotas or admit jobs
+based on this observation. A new `guard once` has no history, so it cannot
+inspect the running daemon's accumulated window. Successful reload/restart
+also clears observation-only history; nothing is persisted or recovered.
+
+See `dracon-system.example.toml` for all four settings. The existing Nix
+bool/unsigned-integer policy override map can set the monitor/window/minimum
+knobs; it does not support target arrays. Custom target lists use TOML via
+the module's existing unmanaged/custom-policy option. No live configuration
+change or deployment is implicit in these source defaults.
+
 `notify_command` accepts arguments, so
 `notify_command = "/usr/bin/notify-send -u critical"` works with no wrapper
 script. The value is split into a program and an argv array and executed
