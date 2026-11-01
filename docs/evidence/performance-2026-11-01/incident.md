@@ -13,6 +13,7 @@ This item is an investigation only. No binary, configuration, process, service, 
 - [User-service journal](raw/guard-user-incident-journal.stdout), [stderr](raw/guard-user-incident-journal.stderr), and [derived exact excerpts](raw/journal-extract.json). The query requested 13:45–14:10 UTC with a 600-line limit; the returned tail covers 13:48:40–14:09:48 UTC. Absence from this bounded capture does not establish absence from all logs.
 - [Current user-unit properties](raw/guard-user-properties.stdout) identify an active user guard, PID 2798562, with a recorded start on October 25. [Current system-unit properties](raw/guard-system-properties.stdout) report that the system-level unit is not found. These are current observations, not a historical unit/configuration snapshot.
 - [Selected current policy](raw/current-policy-selection.json) contains only relevant non-secret fields. Its values must not be silently backdated to the incident.
+- [Current source provenance](raw/current-source-provenance.json) records the captured HEAD and relevant file hashes, not a historical loaded-image receipt. [Independent read-only findings](raw/independent-readonly-findings.md) corroborate the detection/action/refusal distinction without executing workloads or changing the system.
 
 ## What the incident measurements show
 
