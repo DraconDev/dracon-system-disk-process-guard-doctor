@@ -108,6 +108,7 @@ impl Fixture {
             replies: self.replies.clone(),
             calls: RefCell::new(Vec::new()),
             after: RefCell::new(None),
+            delay_first: None,
         }
     }
 }
@@ -116,11 +117,14 @@ struct Fake<'a> {
     replies: HashMap<PathBuf, Reply>,
     calls: RefCell<Vec<PathBuf>>,
     after: Callback<'a>,
+    delay_first: Option<Duration>,
 }
 impl Probe for Fake<'_> {
     async fn query(&self, socket: &Path) -> Result<Reply, String> {
         self.calls.borrow_mut().push(socket.into());
-        if self.calls.borrow().len() == 2 {
+        let count = self.calls.borrow().len();
+        if count == 1 { if let Some(delay) = self.delay_first { tokio::time::sleep(delay).await; } }
+        if count == 2 {
             if let Some(f) = self.after.borrow_mut().take() {
                 f();
             }
@@ -194,6 +198,10 @@ async fn multiple_servers_do_not_borrow_other_producers_or_evidence() {
     f.replies.get_mut(&b).unwrap().directory = f.temp.path().join("save2").display().to_string();
     fs::remove_file(f.temp.path().join("save2/snapshot")).unwrap();
     fs::hard_link(f.temp.path().join("save1/snapshot"), f.temp.path().join("save2/snapshot")).unwrap();
+    // One server rejects the file as predating its own incarnation. Physical
+    // identity must still prevent the other server claiming exclusive evidence.
+    let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as u64;
+    f.process(102, 3595 * ticks, 'S');
     let linked = collect(&f.probe(), &f.roots, &f.replies.keys().cloned().collect::<Vec<_>>(), f.now, 900).await;
     assert!(linked.servers.iter().all(|s| s.save.state == SaveState::Shared));
 }
@@ -203,6 +211,9 @@ async fn missing_or_untrusted_provenance_is_unknown_not_healthy() {
     for mode in [
         "no_pid",
         "missing_process",
+        "indeterminate_process",
+        "reused_server_pid",
+        "partial_record",
         "bad_command",
         "missing_env",
         "pid_reuse",
@@ -223,6 +234,12 @@ async fn missing_or_untrusted_provenance_is_unknown_not_healthy() {
             "missing_process" => {
                 fs::remove_dir_all(f.roots.proc.join("201")).unwrap();
             }
+            "indeterminate_process" => {
+                fs::remove_dir_all(f.roots.proc.join("201")).unwrap();
+                symlink("201", f.roots.proc.join("201")).unwrap();
+            }
+            "reused_server_pid" => f.process(101, 300, 'S'),
+            "partial_record" => fs::write(f.temp.path().join("save1/snapshot"), "pane\tpartial").unwrap(),
             "bad_command" => {
                 fs::write(
                     f.roots.proc.join("201/cmdline"),
@@ -268,7 +285,7 @@ async fn missing_or_untrusted_provenance_is_unknown_not_healthy() {
         }
         let report = collect(&f.probe(), &f.roots, &[socket], f.now, 900).await;
         let row = &report.servers[0];
-        if ["no_pid", "bad_command", "missing_env", "pid_reuse"].contains(&mode) {
+        if ["no_pid", "bad_command", "missing_env", "pid_reuse", "indeterminate_process", "reused_server_pid"].contains(&mode) {
             assert_eq!(row.producer.state, ProducerState::Unavailable, "{mode}");
         } else if mode == "missing_process" {
             assert_eq!(row.producer.state, ProducerState::Missing);
