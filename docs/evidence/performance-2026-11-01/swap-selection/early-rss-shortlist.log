@@ -1,0 +1,32 @@
+
+running 5 tests
+test exemptions_and_kernel_threads_never_become_memory_offenders ... ok
+test swapped_offender_outside_rss_shortlist_is_selected ... FAILED
+test process_churn_across_swap_read_discards_the_sample ... ok
+test swapping_and_equal_footprints_are_independent_of_input_order ... FAILED
+test swap_parser_rejects_missing_malformed_and_oversized_status ... ok
+
+failures:
+
+---- swapped_offender_outside_rss_shortlist_is_selected stdout ----
+
+thread 'swapped_offender_outside_rss_shortlist_is_selected' (3102710) panicked at /tmp/dracon-swap-qualification-_70zsklf/early-rss-shortlist.rs:246:5:
+assertion `left == right` failed
+  left: [7, 6, 5, 4, 3]
+ right: [1, 2, 3, 4, 5, 6, 7, 8]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- swapping_and_equal_footprints_are_independent_of_input_order stdout ----
+
+thread 'swapping_and_equal_footprints_are_independent_of_input_order' (3102711) panicked at /tmp/dracon-swap-qualification-_70zsklf/early-rss-shortlist.rs:281:13:
+assertion `left == right` failed
+  left: [4, 5, 6, 7, 8]
+ right: [1, 2, 3, 4, 5]
+
+
+failures:
+    swapped_offender_outside_rss_shortlist_is_selected
+    swapping_and_equal_footprints_are_independent_of_input_order
+
+test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

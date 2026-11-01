@@ -1,0 +1,1269 @@
+diff --git a/src/guard_tests.rs b/src/guard_tests.rs
+index d8c85a3..101ed36 100644
+--- a/src/guard_tests.rs
++++ b/src/guard_tests.rs
+@@ -21,7 +21,7 @@ fn guard_runtime_state_default_is_empty() {
+ #[test]
+ fn oom_descendant_candidates_only_select_new_untracked_user_processes() {
+     let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
+-        swap_mb: 0,
++        swap_mb: Some(0),
+         pid,
+         ppid,
+         cpu_percent: 0.0,
+@@ -564,13 +564,8 @@ fn a_slow_fill_warns_even_though_it_is_below_the_rapid_fill_threshold() {
+     let gib = 1_073_741_824u64;
+     // 138 GiB free, filling at 10 GiB/h → 13.8 hours to full, inside the
+     // 24-hour horizon, and BELOW the 20 GiB/h rapid-fill threshold.
+-    let warning = disk_trend_warning(
+-        DiskFillRate::Filling(10.0),
+-        138 * gib,
+-        24,
+-        20.0,
+-    )
+-    .expect("a disk 13.8 hours from full must warn");
++    let warning = disk_trend_warning(DiskFillRate::Filling(10.0), 138 * gib, 24, 20.0)
++        .expect("a disk 13.8 hours from full must warn");
+     assert!(
+         (warning.hours - 13.8).abs() < 0.05,
+         "the figure must be the honest one: {}",
+@@ -1515,7 +1510,7 @@ fn remembered_oom_descendants_are_pruned_past_the_cap() {
+         .insert(200, HashSet::from([(1, 1)]));
+ 
+     let all_processes = vec![crate::ProcSample {
+-        swap_mb: 0,
++        swap_mb: Some(0),
+         pid: live.0,
+         ppid: 1,
+         cpu_percent: 0.0,
+@@ -1852,7 +1847,10 @@ fn the_published_rate_is_stable_when_a_burst_arrives() {
+     let before = crate::disk_fill_rate(&history)
+         .rate_gbph()
+         .expect("a steady fill measures");
+-    assert!((before - 20.0).abs() < 2.0, "expected ~20 GiB/h, got {before}");
++    assert!(
++        (before - 20.0).abs() < 2.0,
++        "expected ~20 GiB/h, got {before}"
++    );
+ 
+     // Now a burst lands in the newest interval.
+     used += 4.8;
+@@ -1921,7 +1919,10 @@ async fn the_pass_stores_the_measured_fill_rate_for_the_scratch_report() {
+         .disk_fill_rate
+         .rate_gbph()
+         .expect("the pass must have measured a rate");
+-    assert!((stored - 10.0).abs() < 0.5, "expected ~10 GiB/h, got {stored}");
++    assert!(
++        (stored - 10.0).abs() < 0.5,
++        "expected ~10 GiB/h, got {stored}"
++    );
+     assert_eq!(
+         reported,
+         Some(stored),
+@@ -1973,9 +1974,11 @@ async fn an_unmeasurable_rate_is_stored_as_unmeasured_not_as_not_filling() {
+     let mut state = crate::GuardRuntimeState::default();
+     // A brand-new state has no history at all.
+     assert_eq!(state.disk_fill_rate, crate::DiskFillRate::Unmeasured);
+-    assert!(crate::check_rapid_disk_fill(&guard, &mut state, 600, 60, 400)
+-        .await
+-        .is_none());
++    assert!(
++        crate::check_rapid_disk_fill(&guard, &mut state, 600, 60, 400)
++            .await
++            .is_none()
++    );
+     assert_eq!(
+         state.disk_fill_rate,
+         crate::DiskFillRate::Unmeasured,
+@@ -2008,7 +2011,10 @@ fn the_namespace_link_parses_to_an_inode_number() {
+         parse_namespace_inode(Path::new("user:[4026532749]")),
+         Some(4026532749)
+     );
+-    assert_eq!(parse_namespace_inode(Path::new("user:[not-a-number]")), None);
++    assert_eq!(
++        parse_namespace_inode(Path::new("user:[not-a-number]")),
++        None
++    );
+     assert_eq!(parse_namespace_inode(Path::new("pid:[4026531837]")), None);
+     assert_eq!(parse_namespace_inode(Path::new("4026531837")), None);
+ }
+@@ -2016,11 +2022,20 @@ fn the_namespace_link_parses_to_an_inode_number() {
+ #[test]
+ fn a_capability_in_one_namespace_does_not_reach_another() {
+     // The same namespace: the guard's CAP_SYS_NICE reaches the target.
+-    assert!(nice_restore_namespace_ok(Some(4026531837), Some(4026531837)));
++    assert!(nice_restore_namespace_ok(
++        Some(4026531837),
++        Some(4026531837)
++    ));
+     // A different namespace: it does not. This is the case that made the
+     // mitigation one-way on this host.
+-    assert!(!nice_restore_namespace_ok(Some(4026532749), Some(4026531837)));
+-    assert!(!nice_restore_namespace_ok(Some(4026531837), Some(4026532749)));
++    assert!(!nice_restore_namespace_ok(
++        Some(4026532749),
++        Some(4026531837)
++    ));
++    assert!(!nice_restore_namespace_ok(
++        Some(4026531837),
++        Some(4026532749)
++    ));
+     // Unreadable on either side fails closed.
+     assert!(!nice_restore_namespace_ok(None, Some(4026531837)));
+     assert!(!nice_restore_namespace_ok(Some(4026531837), None));
+@@ -2301,7 +2316,9 @@ fn a_credential_word_in_the_middle_of_a_name_is_not_a_credential_file() {
+ /// build tree alive on the strength of a test name.
+ #[test]
+ fn a_credential_word_that_leads_an_ordinary_compound_name_is_not_a_credential_file() {
+-    assert!(!crate::looks_credential_like("secret_scan-a5b13cc6b5fee239.d"));
++    assert!(!crate::looks_credential_like(
++        "secret_scan-a5b13cc6b5fee239.d"
++    ));
+     assert!(!crate::looks_credential_like("secret_scan"));
+     assert!(!crate::looks_credential_like("token_bucket.rs"));
+     assert!(!crate::looks_credential_like("secrets-scan.rs"));
+diff --git a/src/main.rs b/src/main.rs
+index 38f4e74..5d4a631 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -30,6 +30,8 @@ mod doctor;
+ #[cfg(test)]
+ mod ledger_safety_tests;
+ mod managed_oom;
++#[cfg(test)]
++mod memory_sampling_tests;
+ mod oom_job;
+ mod oom_restore;
+ mod protection_probe;
+@@ -40,11 +42,11 @@ mod events;
+ pub(crate) use events::*;
+ mod forgotten;
+ pub(crate) use forgotten::*;
+-#[cfg(test)]
+-mod forgotten_tests;
+ mod disk;
+ mod disk_refs;
+ mod disk_tmp;
++#[cfg(test)]
++mod forgotten_tests;
+ mod git_temp;
+ pub(crate) use git_temp::*;
+ mod space_report;
+@@ -75,14 +77,14 @@ mod links_tests;
+ #[cfg(test)]
+ mod policy_tests;
+ #[cfg(test)]
+-mod stash_tests;
+-#[cfg(test)]
+ mod reap_tests;
+ #[cfg(test)]
+ mod relocate_tests;
+ #[cfg(test)]
+ mod setup_tests;
+ #[cfg(test)]
++mod stash_tests;
++#[cfg(test)]
+ mod zram_tests;
+ 
+ // Memory-leak fix: the unrenice loops used to `continue` forever on renice
+@@ -664,8 +666,12 @@ pub(crate) struct MemoryReport {
+     /// The stabilized classification used for notifications and mitigation:
+     /// "ok" | "warn" | "critical".
+     pub(crate) pressure: String,
+-    /// Top RSS offenders for diagnostics and optional pressure mitigation.
++    /// Top resident + swapped footprint lower bounds. The legacy field name
++    /// is retained for JSON consumers; unknown swap is explicit on each row.
+     pub(crate) top_rss: Vec<ProcSample>,
++    /// Eligible, identity-verified samples whose swap could not be measured,
++    /// including those outside the shortlist. Rankings may be incomplete.
++    pub(crate) swap_samples_unavailable: usize,
+     /// ADDED 2026-08-10 (v0.112.36): actions taken this pass, e.g.
+     /// "renice svelte-check=10", "oom-bias node=250".
+     pub(crate) limited: Vec<String>,
+@@ -733,7 +739,8 @@ pub(crate) struct ProcSample {
+     /// few MiB resident while holding tens of GiB in swap. The mitigation
+     /// ranking uses RSS + swap (see `memory_pressure_footprint_mb`), and
+     /// this is the swapped half of that figure.
+-    pub(crate) swap_mb: u64,
++    /// None means unmeasured/unavailable, not a measured zero.
++    pub(crate) swap_mb: Option<u64>,
+     /// Current Unix nice value from `ps ni`, captured before any limiter
+     /// changes it so memory-pressure release can restore the original value.
+     pub(crate) nice: i32,
+@@ -742,31 +749,73 @@ pub(crate) struct ProcSample {
+     pub(crate) starttime: u64,
+ }
+ 
+-/// The footprint that decides who is an offender: resident PLUS swapped.
+-///
+-/// ADDED 2026-10-22: the kernel evicts pages under pressure, so the process
+-/// holding the most memory is often the one with the LEAST resident. Ranking
+-/// by RSS alone therefore throttles the wrong processes (and misses the
+-/// swap hogs entirely) exactly when memory is short.
++/// Measured footprint lower bound, not an assertion of zero swap when unknown.
++/// The optional measurement remains on the row and incomplete coverage is
++/// reported separately, including unknown samples outside the shortlist.
+ pub(crate) fn memory_pressure_footprint_mb(sample: &ProcSample) -> u64 {
+-    sample.rss_mb.saturating_add(sample.swap_mb)
++    sample.rss_mb.saturating_add(sample.swap_mb.unwrap_or(0))
+ }
+ 
+-/// The swapped-out footprint of a process, in MiB.
+-///
+-/// ADDED 2026-10-22: `VmSwap` from `/proc/<pid>/status`. None when the
+-/// process is gone or the field is unreadable — the caller then treats the
+-/// swap as unknown rather than as zero, so a missing reading never makes a
+-/// heavy process look small.
+-pub(crate) fn read_proc_swap_mb(pid: i32) -> Option<u64> {
+-    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+-    for line in status.lines() {
+-        if let Some(rest) = line.strip_prefix("VmSwap:") {
+-            let kb: u64 = rest.split_whitespace().next()?.parse().ok()?;
+-            return Some(kb / 1024);
++const MAX_PROCESS_STATUS_BYTES: usize = 64 * 1024;
++const MEMORY_OFFENDER_LIMIT: usize = 5;
++
++/// Read a bounded VmSwap measurement. Missing fields, malformed units and
++/// unreadable/truncated status files are unknown, never measured zero.
++fn read_proc_swap_mb_from(root: &Path, pid: i32) -> Option<u64> {
++    let file = fs::File::open(root.join(pid.to_string()).join("status")).ok()?;
++    let mut status = String::new();
++    file.take((MAX_PROCESS_STATUS_BYTES + 1) as u64)
++        .read_to_string(&mut status)
++        .ok()?;
++    if status.len() > MAX_PROCESS_STATUS_BYTES {
++        return None;
++    }
++    let mut fields = status
++        .lines()
++        .filter_map(|line| line.strip_prefix("VmSwap:"));
++    let mut parts = fields.next()?.split_whitespace();
++    let kb = parts.next()?.parse::<u64>().ok()?;
++    if parts.next()? != "kB" || parts.next().is_some() || fields.next().is_some() {
++        return None;
++    }
++    Some(kb / 1024)
++}
++
++/// Select only after EVERY verified sample has had its swap read attempted.
++/// Storage is bounded to five rows; ties are PID-ordered rather than ps-order
++/// dependent. Unknown measurements retain their RSS lower bound and are counted
++/// even when the corresponding process does not make the shortlist.
++fn memory_pressure_offenders(
++    samples: &[ProcSample],
++    exempt: &HashSet<String>,
++) -> (Vec<ProcSample>, usize) {
++    let mut top = Vec::with_capacity(MEMORY_OFFENDER_LIMIT + 1);
++    let mut unavailable = 0;
++    for p in samples {
++        if exempt.contains(&p.command) || is_kernel_process(&p.command) {
++            continue;
+         }
++        unavailable += usize::from(p.swap_mb.is_none());
++        top.push(p.clone());
++        top.sort_by(|a, b| {
++            memory_pressure_footprint_mb(b)
++                .cmp(&memory_pressure_footprint_mb(a))
++                .then_with(|| a.pid.cmp(&b.pid))
++        });
++        top.truncate(MEMORY_OFFENDER_LIMIT);
+     }
+-    Some(0)
++    (top, unavailable)
++}
++
++fn memory_offender_description(p: &ProcSample) -> String {
++    let swap = p
++        .swap_mb
++        .map(|mb| format!("{mb}MiB"))
++        .unwrap_or_else(|| "unknown".into());
++    format!(
++        "{} pid={} rss={}MiB swap={swap}",
++        p.command, p.pid, p.rss_mb
++    )
+ }
+ 
+ #[derive(Debug, Clone, PartialEq, Eq)]
+@@ -1322,7 +1371,7 @@ pub(crate) fn parse_ps_output(output: &str) -> Vec<ProcSample> {
+             let command = parts.next()?.to_string();
+             let args = parts.collect::<Vec<_>>().join(" ");
+             Some(ProcSample {
+-                swap_mb: 0,
++                swap_mb: None,
+                 pid,
+                 ppid,
+                 cpu_percent,
+@@ -1707,7 +1756,14 @@ pub(crate) fn looks_credential_like(name: &str) -> bool {
+     // its environment. On this host they held six deleted projects of
+     // 0.84 GiB each — 5 GiB of build trees kept alive by a template file
+     // that contains no secret at all.
+-    const TEMPLATE: &[&str] = &[".example", ".sample", ".template", ".dist", ".default", ".tpl"];
++    const TEMPLATE: &[&str] = &[
++        ".example",
++        ".sample",
++        ".template",
++        ".dist",
++        ".default",
++        ".tpl",
++    ];
+     if (lower == ".env" || lower.starts_with(".env."))
+         && !TEMPLATE.iter().any(|s| lower.ends_with(s))
+     {
+@@ -1917,11 +1973,8 @@ pub(crate) fn dir_allocated_bytes(root: &Path, max_depth: usize, depth: usize) -
+         let allocated = std::os::unix::fs::MetadataExt::blocks(&metadata).saturating_mul(512);
+         if file_type.is_dir() {
+             if depth < max_depth {
+-                total = total.saturating_add(dir_allocated_bytes(
+-                    &entry.path(),
+-                    max_depth,
+-                    depth + 1,
+-                ));
++                total =
++                    total.saturating_add(dir_allocated_bytes(&entry.path(), max_depth, depth + 1));
+             }
+         } else if !file_type.is_symlink() {
+             total = total.saturating_add(allocated);
+@@ -1946,18 +1999,37 @@ async fn process_samples() -> Result<Vec<ProcSample>> {
+     // incarnation. Command lines are intentionally not part of this
+     // broad scan; `load_process_cmdline` reads a bounded value only
+     // after a row has been selected for diagnostics.
+-    Ok(parsed
++    let root = Path::new("/proc");
++    Ok(verified_process_samples_with(root, parsed, |pid| {
++        read_proc_swap_mb_from(root, pid)
++    }))
++}
++
++/// Complete the existing process-table scan, before any consumer shortlists it.
++/// Swap is sampled once per verified row, with bounded reads, and bracketed by
++/// incarnation checks. A recycled/exited/unverifiable PID cannot inherit the
++/// old row's footprint; an unreadable swap field alone retains an unknown row.
++/// The ps input itself is capped by MAX_PROCESS_SAMPLE_OUTPUT_BYTES.
++fn verified_process_samples_with(
++    root: &Path,
++    parsed: Vec<ProcSample>,
++    mut read_swap: impl FnMut(i32) -> Option<u64>,
++) -> Vec<ProcSample> {
++    parsed
+         .into_iter()
+-        .filter_map(
+-            |mut p| match read_proc_identity(Path::new("/proc"), p.pid) {
+-                Ok(identity) if identity.comm == p.command => {
+-                    p.starttime = identity.starttime;
+-                    Some(p)
+-                }
+-                _ => None,
+-            },
+-        )
+-        .collect())
++        .filter_map(|mut p| {
++            let before = read_proc_identity(root, p.pid).ok()?;
++            if before.comm != p.command {
++                return None;
++            }
++            p.swap_mb = read_swap(p.pid);
++            if read_proc_identity(root, p.pid).ok()? != before {
++                return None;
++            }
++            p.starttime = before.starttime;
++            Some(p)
++        })
++        .collect()
+ }
+ 
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+@@ -3845,9 +3917,7 @@ async fn auto_cleanup_rust_targets(
+         // move to stash (TTL'd, restorable) instead of deleting.
+         // ADDED 2026-10-12 (stall guard): over-budget entries defer with an
+         // explicit operator note instead of stalling the desktop mid-pass.
+-        if guard.clean_stash_first
+-            && stash_over_budget(stashed_bytes, target.bytes, stash_budget)
+-        {
++        if guard.clean_stash_first && stash_over_budget(stashed_bytes, target.bytes, stash_budget) {
+             result.protected_paths.push(format!(
+                 "{} ({}, over per-pass stash budget {}, deferred — needs operator)",
+                 target.path.display(),
+@@ -4013,9 +4083,7 @@ async fn proactive_cleanup_rust_targets(
+         // ADDED 2026-09-27 (space tiers Phase 2): stash-first routing.
+         // ADDED 2026-10-12 (stall guard): over-budget entries defer with an
+         // explicit operator note instead of stalling the desktop mid-pass.
+-        if guard.clean_stash_first
+-            && stash_over_budget(stashed_bytes, target.bytes, stash_budget)
+-        {
++        if guard.clean_stash_first && stash_over_budget(stashed_bytes, target.bytes, stash_budget) {
+             result.protected_paths.push(format!(
+                 "{} ({}, over per-pass stash budget {}, deferred — needs operator)",
+                 target.path.display(),
+@@ -4730,7 +4798,8 @@ async fn empty_trash_at(
+                     // not the old all-or-nothing abort).
+                     let mut depth_capped = 0u64;
+                     let mut walk_errors = 0u64;
+-                    for entry in walkdir::WalkDir::new(&trash_files).max_depth(TRASH_SCAN_MAX_DEPTH) {
++                    for entry in walkdir::WalkDir::new(&trash_files).max_depth(TRASH_SCAN_MAX_DEPTH)
++                    {
+                         match entry {
+                             Ok(e) if e.file_type().is_file() => {
+                                 if let Some(name) = e.file_name().to_str() {
+@@ -4747,7 +4816,9 @@ async fn empty_trash_at(
+                                     }
+                                 }
+                             }
+-                            Ok(e) if e.file_type().is_dir() && e.depth() == TRASH_SCAN_MAX_DEPTH => {
++                            Ok(e)
++                                if e.file_type().is_dir() && e.depth() == TRASH_SCAN_MAX_DEPTH =>
++                            {
+                                 // AT the cap: children unobservable (files
+                                 // AT depth 8 are still yielded and scanned
+                                 // above — only descent stops). Keep the
+@@ -5165,7 +5236,12 @@ pub(crate) fn nix_generations_to_delete_highest_protected(
+     generations: &[u32],
+     keep: usize,
+ ) -> Vec<u32> {
+-    let highest = generations.iter().copied().max().into_iter().collect::<Vec<_>>();
++    let highest = generations
++        .iter()
++        .copied()
++        .max()
++        .into_iter()
++        .collect::<Vec<_>>();
+     nix_generations_to_delete_protecting(generations, keep, &highest)
+ }
+ 
+@@ -5223,7 +5299,8 @@ pub(crate) fn nix_generations_referenced_by_closure(
+         .iter()
+         .copied()
+         .filter(|generation| {
+-            let Ok(target) = std::fs::read_link(profile_dir.join(format!("system-{generation}-link")))
++            let Ok(target) =
++                std::fs::read_link(profile_dir.join(format!("system-{generation}-link")))
+             else {
+                 // An unreadable generation is not evidence that it is
+                 // unreferenced, so it is protected.
+@@ -5369,9 +5446,7 @@ pub(crate) fn system_profile_spread_plan(nix_env: &Path, keep: u32) -> Option<Ve
+         return None;
+     }
+     let mut protected: Vec<u32> = match running_system_closure(Path::new("/run")) {
+-        Some(closure) => {
+-            nix_generations_referenced_by_closure(profile_dir, &generations, &closure)
+-        }
++        Some(closure) => nix_generations_referenced_by_closure(profile_dir, &generations, &closure),
+         None => Vec::new(),
+     };
+     if let Some(highest) = generations.iter().copied().max() {
+@@ -5565,8 +5640,7 @@ async fn clean_nix_garbage_with_bins(
+         if nix_args.is_empty() {
+             return Ok((reclaimed, cleaned));
+         }
+-        match Command::new(nix_env).args(&nix_args).output().await
+-        {
++        match Command::new(nix_env).args(&nix_args).output().await {
+             Ok(output) if output.status.success() => {}
+             Ok(output) => eprintln!(
+                 "⚠️ nix-env user-profile generation prune failed ({}): {}",
+@@ -6125,12 +6199,7 @@ async fn check_disk_trends(
+         avail_bytes as f64 / 1_073_741_824.0
+     );
+     if previous.as_deref() != Some("soon") {
+-        send_notification(
+-            guard,
+-            "Dracon System Guard - Disk Trend Warning",
+-            &detail,
+-        )
+-        .await;
++        send_notification(guard, "Dracon System Guard - Disk Trend Warning", &detail).await;
+     }
+     if event_due {
+         // ADDED 2026-10-25 (audit D8): the warning used to reach only a
+@@ -6190,10 +6259,7 @@ async fn check_disk_early_warning(guard: &GuardPolicy, state: &mut GuardRuntimeS
+ /// the wrong state sends one notification, and the event stream carries
+ /// repeats at `report_repeat_secs`, mirroring the disk-trend checks.
+ /// Unknown (unreadable `/proc/swaps` or config) is silence, not failure.
+-async fn check_swap_devices(
+-    guard: &GuardPolicy,
+-    state: &mut GuardRuntimeState,
+-) -> Vec<String> {
++async fn check_swap_devices(guard: &GuardPolicy, state: &mut GuardRuntimeState) -> Vec<String> {
+     let expected: Vec<String> = guard
+         .expected_swap_prefixes
+         .split(',')
+@@ -6370,40 +6436,12 @@ async fn check_memory_pressure(
+         true
+     };
+ 
+-    // Top offenders (skipping kernel threads and exempt names).
+-    //
+-    // ADDED 2026-10-22: ranked by resident PLUS swapped, and the swapped
+-    // half is read for the candidates only (five `/proc/<pid>/status`
+-    // reads, not one per process). RSS alone misses the largest processes
+-    // once the kernel has evicted their pages.
++    // Swap is already sampled for every identity-verified process in the
++    // existing process-table pass. Never discard low-RSS rows before that
++    // measurement: the biggest swapped offender may be mostly nonresident.
+     let exempt = parse_kinds(&guard.process_exempt_names);
+-    let mut top_rss: Vec<ProcSample> = all_processes
+-        .iter()
+-        .filter(|p| !exempt.contains(&p.command) && !is_kernel_process(&p.command))
+-        .cloned()
+-        .fold(Vec::new(), |mut acc, p| {
+-            if acc.len() < 5
+-                || memory_pressure_footprint_mb(&p)
+-                    > acc
+-                        .last()
+-                        .map(|x: &ProcSample| memory_pressure_footprint_mb(x))
+-                        .unwrap_or(0)
+-            {
+-                acc.push(p);
+-                acc.sort_by_key(|b| std::cmp::Reverse(memory_pressure_footprint_mb(b)));
+-                acc.truncate(5);
+-            }
+-            acc
+-        })
+-        .into_iter()
+-        .map(load_process_cmdline)
+-        .collect();
+-    // Fill in the swapped half for the candidates, then re-rank: a process
+-    // that is mostly swapped can overtake a bigger resident one.
+-    for sample in &mut top_rss {
+-        sample.swap_mb = read_proc_swap_mb(sample.pid).unwrap_or(0);
+-    }
+-    top_rss.sort_by_key(|b| std::cmp::Reverse(memory_pressure_footprint_mb(b)));
++    let (offenders, swap_samples_unavailable) = memory_pressure_offenders(all_processes, &exempt);
++    let top_rss: Vec<ProcSample> = offenders.into_iter().map(load_process_cmdline).collect();
+ 
+     // ── Limiting (ADDED 2026-08-10, v0.112.36) ──────────────────
+     // Deprioritize (never kill) the offenders while pressure lasts;
+@@ -6570,10 +6608,7 @@ async fn check_memory_pressure(
+                             p.pid, p.command, e
+                         );
+                     }
+-                    state.cap_refusals.insert(
+-                        p.pid,
+-                        CapRefusal { reason: e },
+-                    );
++                    state.cap_refusals.insert(p.pid, CapRefusal { reason: e });
+                 }
+             }
+         }
+@@ -6674,23 +6709,14 @@ async fn check_memory_pressure(
+         let policy = reap_policy_from_guard(guard);
+         let trees = forgotten.candidates.clone();
+         forgotten_reaped = tokio::task::spawn_blocking(move || {
+-            reap_forgotten_orphan_trees(
+-                Path::new("/proc"),
+-                &policy,
+-                &trees,
+-                PROC_TICKS_PER_SEC,
+-            )
++            reap_forgotten_orphan_trees(Path::new("/proc"), &policy, &trees, PROC_TICKS_PER_SEC)
+         })
+         .await
+         .unwrap_or_default();
+         for r in &forgotten_reaped {
+             limited.push(format!(
+                 "forgotten-reap tree {}={} ({} processes, {}MiB, {} ended)",
+-                r.root_comm,
+-                r.root_pid,
+-                r.member_count,
+-                r.aggregate_footprint_mb,
+-                r.members_ended
++                r.root_comm, r.root_pid, r.member_count, r.aggregate_footprint_mb, r.members_ended
+             ));
+         }
+         // A leaked browser is two halves: the processes and the profile
+@@ -7014,23 +7040,14 @@ async fn check_memory_pressure(
+     if pressure_changed && pressure != "ok" {
+         let offenders: String = top_rss
+             .iter()
+-            .map(|p| {
+-                if p.swap_mb > 0 {
+-                    format!(
+-                        "{} pid={} {}MiB+{}MiB swap",
+-                        p.command, p.pid, p.rss_mb, p.swap_mb
+-                    )
+-                } else {
+-                    format!("{} pid={} {}MiB", p.command, p.pid, p.rss_mb)
+-                }
+-            })
++            .map(memory_offender_description)
+             .collect::<Vec<_>>()
+             .join(", ");
+         send_notification(
+             guard,
+             "Dracon System Guard - Memory Pressure",
+             &format!(
+-                "[{}] mem available {}%, swap used {}%{} top: {}",
++                "[{}] mem available {}%, swap used {}%{} top: {}; swap measurements unavailable: {} (ranking uses footprint lower bounds)",
+                 pressure,
+                 mem_available_percent,
+                 swap_used_percent,
+@@ -7041,7 +7058,8 @@ async fn check_memory_pressure(
+                     "(none)".to_string()
+                 } else {
+                     offenders
+-                }
++                },
++                swap_samples_unavailable
+             ),
+         )
+         .await;
+@@ -7065,7 +7083,7 @@ async fn check_memory_pressure(
+             },
+             "memory/pressure",
+             format!(
+-                "{}: observed={}, mem available {}%, swap used {}%, PSI full {:?}, top rss: {}",
++                "{}: observed={}, mem available {}%, swap used {}%, PSI full {:?}, top footprint lower bounds: {}; swap measurements unavailable: {}",
+                 pressure,
+                 observed_pressure,
+                 mem_available_percent,
+@@ -7073,9 +7091,10 @@ async fn check_memory_pressure(
+                 psi_full_avg10,
+                 top_rss
+                     .iter()
+-                    .map(|p| format!("{}={}MiB", p.command, p.rss_mb))
++                    .map(memory_offender_description)
+                     .collect::<Vec<_>>()
+-                    .join(",")
++                    .join(","),
++                swap_samples_unavailable
+             ),
+         ));
+     }
+@@ -7088,6 +7107,7 @@ async fn check_memory_pressure(
+         observed_pressure: observed_pressure.to_string(),
+         pressure,
+         top_rss,
++        swap_samples_unavailable,
+         limited,
+         pressure_reaped,
+         forgotten_trees: forgotten.candidates,
+@@ -7808,11 +7828,7 @@ pub(crate) fn stash_budget_bytes(max_mb: u64) -> u64 {
+ /// True when moving `entry_bytes` would exceed the per-pass stash
+ /// budget. Pure boundary helper: exactly-at-budget is allowed, one byte
+ /// over defers.
+-pub(crate) fn stash_over_budget(
+-    moved_bytes: u64,
+-    entry_bytes: u64,
+-    budget_bytes: u64,
+-) -> bool {
++pub(crate) fn stash_over_budget(moved_bytes: u64, entry_bytes: u64, budget_bytes: u64) -> bool {
+     moved_bytes.saturating_add(entry_bytes) > budget_bytes
+ }
+ 
+@@ -8482,9 +8498,7 @@ async fn reclaim_reaped_browser_profiles(
+     let root_paths = match resolve_safe_tmp_roots(&roots) {
+         Ok(r) if !r.is_empty() => r,
+         _ => {
+-            eprintln!(
+-                "⚠️ browser-profile reclaim: no validated tmp root — reclaiming nothing"
+-            );
++            eprintln!("⚠️ browser-profile reclaim: no validated tmp root — reclaiming nothing");
+             return reclaimed;
+         }
+     };
+@@ -8538,11 +8552,7 @@ async fn reclaim_reaped_browser_profiles(
+             continue;
+         }
+         if let Err(e) = check_safe_to_delete_tmp_entry(dir, &root, &guard.protected_paths) {
+-            eprintln!(
+-                "🛡️ keeping browser profile {}: {}",
+-                dir.display(),
+-                e
+-            );
++            eprintln!("🛡️ keeping browser profile {}: {}", dir.display(), e);
+             continue;
+         }
+         let size = get_dir_size(dir).await.unwrap_or(0);
+@@ -9416,22 +9426,24 @@ fn spawn_background_cleanup(
+         }
+         let outcome = match mode {
+             CleanupMode::Pressure => run_auto_cleanup(&guard, &mut scratch, used, true).await,
+-            CleanupMode::Proactive => async {
+-                // ADDED 2026-10-25 (audit D7): the "the rust cleanup is
+-                // switched off" report used to live HERE, inside the
+-                // proactive tier. The proactive tier only runs while the
+-                // disk is between `proactive_cleanup_percent` (80%) and
+-                // `disk_action_percent` (85%) — at the action tier the guard
+-                // takes the pressure branch instead, so the report went
+-                // silent at exactly the disk pressure that makes the
+-                // unreclaimed build trees matter. It is now emitted by the
+-                // guard PASS (see `run_guard_once`), so every tier says it.
+-                if guard.auto_cleanup_rust {
+-                    run_proactive_cleanup(&guard, &mut scratch).await?;
++            CleanupMode::Proactive => {
++                async {
++                    // ADDED 2026-10-25 (audit D7): the "the rust cleanup is
++                    // switched off" report used to live HERE, inside the
++                    // proactive tier. The proactive tier only runs while the
++                    // disk is between `proactive_cleanup_percent` (80%) and
++                    // `disk_action_percent` (85%) — at the action tier the guard
++                    // takes the pressure branch instead, so the report went
++                    // silent at exactly the disk pressure that makes the
++                    // unreclaimed build trees matter. It is now emitted by the
++                    // guard PASS (see `run_guard_once`), so every tier says it.
++                    if guard.auto_cleanup_rust {
++                        run_proactive_cleanup(&guard, &mut scratch).await?;
++                    }
++                    run_auto_cleanup(&guard, &mut scratch, used, false).await
+                 }
+-                run_auto_cleanup(&guard, &mut scratch, used, false).await
++                .await
+             }
+-            .await,
+         };
+         if let Err(e) = outcome {
+             eprintln!("⚠️ background cleanup failed: {e:#}");
+@@ -9872,10 +9884,7 @@ async fn check_reap_candidates(
+     if candidates.len() > listed.len() {
+         detail.push_str(&format!(" … and {} more", candidates.len() - listed.len()));
+     }
+-    let grew = previous
+-        .as_deref()
+-        .map(|p| p.is_empty())
+-        .unwrap_or(false)
++    let grew = previous.as_deref().map(|p| p.is_empty()).unwrap_or(false)
+         || candidates.len()
+             > previous
+                 .as_deref()
+@@ -9883,7 +9892,12 @@ async fn check_reap_candidates(
+                 .unwrap_or(0);
+     if grew {
+         // New abandoned servers appeared: the operator should know promptly.
+-        send_notification(guard, "Dracon System Guard - Abandoned Dev Servers", &detail).await;
++        send_notification(
++            guard,
++            "Dracon System Guard - Abandoned Dev Servers",
++            &detail,
++        )
++        .await;
+     }
+     emit_event(&DraconEvent::new(
+         "system",
+@@ -10429,7 +10443,13 @@ pub(crate) async fn run_guard_once(
+             // Set the timestamp before the scan so a persistent filesystem
+             // error cannot turn into a 30-second retry loop.
+             state.last_auto_cleanup = Some(now);
+-            spawn_background_cleanup(guard, state, used, CleanupMode::Pressure, cleanup_slot.clone());
++            spawn_background_cleanup(
++                guard,
++                state,
++                used,
++                CleanupMode::Pressure,
++                cleanup_slot.clone(),
++            );
+         }
+     } else if used >= guard.proactive_cleanup_percent {
+         state.guard_cycle += 1;
+@@ -10445,7 +10465,13 @@ pub(crate) async fn run_guard_once(
+             // fills 20–60 GiB/h. The cheap non-rust kinds now run here too
+             // (include_rust=false keeps the heavy ~/Dev scan on its own path).
+             state.last_proactive_cleanup = Some(Instant::now());
+-            spawn_background_cleanup(guard, state, used, CleanupMode::Proactive, cleanup_slot.clone());
++            spawn_background_cleanup(
++                guard,
++                state,
++                used,
++                CleanupMode::Proactive,
++                cleanup_slot.clone(),
++            );
+         }
+     }
+ 
+@@ -11032,7 +11058,11 @@ async fn cmd_disk(
+     print!("{}", report_data.render(mode, detail));
+     if !report {
+         println!();
+-        println!("Deleted {} path(s), {} freed.", records.len(), human_bytes(freed));
++        println!(
++            "Deleted {} path(s), {} freed.",
++            records.len(),
++            human_bytes(freed)
++        );
+         if !records.is_empty() {
+             println!();
+             println!("| path | pre-delete bytes | class | pre-delete /proc refs |");
+@@ -11042,9 +11072,7 @@ async fn cmd_disk(
+             }
+         }
+         println!();
+-        println!(
+-            "df -B1 / : {before} available before, {after} available after."
+-        );
++        println!("df -B1 / : {before} available before, {after} available after.");
+         println!(
+             "Note: available-byte movement on a busy filesystem is not exact per-path attribution."
+         );
+@@ -11844,11 +11872,19 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
+             table.add_row(vec![
+                 Cell::new("🧹"),
+                 Cell::new("Forgotten orphan trees"),
+-                Cell::new(format!("{} — {}", memory.forgotten_trees.len(), parts.join(", "))),
++                Cell::new(format!(
++                    "{} — {}",
++                    memory.forgotten_trees.len(),
++                    parts.join(", ")
++                )),
+             ]);
+         }
+         if !memory.forgotten_reaped.is_empty() {
+-            let ended: usize = memory.forgotten_reaped.iter().map(|r| r.members_ended).sum();
++            let ended: usize = memory
++                .forgotten_reaped
++                .iter()
++                .map(|r| r.members_ended)
++                .sum();
+             table.add_row(vec![
+                 Cell::new("🪓"),
+                 Cell::new("Reaped (forgotten trees)"),
+@@ -12578,7 +12614,9 @@ async fn cmd_guard_clean(
+         }
+         for f in &outcome.skipped_owned {
+             let owner = repo_root_for_git_path(&f.path)
+-                .and_then(|repo| git_owner_for(&owners, &repo).map(|o| format!("{}(pid {})", o.name, o.pid)))
++                .and_then(|repo| {
++                    git_owner_for(&owners, &repo).map(|o| format!("{}(pid {})", o.name, o.pid))
++                })
+                 .unwrap_or_else(|| "a live git process".to_string());
+             actions.push(format!(
+                 "Skipped (live {} is working in this repo): {} ({})",
+@@ -12672,7 +12710,8 @@ async fn cmd_guard_clean(
+                 } else {
+                     entry.metadata().map(|m| m.len()).unwrap_or(0)
+                 };
+-                if let Some(item) = classify_stray(&entry.path(), &name, bytes, file_type.is_dir()) {
++                if let Some(item) = classify_stray(&entry.path(), &name, bytes, file_type.is_dir())
++                {
+                     actions.push(format!(
+                         "REPORT-ONLY {}: {} ({}) — needs explicit approval",
+                         item.kind.label(),
+@@ -12975,29 +13014,16 @@ mod nix_current_generation_tests {
+         let store = dir.path().join("store");
+         std::fs::create_dir_all(store.join("abc-system")).expect("mkdir store");
+         // Two generations resolve to the running closure, one does not.
+-        std::os::unix::fs::symlink(
+-            store.join("abc-system"),
+-            dir.path().join("system-4-link"),
+-        )
+-        .expect("symlink 4");
+-        std::os::unix::fs::symlink(
+-            store.join("abc-system"),
+-            dir.path().join("system-5-link"),
+-        )
+-        .expect("symlink 5");
++        std::os::unix::fs::symlink(store.join("abc-system"), dir.path().join("system-4-link"))
++            .expect("symlink 4");
++        std::os::unix::fs::symlink(store.join("abc-system"), dir.path().join("system-5-link"))
++            .expect("symlink 5");
+         std::fs::create_dir_all(store.join("other-system")).expect("mkdir other");
+-        std::os::unix::fs::symlink(
+-            store.join("other-system"),
+-            dir.path().join("system-6-link"),
+-        )
+-        .expect("symlink 6");
++        std::os::unix::fs::symlink(store.join("other-system"), dir.path().join("system-6-link"))
++            .expect("symlink 6");
+ 
+         let running = std::fs::read_link(dir.path().join("system-5-link")).expect("resolve");
+-        let protected = nix_generations_referenced_by_closure(
+-            dir.path(),
+-            &[4, 5, 6],
+-            &running,
+-        );
++        let protected = nix_generations_referenced_by_closure(dir.path(), &[4, 5, 6], &running);
+         assert_eq!(
+             protected,
+             vec![4, 5],
+@@ -13062,11 +13088,8 @@ mod system_profile_spread_tests {
+     fn system_generations_are_read_from_link_names() {
+         let dir = tempfile::tempdir().expect("tempdir");
+         for generation in [3, 1, 12] {
+-            std::fs::write(
+-                dir.path().join(format!("system-{generation}-link")),
+-                b"",
+-            )
+-            .expect("write link");
++            std::fs::write(dir.path().join(format!("system-{generation}-link")), b"")
++                .expect("write link");
+         }
+         // Not generation links: must be ignored rather than misparsed.
+         std::fs::write(dir.path().join("default"), b"").expect("write");
+@@ -13083,7 +13106,8 @@ mod system_profile_spread_tests {
+ 
+     #[test]
+     fn the_system_profile_prune_passes_one_argument_per_generation() {
+-        let argv = nix_delete_generations_argv_with_profile(&[2, 7], "/nix/var/nix/profiles/default");
++        let argv =
++            nix_delete_generations_argv_with_profile(&[2, 7], "/nix/var/nix/profiles/default");
+         assert_eq!(
+             argv,
+             vec![
+@@ -13100,7 +13124,8 @@ mod system_profile_spread_tests {
+     fn the_live_system_profile_is_never_asked_to_delete_the_booted_generation() {
+         // Runs against the real profile directory. If it is unreadable this
+         // host has no NixOS system profile, and there is nothing to assert.
+-        let Some(generations) = system_profile_generations(std::path::Path::new("/nix/var/nix/profiles"))
++        let Some(generations) =
++            system_profile_generations(std::path::Path::new("/nix/var/nix/profiles"))
+         else {
+             return;
+         };
+@@ -13172,7 +13197,11 @@ mod nix_spread_tests {
+             .filter(|g| !deleted.contains(g))
+             .collect();
+         assert_eq!(kept.len(), 5, "exactly keep survivors");
+-        assert_eq!(*kept.first().unwrap(), 1, "oldest generation retained as an anchor");
++        assert_eq!(
++            *kept.first().unwrap(),
++            1,
++            "oldest generation retained as an anchor"
++        );
+         assert_eq!(*kept.last().unwrap(), 18, "current generation retained");
+         // And the spread must actually span the middle, unlike +5.
+         assert!(kept.iter().any(|g| (7..=12).contains(g)), "kept {kept:?}");
+diff --git a/src/memory_sampling_tests.rs b/src/memory_sampling_tests.rs
+new file mode 100644
+index 0000000..fa7de2d
+--- /dev/null
++++ b/src/memory_sampling_tests.rs
+@@ -0,0 +1,249 @@
++//! Disposable proc fixtures protect swap-before-shortlist ordering, explicit
++//! unknown measurements, incarnation safety and stable selection. No live
++//! processes, signals, configuration or mitigation operations are involved.
++use super::*;
++
++fn row(pid: i32, rss_mb: u64, command: &str) -> ProcSample {
++    parse_ps_output(&format!("{pid} 1 0 {} 0 {command}\n", rss_mb * 1024))
++        .pop()
++        .unwrap()
++}
++
++fn identity(root: &Path, pid: i32, command: &str, starttime: u64) {
++    let dir = root.join(pid.to_string());
++    fs::create_dir_all(&dir).unwrap();
++    fs::write(dir.join("comm"), format!("{command}\n")).unwrap();
++    let mut fields = vec!["S".to_string()];
++    fields.extend(std::iter::repeat_n("0".to_string(), 18));
++    fields.push(starttime.to_string());
++    fs::write(
++        dir.join("stat"),
++        format!("{pid} ({command}) {}\n", fields.join(" ")),
++    )
++    .unwrap();
++}
++
++fn swap(root: &Path, pid: i32, mb: u64) {
++    fs::write(
++        root.join(pid.to_string()).join("status"),
++        format!("Name:\tworker\nVmSwap:\t{} kB\n", mb * 1024),
++    )
++    .unwrap();
++}
++
++fn sample(root: &Path, parsed: Vec<ProcSample>) -> Vec<ProcSample> {
++    verified_process_samples_with(root, parsed, |pid| read_proc_swap_mb_from(root, pid))
++}
++
++fn pids(samples: &[ProcSample]) -> Vec<i32> {
++    samples.iter().map(|p| p.pid).collect()
++}
++
++#[test]
++fn swapped_offender_outside_rss_shortlist_is_selected() {
++    let fixture = tempfile::tempdir().unwrap();
++    let root = fixture.path();
++    let mut parsed = Vec::new();
++    for pid in 1..=8 {
++        let rss = if pid == 8 { 1 } else { 4096 + pid as u64 };
++        parsed.push(row(pid, rss, "worker"));
++        identity(root, pid, "worker", 100 + pid as u64);
++        swap(root, pid, if pid == 8 { 32 * 1024 } else { 0 });
++    }
++    assert!(parsed.iter().all(|p| p.swap_mb.is_none()));
++    let mut reads = Vec::new();
++    let samples = verified_process_samples_with(root, parsed.clone(), |pid| {
++        reads.push(pid);
++        read_proc_swap_mb_from(root, pid)
++    });
++    // One bounded swap read per verified row, not just the five largest RSS.
++    assert_eq!(reads, pids(&parsed));
++    let (top, unavailable) = memory_pressure_offenders(&samples, &HashSet::new());
++    assert_eq!(top.len(), MEMORY_OFFENDER_LIMIT);
++    assert_eq!(top[0].pid, 8);
++    assert_eq!(top[0].swap_mb, Some(32 * 1024));
++    assert_eq!(unavailable, 0);
++    assert!(samples.iter().all(|p| p.starttime == 100 + p.pid as u64));
++
++    // Discriminating old-algorithm control on disposable data: enriching only
++    // the RSS shortlist cannot recover this offender, even with a final sort.
++    parsed.sort_by_key(|p| std::cmp::Reverse(p.rss_mb));
++    parsed.truncate(MEMORY_OFFENDER_LIMIT);
++    let (old_top, _) = memory_pressure_offenders(&sample(root, parsed), &HashSet::new());
++    assert!(!pids(&old_top).contains(&8));
++}
++
++#[test]
++fn swapping_and_equal_footprints_are_independent_of_input_order() {
++    let fixture = tempfile::tempdir().unwrap();
++    let root = fixture.path();
++    let mut parsed = Vec::new();
++    for pid in 1..=9 {
++        identity(root, pid, "worker", pid as u64);
++        parsed.push(row(pid, if pid <= 3 { 1 } else { 101 }, "worker"));
++        swap(root, pid, if pid <= 3 { 100 } else { 0 });
++    }
++    let expected = vec![1, 2, 3, 4, 5];
++    for shift in 0..parsed.len() {
++        let mut reordered = parsed.clone();
++        reordered.rotate_left(shift);
++        for reversed in [false, true] {
++            if reversed {
++                reordered.reverse();
++            }
++            let samples = sample(root, reordered.clone());
++            let (top, _) = memory_pressure_offenders(&samples, &HashSet::new());
++            assert_eq!(pids(&top), expected);
++        }
++    }
++}
++
++#[test]
++fn unknown_swap_is_not_a_measured_zero_even_outside_shortlist() {
++    let fixture = tempfile::tempdir().unwrap();
++    let root = fixture.path();
++    let mut parsed = Vec::new();
++    for pid in 1..=8 {
++        identity(root, pid, "worker", pid as u64);
++        parsed.push(row(pid, if pid == 8 { 1 } else { 1024 }, "worker"));
++        swap(root, pid, 0);
++    }
++    // A directory makes the read fail under root too; chmod-only fixtures
++    // would accidentally remain readable in privileged test environments.
++    let status = root.join("8/status");
++    fs::remove_file(&status).unwrap();
++    fs::create_dir(&status).unwrap();
++    let samples = sample(root, parsed);
++    let unknown = samples.iter().find(|p| p.pid == 8).unwrap();
++    assert!(unknown.swap_mb.is_none());
++    assert!(serde_json::to_value(unknown).unwrap()["swap_mb"].is_null());
++    assert_eq!(memory_pressure_footprint_mb(unknown), unknown.rss_mb);
++    let measured = samples.iter().find(|p| p.pid == 1).unwrap();
++    assert_eq!(measured.swap_mb, Some(0));
++    assert_eq!(serde_json::to_value(measured).unwrap()["swap_mb"], 0);
++    let mut same_process_measured_zero = unknown.clone();
++    same_process_measured_zero.swap_mb = Some(0);
++    assert_ne!(
++        memory_offender_description(unknown),
++        memory_offender_description(&same_process_measured_zero)
++    );
++    let (top, unavailable) = memory_pressure_offenders(&samples, &HashSet::new());
++    assert!(!pids(&top).contains(&8));
++    // Even an omitted unknown is disclosed as incomplete ranking coverage.
++    assert_eq!(unavailable, 1);
++}
++
++#[test]
++fn swap_parser_rejects_missing_malformed_and_oversized_status() {
++    let fixture = tempfile::tempdir().unwrap();
++    let root = fixture.path();
++    identity(root, 7, "worker", 100);
++    let status = root.join("7/status");
++    assert_eq!(read_proc_swap_mb_from(root, 7), None);
++    for text in [
++        "Name: worker\n",
++        "VmSwap:\n",
++        "VmSwap: -1 kB\n",
++        "VmSwap: 18446744073709551616 kB\n",
++        "VmSwap: broken kB\n",
++        "VmSwap: 1024 MB\n",
++        "VmSwap: 1024\n",
++        "VmSwap: 1024 kB extra\n",
++        "VmSwap: 1024 kB\nVmSwap: 2048 kB\n",
++    ] {
++        fs::write(&status, text).unwrap();
++        assert_eq!(read_proc_swap_mb_from(root, 7), None, "{text:?}");
++    }
++    for (text, expected) in [("VmSwap: 0 kB\n", 0), ("VmSwap:\t8192 kB\n", 8)] {
++        fs::write(&status, text).unwrap();
++        assert_eq!(read_proc_swap_mb_from(root, 7), Some(expected));
++    }
++    let mut bounded = "VmSwap: 8192 kB\n".to_string();
++    bounded.push_str(&"x".repeat(MAX_PROCESS_STATUS_BYTES - bounded.len()));
++    fs::write(&status, &bounded).unwrap();
++    assert_eq!(read_proc_swap_mb_from(root, 7), Some(8));
++    bounded.push('x');
++    fs::write(&status, bounded).unwrap();
++    assert_eq!(read_proc_swap_mb_from(root, 7), None);
++    fs::write(&status, [0xff, 0xfe]).unwrap();
++    assert_eq!(read_proc_swap_mb_from(root, 7), None);
++}
++
++#[test]
++fn process_churn_across_swap_read_discards_the_sample() {
++    for change in ["reuse", "exec", "exit", "unreadable_identity"] {
++        let fixture = tempfile::tempdir().unwrap();
++        let root = fixture.path();
++        identity(root, 7, "worker", 100);
++        swap(root, 7, 32 * 1024);
++        let samples = verified_process_samples_with(root, vec![row(7, 1, "worker")], |pid| {
++            let reading = read_proc_swap_mb_from(root, pid);
++            match change {
++                "reuse" => identity(root, pid, "worker", 101),
++                "exec" => identity(root, pid, "different", 100),
++                "exit" => fs::remove_dir_all(root.join(pid.to_string())).unwrap(),
++                "unreadable_identity" => fs::remove_file(root.join("7/stat")).unwrap(),
++                _ => unreachable!(),
++            }
++            reading
++        });
++        assert!(samples.is_empty(), "{change}");
++    }
++}
++
++#[test]
++fn initial_identity_failure_does_not_read_swap_or_fabricate_samples() {
++    let fixture = tempfile::tempdir().unwrap();
++    let root = fixture.path();
++    identity(root, 1, "different", 100);
++    identity(root, 2, "worker", 100);
++    fs::write(root.join("2/stat"), "malformed").unwrap();
++    let samples = verified_process_samples_with(
++        root,
++        vec![
++            row(1, 1, "worker"),
++            row(2, 1, "worker"),
++            row(3, 1, "worker"),
++        ],
++        |_| panic!("unverified PID must not be sampled"),
++    );
++    assert!(samples.is_empty());
++}
++
++#[test]
++fn exemptions_and_kernel_threads_never_become_memory_offenders() {
++    let fixture = tempfile::tempdir().unwrap();
++    let root = fixture.path();
++    let mut parsed = Vec::new();
++    for (pid, command, mb) in [
++        (1, "editor", 64 * 1024),
++        (2, "kworker/0:1", 64 * 1024),
++        (3, "worker", 1),
++    ] {
++        identity(root, pid, command, pid as u64);
++        swap(root, pid, mb);
++        parsed.push(row(pid, 1, command));
++    }
++    let samples = sample(root, parsed);
++    let (top, unavailable) = memory_pressure_offenders(&samples, &HashSet::from(["editor".into()]));
++    assert_eq!(pids(&top), vec![3]);
++    assert_eq!(unavailable, 0);
++    // An exempt process's unknown footprint cannot claim eligible coverage loss.
++    let mut unknown_exempt = samples;
++    unknown_exempt[0].swap_mb = None;
++    let (_, unavailable) =
++        memory_pressure_offenders(&unknown_exempt, &HashSet::from(["editor".into()]));
++    assert_eq!(unavailable, 0);
++}
++
++#[test]
++fn empty_selection_and_footprint_overflow_are_safe() {
++    let (top, unavailable) = memory_pressure_offenders(&[], &HashSet::new());
++    assert!(top.is_empty());
++    assert_eq!(unavailable, 0);
++    let mut large = row(1, 1, "worker");
++    large.swap_mb = Some(u64::MAX);
++    assert_eq!(memory_pressure_footprint_mb(&large), u64::MAX);
++    let (top, _) = memory_pressure_offenders(&[large, row(2, 2, "worker")], &HashSet::new());
++    assert_eq!(top[0].pid, 1);
++}
+diff --git a/src/protection_probe.rs b/src/protection_probe.rs
+index 9db2806..a695c5c 100644
+--- a/src/protection_probe.rs
++++ b/src/protection_probe.rs
+@@ -621,7 +621,7 @@ mod tests {
+             group: job.group.clone(),
+         };
+         let other = ProcSample {
+-            swap_mb: 0,
++            swap_mb: Some(0),
+             pid: 99,
+             ppid: 1,
+             command: "dracon-probe".into(),
+diff --git a/src/tests.rs b/src/tests.rs
+index 6298dfa..6ed15c0 100644
+--- a/src/tests.rs
++++ b/src/tests.rs
+@@ -240,11 +240,13 @@ exit 0"#
+         .expect("the user-profile prune must pass exactly three arguments");
+     assert_eq!(lines[delete_at + 1], "nix-env-arg:--delete-generations");
+     assert_eq!(
+-        lines[delete_at + 2], "nix-env-arg:3",
++        lines[delete_at + 2],
++        "nix-env-arg:3",
+         "generation 3 is its own argv element"
+     );
+     assert_eq!(
+-        lines[delete_at + 3], "nix-env-arg:6",
++        lines[delete_at + 3],
++        "nix-env-arg:6",
+         "generation 6 is its own argv element"
+     );
+     assert!(
+@@ -1155,7 +1157,7 @@ fn sweep_stranded_oom_descendants_restores_only_post_bias_children() {
+     fs::create_dir(tmp.join("105/oom_score_adj")).expect("create failing child oom fixture");
+ 
+     let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
+-        swap_mb: 0,
++        swap_mb: Some(0),
+         pid,
+         ppid,
+         cpu_percent: 0.0,
+@@ -1268,7 +1270,7 @@ fn sweep_stranded_oom_descendants_uses_nearest_biased_ancestor() {
+     write_process_fixture(&tmp, 202, "inner", 92, Some(250), None);
+     write_process_fixture(&tmp, 203, "nested-child", 93, Some(250), None);
+     let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
+-        swap_mb: 0,
++        swap_mb: Some(0),
+         pid,
+         ppid,
+         cpu_percent: 0.0,
+@@ -2817,10 +2819,7 @@ fn stash_budget_boundary_is_exclusive() {
+         !stash_over_budget(0, ten, ten),
+         "exactly at budget is allowed"
+     );
+-    assert!(
+-        stash_over_budget(0, ten + 1, ten),
+-        "one byte over defers"
+-    );
++    assert!(stash_over_budget(0, ten + 1, ten), "one byte over defers");
+     assert!(
+         !stash_over_budget(ten, 0, ten),
+         "zero-size entry always fits"
+@@ -5129,10 +5128,7 @@ fn a_profile_outside_the_validated_tmp_roots_is_never_reclaimed() {
+     let roots = vec![PathBuf::from("/tmp")];
+     // The operator's real profile: outside every tmp root.
+     assert_eq!(
+-        crate::reclaim_root_for(
+-            Path::new("/home/dracon/.config/google-chrome"),
+-            &roots
+-        ),
++        crate::reclaim_root_for(Path::new("/home/dracon/.config/google-chrome"), &roots),
+         None
+     );
+     // A test profile under the tmp root: reclaimable.
+@@ -5401,7 +5397,7 @@ fn sweep_stranded_oom_descendants_drops_a_defunct_child() {
+     .expect("write zombie stat fixture");
+ 
+     let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
+-        swap_mb: 0,
++        swap_mb: Some(0),
+         pid,
+         ppid,
+         cpu_percent: 0.0,
+@@ -5465,7 +5461,7 @@ fn sweep_stranded_oom_descendants_restores_a_released_roots_children() {
+     write_process_fixture(&tmp, 403, "late-child", 63, Some(250), None);
+ 
+     let sample = |pid: i32, ppid: i32, starttime: u64, command: &str| ProcSample {
+-        swap_mb: 0,
++        swap_mb: Some(0),
+         pid,
+         ppid,
+         cpu_percent: 0.0,

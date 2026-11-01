@@ -1,0 +1,28 @@
+{
+  "source_main_sha256": "f9e029820dcb88f28c44406a466e6666d9941c9bdb574e58c96d4f0a16663553",
+  "source_tests_sha256": "6e6248bb2f25bd64d5a76d56fb5d08c5043e40c2971b296f2afac51cfb92227e",
+  "scratch_path": "/tmp/dracon-swap-qualification-_70zsklf",
+  "results": [
+    {
+      "variant": "baseline",
+      "compile_exit": 0,
+      "test_exit": 0,
+      "expected_failure": null,
+      "generated_source_sha256": "0bf720c99eb886767be3a77f01a69c323bae3725876bfe8a65aa4d778b07abf1"
+    },
+    {
+      "variant": "early-rss-shortlist",
+      "compile_exit": 0,
+      "test_exit": 101,
+      "expected_failure": "swapped_offender_outside_rss_shortlist_is_selected",
+      "generated_source_sha256": "26ac1049ce553cc6c52e3895548e555a35d1bd47548aafa498d88c5be9453a6c"
+    },
+    {
+      "variant": "missing-incarnation-check",
+      "compile_exit": 0,
+      "test_exit": 101,
+      "expected_failure": "process_churn_across_swap_read_discards_the_sample",
+      "generated_source_sha256": "3aa8de3b77810b00ec97217da606b701591ec23ee1ecd3cee06a822fd17af493"
+    }
+  ]
+}
