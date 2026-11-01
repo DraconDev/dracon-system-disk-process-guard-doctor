@@ -1,0 +1,5 @@
+PASS: required package tests and strict package Clippy exit 0; all-targets strict Clippy also exit 0
+PASS: focused tests and read-only one-shot host doctor exit 0
+PASS: current source hashes match both gate metadata manifests
+PASS: package test results report zero failures; focused diagnostics report nine passing tests
+PASS: local evidence citations resolve
