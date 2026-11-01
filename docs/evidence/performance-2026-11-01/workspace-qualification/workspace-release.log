@@ -330,3 +330,7 @@ command=timeout 2400 cargo build --release --locked
    Compiling urlencoding v2.1.3
    Compiling bech32 v0.11.1
    Compiling dracon-security v0.4.0 (/tmp/performance-workspace-20261101T231731Z/dracon-warden/src/security)
+   Compiling dracon-system-lib v94.2.7
+   Compiling hostname v0.4.2
+   Compiling fs2 v0.4.3
+   Compiling dracon-system v0.112.51 (/tmp/performance-workspace-20261101T231731Z/dracon-system)
