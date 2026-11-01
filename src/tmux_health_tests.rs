@@ -359,6 +359,20 @@ async fn inspection_is_query_only_and_preserves_owned_files_and_socket() {
     assert_eq!(&args[2..], ["display-message", "-p", FORMAT]);
 }
 
+// Earlier sockets may consume time; later fresh saves must not look future-dated.
+#[tokio::test]
+async fn delayed_first_server_does_not_shift_later_save_freshness() {
+    let mut f = Fixture::new(); let a = f.add(1, 10, 'S'); let b = f.add(2, 10, 'S');
+    let mut probe = f.probe(); probe.delay_first = Some(Duration::from_millis(1100));
+    probe.after.replace(Some(Box::new(|| {
+        File::options().write(true).open(f.temp.path().join("save2/snapshot")).unwrap()
+            .set_modified(f.now + Duration::from_secs(1)).unwrap();
+    })));
+    let rows = collect(&probe, &f.roots, &[a, b], f.now, 900).await;
+    assert_eq!(rows.servers[1].save.state, SaveState::Fresh);
+    assert!(rows.servers[1].save.age_secs.is_some_and(|age| age < 60));
+}
+
 #[test]
 fn cksum_protocol_and_policy_compatibility() {
     // POSIX cksum protocol bytes, not a directory inventory pin.
