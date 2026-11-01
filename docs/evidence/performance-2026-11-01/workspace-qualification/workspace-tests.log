@@ -1125,4 +1125,9 @@ test git::epoch_spool::recovery::tests::recovery_writer_probe ... ok
 test git::epoch_spool::recovery::tests::shared_objects_are_independent_and_semantic_receipts_survive_record_gc ... ok
 test git::epoch_spool::recovery::tests::split_index_and_missing_index_object_refuse_preserving_sources ... ok
 test git::epoch_spool::recovery::tests::symlink_metadata_is_refused_without_following_it ... ok
-test git::epoch_spool::tests::another_process_reclaimer_holds_source_through_proof ... 
+test git::epoch_spool::tests::another_process_reclaimer_holds_source_through_proof ... ok
+test git::epoch_spool::tests::changed_source_after_receipt_is_not_removed ... ok
+test git::epoch_spool::tests::child_holds_live_owner_probe ... ok
+test git::epoch_spool::tests::child_holds_source_reference_probe ... ok
+test git::epoch_spool::tests::concurrent_reapers_remove_only_once ... ok
+test git::epoch_spool::tests::crash_boundaries_and_ledger_failure_preserve_source ... 
