@@ -3,3 +3,30 @@
    Compiling ssh2 v0.9.6
    Compiling dracon-system-lib v94.2.7
    Compiling dracon-system v0.112.51 (/home/dracon/Dev/dracon-utilities/dracon-system)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3m 30s
+     Running unittests src/main.rs (/home/dracon/Dev/dracon-utilities/target/debug/deps/dracon_system-b1c5790faf6d194a)
+
+running 8 tests
+test memory_sampling_tests::empty_selection_and_footprint_overflow_are_safe ... ok
+test memory_sampling_tests::exemptions_and_kernel_threads_never_become_memory_offenders ... ok
+test memory_sampling_tests::initial_identity_failure_does_not_read_swap_or_fabricate_samples ... ok
+test memory_sampling_tests::process_churn_across_swap_read_discards_the_sample ... ok
+test memory_sampling_tests::swap_parser_rejects_missing_malformed_and_oversized_status ... ok
+test memory_sampling_tests::swapped_offender_outside_rss_shortlist_is_selected ... ok
+test memory_sampling_tests::swapping_and_equal_footprints_are_independent_of_input_order ... ok
+test memory_sampling_tests::unknown_swap_is_not_a_measured_zero_even_outside_shortlist ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 712 filtered out; finished in 0.03s
+
+     Running tests/events_cli.rs (/home/dracon/Dev/dracon-utilities/target/debug/deps/events_cli-6fc62d5dc6f90263)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+
+     Running tests/guard_service.rs (/home/dracon/Dev/dracon-utilities/target/debug/deps/guard_service-6442b6bdb63fd6b4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
+
