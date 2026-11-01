@@ -15,6 +15,8 @@ OUT = Path(__file__).resolve().parent
 def uint(value: str | None) -> int | None:
     if value is None or not re.fullmatch(r"[0-9]+", value.strip()):
         return None
+    if len(value.strip()) > 20:
+        return None
     result = int(value)
     return result if result <= U64 else None
 

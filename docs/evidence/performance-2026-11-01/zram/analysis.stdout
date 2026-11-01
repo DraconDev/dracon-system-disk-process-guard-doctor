@@ -1,0 +1,386 @@
+{
+  "units": "bytes; binary GiB=1024^3; rates pswp base-pages/s and MiB/s; PSI percent",
+  "page_size_bytes": 4096,
+  "incident": {
+    "timestamp": "2026-11-01T13:53:51.550Z",
+    "source_entry": 27,
+    "swap_timestamp": "2026-11-01T13:53:20.681Z",
+    "swap_entries": [
+      {
+        "path": "/dev/zram0",
+        "kind": "partition",
+        "capacity_bytes": 65359835136,
+        "allocated_bytes": 65108627456,
+        "priority": 5
+      },
+      {
+        "path": "/mnt/data/swapfile",
+        "kind": "file",
+        "capacity_bytes": 68719472640,
+        "allocated_bytes": 9751568384,
+        "priority": -1
+      }
+    ],
+    "original_bytes": 64697733120,
+    "compressed_bytes": 12972688106,
+    "ram_bytes": 13342056448,
+    "ram_high_water_bytes": 20484837376,
+    "same_pages": 68569,
+    "compression_original_per_payload": 4.9872264399910025,
+    "effective_original_per_allocated_ram": 4.849157502230349
+  },
+  "frames": [
+    {
+      "started_at": "2026-11-01T19:03:32.784149+00:00",
+      "device": "/sys/block/zram0",
+      "logical_capacity_bytes": 65359839232,
+      "original_bytes": 26198777856,
+      "compressed_bytes": 7979230525,
+      "ram_bytes": 8168927232,
+      "ram_high_water_bytes": 20484837376,
+      "same_pages": 48816,
+      "compression_original_per_payload": 3.283371469706974,
+      "effective_original_per_allocated_ram": 3.2071258700128915,
+      "ram_fraction_of_logical_capacity": 0.1249838942076301,
+      "original_fraction_of_logical_capacity": 0.4008390804482449,
+      "meminfo_bytes": {
+        "MemTotal": 32680579072,
+        "MemFree": 1261977600,
+        "MemAvailable": 3389718528,
+        "Buffers": 305573888,
+        "Cached": 3174551552,
+        "SwapCached": 514011136,
+        "Active": 9318850560,
+        "Inactive": 5421453312,
+        "Active(anon)": 7513903104,
+        "Inactive(anon)": 4016791552,
+        "Active(file)": 1804947456,
+        "Inactive(file)": 1404661760,
+        "Unevictable": 1232896,
+        "Mlocked": 1232896,
+        "SwapTotal": 134079307776,
+        "SwapFree": 105292476416,
+        "Zswap": 0,
+        "Zswapped": 0,
+        "Dirty": 122728448,
+        "Writeback": 0,
+        "AnonPages": 11255058432,
+        "Mapped": 1229541376,
+        "Shmem": 270413824,
+        "KReclaimable": 833028096,
+        "Slab": 2368143360,
+        "SReclaimable": 833028096,
+        "SUnreclaim": 1535115264,
+        "KernelStack": 65630208,
+        "PageTables": 643584000,
+        "SecPageTables": 5931008,
+        "NFS_Unstable": 0,
+        "Bounce": 0,
+        "WritebackTmp": 0,
+        "CommitLimit": 150419595264,
+        "Committed_AS": 101681479680,
+        "VmallocTotal": 35184372087808,
+        "VmallocUsed": 459022336,
+        "VmallocChunk": 0,
+        "Percpu": 29884416,
+        "HardwareCorrupted": 0,
+        "AnonHugePages": 0,
+        "ShmemHugePages": 0,
+        "ShmemPmdMapped": 0,
+        "FileHugePages": 0,
+        "FilePmdMapped": 0,
+        "CmaTotal": 0,
+        "CmaFree": 0,
+        "Unaccepted": 0,
+        "Balloon": 0,
+        "GPUActive": 4322283520,
+        "GPUReclaim": 2539520,
+        "Hugepagesize": 2097152,
+        "Hugetlb": 0,
+        "DirectMap4k": 32174813184,
+        "DirectMap2M": 1203765248,
+        "DirectMap1G": 0
+      },
+      "swap_entries": [
+        {
+          "path": "/dev/zram0",
+          "kind": "partition",
+          "capacity_bytes": 65359835136,
+          "allocated_bytes": 26831392768,
+          "priority": 5
+        },
+        {
+          "path": "/mnt/data/swapfile",
+          "kind": "file",
+          "capacity_bytes": 68719472640,
+          "allocated_bytes": 1955438592,
+          "priority": -1
+        }
+      ],
+      "memory_psi": {
+        "some": {
+          "avg10_percent": 4.01,
+          "total_microseconds": 272631844421
+        },
+        "full": {
+          "avg10_percent": 3.11,
+          "total_microseconds": 183115231808
+        }
+      },
+      "io_psi": {
+        "some": {
+          "avg10_percent": 15.91,
+          "total_microseconds": 860046191570
+        },
+        "full": {
+          "avg10_percent": 0.19,
+          "total_microseconds": 326306641087
+        }
+      }
+    },
+    {
+      "started_at": "2026-11-01T19:03:37.808689+00:00",
+      "device": "/sys/block/zram0",
+      "logical_capacity_bytes": 65359839232,
+      "original_bytes": 26336153600,
+      "compressed_bytes": 8010508380,
+      "ram_bytes": 8207249408,
+      "ram_high_water_bytes": 20484837376,
+      "same_pages": 50413,
+      "compression_original_per_payload": 3.287700649031716,
+      "effective_original_per_allocated_ram": 3.2088891528419845,
+      "ram_fraction_of_logical_capacity": 0.12557022025203748,
+      "original_fraction_of_logical_capacity": 0.40294091768674195,
+      "meminfo_bytes": {
+        "MemTotal": 32680579072,
+        "MemFree": 1700999168,
+        "MemAvailable": 3673083904,
+        "Buffers": 323895296,
+        "Cached": 2996940800,
+        "SwapCached": 520978432,
+        "Active": 8933892096,
+        "Inactive": 5352660992,
+        "Active(anon)": 7416795136,
+        "Inactive(anon)": 3816894464,
+        "Active(file)": 1517096960,
+        "Inactive(file)": 1535766528,
+        "Unevictable": 1093632,
+        "Mlocked": 1093632,
+        "SwapTotal": 134079307776,
+        "SwapFree": 105126055936,
+        "Zswap": 0,
+        "Zswapped": 0,
+        "Dirty": 103833600,
+        "Writeback": 188416,
+        "AnonPages": 10962841600,
+        "Mapped": 1354518528,
+        "Shmem": 265211904,
+        "KReclaimable": 835207168,
+        "Slab": 2370207744,
+        "SReclaimable": 835207168,
+        "SUnreclaim": 1535000576,
+        "KernelStack": 65425408,
+        "PageTables": 643022848,
+        "SecPageTables": 5931008,
+        "NFS_Unstable": 0,
+        "Bounce": 0,
+        "WritebackTmp": 0,
+        "CommitLimit": 150419595264,
+        "Committed_AS": 101552459776,
+        "VmallocTotal": 35184372087808,
+        "VmallocUsed": 459460608,
+        "VmallocChunk": 0,
+        "Percpu": 29884416,
+        "HardwareCorrupted": 0,
+        "AnonHugePages": 0,
+        "ShmemHugePages": 0,
+        "ShmemPmdMapped": 0,
+        "FileHugePages": 0,
+        "FilePmdMapped": 0,
+        "CmaTotal": 0,
+        "CmaFree": 0,
+        "Unaccepted": 0,
+        "Balloon": 0,
+        "GPUActive": 4326903808,
+        "GPUReclaim": 9371648,
+        "Hugepagesize": 2097152,
+        "Hugetlb": 0,
+        "DirectMap4k": 32174813184,
+        "DirectMap2M": 1203765248,
+        "DirectMap1G": 0
+      },
+      "swap_entries": [
+        {
+          "path": "/dev/zram0",
+          "kind": "partition",
+          "capacity_bytes": 65359835136,
+          "allocated_bytes": 26997813248,
+          "priority": 5
+        },
+        {
+          "path": "/mnt/data/swapfile",
+          "kind": "file",
+          "capacity_bytes": 68719472640,
+          "allocated_bytes": 1955438592,
+          "priority": -1
+        }
+      ],
+      "memory_psi": {
+        "some": {
+          "avg10_percent": 3.71,
+          "total_microseconds": 272632006983
+        },
+        "full": {
+          "avg10_percent": 2.59,
+          "total_microseconds": 183115339088
+        }
+      },
+      "io_psi": {
+        "some": {
+          "avg10_percent": 14.95,
+          "total_microseconds": 860046848365
+        },
+        "full": {
+          "avg10_percent": 0.13,
+          "total_microseconds": 326306663226
+        }
+      }
+    },
+    {
+      "started_at": "2026-11-01T19:03:42.821034+00:00",
+      "device": "/sys/block/zram0",
+      "logical_capacity_bytes": 65359839232,
+      "original_bytes": 26498031616,
+      "compressed_bytes": 8078501516,
+      "ram_bytes": 8274046976,
+      "ram_high_water_bytes": 20484837376,
+      "same_pages": 50668,
+      "compression_original_per_payload": 3.2800676664501354,
+      "effective_original_per_allocated_ram": 3.2025478816909247,
+      "ram_fraction_of_logical_capacity": 0.12659221738031828,
+      "original_fraction_of_logical_capacity": 0.4054176376098954,
+      "meminfo_bytes": {
+        "MemTotal": 32680579072,
+        "MemFree": 1339887616,
+        "MemAvailable": 3231387648,
+        "Buffers": 225509376,
+        "Cached": 3002195968,
+        "SwapCached": 520589312,
+        "Active": 9397202944,
+        "Inactive": 5018423296,
+        "Active(anon)": 7681875968,
+        "Inactive(anon)": 3762221056,
+        "Active(file)": 1715326976,
+        "Inactive(file)": 1256202240,
+        "Unevictable": 1372160,
+        "Mlocked": 1372160,
+        "SwapTotal": 134079307776,
+        "SwapFree": 104958636032,
+        "Zswap": 0,
+        "Zswapped": 0,
+        "Dirty": 153530368,
+        "Writeback": 0,
+        "AnonPages": 11185954816,
+        "Mapped": 1521225728,
+        "Shmem": 255193088,
+        "KReclaimable": 836706304,
+        "Slab": 2371477504,
+        "SReclaimable": 836706304,
+        "SUnreclaim": 1534771200,
+        "KernelStack": 65224704,
+        "PageTables": 642719744,
+        "SecPageTables": 5931008,
+        "NFS_Unstable": 0,
+        "Bounce": 0,
+        "WritebackTmp": 0,
+        "CommitLimit": 150419595264,
+        "Committed_AS": 102634496000,
+        "VmallocTotal": 35184372087808,
+        "VmallocUsed": 458645504,
+        "VmallocChunk": 0,
+        "Percpu": 29884416,
+        "HardwareCorrupted": 0,
+        "AnonHugePages": 0,
+        "ShmemHugePages": 0,
+        "ShmemPmdMapped": 0,
+        "FileHugePages": 0,
+        "FilePmdMapped": 0,
+        "CmaTotal": 0,
+        "CmaFree": 0,
+        "Unaccepted": 0,
+        "Balloon": 0,
+        "GPUActive": 4319121408,
+        "GPUReclaim": 17154048,
+        "Hugepagesize": 2097152,
+        "Hugetlb": 0,
+        "DirectMap4k": 32174813184,
+        "DirectMap2M": 1203765248,
+        "DirectMap1G": 0
+      },
+      "swap_entries": [
+        {
+          "path": "/dev/zram0",
+          "kind": "partition",
+          "capacity_bytes": 65359835136,
+          "allocated_bytes": 27165233152,
+          "priority": 5
+        },
+        {
+          "path": "/mnt/data/swapfile",
+          "kind": "file",
+          "capacity_bytes": 68719472640,
+          "allocated_bytes": 1955438592,
+          "priority": -1
+        }
+      ],
+      "memory_psi": {
+        "some": {
+          "avg10_percent": 3.05,
+          "total_microseconds": 272632149761
+        },
+        "full": {
+          "avg10_percent": 2.11,
+          "total_microseconds": 183115445191
+        }
+      },
+      "io_psi": {
+        "some": {
+          "avg10_percent": 13.79,
+          "total_microseconds": 860047477607
+        },
+        "full": {
+          "avg10_percent": 0.07,
+          "total_microseconds": 326306679556
+        }
+      }
+    }
+  ],
+  "intervals": [
+    {
+      "from_timestamp": "2026-11-01T19:03:32.788129+00:00",
+      "to_timestamp": "2026-11-01T19:03:37.817518+00:00",
+      "elapsed_seconds": 5.029389164,
+      "boot_continuity_observed": true,
+      "pswpin_per_second": 5261.473935923086,
+      "pswpin_mib_per_second": 20.552632562199555,
+      "pswpout_per_second": 11428.027962403268,
+      "pswpout_mib_per_second": 44.64073422813777,
+      "pgmajfault_per_second": 6212.881720043408,
+      "memory_full_stall_interval_percent": 2.1330706684004,
+      "io_full_stall_interval_percent": 0.4401940559835293
+    },
+    {
+      "from_timestamp": "2026-11-01T19:03:37.817518+00:00",
+      "to_timestamp": "2026-11-01T19:03:42.821528+00:00",
+      "elapsed_seconds": 5.004010133,
+      "boot_continuity_observed": true,
+      "pswpin_per_second": 3168.8584911984226,
+      "pswpin_mib_per_second": 12.378353481243838,
+      "pswpout_per_second": 11045.741021883738,
+      "pswpout_mib_per_second": 43.14742586673335,
+      "pgmajfault_per_second": 4513.979668234217,
+      "memory_full_stall_interval_percent": 2.120338091670662,
+      "io_full_stall_interval_percent": 0.32633454310064786
+    }
+  ]
+}

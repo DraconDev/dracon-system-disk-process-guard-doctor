@@ -1,0 +1,12 @@
+test_capacity_original_payload_and_allocated_ram_are_not_interchangeable (test_analyse.Calculations.test_capacity_original_payload_and_allocated_ram_are_not_interchangeable) ... ok
+test_interval_separates_swap_directions_page_size_and_fault_events (test_analyse.Calculations.test_interval_separates_swap_directions_page_size_and_fault_events) ... ok
+test_memory_and_psi_missing_or_bad_units_stay_unknown (test_analyse.Calculations.test_memory_and_psi_missing_or_bad_units_stay_unknown) ... ok
+test_positional_fields_keep_missing_and_malformed_distinct_from_zero (test_analyse.Calculations.test_positional_fields_keep_missing_and_malformed_distinct_from_zero) ... ok
+test_rates_are_directional_and_clock_reset_or_missing_is_unknown (test_analyse.Calculations.test_rates_are_directional_and_clock_reset_or_missing_is_unknown) ... ok
+test_reordered_whitespace_and_unrelated_fields_are_harmless (test_analyse.Calculations.test_reordered_whitespace_and_unrelated_fields_are_harmless) ... ok
+test_swap_units_priority_and_allocated_slots (test_analyse.Calculations.test_swap_units_priority_and_allocated_slots) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.001s
+
+OK
