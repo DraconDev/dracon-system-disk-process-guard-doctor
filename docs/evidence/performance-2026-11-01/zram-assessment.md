@@ -58,7 +58,9 @@ Sources: `host.json.samples[0].reads` paths `/sys/block/zram0/{disksize,mm_stat}
 19:09 mount observation maps `/mnt/data` to ext4 on `/dev/sda2`; it is not a
 historical mount receipt for the incident. Zram's own `backing_dev` was `none`
 and `bd_stat` was `0 0 0` in S0–S2: the separate swapfile must not be confused
-with zram backing-device writeback.
+with zram backing-device writeback. `comp_algorithm` selected `[zstd]` in
+S0–S2, as historical H30 also reported; that is an observation, not proof that
+this algorithm is optimal for the current workload.
 
 Additional distinctions:
 
@@ -117,7 +119,8 @@ per-read timestamps in `/proc/vmstat` and pressure records):
 | 19:03:37.818 → 19:03:42.822 | 5.004010 s | 3,168.86 pages/s; 12.378 MiB/s | 11,045.74 pages/s; 43.147 MiB/s | 4,513.98 events/s | 2.120% | 0.326% |
 
 Formula: `(counter_after − counter_before) / elapsed_monotonic_seconds`;
-MiB/s adds observed `page_size / 2^20`. PSI interval shares use **each PSI
+MiB/s adds observed `page_size / 2^20`: this is logical uncompressed page
+volume, **not compressed-device or physical-disk bandwidth**. PSI interval shares use **each PSI
 file's own elapsed time**, and `delta(full.total_microseconds) / elapsed / 10^6 × 100`,
 not subtraction of smoothed avg10 values. Missing/reset counters, invalid time
 or unestablished boot continuity produce null, not zero.
