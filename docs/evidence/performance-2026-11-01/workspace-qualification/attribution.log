@@ -107,3 +107,14 @@ command=timeout 900 cargo test --locked -p dracon-system memory_sampling_tests -
    Compiling rustls v0.23.46
    Compiling tower-service v0.3.3
    Compiling want v0.3.1
+   Compiling idna_adapter v1.2.2
+   Compiling rustls-webpki v0.103.16
+   Compiling zvariant v5.15.0
+   Compiling form_urlencoded v1.2.2
+   Compiling async-channel v2.5.0
+   Compiling futures-channel v0.3.34
+   Compiling subtle v2.6.1
+   Compiling rayon-core v1.13.0
+   Compiling zmij v1.0.23
+   Compiling zbus_names v4.3.4
+   Compiling hyper v1.11.1
