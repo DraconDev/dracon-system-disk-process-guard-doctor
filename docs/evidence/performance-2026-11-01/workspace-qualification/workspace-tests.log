@@ -2301,4 +2301,22 @@ test sync::tests::test_compute_blast_radius_merge_prefix ... ok
 test sync::tests::test_compute_diff_entries_propagates_filter_diff_failure ... ok
 test sync::tests::test_concurrent_staging_defers_then_captured_and_worktree_epochs_converge ... [master (root-commit) fb36d9a] init
 ok
-test sync::tests::test_count_ahead_commits_counts_all_when_never_pushed ... 
+test sync::tests::test_count_ahead_commits_counts_all_when_never_pushed ... [main (root-commit) 9118b99] init
+ok
+test sync::tests::test_count_ahead_commits_no_origin ... ok
+test sync::tests::test_count_ahead_commits_returns_zero_when_synced ... [main (root-commit) 9118b99] init
+ok
+test sync::tests::test_count_ahead_commits_takes_max_across_tracking_refs ... [main (root-commit) a307338] c0
+[main 21c4a40] c1
+[main 10255ee] c2
+[main 476a6c4] c3
+[main 4ede0d5] c4
+ok
+test sync::tests::test_count_ahead_commits_uses_mirror_ref_when_no_origin ... [main (root-commit) d5f06b7] c1
+[main 63469a8] c2
+ok
+test sync::tests::test_degraded_success_reports_paused_not_synced ... [master (root-commit) 9228c0e] init
+To /tmp/.tmpNilEQu/mirror.git
+ * [new branch]      master -> master
+ok
+test sync::tests::test_deletions_committed_when_intentional ... [master (root-commit) fcd6c36] init
