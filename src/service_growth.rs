@@ -285,12 +285,17 @@ impl Tracker {
             row.growth_mib_per_min =
                 (elapsed > 0.0).then(|| delta as f64 / MIB as f64 * 60.0 / elapsed);
             let midpoint = baseline.at + Duration::from_secs_f64(elapsed / 2.0);
+            // Balanced growth, not a dominant burst plus negligible drift:
+            // each half contributes >= one quarter of BOTH the observed delta
+            // and the configured minimum. Conservative, never a leak claim.
+            let meaningful_half = delta.div_ceil(4).max(settings.1.saturating_mul(MIB).div_ceil(4));
             let both_halves = h
                 .points
                 .iter()
                 .rev()
                 .find(|p| p.at <= midpoint)
-                .is_some_and(|middle| middle.total > baseline.total && total > middle.total);
+                .is_some_and(|middle| middle.total.saturating_sub(baseline.total) >= meaningful_half
+                    && total.saturating_sub(middle.total) >= meaningful_half);
             row.status = if reset.is_some() {
                 "reset"
             } else if elapsed < window.as_secs_f64() {
@@ -682,15 +687,15 @@ async fn collect(probe: &impl Probe, roots: &Roots, names: &[String]) -> Vec<Obs
                 .get(&target.manager)
                 .and_then(|r| r.as_ref().ok())
                 .and_then(|u| u.get(&target.unit));
-            let current = crate::read_proc_identity(&roots.proc, generation.pid)
-                .ok()
-                .as_ref()
-                == Some(&generation.identity);
+            let membership = main_group(roots, generation.pid).is_ok_and(|group|
+                group == generation.group || group.starts_with(&(generation.group.clone() + "/")));
             let directory = open_beneath(roots, &generation.group)
                 .ok()
                 .and_then(|d| d.metadata().ok())
                 .is_some_and(|m| m.dev() == generation.device && m.ino() == generation.inode);
-            if a != b || b.is_none() || !current || !directory {
+            let current = crate::read_proc_identity(&roots.proc, generation.pid)
+                .ok().as_ref() == Some(&generation.identity);
+            if a != b || b.is_none() || !current || !directory || !membership {
                 *row = Observation::unavailable(
                     &row.target,
                     "manager/process/cgroup incarnation changed/unavailable during measurement",
