@@ -22,6 +22,22 @@
       "exit": 0,
       "log": "workspace-release.log",
       "log_sha256": "3eb77eb4cdf037fe346e9d73a268b34a5a276fc1baca1bd8baf234a25ac60159"
+    },
+    {
+      "name": "workspace-deny",
+      "command": [
+        "cargo",
+        "deny",
+        "check"
+      ],
+      "timeout_seconds": 600,
+      "cwd": "/tmp/performance-workspace-20261101T231731Z",
+      "started_at": "2026-11-01T23:59:26.121562+00:00",
+      "finished_at": "2026-11-01T23:59:36.067953+00:00",
+      "elapsed_seconds": 9.946396341081709,
+      "exit": 0,
+      "log": "workspace-deny.log",
+      "log_sha256": "f140f6c7e8b3124a1d0cb0e32e4bb4ac9bd467e6bbae287df163fec6019a7179"
     }
   ]
 }

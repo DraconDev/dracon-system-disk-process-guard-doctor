@@ -1,3 +1,4 @@
 cwd=/tmp/performance-workspace-20261101T231731Z
 started_at=2026-11-01T23:59:26.121562+00:00
 command=timeout 600 cargo deny check
+advisories ok, bans ok, licenses ok, sources ok
