@@ -34,10 +34,10 @@ mod managed_oom;
 mod memory_sampling_tests;
 mod oom_job;
 mod oom_restore;
-mod service_growth;
 mod protection_probe;
 #[cfg(test)]
 mod protection_tests;
+mod service_growth;
 pub(crate) use doctor::*;
 mod events;
 pub(crate) use events::*;
@@ -10531,14 +10531,37 @@ pub(crate) async fn run_guard_once(
     };
     check_large_logs(guard, state).await;
     let memory = check_memory_pressure(guard, state, &samples).await;
-    let service_memory_growth = service_growth::check(guard, &mut state.service_memory_growth).await;
+    let service_memory_growth =
+        service_growth::check(guard, &mut state.service_memory_growth).await;
     let signature = service_memory_growth.signature();
-    let (previous, due) = report_state_transition(state, "service-memory-growth", &signature, guard.report_repeat_secs);
-    let diagnostic = service_memory_growth.observations.iter().any(|o| o.status == "sustained_growth" || o.status == "unavailable");
-    if service_memory_growth.enabled && due && (diagnostic || previous.is_some_and(|p| p != signature)) {
-        emit_event(&DraconEvent::new("system",
-            if service_memory_growth.observations.iter().any(|o| o.status == "sustained_growth") { EventSeverity::Warn } else { EventSeverity::Info },
-            "memory/service-growth", service_memory_growth.summary()));
+    let (previous, due) = report_state_transition(
+        state,
+        "service-memory-growth",
+        &signature,
+        guard.report_repeat_secs,
+    );
+    let diagnostic = service_memory_growth
+        .observations
+        .iter()
+        .any(|o| o.status == "sustained_growth" || o.status == "unavailable");
+    if service_memory_growth.enabled
+        && due
+        && (diagnostic || previous.is_some_and(|p| p != signature))
+    {
+        emit_event(&DraconEvent::new(
+            "system",
+            if service_memory_growth
+                .observations
+                .iter()
+                .any(|o| o.status == "sustained_growth")
+            {
+                EventSeverity::Warn
+            } else {
+                EventSeverity::Info
+            },
+            "memory/service-growth",
+            service_memory_growth.summary(),
+        ));
     }
 
     // ADDED 2026-10-27 (wrong-swap check): every pass verifies that all
@@ -11863,7 +11886,11 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
             Cell::new(summarize_reaped(&report.reaped)),
         ]);
     }
-    table.add_row(vec![Cell::new(""), Cell::new("Service memory growth (report only)"), Cell::new(report.service_memory_growth.summary())]);
+    table.add_row(vec![
+        Cell::new(""),
+        Cell::new("Service memory growth (report only)"),
+        Cell::new(report.service_memory_growth.summary()),
+    ]);
     if let Some(memory) = &report.memory {
         if !memory.pressure_reaped.is_empty() {
             table.add_row(vec![
