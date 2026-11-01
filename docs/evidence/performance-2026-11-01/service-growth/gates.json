@@ -1,0 +1,22 @@
+{
+  "recorded_at": "2026-11-01T18:07:47.810234+00:00",
+  "gates": [
+    {
+      "command": "timeout 600 env CARGO_BUILD_JOBS=2 cargo test --locked -p dracon-system",
+      "exit": 0,
+      "log": "package-tests.log"
+    },
+    {
+      "command": "timeout 600 env CARGO_BUILD_JOBS=2 cargo clippy --locked -p dracon-system -- -D warnings",
+      "exit": 0,
+      "log": "package-clippy.log"
+    }
+  ],
+  "source_sha256": {
+    "src/main.rs": "42480cae221fa530a8f201c9e012a207826dbb62b4b420fa29d0a4fc554c0201",
+    "src/policy.rs": "76c047ccc79383851fb8cd7432cafeef53f25b79c7265fa05745e32b2b04a2df",
+    "src/service_growth.rs": "6fa14b7afa0eaa2fbb4ec73ca141527ad75ab30bb97c5441109560faadf87443",
+    "src/service_growth_tests.rs": "29659fd1da6d9718f32d44d8b67b22b96f893b455eb15ce975d7a076955128d3",
+    "src/guard_tests.rs": "b007a08da19adccfe9a017df74fd49aed589d313eefe6bd1632b95fdb84c9002"
+  }
+}
