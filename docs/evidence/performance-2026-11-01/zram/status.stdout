@@ -1,0 +1,20 @@
+Zram Status
+============
+
+Device: /dev/zram0
+Disksize: 60 GB
+Algorithm: lzo-rle lzo lz4 lz4hc [zstd] deflate 842
+
+Memory Usage:
+  Original data: 24.7 GB
+  Compressed:    7.5 GB
+  RAM used:      7.7 GB
+  Compression ratio: 3.3x (compressed data is 30.5% of original)
+
+Configuration options:
+  --gen-config           Generate NixOS configuration snippet
+  --memory-percent <N>   Set memory percent (default: 200 for 2x RAM)
+  --algorithm <algo>     Set algorithm: lzo, lz4, lz4hc, zstd (default: zstd)
+
+Example - generate config for 2x RAM with zstd:
+  dracon-system zram --gen-config --memory-percent 200 --algorithm zstd

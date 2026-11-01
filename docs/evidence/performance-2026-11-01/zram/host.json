@@ -1,0 +1,653 @@
+{
+  "schema": 1,
+  "page_size_bytes": 4096,
+  "source": "read-only proc/sysfs; sequential not atomic; three observations five seconds apart",
+  "byte_limit_per_read": 262144,
+  "samples": [
+    {
+      "started_at": "2026-11-01T19:03:32.784149+00:00",
+      "reads": {
+        "/proc/sys/kernel/random/boot_id": {
+          "path": "/proc/sys/kernel/random/boot_id",
+          "started_at": "2026-11-01T19:03:32.784171+00:00",
+          "monotonic_ns": 3267479944329034,
+          "text": "2822e983-2a7d-4bee-9bec-add9b541b685\n",
+          "sha256": "ab53e595fc37d79f09ab99c3f67d168690ba60f70d80a63ebbb0b534a99d1633",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.787923+00:00",
+          "finished_monotonic_ns": 3267479948093903
+        },
+        "/proc/meminfo": {
+          "path": "/proc/meminfo",
+          "started_at": "2026-11-01T19:03:32.787977+00:00",
+          "monotonic_ns": 3267479948135041,
+          "text": "MemTotal:       31914628 kB\nMemFree:         1232400 kB\nMemAvailable:    3310272 kB\nBuffers:          298412 kB\nCached:          3100148 kB\nSwapCached:       501964 kB\nActive:          9100440 kB\nInactive:        5294388 kB\nActive(anon):    7337796 kB\nInactive(anon):  3922648 kB\nActive(file):    1762644 kB\nInactive(file):  1371740 kB\nUnevictable:        1204 kB\nMlocked:            1204 kB\nSwapTotal:      130936824 kB\nSwapFree:       102824684 kB\nZswap:                 0 kB\nZswapped:              0 kB\nDirty:            119852 kB\nWriteback:             0 kB\nAnonPages:      10991268 kB\nMapped:          1200724 kB\nShmem:            264076 kB\nKReclaimable:     813504 kB\nSlab:            2312640 kB\nSReclaimable:     813504 kB\nSUnreclaim:      1499136 kB\nKernelStack:       64092 kB\nPageTables:       628500 kB\nSecPageTables:      5792 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:    146894136 kB\nCommitted_AS:   99298320 kB\nVmallocTotal:   34359738367 kB\nVmallocUsed:      448264 kB\nVmallocChunk:          0 kB\nPercpu:            29184 kB\nHardwareCorrupted:     0 kB\nAnonHugePages:         0 kB\nShmemHugePages:        0 kB\nShmemPmdMapped:        0 kB\nFileHugePages:         0 kB\nFilePmdMapped:         0 kB\nCmaTotal:              0 kB\nCmaFree:               0 kB\nUnaccepted:            0 kB\nBalloon:               0 kB\nGPUActive:       4220980 kB\nGPUReclaim:         2480 kB\nHugePages_Total:       0\nHugePages_Free:        0\nHugePages_Rsvd:        0\nHugePages_Surp:        0\nHugepagesize:       2048 kB\nHugetlb:               0 kB\nDirectMap4k:    31420716 kB\nDirectMap2M:     1175552 kB\nDirectMap1G:           0 kB\n",
+          "sha256": "079a7c4708f9a4bc5d8cf9576fc548b0eab0ad315cca843f8f1fd5c82b1ce4f4",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.788061+00:00",
+          "finished_monotonic_ns": 3267479948219110
+        },
+        "/proc/swaps": {
+          "path": "/proc/swaps",
+          "started_at": "2026-11-01T19:03:32.788079+00:00",
+          "monotonic_ns": 3267479948235842,
+          "text": "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n/dev/zram0                              partition\t63827964\t26202532\t5\n/mnt/data/swapfile                      file\t\t67108860\t1909608\t\t-1\n",
+          "sha256": "ae7e444633cd7566e586152be74b3c9bf6b3c40fad285b9c3cc4fb10f56f00b6",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.788118+00:00",
+          "finished_monotonic_ns": 3267479948274615
+        },
+        "/proc/vmstat": {
+          "path": "/proc/vmstat",
+          "started_at": "2026-11-01T19:03:32.788129+00:00",
+          "monotonic_ns": 3267479948285075,
+          "text": "nr_free_pages 308282\nnr_free_pages_blocks 0\nnr_zone_inactive_anon 980662\nnr_zone_active_anon 1834449\nnr_zone_inactive_file 342935\nnr_zone_active_file 440661\nnr_zone_unevictable 301\nnr_zone_write_pending 29962\nnr_mlock 301\nnr_zspages 1994367\nnr_free_cma 0\nnr_unaccepted 0\nnuma_hit 1068840954619\nnuma_miss 0\nnuma_foreign 0\nnuma_interleave 595\nnuma_local 1068690001086\nnuma_other 0\nnr_inactive_anon 980662\nnr_active_anon 1834449\nnr_inactive_file 342935\nnr_active_file 440661\nnr_unevictable 301\nnr_slab_reclaimable 203376\nnr_slab_unreclaimable 374784\nnr_isolated_anon 0\nnr_isolated_file 0\nworkingset_nodes 18294\nworkingset_refault_anon 58708567565\nworkingset_refault_file 25779948817\nworkingset_activate_anon 9349537648\nworkingset_activate_file 5623095846\nworkingset_restore_anon 3376822181\nworkingset_restore_file 2706250960\nworkingset_nodereclaim 2578776311\nnr_anon_pages 2747817\nnr_mapped 300275\nnr_file_pages 975131\nnr_dirty 29963\nnr_writeback 0\nnr_shmem 66019\nnr_shmem_hugepages 0\nnr_shmem_pmdmapped 0\nnr_file_hugepages 0\nnr_file_pmdmapped 0\nnr_anon_transparent_hugepages 0\nnr_vmscan_write 79536414563\nnr_vmscan_immediate_reclaim 523804\nnr_dirtied 39547316305\nnr_written 106090939599\nnr_throttled_written 0\nnr_kernel_misc_reclaimable 0\nnr_foll_pin_acquired 867383\nnr_foll_pin_released 867383\nnr_vmalloc 112066\nnr_kernel_stack 64092\nnr_page_table_pages 157125\nnr_sec_page_table_pages 1448\nnr_iommu_pages 1448\nnr_swapcached 125491\npgpromote_success 0\npgpromote_candidate 0\npgpromote_candidate_nrl 0\npgdemote_kswapd 0\npgdemote_direct 0\npgdemote_khugepaged 0\npgdemote_proactive 0\npgsteal_kswapd 102083271064\npgsteal_direct 69408964710\npgsteal_khugepaged 7300434\npgsteal_proactive 0\npgsteal_anon 79775007600\npgsteal_file 91724528607\npgscan_kswapd 126725307670\npgscan_direct 95767482272\npgscan_khugepaged 8717483\npgscan_proactive 0\npgscan_anon 124636541329\npgscan_file 97864966081\npgrefill 185300189118\nnr_hugetlb 0\nnr_balloon_pages 0\nnr_kernel_file_pages 0\nnr_gpu_active 1055245\nnr_gpu_reclaim 620\nnr_dirty_threshold 168503\nnr_dirty_background_threshold 84148\nnr_memmap_pages 16064\nnr_memmap_boot_pages 128512\npgpgin 553081325697\npgpgout 434861066824\npswpin 57981562537\npswpout 77752765442\npgalloc_dma 3864\npgalloc_dma32 17503237555\npgalloc_normal 1105053686654\npgalloc_movable 0\npgalloc_device 0\nallocstall_dma 0\nallocstall_dma32 0\nallocstall_normal 136803974\nallocstall_movable 909995232\nallocstall_device 0\npgskip_dma 0\npgskip_dma32 1186193\npgskip_normal 8133494\npgskip_movable 0\npgskip_device 0\npgfree 1149138517498\npgactivate 69647090271\npgdeactivate 1012485\npglazyfree 143867881\npgfault 1182944083342\npgmajfault 60602221032\npglazyfreed 85924858\npgreuse 64086805421\npgscan_direct_throttle 0\nzone_reclaim_success 0\nzone_reclaim_failed 0\npginodesteal 35426916\nslabs_scanned 89175492013\nkswapd_inodesteal 655050093\nkswapd_low_wmark_hit_quickly 5013097\nkswapd_high_wmark_hit_quickly 259248\npageoutrun 7000227\npgrotated 4041108902\ndrop_pagecache 0\ndrop_slab 0\noom_kill 23\nnuma_pte_updates 0\nnuma_huge_pte_updates 0\nnuma_hint_faults 0\nnuma_hint_faults_local 0\nnuma_pages_migrated 0\npgmigrate_success 24753990210\npgmigrate_fail 1251890841\nthp_migration_success 0\nthp_migration_fail 0\nthp_migration_split 0\ncompact_migrate_scanned 771586785870\ncompact_free_scanned 1463672394910\ncompact_isolated 52213094791\ncompact_stall 195382409\ncompact_fail 156596189\ncompact_success 38786220\ncompact_daemon_wake 5789326\ncompact_daemon_migrate_scanned 600467219271\ncompact_daemon_free_scanned 722921410361\nhtlb_buddy_alloc_success 0\nhtlb_buddy_alloc_fail 0\ncma_alloc_success 0\ncma_alloc_fail 0\nunevictable_pgs_culled 16344117\nunevictable_pgs_scanned 469\nunevictable_pgs_rescued 16343795\nunevictable_pgs_mlocked 16343861\nunevictable_pgs_munlocked 15963452\nunevictable_pgs_cleared 0\nunevictable_pgs_stranded 380108\nthp_fault_alloc 17628\nthp_fault_fallback 3958543\nthp_fault_fallback_charge 0\nthp_collapse_alloc 815\nthp_collapse_alloc_failed 28276\nthp_file_alloc 0\nthp_file_fallback 0\nthp_file_fallback_charge 0\nthp_file_mapped 22167\nthp_split_page 1550\nthp_split_page_failed 5\nthp_deferred_split_page 4428\nthp_underused_split_page 0\nthp_split_pmd 22519\nthp_scan_exceed_none_pte 131955\nthp_scan_exceed_swap_pte 3063927\nthp_scan_exceed_share_pte 64\nthp_split_pud 0\nthp_zero_page_alloc 15\nthp_zero_page_alloc_failed 26940\nthp_swpout 1\nthp_swpout_fallback 904\nballoon_inflate 0\nballoon_deflate 0\nballoon_migrate 0\nswap_ra 0\nswap_ra_hit 778514\nswpin_zero 727031195\nswpout_zero 1782397386\nksm_swpin_copy 2871\ncow_ksm 0\nzswpin 0\nzswpout 0\nzswpwb 0\ndirect_map_level2_splits 15327\ndirect_map_level3_splits 27\ndirect_map_level2_collapses 0\ndirect_map_level3_collapses 0\nnr_unstable 0\n",
+          "sha256": "110882a4e54a52778ed2045a1f134f3374b24ec3de62f0b17b2e4ee8ea49da74",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.788194+00:00",
+          "finished_monotonic_ns": 3267479948350850
+        },
+        "/proc/stat": {
+          "path": "/proc/stat",
+          "started_at": "2026-11-01T19:03:32.788206+00:00",
+          "monotonic_ns": 3267479948362532,
+          "text": "cpu  1012326173 1484891034 1089658679 1229043879 318473227 39008386 20756055 0 0 0\ncpu0 59837999 86828962 62887306 87403702 23015636 2375903 1566448 0 0 0\ncpu1 64234957 90050079 67109964 80645844 18387534 2263781 1260999 0 0 0\ncpu2 60503436 86842235 67911504 83368295 21553687 2559744 1376838 0 0 0\ncpu3 61319248 89298964 66074968 83637688 20195589 2361288 1216816 0 0 0\ncpu4 63710242 89197382 66346155 81671823 19895261 2260410 1048345 0 0 0\ncpu5 59082821 89009845 65986291 80406944 24544551 3013198 2076905 0 0 0\ncpu6 60716013 85869287 64894017 86086031 23335662 2361729 1074156 0 0 0\ncpu7 59374024 82247083 64487310 86397510 28701903 2422429 1101875 0 0 0\ncpu8 69911529 119840725 77418526 47871299 7540733 2117884 874052 0 0 0\ncpu9 71146280 103568815 73039768 61114222 13172871 2158551 936286 0 0 0\ncpu10 67450057 106812136 75698887 60630411 11623465 2150483 913007 0 0 0\ncpu11 63609911 96381075 68762297 70427876 21457378 3270442 984713 0 0 0\ncpu12 68739074 96552260 69487937 65506916 18572162 2802907 3191907 0 0 0\ncpu13 61293940 90902717 69326840 79645013 20384870 2233828 1047665 0 0 0\ncpu14 61489447 87746805 65385018 84415896 22591559 2300562 1023337 0 0 0\ncpu15 59907187 83742657 64841884 89814401 23500360 2355237 1062697 0 0 0\nintr 73668343221 125 0 0 0 0 0 0 0 0 26 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 27 1 0 0 0 0 0 0 1 0 0 0 1 21928 993564967 878126406 1065230915 1025925268 961314963 874672207 942728395 988245354 1114521233 1063516077 1159898513 1097310440 1080405715 913423987 1161742439 867121372 743738304 120734560 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2251278036 0 0 0 0 0 0 0 45 0 0 0 0 0 0 0 0 0 0 1629971918 0 167126 1035 994871010 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\nctxt 249700635405\nbtime 1790292332\nprocesses 1333656580\nprocs_running 29\nprocs_blocked 2\nsoftirq 40536199572 2281229296 2105560789 24826873 3162838678 741801339 0 164358918 210722868 559020 1779530719\n",
+          "sha256": "da6056d01d7842fdfac7e74d411551a0d9746add3287fd2cd68f5b234f1b4ba2",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.788281+00:00",
+          "finished_monotonic_ns": 3267479948437784
+        },
+        "/proc/diskstats": {
+          "path": "/proc/diskstats",
+          "started_at": "2026-11-01T19:03:32.788292+00:00",
+          "monotonic_ns": 3267479948448875,
+          "text": " 259       0 nvme0n1 14347228544 17478214551 640559359407 2364918879 2301100297 2878074850 245776637521 3416577125 0 1117512874 1820959461 5462959 0 1373012784 5044674 118905902 329386077\n 259       1 nvme0n1p1 38470 9901 541793 16176 691 145 733 1096 0 5035 17357 49 0 10102912 83 0 0\n 259       2 nvme0n1p2 14347186571 17478204650 640558717198 2364902273 2301099571 2878074705 245776636788 3416575988 1 1541310206 1491555557 5462910 0 1362909872 5044590 0 0\n 259       3 nvme0n1p3 117 0 5320 60 0 0 0 0 0 53 60 0 0 0 0 0 0\n   8       0 sda 516023080 19177209 5649365108 283816478 332377771 85163548 5229709984 2935956722 0 188557646 3222929659 87061 0 973937296 77311 25254 3079146\n   8       1 sda1 52 0 416 8 0 0 0 0 0 9 8 0 0 0 0 0 0\n   8       2 sda2 516022934 19177209 5649361612 283816450 332377771 85163548 5229709984 2935956722 0 589149710 3219850484 87061 0 973937296 77311 0 0\n 253       0 zram0 57494240528 0 459953926888 1787065934 77339472756 0 618715786136 3171467430 0 982003851 663566068 0 0 0 0 0 0\n   7       0 loop0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       1 loop1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       2 loop2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       3 loop3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       4 loop4 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       5 loop5 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       6 loop6 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       7 loop7 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n",
+          "sha256": "6dd3a3054cdc3fccc9d84637e4cc72a57186b4c73c94988c0389e4172e94f350",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.788366+00:00",
+          "finished_monotonic_ns": 3267479948523126
+        },
+        "/proc/pressure/memory": {
+          "path": "/proc/pressure/memory",
+          "started_at": "2026-11-01T19:03:32.788382+00:00",
+          "monotonic_ns": 3267479948538485,
+          "text": "some avg10=4.01 avg60=4.02 avg300=8.49 total=272631844421\nfull avg10=3.11 avg60=2.70 avg300=5.36 total=183115231808\n",
+          "sha256": "81e43ae888b782789e5ad02d67245f29992ee68e1a7faa87e857edd57894183e",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.788415+00:00",
+          "finished_monotonic_ns": 3267479948571718
+        },
+        "/proc/pressure/io": {
+          "path": "/proc/pressure/io",
+          "started_at": "2026-11-01T19:03:32.788426+00:00",
+          "monotonic_ns": 3267479948582378,
+          "text": "some avg10=15.91 avg60=18.99 avg300=23.23 total=860046191570\nfull avg10=0.19 avg60=1.35 avg300=2.97 total=326306641087\n",
+          "sha256": "97577f27553332faa0050e768ced330b02b4f0f6894ce888dcb1eea0931375d4",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.788455+00:00",
+          "finished_monotonic_ns": 3267479948611544
+        },
+        "/proc/pressure/cpu": {
+          "path": "/proc/pressure/cpu",
+          "started_at": "2026-11-01T19:03:32.788465+00:00",
+          "monotonic_ns": 3267479948621162,
+          "text": "some avg10=53.24 avg60=47.99 avg300=49.17 total=1207175953532\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+          "sha256": "62c7b63b6e2bd6517e824e913e761d23ec7880b3d243519e13b8669a9384572c",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.788497+00:00",
+          "finished_monotonic_ns": 3267479948653924
+        },
+        "/proc/sys/vm/swappiness": {
+          "path": "/proc/sys/vm/swappiness",
+          "started_at": "2026-11-01T19:03:32.788528+00:00",
+          "monotonic_ns": 3267479948684221,
+          "text": "60\n",
+          "sha256": "95cf32708a31caa478a0e9141103ac567d85e5186e697e7e0c81f75589999e31",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.788657+00:00",
+          "finished_monotonic_ns": 3267479948814658
+        },
+        "/proc/sys/vm/page-cluster": {
+          "path": "/proc/sys/vm/page-cluster",
+          "started_at": "2026-11-01T19:03:32.788672+00:00",
+          "monotonic_ns": 3267479948828374,
+          "text": "0\n",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.788774+00:00",
+          "finished_monotonic_ns": 3267479948931339
+        },
+        "/sys/block/zram0/dev": {
+          "path": "/sys/block/zram0/dev",
+          "started_at": "2026-11-01T19:03:32.788801+00:00",
+          "monotonic_ns": 3267479948958320,
+          "text": "253:0\n",
+          "sha256": "5b25490147e576fa9df3fae7407e2e8a94e24523c9a64cb9ac4339b42914f80a",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.788864+00:00",
+          "finished_monotonic_ns": 3267479949021290
+        },
+        "/sys/block/zram0/initstate": {
+          "path": "/sys/block/zram0/initstate",
+          "started_at": "2026-11-01T19:03:32.788880+00:00",
+          "monotonic_ns": 3267479949037480,
+          "text": "1\n",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.788920+00:00",
+          "finished_monotonic_ns": 3267479949076945
+        },
+        "/sys/block/zram0/disksize": {
+          "path": "/sys/block/zram0/disksize",
+          "started_at": "2026-11-01T19:03:32.788934+00:00",
+          "monotonic_ns": 3267479949090951,
+          "text": "65359839232\n",
+          "sha256": "371806904ac768006045ef56c249cedf4bb7bf45da7fb26ea8e2431d29262584",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.788969+00:00",
+          "finished_monotonic_ns": 3267479949125487
+        },
+        "/sys/block/zram0/mm_stat": {
+          "path": "/sys/block/zram0/mm_stat",
+          "started_at": "2026-11-01T19:03:32.788980+00:00",
+          "monotonic_ns": 3267479949136979,
+          "text": "26198777856 7979230525 8168927232        0 20484837376    48816 5497376796   152692 1276677482\n",
+          "sha256": "2191122fe9aefa9d3afc07738cfca3c0a1d6cde2137351458c325b437aba2e7b",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.789014+00:00",
+          "finished_monotonic_ns": 3267479949170733
+        },
+        "/sys/block/zram0/comp_algorithm": {
+          "path": "/sys/block/zram0/comp_algorithm",
+          "started_at": "2026-11-01T19:03:32.789026+00:00",
+          "monotonic_ns": 3267479949182455,
+          "text": "lzo-rle lzo lz4 lz4hc [zstd] deflate 842 \n",
+          "sha256": "2ae61289383d3e5bcd6d6369696d28b0fa2a3437bb99a507baf10e23a1bb6e4c",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.789060+00:00",
+          "finished_monotonic_ns": 3267479949216820
+        },
+        "/sys/block/zram0/mem_limit": {
+          "path": "/sys/block/zram0/mem_limit",
+          "started_at": "2026-11-01T19:03:32.789071+00:00",
+          "monotonic_ns": 3267479949227761,
+          "text": null,
+          "error": "PermissionError: [Errno 13] Permission denied: '/sys/block/zram0/mem_limit'",
+          "finished_at": "2026-11-01T19:03:32.789100+00:00",
+          "finished_monotonic_ns": 3267479949257006
+        },
+        "/sys/block/zram0/backing_dev": {
+          "path": "/sys/block/zram0/backing_dev",
+          "started_at": "2026-11-01T19:03:32.789109+00:00",
+          "monotonic_ns": 3267479949265843,
+          "text": "none\n",
+          "sha256": "fcf33dfbe13c2354bf0e1b063f9fb422747a46cee00b7420bceff2b81457b345",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.789143+00:00",
+          "finished_monotonic_ns": 3267479949300158
+        },
+        "/sys/block/zram0/bd_stat": {
+          "path": "/sys/block/zram0/bd_stat",
+          "started_at": "2026-11-01T19:03:32.789155+00:00",
+          "monotonic_ns": 3267479949311479,
+          "text": "       0        0        0\n",
+          "sha256": "c3265638608161dc58e115b0e991fdbd4d1eb2a19becafde4081343296d0b842",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.789189+00:00",
+          "finished_monotonic_ns": 3267479949346255
+        },
+        "/sys/block/zram0/io_stat": {
+          "path": "/sys/block/zram0/io_stat",
+          "started_at": "2026-11-01T19:03:32.789204+00:00",
+          "monotonic_ns": 3267479949360582,
+          "text": "       0        0 0 80768333020\n",
+          "sha256": "67aeca62e36e12d347b421dcdc5ed16a6ea5b059a9dc964479aedc3d836da963",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.789243+00:00",
+          "finished_monotonic_ns": 3267479949400498
+        },
+        "/sys/block/zram0/stat": {
+          "path": "/sys/block/zram0/stat",
+          "started_at": "2026-11-01T19:03:32.789259+00:00",
+          "monotonic_ns": 3267479949415256,
+          "text": "57494240528        0 459953926888 1787065934 77339472758        0 618715786152 3171467430        0 982003851 663566068        0        0        0        0        0        0\n",
+          "sha256": "95bebc2466c3835dc2fa572aa6068b55e132d1189b9ff88416b6fa38b293b2f8",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:32.789298+00:00",
+          "finished_monotonic_ns": 3267479949455772
+        }
+      },
+      "finished_at": "2026-11-01T19:03:32.789306+00:00"
+    },
+    {
+      "started_at": "2026-11-01T19:03:37.808689+00:00",
+      "reads": {
+        "/proc/sys/kernel/random/boot_id": {
+          "path": "/proc/sys/kernel/random/boot_id",
+          "started_at": "2026-11-01T19:03:37.816373+00:00",
+          "monotonic_ns": 3267484976538068,
+          "text": "2822e983-2a7d-4bee-9bec-add9b541b685\n",
+          "sha256": "ab53e595fc37d79f09ab99c3f67d168690ba60f70d80a63ebbb0b534a99d1633",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.817358+00:00",
+          "finished_monotonic_ns": 3267484977524345
+        },
+        "/proc/meminfo": {
+          "path": "/proc/meminfo",
+          "started_at": "2026-11-01T19:03:37.817398+00:00",
+          "monotonic_ns": 3267484977555765,
+          "text": "MemTotal:       31914628 kB\nMemFree:         1661132 kB\nMemAvailable:    3586996 kB\nBuffers:          316304 kB\nCached:          2926700 kB\nSwapCached:       508768 kB\nActive:          8724504 kB\nInactive:        5227208 kB\nActive(anon):    7242964 kB\nInactive(anon):  3727436 kB\nActive(file):    1481540 kB\nInactive(file):  1499772 kB\nUnevictable:        1068 kB\nMlocked:            1068 kB\nSwapTotal:      130936824 kB\nSwapFree:       102662164 kB\nZswap:                 0 kB\nZswapped:              0 kB\nDirty:            101400 kB\nWriteback:           184 kB\nAnonPages:      10705900 kB\nMapped:          1322772 kB\nShmem:            258996 kB\nKReclaimable:     815632 kB\nSlab:            2314656 kB\nSReclaimable:     815632 kB\nSUnreclaim:      1499024 kB\nKernelStack:       63892 kB\nPageTables:       627952 kB\nSecPageTables:      5792 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:    146894136 kB\nCommitted_AS:   99172324 kB\nVmallocTotal:   34359738367 kB\nVmallocUsed:      448692 kB\nVmallocChunk:          0 kB\nPercpu:            29184 kB\nHardwareCorrupted:     0 kB\nAnonHugePages:         0 kB\nShmemHugePages:        0 kB\nShmemPmdMapped:        0 kB\nFileHugePages:         0 kB\nFilePmdMapped:         0 kB\nCmaTotal:              0 kB\nCmaFree:               0 kB\nUnaccepted:            0 kB\nBalloon:               0 kB\nGPUActive:       4225492 kB\nGPUReclaim:         9152 kB\nHugePages_Total:       0\nHugePages_Free:        0\nHugePages_Rsvd:        0\nHugePages_Surp:        0\nHugepagesize:       2048 kB\nHugetlb:               0 kB\nDirectMap4k:    31420716 kB\nDirectMap2M:     1175552 kB\nDirectMap1G:           0 kB\n",
+          "sha256": "0e24ce8533da3719019b13978902db2852c4b59017ee8b35107d68553607edab",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.817453+00:00",
+          "finished_monotonic_ns": 3267484977609787
+        },
+        "/proc/swaps": {
+          "path": "/proc/swaps",
+          "started_at": "2026-11-01T19:03:37.817465+00:00",
+          "monotonic_ns": 3267484977621950,
+          "text": "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n/dev/zram0                              partition\t63827964\t26365052\t5\n/mnt/data/swapfile                      file\t\t67108860\t1909608\t\t-1\n",
+          "sha256": "65fb697552833b3a62e5fa40be989e5f52a1b89f51336193058f363913bda72e",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.817506+00:00",
+          "finished_monotonic_ns": 3267484977663068
+        },
+        "/proc/vmstat": {
+          "path": "/proc/vmstat",
+          "started_at": "2026-11-01T19:03:37.817518+00:00",
+          "monotonic_ns": 3267484977674239,
+          "text": "nr_free_pages 415738\nnr_free_pages_blocks 0\nnr_zone_inactive_anon 931766\nnr_zone_active_anon 1810862\nnr_zone_inactive_file 374943\nnr_zone_active_file 370476\nnr_zone_unevictable 267\nnr_zone_write_pending 25396\nnr_mlock 267\nnr_zspages 2003724\nnr_free_cma 0\nnr_unaccepted 0\nnuma_hit 1068842076445\nnuma_miss 0\nnuma_foreign 0\nnuma_interleave 595\nnuma_local 1068691122912\nnuma_other 0\nnr_inactive_anon 931766\nnr_active_anon 1810862\nnr_inactive_file 374943\nnr_active_file 370476\nnr_unevictable 267\nnr_slab_reclaimable 203908\nnr_slab_unreclaimable 374756\nnr_isolated_anon 0\nnr_isolated_file 0\nworkingset_nodes 18440\nworkingset_refault_anon 58708594275\nworkingset_refault_file 25779987533\nworkingset_activate_anon 9349542537\nworkingset_activate_file 5623107141\nworkingset_restore_anon 3376823473\nworkingset_restore_file 2706258855\nworkingset_nodereclaim 2578778159\nnr_anon_pages 2676475\nnr_mapped 330693\nnr_file_pages 937943\nnr_dirty 25350\nnr_writeback 46\nnr_shmem 64749\nnr_shmem_hugepages 0\nnr_shmem_pmdmapped 0\nnr_file_hugepages 0\nnr_file_pmdmapped 0\nnr_anon_transparent_hugepages 0\nnr_vmscan_write 79536479837\nnr_vmscan_immediate_reclaim 523804\nnr_dirtied 39547323938\nnr_written 106091007464\nnr_throttled_written 0\nnr_kernel_misc_reclaimable 0\nnr_foll_pin_acquired 867383\nnr_foll_pin_released 867383\nnr_vmalloc 112173\nnr_kernel_stack 63892\nnr_page_table_pages 156988\nnr_sec_page_table_pages 1448\nnr_iommu_pages 1448\nnr_swapcached 127192\npgpromote_success 0\npgpromote_candidate 0\npgpromote_candidate_nrl 0\npgdemote_kswapd 0\npgdemote_direct 0\npgdemote_khugepaged 0\npgdemote_proactive 0\npgsteal_kswapd 102083346370\npgsteal_direct 69409070111\npgsteal_khugepaged 7300434\npgsteal_proactive 0\npgsteal_anon 79775073570\npgsteal_file 91724643345\npgscan_kswapd 126725414942\npgscan_direct 95767599577\npgscan_khugepaged 8717483\npgscan_proactive 0\npgscan_anon 124636639665\npgscan_file 97865092337\npgrefill 185300381903\nnr_hugetlb 0\nnr_balloon_pages 0\nnr_kernel_file_pages 0\nnr_gpu_active 1056373\nnr_gpu_reclaim 2288\nnr_dirty_threshold 182355\nnr_dirty_background_threshold 91066\nnr_memmap_pages 16064\nnr_memmap_boot_pages 128512\npgpgin 553081722953\npgpgout 434861345588\npswpin 57981588999\npswpout 77752822918\npgalloc_dma 3864\npgalloc_dma32 17503241046\npgalloc_normal 1105054832859\npgalloc_movable 0\npgalloc_device 0\nallocstall_dma 0\nallocstall_dma32 0\nallocstall_normal 136803974\nallocstall_movable 909995243\nallocstall_device 0\npgskip_dma 0\npgskip_dma32 1186193\npgskip_normal 8133494\npgskip_movable 0\npgskip_device 0\npgfree 1149139793573\npgactivate 69647126857\npgdeactivate 1012485\npglazyfree 143867881\npgfault 1182945346130\npgmajfault 60602252279\npglazyfreed 85924858\npgreuse 64086879282\npgscan_direct_throttle 0\nzone_reclaim_success 0\nzone_reclaim_failed 0\npginodesteal 35426916\nslabs_scanned 89175538994\nkswapd_inodesteal 655050285\nkswapd_low_wmark_hit_quickly 5013098\nkswapd_high_wmark_hit_quickly 259248\npageoutrun 7000232\npgrotated 4041110493\ndrop_pagecache 0\ndrop_slab 0\noom_kill 23\nnuma_pte_updates 0\nnuma_huge_pte_updates 0\nnuma_hint_faults 0\nnuma_hint_faults_local 0\nnuma_pages_migrated 0\npgmigrate_success 24754017217\npgmigrate_fail 1251893617\nthp_migration_success 0\nthp_migration_fail 0\nthp_migration_split 0\ncompact_migrate_scanned 771587982806\ncompact_free_scanned 1463676440021\ncompact_isolated 52213153321\ncompact_stall 195382472\ncompact_fail 156596249\ncompact_success 38786223\ncompact_daemon_wake 5789331\ncompact_daemon_migrate_scanned 600468376542\ncompact_daemon_free_scanned 722925255579\nhtlb_buddy_alloc_success 0\nhtlb_buddy_alloc_fail 0\ncma_alloc_success 0\ncma_alloc_fail 0\nunevictable_pgs_culled 16344117\nunevictable_pgs_scanned 469\nunevictable_pgs_rescued 16343829\nunevictable_pgs_mlocked 16343861\nunevictable_pgs_munlocked 15963486\nunevictable_pgs_cleared 0\nunevictable_pgs_stranded 380108\nthp_fault_alloc 17628\nthp_fault_fallback 3958543\nthp_fault_fallback_charge 0\nthp_collapse_alloc 815\nthp_collapse_alloc_failed 28276\nthp_file_alloc 0\nthp_file_fallback 0\nthp_file_fallback_charge 0\nthp_file_mapped 22167\nthp_split_page 1550\nthp_split_page_failed 5\nthp_deferred_split_page 4428\nthp_underused_split_page 0\nthp_split_pmd 22519\nthp_scan_exceed_none_pte 131955\nthp_scan_exceed_swap_pte 3063927\nthp_scan_exceed_share_pte 64\nthp_split_pud 0\nthp_zero_page_alloc 15\nthp_zero_page_alloc_failed 26940\nthp_swpout 1\nthp_swpout_fallback 904\nballoon_inflate 0\nballoon_deflate 0\nballoon_migrate 0\nswap_ra 0\nswap_ra_hit 778517\nswpin_zero 727031471\nswpout_zero 1782405146\nksm_swpin_copy 2871\ncow_ksm 0\nzswpin 0\nzswpout 0\nzswpwb 0\ndirect_map_level2_splits 15327\ndirect_map_level3_splits 27\ndirect_map_level2_collapses 0\ndirect_map_level3_collapses 0\nnr_unstable 0\n",
+          "sha256": "d189010fd8b97e65e208b040663e6bd234350428d2b2579cab9b7a5b10952eb6",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.817580+00:00",
+          "finished_monotonic_ns": 3267484977736577
+        },
+        "/proc/stat": {
+          "path": "/proc/stat",
+          "started_at": "2026-11-01T19:03:37.817590+00:00",
+          "monotonic_ns": 3267484977746777,
+          "text": "cpu  1012331745 1484891597 1089660261 1229044045 318473263 39008447 20756088 0 0 0\ncpu0 59838386 86828976 62887388 87403713 23015637 2375907 1566450 0 0 0\ncpu1 64235332 90050099 67110052 80645853 18387537 2263785 1261001 0 0 0\ncpu2 60503763 86842274 67911618 83368303 21553690 2559750 1376842 0 0 0\ncpu3 61319572 89299018 66075074 83637701 20195591 2361291 1216818 0 0 0\ncpu4 63710594 89197410 66346255 81671836 19895263 2260413 1048346 0 0 0\ncpu5 59083169 89009891 65986373 80406960 24544552 3013203 2076909 0 0 0\ncpu6 60716351 85869319 64894131 86086040 23335665 2361733 1074158 0 0 0\ncpu7 59374395 82247099 64487396 86397525 28701908 2422433 1101876 0 0 0\ncpu8 69911914 119840738 77418616 47871307 7540734 2117887 874053 0 0 0\ncpu9 71146651 103568848 73039848 61114232 13172872 2158555 936288 0 0 0\ncpu10 67450339 106812231 75698996 60630419 11623468 2150486 913009 0 0 0\ncpu11 63610244 96381103 68762419 70427882 21457382 3270448 984715 0 0 0\ncpu12 68739393 96552297 69488060 65506926 18572163 2802911 3191913 0 0 0\ncpu13 61294272 90902782 69326926 79645024 20384871 2233831 1047667 0 0 0\ncpu14 61489806 87746820 65385126 84415908 22591561 2300566 1023339 0 0 0\ncpu15 59907556 83742686 64841975 89814408 23500361 2355241 1062699 0 0 0\nintr 73669261492 125 0 0 0 0 0 0 0 0 26 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 27 1 0 0 0 0 0 0 1 0 0 0 1 21928 993565799 878126790 1065231716 1025926135 961315308 874672688 942729024 988245815 1114522170 1063516448 1159899707 1097311811 1080406373 913424808 1161742856 867121791 743745544 120734662 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2251283502 0 0 0 0 0 0 0 45 0 0 0 0 0 0 0 0 0 0 1629974349 0 167126 1035 994872865 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\nctxt 249701896343\nbtime 1790292332\nprocesses 1333661051\nprocs_running 39\nprocs_blocked 2\nsoftirq 40536279531 2281234628 2105564664 24826901 3162842712 741808568 0 164359253 210732727 559020 1779579986\n",
+          "sha256": "a750aebe3e1efae1b122a19519f951b56dd102ce1bdafd0f367044743f15f180",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.817661+00:00",
+          "finished_monotonic_ns": 3267484977818072
+        },
+        "/proc/diskstats": {
+          "path": "/proc/diskstats",
+          "started_at": "2026-11-01T19:03:37.817673+00:00",
+          "monotonic_ns": 3267484977829373,
+          "text": " 259       0 nvme0n1 14347238539 17478221308 640559942215 2364922818 2301101323 2878076574 245776735241 3416594143 0 1117514337 1820980786 5462959 0 1373012784 5044674 118906048 329386446\n 259       1 nvme0n1p1 38470 9901 541793 16176 691 145 733 1096 0 5035 17357 49 0 10102912 83 0 0\n 259       2 nvme0n1p2 14347196566 17478211407 640559300006 2364906212 2301100597 2878076429 245776734508 3416593006 0 1541312150 1491576513 5462910 0 1362909872 5044590 0 0\n 259       3 nvme0n1p3 117 0 5320 60 0 0 0 0 0 53 60 0 0 0 0 0 0\n   8       0 sda 516028580 19177209 5649409108 283818086 332380401 85163798 5229733024 2935990384 0 188558604 3222964929 87061 0 973937296 77311 25254 3079146\n   8       1 sda1 52 0 416 8 0 0 0 0 0 9 8 0 0 0 0 0 0\n   8       2 sda2 516028434 19177209 5649405612 283818058 332380401 85163798 5229733024 2935990384 0 589151820 3219885755 87061 0 973937296 77311 0 0\n 253       0 zram0 57494261490 0 459954094584 1787066123 77339527354 0 618716222920 3171468350 1 982004881 663567177 0 0 0 0 0 0\n   7       0 loop0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       1 loop1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       2 loop2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       3 loop3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       4 loop4 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       5 loop5 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       6 loop6 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       7 loop7 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n",
+          "sha256": "478ec9cdb7c23dfc9c9e5c72263979a37f31efc2ff7ba8a346a2a1706b4310c6",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.817738+00:00",
+          "finished_monotonic_ns": 3267484977895158
+        },
+        "/proc/pressure/memory": {
+          "path": "/proc/pressure/memory",
+          "started_at": "2026-11-01T19:03:37.817751+00:00",
+          "monotonic_ns": 3267484977907722,
+          "text": "some avg10=3.71 avg60=3.96 avg300=8.41 total=272632006983\nfull avg10=2.59 avg60=2.62 avg300=5.31 total=183115339088\n",
+          "sha256": "b96f9c100508d28c085de81704d986c8f8bfaf102f30d670f876e129d4ed4b1d",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.817786+00:00",
+          "finished_monotonic_ns": 3267484977943419
+        },
+        "/proc/pressure/io": {
+          "path": "/proc/pressure/io",
+          "started_at": "2026-11-01T19:03:37.817799+00:00",
+          "monotonic_ns": 3267484977955151,
+          "text": "some avg10=14.95 avg60=18.60 avg300=23.09 total=860046848365\nfull avg10=0.13 avg60=1.27 avg300=2.93 total=326306663226\n",
+          "sha256": "cca6be10e6a3ed28a6f526334266858621b0895eecd8e885ec52c218872fbcea",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.817827+00:00",
+          "finished_monotonic_ns": 3267484977983174
+        },
+        "/proc/pressure/cpu": {
+          "path": "/proc/pressure/cpu",
+          "started_at": "2026-11-01T19:03:37.817840+00:00",
+          "monotonic_ns": 3267484977996510,
+          "text": "some avg10=53.14 avg60=48.29 avg300=49.22 total=1207178760368\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+          "sha256": "1267a19d7e76c6dccbdeacbc314bc45d0d5439c9e389a6242ae626faeba8a3e1",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.818536+00:00",
+          "finished_monotonic_ns": 3267484978696014
+        },
+        "/proc/sys/vm/swappiness": {
+          "path": "/proc/sys/vm/swappiness",
+          "started_at": "2026-11-01T19:03:37.818559+00:00",
+          "monotonic_ns": 3267484978716473,
+          "text": "60\n",
+          "sha256": "95cf32708a31caa478a0e9141103ac567d85e5186e697e7e0c81f75589999e31",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.818682+00:00",
+          "finished_monotonic_ns": 3267484978839315
+        },
+        "/proc/sys/vm/page-cluster": {
+          "path": "/proc/sys/vm/page-cluster",
+          "started_at": "2026-11-01T19:03:37.818696+00:00",
+          "monotonic_ns": 3267484978852731,
+          "text": "0\n",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.818808+00:00",
+          "finished_monotonic_ns": 3267484978965835
+        },
+        "/sys/block/zram0/dev": {
+          "path": "/sys/block/zram0/dev",
+          "started_at": "2026-11-01T19:03:37.818837+00:00",
+          "monotonic_ns": 3267484978993598,
+          "text": "253:0\n",
+          "sha256": "5b25490147e576fa9df3fae7407e2e8a94e24523c9a64cb9ac4339b42914f80a",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.818886+00:00",
+          "finished_monotonic_ns": 3267484979042711
+        },
+        "/sys/block/zram0/initstate": {
+          "path": "/sys/block/zram0/initstate",
+          "started_at": "2026-11-01T19:03:37.818898+00:00",
+          "monotonic_ns": 3267484979054393,
+          "text": "1\n",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.818928+00:00",
+          "finished_monotonic_ns": 3267484979084510
+        },
+        "/sys/block/zram0/disksize": {
+          "path": "/sys/block/zram0/disksize",
+          "started_at": "2026-11-01T19:03:37.818940+00:00",
+          "monotonic_ns": 3267484979096202,
+          "text": "65359839232\n",
+          "sha256": "371806904ac768006045ef56c249cedf4bb7bf45da7fb26ea8e2431d29262584",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.818972+00:00",
+          "finished_monotonic_ns": 3267484979128723
+        },
+        "/sys/block/zram0/mm_stat": {
+          "path": "/sys/block/zram0/mm_stat",
+          "started_at": "2026-11-01T19:03:37.818983+00:00",
+          "monotonic_ns": 3267484979139394,
+          "text": "26336153600 8010508380 8207249408        0 20484837376    50413 5497376796   152239 1276677541\n",
+          "sha256": "b99ec94b38fc50d4f9f6ad75f1cf31227b724cf751730eb84117f9d5e7cb954d",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.819015+00:00",
+          "finished_monotonic_ns": 3267484979171835
+        },
+        "/sys/block/zram0/comp_algorithm": {
+          "path": "/sys/block/zram0/comp_algorithm",
+          "started_at": "2026-11-01T19:03:37.819027+00:00",
+          "monotonic_ns": 3267484979183647,
+          "text": "lzo-rle lzo lz4 lz4hc [zstd] deflate 842 \n",
+          "sha256": "2ae61289383d3e5bcd6d6369696d28b0fa2a3437bb99a507baf10e23a1bb6e4c",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.819060+00:00",
+          "finished_monotonic_ns": 3267484979217131
+        },
+        "/sys/block/zram0/mem_limit": {
+          "path": "/sys/block/zram0/mem_limit",
+          "started_at": "2026-11-01T19:03:37.819072+00:00",
+          "monotonic_ns": 3267484979228733,
+          "text": null,
+          "error": "PermissionError: [Errno 13] Permission denied: '/sys/block/zram0/mem_limit'",
+          "finished_at": "2026-11-01T19:03:37.820318+00:00",
+          "finished_monotonic_ns": 3267484980477758
+        },
+        "/sys/block/zram0/backing_dev": {
+          "path": "/sys/block/zram0/backing_dev",
+          "started_at": "2026-11-01T19:03:37.820344+00:00",
+          "monotonic_ns": 3267484980501533,
+          "text": "none\n",
+          "sha256": "fcf33dfbe13c2354bf0e1b063f9fb422747a46cee00b7420bceff2b81457b345",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.820398+00:00",
+          "finished_monotonic_ns": 3267484980555555
+        },
+        "/sys/block/zram0/bd_stat": {
+          "path": "/sys/block/zram0/bd_stat",
+          "started_at": "2026-11-01T19:03:37.820414+00:00",
+          "monotonic_ns": 3267484980570373,
+          "text": "       0        0        0\n",
+          "sha256": "c3265638608161dc58e115b0e991fdbd4d1eb2a19becafde4081343296d0b842",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.820448+00:00",
+          "finished_monotonic_ns": 3267484980604929
+        },
+        "/sys/block/zram0/io_stat": {
+          "path": "/sys/block/zram0/io_stat",
+          "started_at": "2026-11-01T19:03:37.820460+00:00",
+          "monotonic_ns": 3267484980616541,
+          "text": "       0        0 0 80768354581\n",
+          "sha256": "b1110d6dd5b7f57bf8e75f2e3c50f670be08757e987bdd7a4b7784cf557a63c1",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.820494+00:00",
+          "finished_monotonic_ns": 3267484980651046
+        },
+        "/sys/block/zram0/stat": {
+          "path": "/sys/block/zram0/stat",
+          "started_at": "2026-11-01T19:03:37.820508+00:00",
+          "monotonic_ns": 3267484980664231,
+          "text": "57494261491        0 459954094592 1787066123 77339527423        0 618716223472 3171468350        0 982004881 663567177        0        0        0        0        0        0\n",
+          "sha256": "d0c47f6f9c703b73d462b188bb255820a23f0c84937c77aaff0229e00a34e137",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:37.820542+00:00",
+          "finished_monotonic_ns": 3267484980698787
+        }
+      },
+      "finished_at": "2026-11-01T19:03:37.820548+00:00"
+    },
+    {
+      "started_at": "2026-11-01T19:03:42.821034+00:00",
+      "reads": {
+        "/proc/sys/kernel/random/boot_id": {
+          "path": "/proc/sys/kernel/random/boot_id",
+          "started_at": "2026-11-01T19:03:42.821103+00:00",
+          "monotonic_ns": 3267489981262563,
+          "text": "2822e983-2a7d-4bee-9bec-add9b541b685\n",
+          "sha256": "ab53e595fc37d79f09ab99c3f67d168690ba60f70d80a63ebbb0b534a99d1633",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.821391+00:00",
+          "finished_monotonic_ns": 3267489981549276
+        },
+        "/proc/meminfo": {
+          "path": "/proc/meminfo",
+          "started_at": "2026-11-01T19:03:42.821409+00:00",
+          "monotonic_ns": 3267489981565958,
+          "text": "MemTotal:       31914628 kB\nMemFree:         1308484 kB\nMemAvailable:    3155652 kB\nBuffers:          220224 kB\nCached:          2931832 kB\nSwapCached:       508388 kB\nActive:          9176956 kB\nInactive:        4900804 kB\nActive(anon):    7501832 kB\nInactive(anon):  3674044 kB\nActive(file):    1675124 kB\nInactive(file):  1226760 kB\nUnevictable:        1340 kB\nMlocked:            1340 kB\nSwapTotal:      130936824 kB\nSwapFree:       102498668 kB\nZswap:                 0 kB\nZswapped:              0 kB\nDirty:            149932 kB\nWriteback:             0 kB\nAnonPages:      10923784 kB\nMapped:          1485572 kB\nShmem:            249212 kB\nKReclaimable:     817096 kB\nSlab:            2315896 kB\nSReclaimable:     817096 kB\nSUnreclaim:      1498800 kB\nKernelStack:       63696 kB\nPageTables:       627656 kB\nSecPageTables:      5792 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:    146894136 kB\nCommitted_AS:   100229000 kB\nVmallocTotal:   34359738367 kB\nVmallocUsed:      447896 kB\nVmallocChunk:          0 kB\nPercpu:            29184 kB\nHardwareCorrupted:     0 kB\nAnonHugePages:         0 kB\nShmemHugePages:        0 kB\nShmemPmdMapped:        0 kB\nFileHugePages:         0 kB\nFilePmdMapped:         0 kB\nCmaTotal:              0 kB\nCmaFree:               0 kB\nUnaccepted:            0 kB\nBalloon:               0 kB\nGPUActive:       4217892 kB\nGPUReclaim:        16752 kB\nHugePages_Total:       0\nHugePages_Free:        0\nHugePages_Rsvd:        0\nHugePages_Surp:        0\nHugepagesize:       2048 kB\nHugetlb:               0 kB\nDirectMap4k:    31420716 kB\nDirectMap2M:     1175552 kB\nDirectMap1G:           0 kB\n",
+          "sha256": "d06a135fe50a5973899b2351429b24c1650ca713b6163e97cc48a6ef55bdc675",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.821468+00:00",
+          "finished_monotonic_ns": 3267489981625070
+        },
+        "/proc/swaps": {
+          "path": "/proc/swaps",
+          "started_at": "2026-11-01T19:03:42.821479+00:00",
+          "monotonic_ns": 3267489981636321,
+          "text": "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n/dev/zram0                              partition\t63827964\t26528548\t5\n/mnt/data/swapfile                      file\t\t67108860\t1909608\t\t-1\n",
+          "sha256": "735137762b80a710d89b01b8393f3e36043ba06431f65a3c7313f9541e2495ba",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.821518+00:00",
+          "finished_monotonic_ns": 3267489981674633
+        },
+        "/proc/vmstat": {
+          "path": "/proc/vmstat",
+          "started_at": "2026-11-01T19:03:42.821528+00:00",
+          "monotonic_ns": 3267489981684372,
+          "text": "nr_free_pages 327121\nnr_free_pages_blocks 0\nnr_zone_inactive_anon 918511\nnr_zone_active_anon 1875458\nnr_zone_inactive_file 306690\nnr_zone_active_file 418781\nnr_zone_unevictable 335\nnr_zone_write_pending 37481\nnr_mlock 335\nnr_zspages 2020031\nnr_free_cma 0\nnr_unaccepted 0\nnuma_hit 1068843355170\nnuma_miss 0\nnuma_foreign 0\nnuma_interleave 595\nnuma_local 1068692401637\nnuma_other 0\nnr_inactive_anon 918511\nnr_active_anon 1875458\nnr_inactive_file 306690\nnr_active_file 418781\nnr_unevictable 335\nnr_slab_reclaimable 204274\nnr_slab_unreclaimable 374700\nnr_isolated_anon 0\nnr_isolated_file 0\nworkingset_nodes 20772\nworkingset_refault_anon 58708610221\nworkingset_refault_file 25780032872\nworkingset_activate_anon 9349548217\nworkingset_activate_file 5623130505\nworkingset_restore_anon 3376825492\nworkingset_restore_file 2706272754\nworkingset_nodereclaim 2578787317\nnr_anon_pages 2730946\nnr_mapped 371393\nnr_file_pages 915111\nnr_dirty 37483\nnr_writeback 0\nnr_shmem 62303\nnr_shmem_hugepages 0\nnr_shmem_pmdmapped 0\nnr_file_hugepages 0\nnr_file_pmdmapped 0\nnr_anon_transparent_hugepages 0\nnr_vmscan_write 79536536773\nnr_vmscan_immediate_reclaim 523804\nnr_dirtied 39547356329\nnr_written 106091073121\nnr_throttled_written 0\nnr_kernel_misc_reclaimable 0\nnr_foll_pin_acquired 867383\nnr_foll_pin_released 867383\nnr_vmalloc 111974\nnr_kernel_stack 63696\nnr_page_table_pages 156914\nnr_sec_page_table_pages 1448\nnr_iommu_pages 1448\nnr_swapcached 127097\npgpromote_success 0\npgpromote_candidate 0\npgpromote_candidate_nrl 0\npgdemote_kswapd 0\npgdemote_direct 0\npgdemote_khugepaged 0\npgdemote_proactive 0\npgsteal_kswapd 102083424562\npgsteal_direct 69409195201\npgsteal_khugepaged 7300434\npgsteal_proactive 0\npgsteal_anon 79775131190\npgsteal_file 91724789007\npgscan_kswapd 126725514295\npgscan_direct 95767743387\npgscan_khugepaged 8717483\npgscan_proactive 0\npgscan_anon 124636719866\npgscan_file 97865255299\npgrefill 185300537142\nnr_hugetlb 0\nnr_balloon_pages 0\nnr_kernel_file_pages 0\nnr_gpu_active 1054473\nnr_gpu_reclaim 4188\nnr_dirty_threshold 160647\nnr_dirty_background_threshold 80225\nnr_memmap_pages 16064\nnr_memmap_boot_pages 128512\npgpgin 553082253197\npgpgout 434861618204\npswpin 57981604856\npswpout 77752878191\npgalloc_dma 3864\npgalloc_dma32 17503242201\npgalloc_normal 1105056150692\npgalloc_movable 0\npgalloc_device 0\nallocstall_dma 0\nallocstall_dma32 0\nallocstall_normal 136803974\nallocstall_movable 909995247\nallocstall_device 0\npgskip_dma 0\npgskip_dma32 1186193\npgskip_normal 8133494\npgskip_movable 0\npgskip_device 0\npgfree 1149141070733\npgactivate 69647160681\npgdeactivate 1012485\npglazyfree 143867881\npgfault 1182946926069\npgmajfault 60602274867\npglazyfreed 85924858\npgreuse 64087009581\npgscan_direct_throttle 0\nzone_reclaim_success 0\nzone_reclaim_failed 0\npginodesteal 35426917\nslabs_scanned 89175593394\nkswapd_inodesteal 655050453\nkswapd_low_wmark_hit_quickly 5013099\nkswapd_high_wmark_hit_quickly 259248\npageoutrun 7000235\npgrotated 4041111423\ndrop_pagecache 0\ndrop_slab 0\noom_kill 23\nnuma_pte_updates 0\nnuma_huge_pte_updates 0\nnuma_hint_faults 0\nnuma_hint_faults_local 0\nnuma_pages_migrated 0\npgmigrate_success 24754022696\npgmigrate_fail 1251894956\nthp_migration_success 0\nthp_migration_fail 0\nthp_migration_split 0\ncompact_migrate_scanned 771588594762\ncompact_free_scanned 1463677733914\ncompact_isolated 52213167143\ncompact_stall 195382490\ncompact_fail 156596267\ncompact_success 38786223\ncompact_daemon_wake 5789335\ncompact_daemon_migrate_scanned 600468976495\ncompact_daemon_free_scanned 722926486775\nhtlb_buddy_alloc_success 0\nhtlb_buddy_alloc_fail 0\ncma_alloc_success 0\ncma_alloc_fail 0\nunevictable_pgs_culled 16344185\nunevictable_pgs_scanned 469\nunevictable_pgs_rescued 16343829\nunevictable_pgs_mlocked 16343929\nunevictable_pgs_munlocked 15963486\nunevictable_pgs_cleared 0\nunevictable_pgs_stranded 380108\nthp_fault_alloc 17628\nthp_fault_fallback 3958543\nthp_fault_fallback_charge 0\nthp_collapse_alloc 815\nthp_collapse_alloc_failed 28276\nthp_file_alloc 0\nthp_file_fallback 0\nthp_file_fallback_charge 0\nthp_file_mapped 22167\nthp_split_page 1550\nthp_split_page_failed 5\nthp_deferred_split_page 4428\nthp_underused_split_page 0\nthp_split_pmd 22519\nthp_scan_exceed_none_pte 131955\nthp_scan_exceed_swap_pte 3063929\nthp_scan_exceed_share_pte 64\nthp_split_pud 0\nthp_zero_page_alloc 15\nthp_zero_page_alloc_failed 26940\nthp_swpout 1\nthp_swpout_fallback 904\nballoon_inflate 0\nballoon_deflate 0\nballoon_migrate 0\nswap_ra 0\nswap_ra_hit 778517\nswpin_zero 727031530\nswpout_zero 1782406809\nksm_swpin_copy 2871\ncow_ksm 0\nzswpin 0\nzswpout 0\nzswpwb 0\ndirect_map_level2_splits 15327\ndirect_map_level3_splits 27\ndirect_map_level2_collapses 0\ndirect_map_level3_collapses 0\nnr_unstable 0\n",
+          "sha256": "19b2c5564381d3235feed397c63f3d122c8a8de7942d2a12ec1acd0314c2fd70",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.821603+00:00",
+          "finished_monotonic_ns": 3267489981760436
+        },
+        "/proc/stat": {
+          "path": "/proc/stat",
+          "started_at": "2026-11-01T19:03:42.821614+00:00",
+          "monotonic_ns": 3267489981770435,
+          "text": "cpu  1012337379 1484892036 1089661950 1229044145 318473289 39008510 20756121 0 0 0\ncpu0 59838734 86829005 62887497 87403720 23015639 2375910 1566451 0 0 0\ncpu1 64235696 90050118 67110152 80645861 18387538 2263789 1261003 0 0 0\ncpu2 60504121 86842290 67911728 83368309 21553692 2559755 1376844 0 0 0\ncpu3 61319889 89299049 66075213 83637706 20195594 2361295 1216819 0 0 0\ncpu4 63710951 89197438 66346350 81671847 19895265 2260417 1048348 0 0 0\ncpu5 59083528 89009935 65986454 80406964 24544552 3013209 2076913 0 0 0\ncpu6 60716701 85869347 64894240 86086046 23335666 2361736 1074159 0 0 0\ncpu7 59374764 82247121 64487488 86397532 28701910 2422437 1101878 0 0 0\ncpu8 69912252 119840780 77418722 47871314 7540736 2117891 874055 0 0 0\ncpu9 71147037 103568862 73039939 61114235 13172873 2158559 936289 0 0 0\ncpu10 67450679 106812259 75699115 60630424 11623469 2150489 913010 0 0 0\ncpu11 63610575 96381122 68762555 70427885 21457385 3270452 984717 0 0 0\ncpu12 68739696 96552360 69488174 65506935 18572164 2802915 3191917 0 0 0\ncpu13 61294660 90902798 69327008 79645031 20384873 2233834 1047668 0 0 0\ncpu14 61490163 87746840 65385234 84415916 22591562 2300569 1023340 0 0 0\ncpu15 59907926 83742705 64842073 89814414 23500361 2355244 1062701 0 0 0\nintr 73670107677 125 0 0 0 0 0 0 0 0 26 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 27 1 0 0 0 0 0 0 1 0 0 0 1 21928 993567414 878127901 1065233749 1025927483 961316347 874673740 942729994 988246853 1114523362 1063518258 1159901330 1097313271 1080407847 913425780 1161743793 867123637 743749076 120734680 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2251288930 0 0 0 0 0 0 0 45 0 0 0 0 0 0 0 0 0 0 1629975619 0 167126 1035 994874299 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\nctxt 249703287188\nbtime 1790292332\nprocesses 1333664475\nprocs_running 23\nprocs_blocked 2\nsoftirq 40536351168 2281239840 2105568534 24826901 3162845410 741812098 0 164359527 210741355 559020 1779627411\n",
+          "sha256": "7168bf7ecb2b59f75888c481ca7ae7f0ec9a14daba3c73beca479f252968ab14",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.821696+00:00",
+          "finished_monotonic_ns": 3267489981852701
+        },
+        "/proc/diskstats": {
+          "path": "/proc/diskstats",
+          "started_at": "2026-11-01T19:03:42.821706+00:00",
+          "monotonic_ns": 3267489981862760,
+          "text": " 259       0 nvme0n1 14347258350 17478223423 640560875847 2364928053 2301103191 2878079328 245776838289 3416608754 0 1117515968 1821000800 5462959 0 1373012784 5044674 118906107 329386613\n 259       1 nvme0n1p1 38470 9901 541793 16176 691 145 733 1096 0 5035 17357 49 0 10102912 83 0 0\n 259       2 nvme0n1p2 14347216377 17478213522 640560233638 2364911447 2301102465 2878079183 245776837556 3416607617 0 1541314413 1491596360 5462910 0 1362909872 5044590 0 0\n 259       3 nvme0n1p3 117 0 5320 60 0 0 0 0 0 53 60 0 0 0 0 0 0\n   8       0 sda 516031079 19177209 5649429100 283818402 332381951 85163933 5229746504 2936013887 0 188558986 3222988748 87061 0 973937296 77311 25254 3079146\n   8       1 sda1 52 0 416 8 0 0 0 0 0 9 8 0 0 0 0 0 0\n   8       2 sda2 516030933 19177209 5649425604 283818374 332381951 85163933 5229746504 2936013887 0 589153156 3219909574 87061 0 973937296 77311 0 0\n 253       0 zram0 57494274848 0 459954201448 1787066219 77339580941 0 618716651616 3171469328 0 982005897 663568251 0 0 0 0 0 0\n   7       0 loop0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       1 loop1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       2 loop2 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       3 loop3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       4 loop4 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       5 loop5 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       6 loop6 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n   7       7 loop7 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n",
+          "sha256": "24fe4371306e58b132b9fb217628bcad66679255497356ac58f205d935088f55",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.821798+00:00",
+          "finished_monotonic_ns": 3267489981955104
+        },
+        "/proc/pressure/memory": {
+          "path": "/proc/pressure/memory",
+          "started_at": "2026-11-01T19:03:42.821812+00:00",
+          "monotonic_ns": 3267489981968179,
+          "text": "some avg10=3.05 avg60=3.80 avg300=8.29 total=272632149761\nfull avg10=2.11 avg60=2.53 avg300=5.23 total=183115445191\n",
+          "sha256": "7eaec10afbd489ac110de4edb7ec0f6893925e48e6dd300c29a23959b0f23ae8",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.821853+00:00",
+          "finished_monotonic_ns": 3267489982010219
+        },
+        "/proc/pressure/io": {
+          "path": "/proc/pressure/io",
+          "started_at": "2026-11-01T19:03:42.821866+00:00",
+          "monotonic_ns": 3267489982022402,
+          "text": "some avg10=13.79 avg60=18.01 avg300=22.87 total=860047477607\nfull avg10=0.07 avg60=1.14 avg300=2.87 total=326306679556\n",
+          "sha256": "cc25b2eba6c5fb1d78def54d497a7674ec0767ad580edf5f630a965886bcb27c",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.821897+00:00",
+          "finished_monotonic_ns": 3267489982053881
+        },
+        "/proc/pressure/cpu": {
+          "path": "/proc/pressure/cpu",
+          "started_at": "2026-11-01T19:03:42.821907+00:00",
+          "monotonic_ns": 3267489982063750,
+          "text": "some avg10=58.27 avg60=49.82 avg300=49.53 total=1207182025490\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+          "sha256": "727e073a6ad1285c48030278482513b469d91d3568998766d79e7874e04e55d9",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.821936+00:00",
+          "finished_monotonic_ns": 3267489982092665
+        },
+        "/proc/sys/vm/swappiness": {
+          "path": "/proc/sys/vm/swappiness",
+          "started_at": "2026-11-01T19:03:42.821946+00:00",
+          "monotonic_ns": 3267489982102153,
+          "text": "60\n",
+          "sha256": "95cf32708a31caa478a0e9141103ac567d85e5186e697e7e0c81f75589999e31",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.821999+00:00",
+          "finished_monotonic_ns": 3267489982155784
+        },
+        "/proc/sys/vm/page-cluster": {
+          "path": "/proc/sys/vm/page-cluster",
+          "started_at": "2026-11-01T19:03:42.822010+00:00",
+          "monotonic_ns": 3267489982166655,
+          "text": "0\n",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.822051+00:00",
+          "finished_monotonic_ns": 3267489982207863
+        },
+        "/sys/block/zram0/dev": {
+          "path": "/sys/block/zram0/dev",
+          "started_at": "2026-11-01T19:03:42.822072+00:00",
+          "monotonic_ns": 3267489982228342,
+          "text": "253:0\n",
+          "sha256": "5b25490147e576fa9df3fae7407e2e8a94e24523c9a64cb9ac4339b42914f80a",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.822122+00:00",
+          "finished_monotonic_ns": 3267489982278908
+        },
+        "/sys/block/zram0/initstate": {
+          "path": "/sys/block/zram0/initstate",
+          "started_at": "2026-11-01T19:03:42.822136+00:00",
+          "monotonic_ns": 3267489982293044,
+          "text": "1\n",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.822167+00:00",
+          "finished_monotonic_ns": 3267489982323552
+        },
+        "/sys/block/zram0/disksize": {
+          "path": "/sys/block/zram0/disksize",
+          "started_at": "2026-11-01T19:03:42.822178+00:00",
+          "monotonic_ns": 3267489982334423,
+          "text": "65359839232\n",
+          "sha256": "371806904ac768006045ef56c249cedf4bb7bf45da7fb26ea8e2431d29262584",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.822221+00:00",
+          "finished_monotonic_ns": 3267489982377494
+        },
+        "/sys/block/zram0/mm_stat": {
+          "path": "/sys/block/zram0/mm_stat",
+          "started_at": "2026-11-01T19:03:42.822235+00:00",
+          "monotonic_ns": 3267489982391341,
+          "text": "26498031616 8078501516 8274046976        0 20484837376    50668 5497376796   157987 1276683923\n",
+          "sha256": "4e117fb7339e204250327941bbaa53053612b1e2dacc4091a84188cc63819723",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.822265+00:00",
+          "finished_monotonic_ns": 3267489982421307
+        },
+        "/sys/block/zram0/comp_algorithm": {
+          "path": "/sys/block/zram0/comp_algorithm",
+          "started_at": "2026-11-01T19:03:42.822276+00:00",
+          "monotonic_ns": 3267489982432048,
+          "text": "lzo-rle lzo lz4 lz4hc [zstd] deflate 842 \n",
+          "sha256": "2ae61289383d3e5bcd6d6369696d28b0fa2a3437bb99a507baf10e23a1bb6e4c",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.822306+00:00",
+          "finished_monotonic_ns": 3267489982462776
+        },
+        "/sys/block/zram0/mem_limit": {
+          "path": "/sys/block/zram0/mem_limit",
+          "started_at": "2026-11-01T19:03:42.822317+00:00",
+          "monotonic_ns": 3267489982473596,
+          "text": null,
+          "error": "PermissionError: [Errno 13] Permission denied: '/sys/block/zram0/mem_limit'",
+          "finished_at": "2026-11-01T19:03:42.822345+00:00",
+          "finished_monotonic_ns": 3267489982502371
+        },
+        "/sys/block/zram0/backing_dev": {
+          "path": "/sys/block/zram0/backing_dev",
+          "started_at": "2026-11-01T19:03:42.822354+00:00",
+          "monotonic_ns": 3267489982511067,
+          "text": "none\n",
+          "sha256": "fcf33dfbe13c2354bf0e1b063f9fb422747a46cee00b7420bceff2b81457b345",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.822386+00:00",
+          "finished_monotonic_ns": 3267489982542968
+        },
+        "/sys/block/zram0/bd_stat": {
+          "path": "/sys/block/zram0/bd_stat",
+          "started_at": "2026-11-01T19:03:42.822398+00:00",
+          "monotonic_ns": 3267489982555061,
+          "text": "       0        0        0\n",
+          "sha256": "c3265638608161dc58e115b0e991fdbd4d1eb2a19becafde4081343296d0b842",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.822428+00:00",
+          "finished_monotonic_ns": 3267489982586390
+        },
+        "/sys/block/zram0/io_stat": {
+          "path": "/sys/block/zram0/io_stat",
+          "started_at": "2026-11-01T19:03:42.822441+00:00",
+          "monotonic_ns": 3267489982597671,
+          "text": "       0        0 0 80768368713\n",
+          "sha256": "d46ca465c4ee702561a626828478535b5ef17658d786c658a247eb9da01de2bb",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.822471+00:00",
+          "finished_monotonic_ns": 3267489982627428
+        },
+        "/sys/block/zram0/stat": {
+          "path": "/sys/block/zram0/stat",
+          "started_at": "2026-11-01T19:03:42.822482+00:00",
+          "monotonic_ns": 3267489982637988,
+          "text": "57494274848        0 459954201448 1787066219 77339580941        0 618716651616 3171469328        0 982005897 663568251        0        0        0        0        0        0\n",
+          "sha256": "dea4d7c560bb2a50048972c314e1bb9bf809d6eb5e5db95f27bb935378680ddb",
+          "error": null,
+          "finished_at": "2026-11-01T19:03:42.822513+00:00",
+          "finished_monotonic_ns": 3267489982670078
+        }
+      },
+      "finished_at": "2026-11-01T19:03:42.822519+00:00"
+    }
+  ]
+}
