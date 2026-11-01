@@ -89,3 +89,10 @@ command=timeout 1200 cargo clippy --workspace --locked -- -D warnings
     Checking http v1.5.0
     Checking tracing-core v0.1.36
    Compiling libz-sys v1.1.31
+   Compiling tracing-attributes v0.1.31
+   Compiling enumflags2_derive v0.7.12
+    Checking tracing v0.1.44
+   Compiling proc-macro-crate v3.5.0
+    Checking icu_properties_data v2.3.0
+    Checking icu_normalizer_data v2.3.0
+   Compiling crypto-common v0.2.2
