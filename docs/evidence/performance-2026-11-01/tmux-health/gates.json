@@ -1,0 +1,23 @@
+{
+  "recorded_at": "2026-11-01T18:45:18.588230+00:00",
+  "gates": [
+    {
+      "command": "timeout 600 env CARGO_BUILD_JOBS=2 cargo test --locked -p dracon-system",
+      "exit": 0,
+      "log": "package-tests.log"
+    },
+    {
+      "command": "timeout 600 env CARGO_BUILD_JOBS=2 cargo clippy --locked -p dracon-system -- -D warnings",
+      "exit": 0,
+      "log": "package-clippy.log"
+    }
+  ],
+  "source_sha256": {
+    "src/main.rs": "3fcafbb59beceb10aa2d15383fdec3528123ab17d7c9ac83ee5d3a2b7a3d2065",
+    "src/doctor.rs": "f468ffafde6ecc18e102a4f8c76a78b8d55230e9d755c5710df4d3e8cbda9a1a",
+    "src/policy.rs": "e093e10c3eed209c2a8cae6f2bac1b144aa4eadd95cc4c32645ecc4d7cdaabd6",
+    "src/service_growth.rs": "2aedc7723a31579b04d8ee16206e32d65bf92d6b1f957a1eacfea2f1a0bd6e6b",
+    "src/tmux_health.rs": "2a609168f50255ecf2958cb969589d29e68cb8e0a79e575c40103b89ecdee08f",
+    "src/tmux_health_tests.rs": "371dbebb6b1e429999c92e66176ceeb41a5f0dd5add693e1abdc6a72e3c5f9dd"
+  }
+}
