@@ -351,7 +351,8 @@ fn producer(roots: &Roots, server: &Reply) -> Producer {
             .first()
             .and_then(|a| a.rsplit(|b| *b == b'/').next())
             .is_some_and(|a| [b"bash".as_slice(), b"sh".as_slice()].contains(&a));
-        if !direct && !(shell && argv.get(1).is_some_and(|a| *a == script)) {
+        let recognized = direct || (shell && argv.get(1).is_some_and(|a| *a == script));
+        if !recognized {
             return Err(Error::other(
                 "registered PID is not the recognized producer",
             ));
@@ -460,7 +461,6 @@ fn snapshot(
         let dir_meta = dir.metadata()?;
         observed.directory = Some(path.clone());
         observed.directory_identity = Some((dir_meta.dev(), dir_meta.ino()));
-        let birth = birth?;
         let name = last_target(&dir)?;
         let file = at(&dir, &name)?;
         let before = file.metadata()?;
@@ -470,8 +470,8 @@ fn snapshot(
         let mut prefix = Vec::new();
         file.take(RECORD as u64).read_to_end(&mut prefix)?;
         if !prefix
-            .split(|b| *b == b'\n')
-            .any(|l| l.starts_with(b"pane\t"))
+            .split_inclusive(|b| *b == b'\n')
+            .any(|l| l.starts_with(b"pane\t") && l.ends_with(b"\n"))
         {
             return Err(Error::other(
                 "pane record unavailable within inspection budget; restore not validated",
@@ -486,6 +486,10 @@ fn snapshot(
         {
             return Err(Error::other("snapshot changed during inspection"));
         }
+        observed.target = Some(name.clone());
+        observed.bytes = Some(before.len());
+        observed.device = Some(before.dev());
+        observed.inode = Some(before.ino());
         let modified = before.modified()?;
         let clock = now
             .checked_add(started.elapsed())
@@ -494,7 +498,8 @@ fn snapshot(
             .duration_since(modified)
             .map_err(|_| Error::other("future snapshot timestamp"))?
             .as_secs();
-        if modified < birth {
+        observed.age_secs = Some(age);
+        if modified < birth? {
             return Err(Error::other("snapshot predates current server incarnation"));
         }
         let current_dir = open_dir(&path, roots.uid)?.metadata()?;
