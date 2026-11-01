@@ -33,3 +33,6 @@ command=timeout 1800 cargo test --workspace --locked
    Compiling num-traits v0.2.19
    Compiling fnv v1.0.7
    Compiling zerocopy v0.8.57
+   Compiling jobserver v0.1.35
+   Compiling cc v1.4.7
+   Compiling tempfile v3.27.0
