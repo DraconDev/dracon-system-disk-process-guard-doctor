@@ -12,3 +12,10 @@ command=timeout 1200 cargo clippy --workspace --locked -- -D warnings
     Checking getrandom v0.2.17
     Checking typenum v1.20.1
    Compiling serde_derive v1.0.229
+   Compiling displaydoc v0.2.7
+   Compiling synstructure v0.14.0
+   Compiling jobserver v0.1.35
+    Checking futures-core v0.3.34
+   Compiling cc v1.4.7
+   Compiling serde_core v1.0.229
+   Compiling zerofrom-derive v0.1.8
