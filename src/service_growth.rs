@@ -332,28 +332,19 @@ async fn capped_output(reader: impl AsyncRead + Unpin, limit: usize) -> std::io:
     }
     Ok(bytes)
 }
+fn manager_command(bin: &str, manager: Manager, units: &[String]) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(bin);
+    command.args([
+        if manager == Manager::User { "--user" } else { "--system" },
+        "show", "--no-pager",
+        "--property=Id,LoadState,ActiveState,InvocationID,ControlGroup,MainPID", "--",
+    ]).args(units).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+    command
+}
 impl Probe for Systemd {
     async fn properties(&self, manager: Manager, units: &[String]) -> Result<String, String> {
         let bin = crate::resolve_bin_strict("systemctl").map_err(|e| e.to_string())?;
-        let mut child = tokio::process::Command::new(bin)
-            .args([
-                if manager == Manager::User {
-                    "--user"
-                } else {
-                    "--system"
-                },
-                "show",
-                "--no-pager",
-                "--property=Id,LoadState,ActiveState,InvocationID,ControlGroup,MainPID",
-                "--",
-            ])
-            .args(units)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| e.to_string())?;
+        let mut child = manager_command(&bin, manager, units).spawn().map_err(|e| e.to_string())?;
         let stdout = child.stdout.take().ok_or("manager stdout unavailable")?;
         let stderr = child.stderr.take().ok_or("manager stderr unavailable")?;
         let result = tokio::time::timeout(Duration::from_secs(1), async {
@@ -632,6 +623,7 @@ async fn properties(
     result
 }
 async fn collect(probe: &impl Probe, roots: &Roots, names: &[String]) -> Vec<Observation> {
+    if names.is_empty() { return Vec::new(); }
     let unavailable = |reason: &str| {
         names
             .iter()
