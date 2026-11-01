@@ -258,7 +258,9 @@ fn at(dir: &File, name: &str) -> Result<File, Error> {
     }
     // Inspect the inode WITHOUT opening a device/FIFO for I/O. Reopen only
     // this pinned regular inode; a pathname replacement cannot change its type.
-    OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK)
+    OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
         .open(format!("/proc/self/fd/{}", f.as_raw_fd()))
 }
 fn read(mut f: File, max: usize) -> Result<Vec<u8>, Error> {

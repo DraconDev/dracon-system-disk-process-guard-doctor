@@ -447,7 +447,10 @@ fn snapshot_file_selection_rejects_special_files_and_symlinks() {
     let dir = open_dir(temp.path(), unsafe { libc::geteuid() }).unwrap();
     assert!(at(&dir, "pipe").is_err());
     assert!(at(&dir, "link").is_err());
-    assert_eq!(read(at(&dir, "regular").unwrap(), 64).unwrap(), b"safe fixture");
+    assert_eq!(
+        read(at(&dir, "regular").unwrap(), 64).unwrap(),
+        b"safe fixture"
+    );
 }
 
 #[tokio::test]
