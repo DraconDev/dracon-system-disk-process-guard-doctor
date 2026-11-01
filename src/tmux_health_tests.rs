@@ -143,11 +143,13 @@ async fn fresh_stale_and_stopped_are_distinct_facts_not_recovery_predicates() {
     let a = f.add(1, 10, 'S');
     let b = f.add(2, 1200, 'S');
     let c = f.add(3, 10, 'T');
+    f.replies.get_mut(&b).unwrap().marker = f.now.duration_since(UNIX_EPOCH).unwrap().as_secs().to_string();
     let probe = f.probe();
     let report = collect(&probe, &f.roots, &[a, b, c], f.now, 900).await;
     assert_eq!(report.servers[0].save.state, SaveState::Fresh);
     assert_eq!(report.servers[0].producer.state, ProducerState::Existing);
     assert_eq!(report.servers[1].save.state, SaveState::Stale);
+    assert!(report.servers[1].launch_marker_age_secs.is_some());
     assert_eq!(report.servers[1].producer.state, ProducerState::Existing);
     assert_eq!(report.servers[2].producer.state, ProducerState::Stopped);
     assert_eq!(report.servers[2].save.state, SaveState::Fresh);
