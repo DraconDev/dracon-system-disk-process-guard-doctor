@@ -114,3 +114,4 @@ command=timeout 2400 cargo build --release --locked
    Compiling unicase v2.9.0
    Compiling const-oid v0.10.2
    Compiling digest v0.11.3
+   Compiling mime_guess v2.0.5
