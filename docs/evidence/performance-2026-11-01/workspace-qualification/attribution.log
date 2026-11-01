@@ -74,3 +74,28 @@ command=timeout 900 cargo test --locked -p dracon-system memory_sampling_tests -
    Compiling utf8_iter v1.0.4
    Compiling tokio v1.53.3
    Compiling icu_collections v2.3.0
+   Compiling enumflags2 v0.7.12
+   Compiling event-listener-strategy v0.5.4
+   Compiling zvariant_derive v5.15.0
+   Compiling icu_provider v2.3.1
+   Compiling futures-lite v2.6.1
+   Compiling http v1.5.0
+   Compiling zcheapstr v1.1.0
+   Compiling zeroize v1.9.0
+   Compiling percent-encoding v2.3.2
+   Compiling endi v1.1.1
+   Compiling rustls-pki-types v1.15.1
+   Compiling http-body v1.1.0
+   Compiling tracing-core v0.1.36
+   Compiling async-io v2.6.0
+   Compiling tracing-attributes v0.1.31
+   Compiling getrandom v0.2.17
+   Compiling crossbeam-epoch v0.9.21
+   Compiling futures-task v0.3.34
+   Compiling untrusted v0.9.0
+   Compiling httparse v1.10.1
+   Compiling tracing v0.1.44
+   Compiling futures-util v0.3.34
+   Compiling icu_properties v2.3.0
+   Compiling icu_normalizer v2.3.0
+   Compiling polling v3.11.0
