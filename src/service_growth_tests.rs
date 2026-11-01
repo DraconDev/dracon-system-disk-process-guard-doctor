@@ -489,3 +489,79 @@ fn old_policies_defaults_new_knobs_and_normalization_are_backward_compatible() {
         .is_some());
     assert!(crate::policy::normalize_guard_policy(&mut enormous).is_empty());
 }
+
+#[test]
+fn equivalent_target_reordering_preserves_observed_growth() {
+    let g = guard(); let start = Instant::now();
+    let mut a = Tracker::default(); let mut b = Tracker::default();
+    for secs in [0, 15, 30, 45, 60] {
+        let first = observation(100 + secs, Some(0));
+        let mut second = observation(500 + secs * 2, Some(20));
+        second.target = "system:other.service".into();
+        let x = a.observe(&g, vec![first.clone(), second.clone()], start + Duration::from_secs(secs));
+        let y = b.observe(&g, vec![second, first], start + Duration::from_secs(secs));
+        let values = |r: Report| r.observations.into_iter().map(|o| (o.target, (o.status, o.elapsed_secs, o.growth_bytes))).collect::<BTreeMap<_,_>>();
+        assert_eq!(values(x), values(y));
+    }
+}
+
+#[test]
+fn successful_reload_clears_history_but_deferred_reload_keeps_old_observation_state() {
+    let mut g = guard(); g.enabled = true;
+    let mut runtime = crate::GuardRuntimeState::default();
+    runtime.service_memory_growth.observe(&g, vec![observation(100, Some(0))], Instant::now());
+    let mut next = g.clone(); next.monitor_service_memory_growth = false;
+    assert!(matches!(crate::apply_policy_reload(&mut g, &mut runtime, next.clone(), false), crate::ReloadOutcome::Deferred));
+    assert!(g.monitor_service_memory_growth); assert!(!runtime.service_memory_growth.histories.is_empty());
+    assert!(matches!(crate::apply_policy_reload(&mut g, &mut runtime, next, true), crate::ReloadOutcome::Applied));
+    assert!(!g.monitor_service_memory_growth); assert!(runtime.service_memory_growth.histories.is_empty());
+}
+
+#[tokio::test]
+async fn reader_and_manager_requests_are_bounded_and_query_only() {
+    assert_eq!(capped_output(std::io::Cursor::new(vec![b'x'; MAX_OUTPUT]), MAX_OUTPUT).await.unwrap().len(), MAX_OUTPUT);
+    assert!(capped_output(std::io::Cursor::new(vec![b'x'; MAX_OUTPUT + 1]), MAX_OUTPUT).await.is_err());
+    for manager in [Manager::System, Manager::User] {
+        let cmd = manager_command("not-executed", manager, &["probe.service".into()]);
+        let args: Vec<_> = cmd.as_std().get_args().map(|a| a.to_str().unwrap()).collect();
+        assert_eq!(args[1], "show");
+        assert_eq!(args[args.len()-2..], ["--", "probe.service"]);
+        assert!(!args.iter().any(|a| ["kill", "restart", "start", "stop", "set-property"].contains(a)));
+    }
+    let fixture = Fixture::new(); let probe = FakeProbe::new(fixture.properties());
+    let names: Vec<_> = (0..MAX_TARGETS + 10).map(|i| format!("{}:probe{i}.service", if i % 2 == 0 { "system" } else { "user" })).collect();
+    let rows = collect(&probe, &fixture.roots, &names).await;
+    assert_eq!(rows.len(), MAX_TARGETS); assert_eq!(probe.calls.borrow().len(), 4);
+    assert!(probe.calls.borrow().iter().all(|(_, units)| units.len() <= MAX_TARGETS));
+}
+
+#[tokio::test]
+async fn missing_namespace_or_boot_provenance_and_empty_targets_do_not_probe_managers() {
+    let mut fixture = Fixture::new(); let probe = FakeProbe::new(fixture.properties());
+    fixture.roots.verify_host = true;
+    let rows = collect(&probe, &fixture.roots, &guard().service_memory_growth_targets).await;
+    assert_eq!(rows[0].status, "unavailable"); assert!(probe.calls.borrow().is_empty());
+    fs::remove_file(fixture.roots.proc.join("sys/kernel/random/boot_id")).unwrap();
+    let rows = collect(&probe, &fixture.roots, &guard().service_memory_growth_targets).await;
+    assert!(rows[0].generation.is_none()); assert!(probe.calls.borrow().is_empty());
+    assert!(collect(&probe, &fixture.roots, &[]).await.is_empty());
+}
+
+#[tokio::test]
+async fn malformed_overflow_and_directory_symlink_metrics_are_explicitly_unavailable() {
+    let fixture = Fixture::new(); let probe = FakeProbe::new(fixture.properties()); let g = guard();
+    for (resident, swap) in [("-1", "0"), ("bad", "0"), ("18446744073709551615", "1")] {
+        fixture.counters(resident, Some(swap));
+        let rows = collect(&probe, &fixture.roots, &g.service_memory_growth_targets).await;
+        assert!(rows[0].footprint_bytes.is_none());
+    }
+    fixture.counters("0", Some("0"));
+    let rows = collect(&probe, &fixture.roots, &g.service_memory_growth_targets).await;
+    assert_eq!(rows[0].footprint_bytes, Some(0));
+    let path = fixture.roots.cgroup.join("system.slice/probe.service");
+    let moved = fixture.roots.cgroup.join("separate.service"); fs::rename(&path, &moved).unwrap();
+    std::os::unix::fs::symlink(&moved, &path).unwrap();
+    let rows = collect(&probe, &fixture.roots, &g.service_memory_growth_targets).await;
+    assert!(rows[0].generation.is_none());
+}
+
