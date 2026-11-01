@@ -75,3 +75,10 @@ command=timeout 2400 cargo build --release --locked
    Compiling linux-raw-sys v0.12.1
    Compiling block-buffer v0.10.4
    Compiling writeable v0.6.4
+   Compiling fastrand v2.5.0
+   Compiling hashbrown v0.17.1
+   Compiling litemap v0.8.3
+   Compiling equivalent v1.0.2
+   Compiling indexmap v2.14.2
+   Compiling icu_locale_core v2.3.0
+   Compiling unic-langid-impl v0.9.6
