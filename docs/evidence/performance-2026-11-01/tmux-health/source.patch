@@ -1,0 +1,1372 @@
+diff --git a/README.md b/README.md
+index a7befbb..c25bf7f 100644
+--- a/README.md
++++ b/README.md
+@@ -561,6 +561,43 @@ Everything is configurable in the `[guard]` table of the policy file; see
+ machine-readable snapshot (disk state, memory `observed` vs stabilized
+ `pressure`, zombies, offenders).
+ 
++### Tmux persistence health (report only)
++
++`doctor` and `doctor --json` expose per-socket `tmux_persistence` observations,
++without changing strict-mode requirements or running recovery. Configure
++`[guard].tmux_persistence_sockets` with explicit absolute socket paths for
++multiple servers (at most eight). An empty list selects the current `$TMUX`
++socket, or the standard `$TMUX_TMPDIR`/`/tmp` default socket outside tmux; it
++does not discover every server. This is a doctor check, not a new guard loop.
++`tmux_persistence_max_save_age_secs` defaults to 900, clamped to 60–86400.
++
++Server replies, proc starttime and listening-socket ownership are bracketed;
++unavailable ownership or mismatched/replaced endpoints remain unavailable.
++The producer adapter recognizes `~/.local/bin/tmux-persist-daemon`'s per-socket
++POSIX-cksum lock/PID convention and verifies its argv, UID and `$TMUX` server
++binding. It does not search all processes or imply that other producers are
++absent. A stopped registered producer is reported with **unknown cause**;
++existing/sleeping means only existence, never useful autosave work.
++
++Save evidence uses the server's explicit `@resurrect-dir`, not guessed plugin
++defaults. It reports `last` snapshot age/identity and bounded pane-record
++evidence; this does not validate restoration, scrollback backup, periodic
++execution or who wrote the file. Shared directories/files across selected
++servers cannot establish attribution. Future or pre-server-incarnation saves
++are unavailable. Stale evidence despite a running producer is visible, but
++**does not diagnose why**: resurrect can intentionally keep the old snapshot
++when contents are unchanged. The optional continuum timestamp is a launch
++marker, not a completed-save receipt.
++
++Inspection is bounded by eight sockets, 128 server fd links, capped proc/file
++reads and per-query/inspection deadlines. It never signals observed processes,
++runs save scripts, restarts services or changes options/snapshots; deadline
++cleanup owns only its query client. It does not propose SIGCONT as a signal-mask
++fix. Missing permissions, unsupported paths/producers or provenance are reported
++as unknown, not healthy. Paths with whitespace may lack proc socket-table
++provenance and are reported unavailable. The Nix scalar policy override map
++supports the age setting; socket arrays use TOML/custom unmanaged policy.
++
+ ### Sustained service memory growth (report only)
+ 
+ `monitor_service_memory_growth = true` independently observes configured
+diff --git a/dracon-system.example.toml b/dracon-system.example.toml
+index 6c36295..7a415c8 100644
+--- a/dracon-system.example.toml
++++ b/dracon-system.example.toml
+@@ -252,6 +252,16 @@ auto_renice_on_memory = true
+ bias_oom_on_pressure = true
+ cap_offenders_cpu_percent = 0
+ 
++# Doctor-only tmux persistence observations; no recovery, saves or option writes.
++# Empty uses current $TMUX socket, otherwise the standard TMUX_TMPDIR socket.
++# Configure explicit absolute sockets for multi-server inspection (max 8).
++# Needs observable @resurrect-dir; plugin defaults are not guessed.
++# Producer adapter recognizes ~/.local/bin/tmux-persist-daemon's per-socket lock.
++# Sleeping means existence only. Old snapshots can be intentionally unchanged.
++# Lists use TOML/custom policy; the Nix scalar override map supports age only.
++tmux_persistence_sockets = []
++tmux_persistence_max_save_age_secs = 900 # clamped to 60..86400
++
+ # Monitor large log files
+ # log_dirs is a comma-separated list; `~` expands to the service user's
+ # home. There are three states, and they are deliberately distinguishable:
+diff --git a/src/doctor.rs b/src/doctor.rs
+index 50ad421..a2a1515 100644
+--- a/src/doctor.rs
++++ b/src/doctor.rs
+@@ -69,9 +69,10 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
+     // loaded falls back to the compiled-in defaults (policy.rs) rather
+     // than failing the check on a host whose only problem is a missing
+     // policy file — that problem already has its own REQUIRED check above.
++    let loaded_policy = crate::load_system_policy().ok().map(|(_, policy)| policy);
+     let (expected_prefixes, swap_candidates, swap_config_path) =
+-        match crate::load_system_policy() {
+-            Ok((_, policy)) => (
++        match loaded_policy.as_ref() {
++            Some(policy) => (
+                 policy
+                     .guard
+                     .expected_swap_prefixes
+@@ -90,7 +91,7 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
+                     .collect::<Vec<_>>(),
+                 expand_tilde(&policy.guard.nixos_swap_config),
+             ),
+-            Err(_) => (
++            None => (
+                 default_expected_swap_prefixes()
+                     .split(',')
+                     .map(str::to_string)
+@@ -117,6 +118,7 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
+         service_probe_available,
+         swap_probe_available: swap_outcome.probe_ok,
+         swap_ok: !swap_outcome.has_findings(),
++        tmux_persistence: crate::tmux_health::check(&loaded_policy.unwrap_or_default().guard).await,
+     }
+ }
+ 
+@@ -391,6 +393,10 @@ pub(crate) async fn cmd_doctor(json: bool, strict: bool) -> Result<()> {
+     }
+ 
+     println!("{table}");
++    println!("Tmux persistence (observations only; not a strict requirement):");
++    for server in &report.tmux_persistence.servers {
++        println!("  {}", server.summary());
++    }
+     if failures.is_empty() {
+         eprintln!("\u{2705}  All required checks passed.");
+     } else {
+@@ -438,6 +444,7 @@ mod tests {
+             service_probe_available: true,
+             swap_probe_available: true,
+             swap_ok: true,
++            tmux_persistence: crate::tmux_health::Report::default(),
+         }
+     }
+ 
+diff --git a/src/main.rs b/src/main.rs
+index faac5d5..24740ad 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -38,6 +38,7 @@ mod protection_probe;
+ #[cfg(test)]
+ mod protection_tests;
+ mod service_growth;
++mod tmux_health;
+ pub(crate) use doctor::*;
+ mod events;
+ pub(crate) use events::*;
+@@ -584,6 +585,7 @@ pub(crate) struct DoctorReport {
+     /// referenced by the NixOS `swapDevices` config. Unknown (unreadable
+     /// config) never fails this — it only fails on concrete findings.
+     pub(crate) swap_ok: bool,
++    pub(crate) tmux_persistence: tmux_health::Report,
+ }
+ 
+ #[derive(Debug, Clone)]
+diff --git a/src/policy.rs b/src/policy.rs
+index 92486dd..6c8b6eb 100644
+--- a/src/policy.rs
++++ b/src/policy.rs
+@@ -192,6 +192,11 @@ pub(crate) struct GuardPolicy {
+     pub(crate) service_memory_growth_min_mb: u64,
+     #[serde(default = "crate::service_growth::default_targets")]
+     pub(crate) service_memory_growth_targets: Vec<String>,
++    /// Doctor-only read-only tmux diagnostics. Empty uses current/standard socket.
++    #[serde(default)]
++    pub(crate) tmux_persistence_sockets: Vec<String>,
++    #[serde(default = "crate::tmux_health::default_max_age")]
++    pub(crate) tmux_persistence_max_save_age_secs: u64,
+     // ADDED 2026-08-10 (v0.112.36): during memory pressure, deprioritize
+     // the top RSS offenders (graduated nice, reversible when pressure
+     // drops). The runtime requires CAP_SYS_NICE so a user service cannot
+@@ -584,6 +589,8 @@ impl Default for GuardPolicy {
+             service_memory_growth_window_secs: default_service_memory_growth_window_secs(),
+             service_memory_growth_min_mb: default_service_memory_growth_min_mb(),
+             service_memory_growth_targets: crate::service_growth::default_targets(),
++            tmux_persistence_sockets: Vec::new(),
++            tmux_persistence_max_save_age_secs: crate::tmux_health::default_max_age(),
+             auto_renice_on_memory: default_true(),
+             bias_oom_on_pressure: default_true(),
+             cap_offenders_cpu_percent: 0,
+@@ -1746,6 +1753,14 @@ pub(crate) fn normalize_guard_policy_with_home(
+     // never negative), pinning the state machine at warn on a healthy box.
+     floor!(mem_swapin_warn_pages_per_sec, 1);
+     floor!(memory_pressure_sustain_secs, 30);
++    band!(tmux_persistence_max_save_age_secs, 60, 86_400);
++    let old_socket_count = policy.tmux_persistence_sockets.len();
++    policy.tmux_persistence_sockets.sort();
++    policy.tmux_persistence_sockets.dedup();
++    policy.tmux_persistence_sockets.truncate(crate::tmux_health::MAX_SERVERS);
++    if old_socket_count != policy.tmux_persistence_sockets.len() {
++        adjusted.push("tmux_persistence_sockets");
++    }
+     floor!(service_memory_growth_window_secs, 60);
+     ceil!(service_memory_growth_window_secs, 86_400);
+     floor!(service_memory_growth_min_mb, 1);
+diff --git a/src/service_growth.rs b/src/service_growth.rs
+index cf3054e..9e12935 100644
+--- a/src/service_growth.rs
++++ b/src/service_growth.rs
+@@ -325,7 +325,7 @@ trait Probe {
+     async fn properties(&self, manager: Manager, units: &[String]) -> Result<String, String>;
+ }
+ struct Systemd;
+-async fn capped_output(reader: impl AsyncRead + Unpin, limit: usize) -> std::io::Result<Vec<u8>> {
++pub(crate) async fn capped_output(reader: impl AsyncRead + Unpin, limit: usize) -> std::io::Result<Vec<u8>> {
+     let mut bytes = Vec::new();
+     reader
+         .take((limit + 1) as u64)
+diff --git a/src/tmux_health.rs b/src/tmux_health.rs
+new file mode 100644
+index 0000000..6a7a7ed
+--- /dev/null
++++ b/src/tmux_health.rs
+@@ -0,0 +1,704 @@
++//! Read-only, per-socket persistence observations for doctor. No recovery authority.
++use crate::{policy::GuardPolicy, ProcessIdentity};
++use serde::Serialize;
++use std::{
++    collections::HashMap,
++    fs::{self, File, OpenOptions},
++    io::{Error, Read},
++    os::{
++        fd::{AsRawFd, FromRawFd},
++        unix::{
++            ffi::OsStrExt,
++            fs::{FileTypeExt, MetadataExt, OpenOptionsExt},
++        },
++    },
++    path::{Component, Path, PathBuf},
++    process::Stdio,
++    time::{Duration, SystemTime, UNIX_EPOCH},
++};
++
++pub(crate) const MAX_SERVERS: usize = 8;
++const SMALL: usize = 4096;
++const RECORD: usize = 65536;
++const SOCKET_TABLE: usize = 262144;
++const MAX_FDS: usize = 128;
++const FORMAT: &str = "#{pid}\t#{socket_path}\t#{@resurrect-dir}\t#{@continuum-save-last-timestamp}";
++pub(crate) fn default_max_age() -> u64 {
++    900
++}
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
++#[serde(rename_all = "snake_case")]
++pub(crate) enum ProducerState {
++    Unavailable,
++    Missing,
++    Existing,
++    Stopped,
++}
++#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
++#[serde(rename_all = "snake_case")]
++pub(crate) enum SaveState {
++    Unavailable,
++    Fresh,
++    Stale,
++    Shared,
++}
++#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
++pub(crate) struct Producer {
++    pub(crate) state: ProducerState,
++    pid: Option<i32>,
++    starttime: Option<u64>,
++    process_state: Option<char>,
++    reason: String,
++}
++impl Producer {
++    fn unknown(reason: &str) -> Self {
++        Self {
++            state: ProducerState::Unavailable,
++            pid: None,
++            starttime: None,
++            process_state: None,
++            reason: reason.into(),
++        }
++    }
++}
++#[derive(Debug, Clone, Serialize)]
++pub(crate) struct Save {
++    pub(crate) state: SaveState,
++    directory: Option<PathBuf>,
++    target: Option<String>,
++    age_secs: Option<u64>,
++    bytes: Option<u64>,
++    device: Option<u64>,
++    inode: Option<u64>,
++    directory_identity: Option<(u64, u64)>,
++    reason: String,
++}
++impl Save {
++    fn unknown(reason: &str) -> Self {
++        Self {
++            state: SaveState::Unavailable,
++            directory: None,
++            target: None,
++            age_secs: None,
++            bytes: None,
++            device: None,
++            inode: None,
++            directory_identity: None,
++            reason: reason.into(),
++        }
++    }
++}
++#[derive(Debug, Clone, Serialize)]
++pub(crate) struct Server {
++    pub(crate) socket: PathBuf,
++    pub(crate) server_pid: Option<i32>,
++    server_starttime: Option<u64>,
++    pub(crate) producer: Producer,
++    pub(crate) save: Save,
++    launch_marker_age_secs: Option<u64>,
++    pub(crate) reason: String,
++}
++impl Server {
++    fn unknown(socket: &Path, reason: &str) -> Self {
++        Self {
++            socket: socket.into(),
++            server_pid: None,
++            server_starttime: None,
++            producer: Producer::unknown("server provenance unavailable"),
++            save: Save::unknown("server provenance unavailable"),
++            launch_marker_age_secs: None,
++            reason: reason.into(),
++        }
++    }
++    pub(crate) fn summary(&self) -> String {
++        format!(
++            "{}: server={}; producer={:?} ({}); save={:?}, age={}s ({}). {}",
++            self.socket.display(),
++            self.server_pid
++                .map_or_else(|| "unavailable".into(), |p| p.to_string()),
++            self.producer.state,
++            self.producer.reason,
++            self.save.state,
++            self.save
++                .age_secs
++                .map_or_else(|| "unknown".into(), |a| a.to_string()),
++            self.save.reason,
++            self.reason
++        )
++    }
++}
++#[derive(Debug, Default, Serialize)]
++pub(crate) struct Report {
++    pub(crate) servers: Vec<Server>,
++}
++struct Roots {
++    proc: PathBuf,
++    locks: PathBuf,
++    producer: PathBuf,
++    uid: u32,
++}
++impl Roots {
++    fn host() -> Self {
++        Self {
++            proc: "/proc".into(),
++            locks: "/tmp".into(),
++            producer: dirs::home_dir()
++                .unwrap_or_default()
++                .join(".local/bin/tmux-persist-daemon"),
++            uid: unsafe { libc::geteuid() },
++        }
++    }
++}
++#[derive(Debug, Clone, PartialEq, Eq)]
++struct Reply {
++    pid: i32,
++    socket: PathBuf,
++    directory: String,
++    marker: String,
++}
++fn parse_reply(text: &str) -> Result<Reply, String> {
++    let fields: Vec<_> = text.trim_end_matches('\n').split('\t').collect();
++    if fields.len() != 4 || fields.iter().any(|v| v.chars().any(char::is_control)) {
++        return Err("invalid server reply".into());
++    }
++    let pid = fields[0]
++        .parse::<i32>()
++        .ok()
++        .filter(|p| *p > 0)
++        .ok_or("server PID unavailable")?;
++    Ok(Reply {
++        pid,
++        socket: fields[1].into(),
++        directory: fields[2].into(),
++        marker: fields[3].into(),
++    })
++}
++trait Probe {
++    async fn query(&self, socket: &Path) -> Result<Reply, String>;
++}
++struct Tmux;
++fn command(bin: &str, socket: &Path) -> tokio::process::Command {
++    let mut c = tokio::process::Command::new(bin);
++    c.arg("-S")
++        .arg(socket)
++        .args(["display-message", "-p", FORMAT])
++        .stdin(Stdio::null())
++        .stdout(Stdio::piped())
++        .stderr(Stdio::piped())
++        .kill_on_drop(true);
++    c
++}
++impl Probe for Tmux {
++    async fn query(&self, socket: &Path) -> Result<Reply, String> {
++        let bin = crate::resolve_bin_for_readonly_probe("tmux").map_err(|e| e.to_string())?;
++        let mut child = command(&bin, socket).spawn().map_err(|e| e.to_string())?;
++        let stdout = child.stdout.take().ok_or("stdout unavailable")?;
++        let stderr = child.stderr.take().ok_or("stderr unavailable")?;
++        let (out, _, status) = tokio::time::timeout(Duration::from_secs(1), async {
++            tokio::try_join!(
++                crate::service_growth::capped_output(stdout, SMALL),
++                crate::service_growth::capped_output(stderr, SMALL),
++                child.wait()
++            )
++        })
++        .await
++        .map_err(|_| "tmux query timeout")?
++        .map_err(|e| e.to_string())?;
++        if !status.success() {
++            return Err("tmux query unavailable".into());
++        }
++        parse_reply(std::str::from_utf8(&out).map_err(|_| "non-UTF8 server reply")?)
++    }
++}
++fn safe_path(path: &Path) -> bool {
++    path.is_absolute()
++        && path.as_os_str().as_bytes().len() <= SMALL
++        && !path
++            .as_os_str()
++            .as_bytes()
++            .iter()
++            .any(|b| b.is_ascii_control())
++        && !path.components().any(|c| matches!(c, Component::ParentDir))
++}
++fn open_dir(path: &Path, uid: u32) -> Result<File, Error> {
++    let f = OpenOptions::new()
++        .read(true)
++        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_NONBLOCK)
++        .open(path)?;
++    if f.metadata()?.uid() != uid {
++        return Err(Error::other("directory owner unavailable"));
++    }
++    Ok(f)
++}
++fn at(dir: &File, name: &str) -> Result<File, Error> {
++    if name.is_empty()
++        || Path::new(name).components().count() != 1
++        || !matches!(
++            Path::new(name).components().next(),
++            Some(Component::Normal(_))
++        )
++    {
++        return Err(Error::other("unsafe file name"));
++    }
++    let name = std::ffi::CString::new(name).map_err(|_| Error::other("invalid file name"))?;
++    let fd = unsafe {
++        libc::openat(
++            dir.as_raw_fd(),
++            name.as_ptr(),
++            libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK,
++        )
++    };
++    if fd < 0 {
++        return Err(Error::last_os_error());
++    }
++    let f = unsafe { File::from_raw_fd(fd) };
++    if !f.metadata()?.is_file() {
++        return Err(Error::other("not a regular file"));
++    }
++    Ok(f)
++}
++fn read(mut f: File, max: usize) -> Result<Vec<u8>, Error> {
++    let mut bytes = Vec::new();
++    (&mut f).take((max + 1) as u64).read_to_end(&mut bytes)?;
++    if bytes.len() > max {
++        return Err(Error::other("read limit exceeded"));
++    }
++    Ok(bytes)
++}
++fn bytes(path: &Path, max: usize) -> Result<Vec<u8>, Error> {
++    let f = OpenOptions::new()
++        .read(true)
++        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
++        .open(path)?;
++    if !f.metadata()?.is_file() {
++        return Err(Error::other("not a regular file"));
++    }
++    read(f, max)
++}
++fn text(path: &Path, max: usize) -> Result<String, Error> {
++    String::from_utf8(bytes(path, max)?).map_err(|_| Error::other("invalid UTF8"))
++}
++fn identity(roots: &Roots, pid: i32) -> Result<(ProcessIdentity, char), Error> {
++    if fs::metadata(roots.proc.join(pid.to_string()))?.uid() != roots.uid {
++        return Err(Error::other("process owner unavailable"));
++    }
++    let id = crate::read_proc_identity(&roots.proc, pid)?;
++    let stat = text(&roots.proc.join(format!("{pid}/stat")), SMALL)?;
++    let state = stat
++        .rsplit_once(')')
++        .and_then(|(_, tail)| tail.split_whitespace().next())
++        .and_then(|s| s.chars().next())
++        .ok_or_else(|| Error::other("process state unavailable"))?;
++    if crate::read_proc_identity(&roots.proc, pid)? != id {
++        return Err(Error::other("process identity changed"));
++    }
++    Ok((id, state))
++}
++fn socket_key(input: &[u8]) -> u32 {
++    // POSIX cksum, including length. Matches the existing producer's lock key.
++    fn feed(mut crc: u32, byte: u8) -> u32 {
++        crc ^= (byte as u32) << 24;
++        for _ in 0..8 {
++            crc = if crc & 0x80000000 != 0 {
++                (crc << 1) ^ 0x04c11db7
++            } else {
++                crc << 1
++            };
++        }
++        crc
++    }
++    let mut crc = 0;
++    for b in input {
++        crc = feed(crc, *b);
++    }
++    let mut length = input.len();
++    while length != 0 {
++        crc = feed(crc, length as u8);
++        length >>= 8;
++    }
++    !crc
++}
++fn producer(roots: &Roots, server: &Reply, server_starttime: u64) -> Producer {
++    let lock = roots.locks.join(format!(
++        "tmux-persist-{}-{}.lock",
++        roots.uid,
++        socket_key(server.socket.as_os_str().as_bytes())
++    ));
++    let result = (|| -> Result<Producer, Error> {
++        let dir = open_dir(&lock, roots.uid)?;
++        let lock_meta = dir.metadata()?;
++        let pid = String::from_utf8(read(at(&dir, "pid")?, 32)?)
++            .ok()
++            .and_then(|p| p.trim().parse::<i32>().ok())
++            .filter(|p| *p > 0)
++            .ok_or_else(|| Error::other("invalid registered PID"))?;
++        match fs::symlink_metadata(roots.proc.join(pid.to_string())) {
++            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
++                return Ok(Producer {
++                    state: ProducerState::Missing,
++                    pid: Some(pid),
++                    starttime: None,
++                    process_state: None,
++                    reason: "registered PID absent; other producers not searched".into(),
++                })
++            }
++            Err(e) => return Err(e),
++            Ok(m) if !m.is_dir() => {
++                return Err(Error::other(
++                    "registered process directory provenance unavailable",
++                ))
++            }
++            Ok(_) => {}
++        }
++        let (id, state) = identity(roots, pid)?;
++        if id.starttime < server_starttime {
++            return Err(Error::other(
++                "registered producer predates current server generation",
++            ));
++        }
++        let cmd = bytes(&roots.proc.join(format!("{pid}/cmdline")), RECORD)?;
++        let argv: Vec<_> = cmd.split(|b| *b == 0).filter(|v| !v.is_empty()).collect();
++        let script = roots.producer.as_os_str().as_bytes();
++        let direct = argv.first().is_some_and(|a| *a == script);
++        let shell = argv
++            .first()
++            .and_then(|a| a.rsplit(|b| *b == b'/').next())
++            .is_some_and(|a| [b"bash".as_slice(), b"sh".as_slice()].contains(&a));
++        let recognized = direct || (shell && argv.get(1).is_some_and(|a| *a == script));
++        if !recognized {
++            return Err(Error::other(
++                "registered PID is not the recognized producer",
++            ));
++        }
++        let env = bytes(&roots.proc.join(format!("{pid}/environ")), RECORD)?;
++        let bindings: Vec<_> = env
++            .split(|b| *b == 0)
++            .filter_map(|v| v.strip_prefix(b"TMUX="))
++            .collect();
++        let expected = format!("{},{}", server.socket.display(), server.pid);
++        if bindings.len() != 1 || !bindings[0].starts_with(format!("{expected},").as_bytes()) {
++            return Err(Error::other("producer socket/server binding unavailable"));
++        }
++        let current_lock = open_dir(&lock, roots.uid)?.metadata()?;
++        if (lock_meta.dev(), lock_meta.ino()) != (current_lock.dev(), current_lock.ino()) {
++            return Err(Error::other("producer registration directory changed"));
++        }
++        let final_pid = read(at(&dir, "pid")?, 32)?;
++        if String::from_utf8_lossy(&final_pid).trim() != pid.to_string()
++            || identity(roots, pid)? != (id.clone(), state)
++        {
++            return Err(Error::other("producer registration/incarnation changed"));
++        }
++        Ok(Producer { state: if matches!(state, 'T' | 't') { ProducerState::Stopped } else if matches!(state, 'Z' | 'X' | 'x') { ProducerState::Missing } else { ProducerState::Existing }, pid: Some(pid), starttime: Some(id.starttime), process_state: Some(state), reason: "socket-bound registered producer; process state is not save success or a stop-cause diagnosis".into() })
++    })();
++    result.unwrap_or_else(|e| Producer::unknown(&e.to_string()))
++}
++fn listening_owner(roots: &Roots, server: &Reply) -> Result<(), Error> {
++    let table = text(
++        &roots.proc.join(format!("{}/net/unix", server.pid)),
++        SOCKET_TABLE,
++    )?;
++    let mut inodes = Vec::new();
++    for line in table.lines() {
++        let fields: Vec<_> = line.split_whitespace().collect();
++        if fields.len() == 8
++            && fields[3] == "00010000"
++            && fields[4] == "0001"
++            && fields[7].as_bytes() == server.socket.as_os_str().as_bytes()
++        {
++            inodes.push(format!("socket:[{}]", fields[6]));
++        }
++    }
++    if inodes.is_empty() {
++        return Err(Error::other(
++            "listening socket provenance unavailable (including unsupported whitespace paths)",
++        ));
++    }
++    for entry in fs::read_dir(roots.proc.join(format!("{}/fd", server.pid)))?.take(MAX_FDS) {
++        if let Ok(link) = fs::read_link(entry?.path()) {
++            if inodes
++                .iter()
++                .any(|s| link.as_os_str() == std::ffi::OsStr::new(s))
++            {
++                return Ok(());
++            }
++        }
++    }
++    Err(Error::other(
++        "reported server PID is not an observable socket owner within fd budget",
++    ))
++}
++fn last_target(dir: &File) -> Result<String, Error> {
++    let mut buf = vec![0u8; SMALL + 1];
++    let n = unsafe {
++        libc::readlinkat(
++            dir.as_raw_fd(),
++            c"last".as_ptr(),
++            buf.as_mut_ptr().cast(),
++            buf.len(),
++        )
++    };
++    if n < 0 {
++        // Some tools use a regular last file. No symlink-following fallback.
++        at(dir, "last")?;
++        return Ok("last".into());
++    }
++    if n as usize > SMALL {
++        return Err(Error::other("snapshot link too long"));
++    }
++    buf.truncate(n as usize);
++    let name = String::from_utf8(buf).map_err(|_| Error::other("non-UTF8 snapshot link"))?;
++    at(dir, &name)?;
++    Ok(name)
++}
++fn snapshot(
++    roots: &Roots,
++    server: &Reply,
++    birth: Result<SystemTime, Error>,
++    now: SystemTime,
++    max_age: u64,
++) -> Save {
++    let started = std::time::Instant::now();
++    let mut observed = Save::unknown("save evidence unavailable");
++    let result = (|| -> Result<(), Error> {
++        if server.directory.is_empty() {
++            return Err(Error::other(
++                "explicit @resurrect-dir unavailable; defaults not guessed",
++            ));
++        }
++        let path = crate::policy::expand_tilde(&server.directory);
++        if !safe_path(&path) {
++            return Err(Error::other("unsafe snapshot directory"));
++        }
++        let dir = open_dir(&path, roots.uid)?;
++        let dir_meta = dir.metadata()?;
++        observed.directory = Some(path.clone());
++        observed.directory_identity = Some((dir_meta.dev(), dir_meta.ino()));
++        let name = last_target(&dir)?;
++        let file = at(&dir, &name)?;
++        let before = file.metadata()?;
++        if before.uid() != roots.uid || before.len() == 0 {
++            return Err(Error::other("snapshot owner/content unavailable"));
++        }
++        let mut prefix = Vec::new();
++        file.take(RECORD as u64).read_to_end(&mut prefix)?;
++        if !prefix
++            .split_inclusive(|b| *b == b'\n')
++            .any(|l| l.starts_with(b"pane\t") && l.ends_with(b"\n"))
++        {
++            return Err(Error::other(
++                "pane record unavailable within inspection budget; restore not validated",
++            ));
++        }
++        let after = at(&dir, &name)?.metadata()?;
++        if last_target(&dir)? != name
++            || before.dev() != after.dev()
++            || before.ino() != after.ino()
++            || before.len() != after.len()
++            || before.modified()? != after.modified()?
++        {
++            return Err(Error::other("snapshot changed during inspection"));
++        }
++        observed.target = Some(name.clone());
++        observed.bytes = Some(before.len());
++        observed.device = Some(before.dev());
++        observed.inode = Some(before.ino());
++        let modified = before.modified()?;
++        let clock = now
++            .checked_add(started.elapsed())
++            .ok_or_else(|| Error::other("observation clock overflow"))?;
++        let age = clock
++            .duration_since(modified)
++            .map_err(|_| Error::other("future snapshot timestamp"))?
++            .as_secs();
++        observed.age_secs = Some(age);
++        if modified < birth? {
++            return Err(Error::other("snapshot predates current server incarnation"));
++        }
++        let current_dir = open_dir(&path, roots.uid)?.metadata()?;
++        if (current_dir.dev(), current_dir.ino()) != (dir_meta.dev(), dir_meta.ino()) {
++            return Err(Error::other("snapshot directory changed during inspection"));
++        }
++        observed.state = if age <= max_age {
++            SaveState::Fresh
++        } else {
++            SaveState::Stale
++        };
++        observed.target = Some(name);
++        observed.age_secs = Some(age);
++        observed.bytes = Some(before.len());
++        observed.device = Some(before.dev());
++        observed.inode = Some(before.ino());
++        observed.reason = "configured-path pane evidence only; not producer attribution, periodic execution or restore validation".into();
++        Ok(())
++    })();
++    if let Err(e) = result {
++        observed.reason = e.to_string();
++    }
++    observed
++}
++fn birth(roots: &Roots, id: &ProcessIdentity, now: SystemTime) -> Result<SystemTime, Error> {
++    let uptime = text(&roots.proc.join("uptime"), 128)?
++        .split_whitespace()
++        .next()
++        .and_then(|s| s.parse::<f64>().ok())
++        .filter(|n| n.is_finite() && *n >= 0.0)
++        .ok_or_else(|| Error::other("boot uptime unavailable"))?;
++    let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
++    if ticks <= 0 {
++        return Err(Error::other("clock tick rate unavailable"));
++    }
++    let age = uptime - id.starttime as f64 / ticks as f64;
++    if !(0.0..=86400.0 * 365.0 * 100.0).contains(&age) {
++        return Err(Error::other("server generation time unavailable"));
++    }
++    now.checked_sub(Duration::from_secs_f64(age))
++        .ok_or_else(|| Error::other("server generation time overflow"))
++}
++async fn inspect(
++    probe: &impl Probe,
++    roots: &Roots,
++    socket: &Path,
++    now: SystemTime,
++    max_age: u64,
++) -> Result<Server, String> {
++    let started = std::time::Instant::now();
++    if !safe_path(socket) {
++        return Err("unsafe socket path".into());
++    }
++    let metadata = fs::symlink_metadata(socket).map_err(|_| "socket metadata unavailable")?;
++    if !metadata.file_type().is_socket() || metadata.uid() != roots.uid {
++        return Err("owned Unix socket unavailable".into());
++    }
++    let before = probe.query(socket).await?;
++    if before.socket != socket {
++        return Err("server replied for another socket".into());
++    }
++    let (id, state) = identity(roots, before.pid).map_err(|e| e.to_string())?;
++    if matches!(state, 'T' | 't' | 'Z' | 'X' | 'x') {
++        return Err("server process unavailable/stopped during observation; cause unknown".into());
++    }
++    listening_owner(roots, &before).map_err(|e| e.to_string())?;
++    let registered = producer(roots, &before, id.starttime);
++    let now = now
++        .checked_add(started.elapsed())
++        .ok_or("observation clock overflow")?;
++    let save = snapshot(roots, &before, birth(roots, &id, now), now, max_age);
++    let after = probe.query(socket).await?;
++    let final_meta = fs::symlink_metadata(socket).map_err(|_| "socket disappeared")?;
++    if before.pid != after.pid
++        || before.socket != after.socket
++        || before.directory != after.directory
++        || identity(roots, before.pid).map_err(|e| e.to_string())? != (id.clone(), state)
++        || metadata.dev() != final_meta.dev()
++        || metadata.ino() != final_meta.ino()
++        || !final_meta.file_type().is_socket()
++        || final_meta.uid() != roots.uid
++    {
++        return Err("server/socket/config incarnation changed during inspection".into());
++    }
++    listening_owner(roots, &after).map_err(|e| e.to_string())?;
++    let final_registered = producer(roots, &after, id.starttime);
++    let registered = if registered == final_registered {
++        registered
++    } else {
++        Producer::unknown("producer changed during server query bracket")
++    };
++    let marker = before
++        .marker
++        .parse::<u64>()
++        .ok()
++        .filter(|s| *s > 0)
++        .and_then(|s| UNIX_EPOCH.checked_add(Duration::from_secs(s)))
++        .and_then(|t| now.duration_since(t).ok())
++        .map(|d| d.as_secs());
++    Ok(Server { socket: socket.into(), server_pid: Some(before.pid), server_starttime: Some(id.starttime), producer: registered, save, launch_marker_age_secs: marker, reason: "observations only; continuum marker means launch, sleeping means existence; neither proves successful autosave".into() })
++}
++async fn collect(
++    probe: &impl Probe,
++    roots: &Roots,
++    sockets: &[PathBuf],
++    now: SystemTime,
++    max_age: u64,
++) -> Report {
++    let started = std::time::Instant::now();
++    let mut servers = Vec::new();
++    for socket in sockets.iter().take(MAX_SERVERS) {
++        let Some(observed_now) = now.checked_add(started.elapsed()) else {
++            servers.push(Server::unknown(socket, "collection clock overflow"));
++            continue;
++        };
++        let observed = tokio::time::timeout(
++            Duration::from_secs(3),
++            inspect(probe, roots, socket, observed_now, max_age),
++        )
++        .await;
++        servers.push(match observed {
++            Ok(Ok(row)) => row,
++            Ok(Err(e)) => Server::unknown(socket, &e),
++            Err(_) => Server::unknown(socket, "inspection deadline exceeded"),
++        });
++    }
++    // Compare physical directories too: aliases must not bypass server isolation.
++    let mut counts = HashMap::new();
++    let mut file_counts = HashMap::new();
++    for s in &servers {
++        if let (Some(dev), Some(ino)) = (s.save.device, s.save.inode) {
++            *file_counts.entry((dev, ino)).or_insert(0) += 1;
++        }
++        if let Some(key) = s.save.directory_identity {
++            *counts.entry(key).or_insert(0) += 1;
++        }
++    }
++    for s in &mut servers {
++        let shared_file = s
++            .save
++            .device
++            .zip(s.save.inode)
++            .is_some_and(|key| file_counts.get(&key).is_some_and(|n| *n > 1));
++        if shared_file
++            || s.save
++                .directory_identity
++                .is_some_and(|key| counts.get(&key).is_some_and(|n| *n > 1))
++        {
++            s.save.state = SaveState::Shared;
++            s.save.reason =
++                "shared snapshot evidence: fresh evidence cannot be attributed to this server"
++                    .into();
++        }
++    }
++    Report { servers }
++}
++pub(crate) async fn check(guard: &GuardPolicy) -> Report {
++    let mut sockets: Vec<PathBuf> = guard
++        .tmux_persistence_sockets
++        .iter()
++        .take(MAX_SERVERS)
++        .map(|s| crate::policy::expand_tilde(s))
++        .collect();
++    if sockets.is_empty() {
++        let socket = std::env::var("TMUX")
++            .ok()
++            .filter(|s| !s.is_empty())
++            .map(|s| PathBuf::from(s.split(',').next().unwrap_or_default()))
++            .unwrap_or_else(|| {
++                PathBuf::from(std::env::var_os("TMUX_TMPDIR").unwrap_or_else(|| "/tmp".into()))
++                    .join(format!("tmux-{}/default", unsafe { libc::geteuid() }))
++            });
++        sockets.push(socket);
++    }
++    sockets.sort();
++    sockets.dedup();
++    collect(
++        &Tmux,
++        &Roots::host(),
++        &sockets,
++        SystemTime::now(),
++        guard.tmux_persistence_max_save_age_secs.clamp(60, 86400),
++    )
++    .await
++}
++#[cfg(test)]
++#[path = "tmux_health_tests.rs"]
++mod tests;
+diff --git a/src/tmux_health_tests.rs b/src/tmux_health_tests.rs
+new file mode 100644
+index 0000000..786338e
+--- /dev/null
++++ b/src/tmux_health_tests.rs
+@@ -0,0 +1,461 @@
++use super::*;
++use std::{
++    cell::RefCell,
++    os::unix::{fs::symlink, net::UnixListener},
++};
++
++struct Fixture {
++    temp: tempfile::TempDir,
++    roots: Roots,
++    now: SystemTime,
++    listeners: Vec<UnixListener>,
++    replies: HashMap<PathBuf, Reply>,
++}
++impl Fixture {
++    fn new() -> Self {
++        let temp = tempfile::tempdir().unwrap();
++        let roots = Roots {
++            proc: temp.path().join("proc"),
++            locks: temp.path().join("locks"),
++            producer: temp.path().join("tmux-persist-daemon"),
++            uid: unsafe { libc::geteuid() },
++        };
++        fs::create_dir_all(&roots.proc).unwrap();
++        fs::create_dir_all(&roots.locks).unwrap();
++        fs::write(roots.proc.join("uptime"), "3600.0 0.0\n").unwrap();
++        Self {
++            temp,
++            roots,
++            now: SystemTime::now(),
++            listeners: Vec::new(),
++            replies: HashMap::new(),
++        }
++    }
++    fn process(&self, pid: i32, start: u64, state: char) {
++        let dir = self.roots.proc.join(pid.to_string());
++        fs::create_dir_all(&dir).unwrap();
++        fs::write(dir.join("comm"), "fixture\n").unwrap();
++        let mut fields = vec![state.to_string()];
++        fields.extend(std::iter::repeat_n("0".into(), 18));
++        fields.push(start.to_string());
++        fs::write(
++            dir.join("stat"),
++            format!("{pid} (fixture) {}\n", fields.join(" ")),
++        )
++        .unwrap();
++    }
++    fn add(&mut self, index: i32, age: u64, state: char) -> PathBuf {
++        let socket = self.temp.path().join(format!("socket{index}"));
++        self.listeners.push(UnixListener::bind(&socket).unwrap());
++        let pid = 100 + index;
++        let producer = 200 + index;
++        self.process(pid, 100, 'S');
++        self.process(producer, 200, state);
++        let dir = self.temp.path().join(format!("save{index}"));
++        fs::create_dir(&dir).unwrap();
++        fs::write(
++            dir.join("snapshot"),
++            "pane\tfixture\tcontent\nstate\tfixture\n",
++        )
++        .unwrap();
++        File::options()
++            .write(true)
++            .open(dir.join("snapshot"))
++            .unwrap()
++            .set_modified(self.now - Duration::from_secs(age))
++            .unwrap();
++        symlink("snapshot", dir.join("last")).unwrap();
++        let proc = self.roots.proc.join(pid.to_string());
++        fs::create_dir_all(proc.join("net")).unwrap();
++        fs::create_dir_all(proc.join("fd")).unwrap();
++        fs::write(proc.join("net/unix"), format!("Num RefCount Protocol Flags Type St Inode Path\n000: 00000002 00000000 00010000 0001 01 {pid} {}\n", socket.display())).unwrap();
++        symlink(format!("socket:[{pid}]"), proc.join("fd/7")).unwrap();
++        let reply = Reply {
++            pid,
++            socket: socket.clone(),
++            directory: dir.display().to_string(),
++            marker: String::new(),
++        };
++        self.registration(&reply, producer);
++        self.replies.insert(socket.clone(), reply);
++        socket
++    }
++    fn registration(&self, reply: &Reply, pid: i32) {
++        let lock = self.roots.locks.join(format!(
++            "tmux-persist-{}-{}.lock",
++            self.roots.uid,
++            socket_key(reply.socket.as_os_str().as_bytes())
++        ));
++        fs::create_dir_all(&lock).unwrap();
++        fs::write(lock.join("pid"), pid.to_string()).unwrap();
++        fs::write(
++            self.roots.proc.join(format!("{pid}/cmdline")),
++            format!("bash\0{}\0", self.roots.producer.display()),
++        )
++        .unwrap();
++        fs::write(
++            self.roots.proc.join(format!("{pid}/environ")),
++            format!(
++                "SAFE=irrelevant\0TMUX={},{},0\0",
++                reply.socket.display(),
++                reply.pid
++            ),
++        )
++        .unwrap();
++    }
++    fn probe(&self) -> Fake<'_> {
++        Fake {
++            replies: self.replies.clone(),
++            calls: RefCell::new(Vec::new()),
++            after: RefCell::new(None),
++            delay_first: None,
++        }
++    }
++}
++type Callback<'a> = RefCell<Option<Box<dyn FnOnce() + 'a>>>;
++struct Fake<'a> {
++    replies: HashMap<PathBuf, Reply>,
++    calls: RefCell<Vec<PathBuf>>,
++    after: Callback<'a>,
++    delay_first: Option<Duration>,
++}
++impl Probe for Fake<'_> {
++    async fn query(&self, socket: &Path) -> Result<Reply, String> {
++        self.calls.borrow_mut().push(socket.into());
++        let count = self.calls.borrow().len();
++        if count == 1 {
++            if let Some(delay) = self.delay_first {
++                tokio::time::sleep(delay).await;
++            }
++        }
++        if count == 2 {
++            if let Some(f) = self.after.borrow_mut().take() {
++                f();
++            }
++        }
++        self.replies
++            .get(socket)
++            .cloned()
++            .ok_or("fixture server unavailable".into())
++    }
++}
++
++// Process state is a separate observation: neither S nor even a fresh file proves autosave execution.
++#[tokio::test]
++async fn fresh_stale_and_stopped_are_distinct_facts_not_recovery_predicates() {
++    let mut f = Fixture::new();
++    let a = f.add(1, 10, 'S');
++    let b = f.add(2, 1200, 'S');
++    let c = f.add(3, 10, 'T');
++    f.replies.get_mut(&b).unwrap().marker = f
++        .now
++        .duration_since(UNIX_EPOCH)
++        .unwrap()
++        .as_secs()
++        .to_string();
++    let probe = f.probe();
++    let report = collect(&probe, &f.roots, &[a, b, c], f.now, 900).await;
++    assert_eq!(report.servers[0].save.state, SaveState::Fresh);
++    assert_eq!(report.servers[0].producer.state, ProducerState::Existing);
++    assert_eq!(report.servers[1].save.state, SaveState::Stale);
++    assert!(report.servers[1].launch_marker_age_secs.is_some());
++    assert_eq!(report.servers[1].producer.state, ProducerState::Existing);
++    assert_eq!(report.servers[2].producer.state, ProducerState::Stopped);
++    assert_eq!(report.servers[2].save.state, SaveState::Fresh);
++    let json = serde_json::to_value(&report).unwrap();
++    assert!(json["servers"][0]["save"]["age_secs"]
++        .as_u64()
++        .is_some_and(|n| n >= 10));
++    assert!(json["servers"][0]["server_starttime"].is_number());
++    assert_eq!(json["servers"][2]["producer"]["process_state"], "T");
++    assert!(report.servers[1].summary().contains("Stale"));
++}
++
++// Harmless environment/target order changes must not matter; a server-binding mismatch must.
++#[tokio::test]
++async fn multiple_servers_do_not_borrow_other_producers_or_evidence() {
++    let mut f = Fixture::new();
++    let a = f.add(1, 10, 'S');
++    let b = f.add(2, 1200, 'S');
++    fs::write(
++        f.roots.proc.join("201/environ"),
++        format!("TMUX={},{},0\0UNRELATED=changed\0", a.display(), 101),
++    )
++    .unwrap();
++    let good = collect(&f.probe(), &f.roots, &[b.clone(), a.clone()], f.now, 900).await;
++    assert_eq!(good.servers[0].save.state, SaveState::Stale);
++    assert_eq!(good.servers[1].save.state, SaveState::Fresh);
++    assert_eq!(good.servers[1].producer.state, ProducerState::Existing);
++    fs::write(
++        f.roots.proc.join("201/environ"),
++        format!("TMUX={},{},0\0", b.display(), 102),
++    )
++    .unwrap();
++    let bad = collect(&f.probe(), &f.roots, &[a], f.now, 900).await;
++    assert_eq!(bad.servers[0].producer.state, ProducerState::Unavailable);
++    f.replies.get_mut(&b).unwrap().directory = f.temp.path().join("save1").display().to_string();
++    let shared = collect(
++        &f.probe(),
++        &f.roots,
++        &f.replies.keys().cloned().collect::<Vec<_>>(),
++        f.now,
++        900,
++    )
++    .await;
++    assert!(shared
++        .servers
++        .iter()
++        .all(|s| s.save.state == SaveState::Shared));
++    f.replies.get_mut(&b).unwrap().directory = f.temp.path().join("save2").display().to_string();
++    fs::remove_file(f.temp.path().join("save2/snapshot")).unwrap();
++    fs::hard_link(
++        f.temp.path().join("save1/snapshot"),
++        f.temp.path().join("save2/snapshot"),
++    )
++    .unwrap();
++    // One server rejects the file as predating its own incarnation. Physical
++    // identity must still prevent the other server claiming exclusive evidence.
++    let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as u64;
++    f.process(102, 3595 * ticks, 'S');
++    let linked = collect(
++        &f.probe(),
++        &f.roots,
++        &f.replies.keys().cloned().collect::<Vec<_>>(),
++        f.now,
++        900,
++    )
++    .await;
++    assert!(linked
++        .servers
++        .iter()
++        .all(|s| s.save.state == SaveState::Shared));
++}
++
++#[tokio::test]
++async fn missing_or_untrusted_provenance_is_unknown_not_healthy() {
++    for mode in [
++        "no_pid",
++        "missing_process",
++        "indeterminate_process",
++        "reused_server_pid",
++        "partial_record",
++        "bad_command",
++        "missing_env",
++        "pid_reuse",
++        "no_fd",
++        "no_directory",
++        "no_snapshot",
++        "future",
++        "previous_server",
++        "bad_content",
++        "unsafe_last",
++    ] {
++        let mut f = Fixture::new();
++        let socket = f.add(1, 10, 'S');
++        match mode {
++            "no_pid" => {
++                fs::remove_dir_all(&f.roots.locks).unwrap();
++            }
++            "missing_process" => {
++                fs::remove_dir_all(f.roots.proc.join("201")).unwrap();
++            }
++            "indeterminate_process" => {
++                fs::remove_dir_all(f.roots.proc.join("201")).unwrap();
++                symlink("201", f.roots.proc.join("201")).unwrap();
++            }
++            "reused_server_pid" => f.process(101, 300, 'S'),
++            "partial_record" => {
++                fs::write(f.temp.path().join("save1/snapshot"), "pane\tpartial").unwrap()
++            }
++            "bad_command" => {
++                fs::write(
++                    f.roots.proc.join("201/cmdline"),
++                    format!("echo\0{}\0", f.roots.producer.display()),
++                )
++                .unwrap();
++            }
++            "missing_env" => {
++                fs::remove_file(f.roots.proc.join("201/environ")).unwrap();
++            }
++            "pid_reuse" => {
++                fs::write(f.roots.proc.join("201/cmdline"), "other\0").unwrap();
++            }
++            "no_fd" => {
++                fs::remove_file(f.roots.proc.join("101/fd/7")).unwrap();
++            }
++            "no_directory" => {
++                f.replies.get_mut(&socket).unwrap().directory.clear();
++            }
++            "no_snapshot" => {
++                fs::remove_file(f.temp.path().join("save1/snapshot")).unwrap();
++            }
++            "future" => File::options()
++                .write(true)
++                .open(f.temp.path().join("save1/snapshot"))
++                .unwrap()
++                .set_modified(f.now + Duration::from_secs(100))
++                .unwrap(),
++            "previous_server" => File::options()
++                .write(true)
++                .open(f.temp.path().join("save1/snapshot"))
++                .unwrap()
++                .set_modified(f.now - Duration::from_secs(7200))
++                .unwrap(),
++            "bad_content" => {
++                fs::write(f.temp.path().join("save1/snapshot"), "not a snapshot").unwrap()
++            }
++            "unsafe_last" => {
++                fs::remove_file(f.temp.path().join("save1/last")).unwrap();
++                symlink("../outside", f.temp.path().join("save1/last")).unwrap();
++            }
++            _ => unreachable!(),
++        }
++        let report = collect(&f.probe(), &f.roots, &[socket], f.now, 900).await;
++        let row = &report.servers[0];
++        if [
++            "no_pid",
++            "bad_command",
++            "missing_env",
++            "pid_reuse",
++            "indeterminate_process",
++            "reused_server_pid",
++        ]
++        .contains(&mode)
++        {
++            assert_eq!(row.producer.state, ProducerState::Unavailable, "{mode}");
++        } else if mode == "missing_process" {
++            assert_eq!(row.producer.state, ProducerState::Missing);
++        } else {
++            assert_eq!(row.save.state, SaveState::Unavailable, "{mode}");
++        }
++    }
++}
++
++#[tokio::test]
++async fn query_bracket_rejects_server_and_producer_lifecycle_races() {
++    for mode in ["server", "producer", "socket"] {
++        let mut f = Fixture::new();
++        let socket = f.add(1, 10, 'S');
++        let probe = f.probe();
++        probe.after.replace(Some(Box::new(|| match mode {
++            "server" => f.process(101, 999, 'S'),
++            "producer" => f.process(201, 999, 'T'),
++            "socket" => {
++                fs::remove_file(&socket).unwrap();
++                fs::write(&socket, "not a socket").unwrap();
++            }
++            _ => unreachable!(),
++        })));
++        let report = collect(&probe, &f.roots, std::slice::from_ref(&socket), f.now, 900).await;
++        if mode == "producer" {
++            assert_eq!(report.servers[0].producer.state, ProducerState::Unavailable);
++        } else {
++            assert!(report.servers[0].server_pid.is_none());
++        }
++    }
++}
++
++// No real tmux/server/producer is launched or signalled; every endpoint and file is owned by TempDir.
++#[tokio::test]
++async fn inspection_is_query_only_and_preserves_owned_files_and_socket() {
++    let mut f = Fixture::new();
++    let socket = f.add(1, 10, 'S');
++    let probe = f.probe();
++    let files = [
++        f.temp.path().join("save1/snapshot"),
++        f.roots.proc.join("201/stat"),
++        f.roots.proc.join("201/environ"),
++    ];
++    let before: Vec<_> = files.iter().map(|p| fs::read(p).unwrap()).collect();
++    let socket_meta = fs::symlink_metadata(&socket).unwrap();
++    let _ = collect(&probe, &f.roots, std::slice::from_ref(&socket), f.now, 900).await;
++    assert_eq!(
++        before,
++        files
++            .iter()
++            .map(|p| fs::read(p).unwrap())
++            .collect::<Vec<_>>()
++    );
++    assert_eq!(
++        socket_meta.ino(),
++        fs::symlink_metadata(&socket).unwrap().ino()
++    );
++    assert_eq!(
++        probe.calls.borrow().as_slice(),
++        [socket.clone(), socket.clone()]
++    );
++    let cmd = command("not-executed", &socket);
++    let args: Vec<_> = cmd
++        .as_std()
++        .get_args()
++        .map(|a| a.to_str().unwrap())
++        .collect();
++    assert_eq!(args[0], "-S");
++    assert_eq!(args[1], socket.to_str().unwrap());
++    assert_eq!(&args[2..], ["display-message", "-p", FORMAT]);
++}
++
++// Earlier sockets may consume time; later fresh saves must not look future-dated.
++#[tokio::test]
++async fn delayed_first_server_does_not_shift_later_save_freshness() {
++    let mut f = Fixture::new();
++    let a = f.add(1, 10, 'S');
++    let b = f.add(2, 10, 'S');
++    let mut probe = f.probe();
++    probe.delay_first = Some(Duration::from_millis(1100));
++    probe.after.replace(Some(Box::new(|| {
++        File::options()
++            .write(true)
++            .open(f.temp.path().join("save2/snapshot"))
++            .unwrap()
++            .set_modified(f.now + Duration::from_secs(1))
++            .unwrap();
++    })));
++    let rows = collect(&probe, &f.roots, &[a, b], f.now, 900).await;
++    assert_eq!(rows.servers[1].save.state, SaveState::Fresh);
++    assert!(rows.servers[1].save.age_secs.is_some_and(|age| age < 60));
++}
++
++#[test]
++fn cksum_protocol_and_policy_compatibility() {
++    // POSIX cksum protocol bytes, not a directory inventory pin.
++    assert_eq!(socket_key(b""), 4294967295);
++    assert_eq!(socket_key(b"abc"), 1219131554);
++    let old: GuardPolicy = toml::from_str("").unwrap();
++    assert!(old.tmux_persistence_sockets.is_empty());
++    assert_eq!(old.tmux_persistence_max_save_age_secs, default_max_age());
++    let mut g: GuardPolicy = toml::from_str(
++        "tmux_persistence_max_save_age_secs=0\ntmux_persistence_sockets=['/b','/a','/b']",
++    )
++    .unwrap();
++    crate::policy::normalize_guard_policy(&mut g);
++    assert_eq!(g.tmux_persistence_max_save_age_secs, 60);
++    assert_eq!(g.tmux_persistence_sockets, ["/a", "/b"]);
++    assert!(crate::policy::normalize_guard_policy(&mut g).is_empty());
++}
++
++#[tokio::test]
++async fn budgets_and_parser_failures_are_explicit() {
++    assert!(parse_reply("1\t/socket\t/dir\t\n").is_ok());
++    assert!(parse_reply("0\t/socket\t/dir\t").is_err());
++    assert!(parse_reply("1\t/socket\t/dir\t\textra").is_err());
++    let mut f = Fixture::new();
++    let a = f.add(1, 10, 'S');
++    fs::write(
++        f.roots.proc.join("101/net/unix"),
++        vec![b'x'; SOCKET_TABLE + 1],
++    )
++    .unwrap();
++    let report = collect(&f.probe(), &f.roots, &[a], f.now, 900).await;
++    assert!(report.servers[0].server_pid.is_none());
++    let sockets: Vec<_> = (0..MAX_SERVERS + 3)
++        .map(|i| f.temp.path().join(format!("absent{i}")))
++        .collect();
++    assert_eq!(
++        collect(&f.probe(), &f.roots, &sockets, f.now, 900)
++            .await
++            .servers
++            .len(),
++        MAX_SERVERS
++    );
++}
