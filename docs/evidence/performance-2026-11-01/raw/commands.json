@@ -1,0 +1,98 @@
+[
+  {
+    "label": "guard-user-properties",
+    "command": [
+      "systemctl",
+      "--user",
+      "show",
+      "dracon-system-guard.service",
+      "-p",
+      "LoadState",
+      "-p",
+      "ActiveState",
+      "-p",
+      "SubState",
+      "-p",
+      "MainPID",
+      "-p",
+      "ExecMainStartTimestamp",
+      "-p",
+      "FragmentPath",
+      "-p",
+      "ExecStart"
+    ],
+    "observed_at": "2026-11-01T15:14:21.738323+00:00",
+    "exit": 0,
+    "stdout_bytes": 403,
+    "stderr_bytes": 0
+  },
+  {
+    "label": "guard-system-properties",
+    "command": [
+      "systemctl",
+      "show",
+      "dracon-system-guard.service",
+      "-p",
+      "LoadState",
+      "-p",
+      "ActiveState",
+      "-p",
+      "SubState",
+      "-p",
+      "MainPID",
+      "-p",
+      "ExecMainStartTimestamp",
+      "-p",
+      "FragmentPath",
+      "-p",
+      "ExecStart"
+    ],
+    "observed_at": "2026-11-01T15:14:21.774233+00:00",
+    "exit": 0,
+    "stdout_bytes": 103,
+    "stderr_bytes": 0
+  },
+  {
+    "label": "guard-user-incident-journal",
+    "command": [
+      "journalctl",
+      "--user",
+      "-u",
+      "dracon-system-guard.service",
+      "--since",
+      "2026-11-01 13:45:00 UTC",
+      "--until",
+      "2026-11-01 14:10:00 UTC",
+      "--no-pager",
+      "-o",
+      "short-iso-precise",
+      "-n",
+      "600"
+    ],
+    "observed_at": "2026-11-01T15:14:21.788597+00:00",
+    "exit": 0,
+    "stdout_bytes": 93304,
+    "stderr_bytes": 0
+  },
+  {
+    "label": "guard-system-incident-journal",
+    "command": [
+      "journalctl",
+      "-u",
+      "dracon-system-guard.service",
+      "--since",
+      "2026-11-01 13:45:00 UTC",
+      "--until",
+      "2026-11-01 14:10:00 UTC",
+      "--no-pager",
+      "-o",
+      "short-iso-precise",
+      "-n",
+      "600"
+    ],
+    "observed_at": "2026-11-01T15:14:23.254264+00:00",
+    "exit": 0,
+    "stdout_bytes": 17,
+    "stderr_bytes": 0
+  }
+]

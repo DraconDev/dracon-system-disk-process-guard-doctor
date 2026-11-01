@@ -1,0 +1,600 @@
+2026-11-01T13:48:40.034573+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3739331 parent=3595688 adj -> 0
+2026-11-01T13:48:40.034573+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3743034 parent=1057871 adj -> 200
+2026-11-01T13:48:40.034623+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3741118 parent=3595688 adj -> 0
+2026-11-01T13:48:40.034676+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3743033 parent=1057871 adj -> 200
+2026-11-01T13:48:40.034757+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3742751 parent=1057871 adj -> 200
+2026-11-01T13:48:40.034839+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3743036 parent=1057871 adj -> 200
+2026-11-01T13:48:40.034935+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3742879 parent=3595688 adj -> 0
+2026-11-01T13:49:23.529206+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3744883 parent=3595688 adj -> 0
+2026-11-01T13:49:23.529206+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3744882 parent=3595688 adj -> 0
+2026-11-01T13:49:53.430083+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3748254 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:49:53.430558+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3751733 cmd=bun — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:49:53.433832+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3748254 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T13:49:53.436681+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3751733 cmd=bun adj 200 -> 250 (critical pressure)
+2026-11-01T13:49:53.436886+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3748254 cmd=MainThread: scope contains exempt process pi
+2026-11-01T13:49:53.451262+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3751733 cmd=bun: scope contains exempt process pi
+2026-11-01T13:49:53.627461+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 34 processes 4169MiB — no --user-data-dir: a normal browser session
+2026-11-01T13:49:53.633156+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3749906 parent=3595688 adj -> 0
+2026-11-01T13:49:53.633322+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3751142 parent=3595688 adj -> 0
+2026-11-01T13:49:53.633424+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3749890 parent=3595688 adj -> 0
+2026-11-01T13:49:53.633742+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3749891 parent=3595688 adj -> 0
+2026-11-01T13:50:24.046091+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3761675 cmd=bun — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:50:24.046378+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3688658 cmd=bun — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:50:24.063780+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3761675 cmd=bun adj 200 -> 250 (critical pressure)
+2026-11-01T13:50:24.126966+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3688658 cmd=bun adj 200 -> 250 (critical pressure)
+2026-11-01T13:50:24.127468+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3761675 cmd=bun: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+2026-11-01T13:50:24.127674+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3688658 cmd=bun: scope contains exempt process pi
+2026-11-01T13:50:24.243113+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 33 processes 3924MiB — no --user-data-dir: a normal browser session
+2026-11-01T13:50:24.256558+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3766136 parent=3595688 adj -> 0
+2026-11-01T13:50:24.256646+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3764247 parent=3595688 adj -> 0
+2026-11-01T13:50:24.256719+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3763294 parent=3595688 adj -> 0
+2026-11-01T13:50:24.256794+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3763261 parent=3595688 adj -> 0
+2026-11-01T13:50:24.256870+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3766310 parent=3595688 adj -> 0
+2026-11-01T13:50:24.256938+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3762872 parent=3595688 adj -> 0
+2026-11-01T13:50:24.257014+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3764265 parent=3595688 adj -> 0
+2026-11-01T13:50:24.257083+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3764276 parent=3595688 adj -> 0
+2026-11-01T13:50:24.257167+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3764293 parent=3595688 adj -> 0
+2026-11-01T13:50:24.257293+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3764263 parent=3595688 adj -> 0
+2026-11-01T13:50:24.257365+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3762717 parent=3595688 adj -> 0
+2026-11-01T13:50:24.257434+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3762893 parent=3595688 adj -> 0
+2026-11-01T13:50:24.257504+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3762743 parent=3595688 adj -> 0
+2026-11-01T13:50:58.946701+00:00 nixos dracon-system[2798562]: [2026-11-01T13:50:58.946679933+00:00] Warn: disk/rapid-fill - Disk growing at 21.0 GiB/h (87% used); 113.1 GiB available, estimated 5.4 hours until full if growth continues — inspect recent writes with dracon-system storage
+2026-11-01T13:50:59.341814+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3780155 cmd=rust-lld — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:50:59.342408+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3780155 cmd=rust-lld: scope contains exempt process pi
+2026-11-01T13:51:00.404170+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 32 processes 3844MiB — no --user-data-dir: a normal browser session
+2026-11-01T13:51:00.416252+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3780128 parent=3675201 adj -> 200
+2026-11-01T13:51:00.416342+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3773633 parent=3595688 adj -> 0
+2026-11-01T13:51:00.416422+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3779672 parent=3595688 adj -> 0
+2026-11-01T13:51:00.416506+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3773562 parent=3595688 adj -> 0
+2026-11-01T13:51:00.416599+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3780302 parent=3595688 adj -> 0
+2026-11-01T13:51:00.416686+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3780376 parent=3595688 adj -> 0
+2026-11-01T13:51:00.416772+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3780129 parent=3675201 adj -> 200
+2026-11-01T13:51:00.416875+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3778855 parent=3595688 adj -> 0
+2026-11-01T13:51:00.416972+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3780190 parent=3595688 adj -> 0
+2026-11-01T13:51:00.417055+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3768572 parent=3595688 adj -> 0
+2026-11-01T13:51:00.417138+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3774361 parent=3595688 adj -> 0
+2026-11-01T13:51:00.417220+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3780340 parent=3595688 adj -> 0
+2026-11-01T13:51:00.417303+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3773600 parent=3595688 adj -> 0
+2026-11-01T13:51:00.417761+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3778858 parent=3595688 adj -> 0
+2026-11-01T13:51:00.417761+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3768476 parent=3595688 adj -> 0
+2026-11-01T13:51:00.417761+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3778886 parent=3595688 adj -> 0
+2026-11-01T13:51:00.417761+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3774101 parent=3595688 adj -> 0
+2026-11-01T13:51:00.417761+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3780109 parent=3675201 adj -> 200
+2026-11-01T13:51:00.417902+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3780127 parent=3675201 adj -> 200
+2026-11-01T13:51:00.417987+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3767975 parent=3595688 adj -> 0
+2026-11-01T13:51:00.418074+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3780155 parent=3675201 adj -> 200
+2026-11-01T13:51:00.418157+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3767875 parent=3595688 adj -> 0
+2026-11-01T13:51:00.418245+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3774119 parent=3595688 adj -> 0
+2026-11-01T13:51:37.812804+00:00 nixos dracon-system[2798562]: [2026-11-01T13:51:37.812742919+00:00] Warn: disk/trend-warning - Disk predicted to fill in 7.2 hours at 15.8 GiB/h (87% used, 113.0 GiB available) — the rate is below the rapid-fill threshold, so the disk will be full before it looks dangerous
+2026-11-01T13:51:38.147396+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3786107 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:51:38.147494+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3788424 cmd=rustc — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:51:38.150512+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3786107 cmd=MainThread adj 0 -> 250 (critical pressure)
+2026-11-01T13:51:38.153065+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3788424 cmd=rustc adj 200 -> 250 (critical pressure)
+2026-11-01T13:51:38.153424+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3786107 cmd=MainThread: process is outside the supported user workload slice
+2026-11-01T13:51:38.153588+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3788424 cmd=rustc: scope contains exempt process pi
+2026-11-01T13:51:38.338122+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3788790 parent=3595688 adj -> 0
+2026-11-01T13:51:38.338224+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3788059 parent=3595688 adj -> 0
+2026-11-01T13:51:38.338448+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3788244 parent=3595688 adj -> 0
+2026-11-01T13:51:38.338768+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3788379 parent=3595688 adj -> 0
+2026-11-01T13:51:38.338768+00:00 nixos dracon-system[2798562]: 🧹 oom-descendant-restore pid=3788475 parent=3595688 dropped — the process is defunct, so there is nothing to restore
+2026-11-01T13:51:38.338768+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3788200 parent=3595688 adj -> 0
+2026-11-01T13:51:38.338768+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3788141 parent=3595688 adj -> 0
+2026-11-01T13:51:38.338876+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3787848 parent=3595688 adj -> 0
+2026-11-01T13:51:38.338962+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3787870 parent=3595688 adj -> 0
+2026-11-01T13:51:38.339054+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3787482 parent=3595688 adj -> 0
+2026-11-01T13:51:38.339142+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3788472 parent=3595688 adj -> 0
+2026-11-01T13:51:38.339246+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3787707 parent=3595688 adj -> 0
+2026-11-01T13:52:17.146568+00:00 nixos dracon-system[2798562]: [2026-11-01T13:52:17.146449936+00:00] Warn: disk/rapid-fill - Disk growing at 24.0 GiB/h (87% used); 112.5 GiB available, estimated 4.7 hours until full if growth continues — inspect recent writes with dracon-system storage
+2026-11-01T13:52:17.674951+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3792961 cmd=rustc — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:52:17.675251+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3792064 cmd=chromium — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:52:17.675382+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3794618 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:52:17.688273+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3792961 cmd=rustc adj 200 -> 250 (critical pressure)
+2026-11-01T13:52:17.690178+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3792961 cmd=rustc: scope contains exempt process pi
+2026-11-01T13:52:17.691019+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3792064 cmd=chromium: scope contains exempt process pi
+2026-11-01T13:52:17.691866+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3794618 cmd=MainThread: process is outside the supported user workload slice
+2026-11-01T13:52:17.841724+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 35 processes 4128MiB — no --user-data-dir: a normal browser session
+2026-11-01T13:52:17.853260+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3799501 parent=1057871 adj -> 200
+2026-11-01T13:52:17.853444+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3799500 parent=1057871 adj -> 200
+2026-11-01T13:52:17.854717+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3799497 parent=1057871 adj -> 200
+2026-11-01T13:52:17.854717+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3794580 parent=3595688 adj -> 0
+2026-11-01T13:52:17.854717+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3794582 parent=3595688 adj -> 0
+2026-11-01T13:52:17.854717+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3794618 parent=3595688 adj -> 0
+2026-11-01T13:52:50.238120+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3807389 cmd=rust-lld — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:52:50.238512+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3806562 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:52:50.238783+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3807389 cmd=rust-lld: scope contains exempt process pi
+2026-11-01T13:52:50.238881+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3806562 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+2026-11-01T13:52:50.438931+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3808723 parent=3595688 adj -> 0
+2026-11-01T13:52:50.439077+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3807299 parent=3792961 adj -> 200
+2026-11-01T13:52:50.439077+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3807956 parent=3595688 adj -> 0
+2026-11-01T13:52:50.439149+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3807359 parent=3792961 adj -> 200
+2026-11-01T13:52:50.439230+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3807983 parent=3595688 adj -> 0
+2026-11-01T13:52:50.439322+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3806859 parent=3595688 adj -> 0
+2026-11-01T13:52:50.439413+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3808141 parent=3595688 adj -> 0
+2026-11-01T13:52:50.439491+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3808004 parent=3595688 adj -> 0
+2026-11-01T13:52:50.439627+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3807389 parent=3792961 adj -> 200
+2026-11-01T13:52:50.439682+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3808126 parent=3595688 adj -> 0
+2026-11-01T13:52:50.439769+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3807360 parent=3792961 adj -> 200
+2026-11-01T13:52:50.439854+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3806623 parent=3595688 adj -> 0
+2026-11-01T13:52:50.439947+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3806757 parent=3595688 adj -> 0
+2026-11-01T13:52:50.440224+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3806639 parent=3595688 adj -> 0
+2026-11-01T13:52:50.440224+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3806154 parent=3595688 adj -> 0
+2026-11-01T13:52:50.440224+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3806760 parent=3595688 adj -> 0
+2026-11-01T13:52:50.440289+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3806104 parent=3595688 adj -> 0
+2026-11-01T13:52:50.440353+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3807351 parent=3792961 adj -> 200
+2026-11-01T13:53:21.033338+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3809031 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:53:21.033757+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3808141 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:53:21.037503+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3809031 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T13:53:21.040103+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3808141 cmd=MainThread adj 0 -> 250 (critical pressure)
+2026-11-01T13:53:21.040791+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3809031 cmd=MainThread: scope contains exempt process pi
+2026-11-01T13:53:21.040938+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3808141 cmd=MainThread: process is outside the supported user workload slice
+2026-11-01T13:53:21.235118+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 33 processes 3917MiB — no --user-data-dir: a normal browser session
+2026-11-01T13:53:21.239799+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3812892 parent=3595688 adj -> 0
+2026-11-01T13:53:21.239915+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3814254 parent=3595688 adj -> 0
+2026-11-01T13:53:21.240002+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3812785 parent=3595688 adj -> 0
+2026-11-01T13:53:21.240126+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3812790 parent=3595688 adj -> 0
+2026-11-01T13:53:21.240257+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3814685 parent=3595688 adj -> 0
+2026-11-01T13:53:21.240331+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3812615 parent=3595688 adj -> 0
+2026-11-01T13:53:21.240410+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3814261 parent=3595688 adj -> 0
+2026-11-01T13:53:21.240503+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3813460 parent=3595688 adj -> 0
+2026-11-01T13:53:21.240591+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3814103 parent=3595688 adj -> 0
+2026-11-01T13:53:51.637501+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3816176 cmd=bun — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:53:51.637890+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3820957 cmd=chromium — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:53:51.637890+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3814634 cmd=git — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:53:51.647534+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3820957 cmd=chromium adj 200 -> 250 (critical pressure)
+2026-11-01T13:53:51.656048+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3814634 cmd=git adj 0 -> 250 (critical pressure)
+2026-11-01T13:53:51.656411+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3816176 cmd=bun: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+2026-11-01T13:53:51.656515+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3820957 cmd=chromium: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+2026-11-01T13:53:51.656588+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3814634 cmd=git: process is outside the supported user workload slice
+2026-11-01T13:53:51.828889+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 32 processes 3723MiB — no --user-data-dir: a normal browser session
+2026-11-01T13:53:51.844061+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3825237 parent=3595688 adj -> 0
+2026-11-01T13:53:51.844151+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3825560 parent=3595688 adj -> 0
+2026-11-01T13:53:51.844247+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3825588 parent=3595688 adj -> 0
+2026-11-01T13:53:51.844328+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3825238 parent=3595688 adj -> 0
+2026-11-01T13:53:51.844406+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3825263 parent=3595688 adj -> 0
+2026-11-01T13:53:51.844482+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3825219 parent=3595688 adj -> 0
+2026-11-01T13:53:51.844562+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3825562 parent=3595688 adj -> 0
+2026-11-01T13:54:25.771074+00:00 nixos dracon-system[2798562]: [2026-11-01T13:54:25.771051785+00:00] Warn: disk/trend-warning - Disk predicted to fill in 12.9 hours at 8.6 GiB/h (87% used, 111.8 GiB available) — the rate is below the rapid-fill threshold, so the disk will be full before it looks dangerous
+2026-11-01T13:54:28.420053+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3828807 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:54:28.420306+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3821724 cmd=chromium — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:54:28.420306+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3826248 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:54:28.521590+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3828807 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T13:54:28.521981+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3828807 cmd=MainThread: scope contains exempt process pi
+2026-11-01T13:54:28.522330+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3821724 cmd=chromium: scope contains exempt process pi
+2026-11-01T13:54:28.522406+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3826248 cmd=MainThread: process is outside the supported user workload slice
+2026-11-01T13:54:29.833403+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 33 processes 3819MiB — no --user-data-dir: a normal browser session
+2026-11-01T13:54:30.089254+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3826241 parent=3595688 adj -> 0
+2026-11-01T13:54:30.090081+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3832203 parent=3595688 adj -> 0
+2026-11-01T13:54:30.090081+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3826242 parent=3595688 adj -> 0
+2026-11-01T13:54:30.090081+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3834709 parent=1057871 adj -> 200
+2026-11-01T13:54:30.090081+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3832271 parent=3595688 adj -> 0
+2026-11-01T13:54:30.090081+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3826248 parent=3595688 adj -> 0
+2026-11-01T13:54:30.090081+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3834981 parent=1057871 adj -> 200
+2026-11-01T13:54:30.090081+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3834606 parent=3595688 adj -> 0
+2026-11-01T13:54:30.090081+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3832801 parent=3595688 adj -> 0
+2026-11-01T13:54:30.090081+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3832632 parent=3595688 adj -> 0
+2026-11-01T13:54:30.090081+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3834982 parent=1057871 adj -> 200
+2026-11-01T13:54:30.090081+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3832574 parent=3595688 adj -> 0
+2026-11-01T13:55:00.650016+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3826248 cmd=MainThread adj 0 -> 250 (critical pressure)
+2026-11-01T13:55:00.844950+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3841098 parent=3595688 adj -> 0
+2026-11-01T13:55:00.845319+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3841110 parent=3595688 adj -> 0
+2026-11-01T13:55:00.845319+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3841978 parent=3595688 adj -> 0
+2026-11-01T13:55:00.847941+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3841968 parent=3595688 adj -> 0
+2026-11-01T13:55:00.847941+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3841100 parent=3595688 adj -> 0
+2026-11-01T13:55:31.340816+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3841881 cmd=rustc — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:55:31.357841+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3841881 cmd=rustc adj 200 -> 250 (critical pressure)
+2026-11-01T13:55:31.358314+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3841881 cmd=rustc: scope contains exempt process pi
+2026-11-01T13:55:31.533586+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 32 processes 3820MiB — no --user-data-dir: a normal browser session
+2026-11-01T13:55:31.542861+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3847355 parent=3808141 adj -> 0
+2026-11-01T13:55:31.543012+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3847659 parent=3595688 adj -> 0
+2026-11-01T13:55:31.543088+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3847652 parent=3595688 adj -> 0
+2026-11-01T13:55:31.554065+00:00 nixos dracon-system[2798562]: [2026-11-01T13:55:31.554045865+00:00] Error: memory/pressure - critical: observed=critical, mem available 4%, swap used 56%, PSI full Some(56.31), top rss: .xdg-desktop-po=666MiB,rustc=590MiB,bun=381MiB,MainThread=349MiB,chromium=361MiB
+2026-11-01T13:56:05.971779+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3851828 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:56:05.971779+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3851828 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T13:56:05.971779+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3851828 cmd=MainThread: scope contains exempt process pi
+2026-11-01T13:56:08.883513+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3854209 parent=3595688 adj -> 0
+2026-11-01T13:56:09.380301+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3851617 parent=3595688 adj -> 0
+2026-11-01T13:56:09.380301+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3851611 parent=3595688 adj -> 0
+2026-11-01T13:56:09.380301+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3854630 parent=1057871 adj -> 200
+2026-11-01T13:56:09.380301+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3852184 parent=3595688 adj -> 0
+2026-11-01T13:56:09.380301+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3854098 parent=3595688 adj -> 0
+2026-11-01T13:56:09.380301+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3853783 parent=3595688 adj -> 0
+2026-11-01T13:56:09.380301+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3852150 parent=3595688 adj -> 0
+2026-11-01T13:56:09.380301+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3853866 parent=3595688 adj -> 0
+2026-11-01T13:56:40.328656+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3826619 cmd=bun — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:56:40.331536+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3826619 cmd=bun adj 200 -> 250 (critical pressure)
+2026-11-01T13:56:40.332027+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3826619 cmd=bun: scope contains exempt process pi
+2026-11-01T13:56:40.440418+00:00 nixos dracon-system[2798562]: 🧹 oom-descendant-restore pid=3868184 parent=3595688 dropped — the process is defunct, so there is nothing to restore
+2026-11-01T13:56:40.440500+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3863265 parent=3595688 adj -> 0
+2026-11-01T13:58:24.438591+00:00 nixos dracon-system[2798562]: 📦 auto-relocate would move /home/dracon/Dev/dracon-platform/web/games/wip/hegemon/.pi-glla/ledger-segments (2.1 GiB, 14d idle) → /mnt/data/cold/ledger-segments (report-only)
+2026-11-01T13:58:25.935936+00:00 nixos dracon-system[2798562]: 🛡️ trash: keeping 2 flagged entries (11 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/doomtap.1792784074.1792794258.1792794537.1792794704.1792795221/doomtap/node_modules/bun-types/docs/runtime/secrets.mdx, /home/dracon/.local/share/Trash/files/doomtap.1792784074.1792794258.1792794537.1792794704.1792795221/doomtap/node_modules/bun-types/docs/pm/npmrc.mdx, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH.1792784074.1792794258.1792794536.1792794703.1792795233/offhost/owner.key; 1 unreadable subtrees; they hold 528.2 MiB (biggest: doomtap.1792784074.1792794258.1792794537.1792794704.1792795221 (283.7 MiB), dg-clean-host-EIxlMH.1792784074.1792794258.1792794536.1792794703.1792795233 (244.6 MiB))), purging the rest
+2026-11-01T13:58:25.937259+00:00 nixos dracon-system[2798562]: [2026-11-01T13:58:25.936131669+00:00] Warn: trash/credential-guard - trash purge skipping 2 flagged entries (11 credential-like file(s), e.g. /home/dracon/.local/share/Trash/files/doomtap.1792784074.1792794258.1792794537.1792794704.1792795221/doomtap/node_modules/bun-types/docs/runtime/secrets.mdx, /home/dracon/.local/share/Trash/files/doomtap.1792784074.1792794258.1792794537.1792794704.1792795221/doomtap/node_modules/bun-types/docs/pm/npmrc.mdx, /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH.1792784074.1792794258.1792794536.1792794703.1792795233/offhost/owner.key; 1 unreadable subtrees; they hold 528.2 MiB (biggest: doomtap.1792784074.1792794258.1792794537.1792794704.1792795221 (283.7 MiB), dg-clean-host-EIxlMH.1792784074.1792794258.1792794536.1792794703.1792795233 (244.6 MiB)))
+2026-11-01T13:58:25.947063+00:00 nixos dracon-system[2798562]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/doomtap.1792784074.1792794258.1792794537.1792794704.1792795221
+2026-11-01T13:58:25.947063+00:00 nixos dracon-system[2798562]: 🛡️ keeping credential-flagged trash entry /home/dracon/.local/share/Trash/files/dg-clean-host-EIxlMH.1792784074.1792794258.1792794536.1792794703.1792795233
+2026-11-01T13:58:26.628201+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 33 processes 3906MiB — no --user-data-dir: a normal browser session
+2026-11-01T13:58:30.252493+00:00 nixos dracon-system[2798562]: 🛡️ keeping tmp entry /tmp/tmux-1000: holds a live unix socket
+2026-11-01T13:58:30.341169+00:00 nixos dracon-system[2798562]: 🛡️ keeping tmp entry /tmp/sddm-auth-14ad0f27-5e27-488d-a0be-2c559b916d32: holds a live unix socket
+2026-11-01T13:58:33.034338+00:00 nixos dracon-system[2798562]: 🛡️ keeping tmp entry /tmp/codex-daemon-1000: holds a live unix socket
+2026-11-01T13:58:38.514983+00:00 nixos dracon-system[2798562]: 🛡️ keeping tmp entry /tmp/.X11-unix: holds a live unix socket
+2026-11-01T13:58:41.790025+00:00 nixos dracon-system[2798562]: 🛡️ keeping tmp entry /tmp/.ICE-unix: holds a live unix socket
+2026-11-01T13:58:42.185275+00:00 nixos dracon-system[2798562]: 🧹 Tmp: 212.1 MiB
+2026-11-01T13:58:42.185275+00:00 nixos dracon-system[2798562]: 🛡️ Tmp: 10 entries need another user to remove (e.g. /tmp/eve-install-backup-cleanup-1897637-1792137438351935114: Permission denied (os error 13), /tmp/.XIM-unix: Operation not permitted (os error 1), /tmp/k2: Permission denied (os error 13))
+2026-11-01T13:58:42.186238+00:00 nixos dracon-system[2798562]: 🧹 Tmp: 2.8 GiB held by the age floor across 5124 entries — the fill rate cannot be measured yet, so the held-back scratch has no deadline
+2026-11-01T13:59:03.007793+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3902458 cmd=rustc — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:59:03.008799+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3892581 cmd=git — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:59:03.008864+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3899556 cmd=chromium — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:59:03.011742+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3902458 cmd=rustc adj 200 -> 250 (critical pressure)
+2026-11-01T13:59:03.028324+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3899556 cmd=chromium adj 200 -> 250 (critical pressure)
+2026-11-01T13:59:03.029807+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3902458 cmd=rustc: scope contains exempt process pi
+2026-11-01T13:59:03.030979+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3892581 cmd=git: process is outside the supported user workload slice
+2026-11-01T13:59:03.117491+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3899556 cmd=chromium: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+2026-11-01T13:59:03.395415+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3887698 parent=3595688 adj -> 0
+2026-11-01T13:59:03.395569+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3893348 parent=3595688 adj -> 0
+2026-11-01T13:59:03.395602+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3893991 parent=3595688 adj -> 0
+2026-11-01T13:59:03.395693+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3887705 parent=3595688 adj -> 0
+2026-11-01T13:59:03.395792+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3891383 parent=3595688 adj -> 0
+2026-11-01T13:59:03.395882+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3887697 parent=3595688 adj -> 0
+2026-11-01T13:59:03.395978+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3891030 parent=3595688 adj -> 0
+2026-11-01T13:59:03.396063+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3895635 parent=3595688 adj -> 0
+2026-11-01T13:59:03.396149+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3895791 parent=3595688 adj -> 0
+2026-11-01T13:59:03.396241+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3891334 parent=3595688 adj -> 0
+2026-11-01T13:59:03.396283+00:00 nixos dracon-system[2798562]: 🧹 oom-descendant-restore pid=3906132 parent=3595688 dropped — the process is defunct, so there is nothing to restore
+2026-11-01T13:59:03.396579+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3892113 parent=3595688 adj -> 0
+2026-11-01T13:59:03.396579+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3895060 parent=3595688 adj -> 0
+2026-11-01T13:59:03.396579+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3891070 parent=3595688 adj -> 0
+2026-11-01T13:59:03.396644+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3892006 parent=3595688 adj -> 0
+2026-11-01T13:59:03.396729+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3905404 parent=3595688 adj -> 0
+2026-11-01T13:59:03.396817+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3891997 parent=3595688 adj -> 0
+2026-11-01T13:59:03.396913+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3892581 parent=3595688 adj -> 0
+2026-11-01T13:59:03.397001+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3895629 parent=3595688 adj -> 0
+2026-11-01T13:59:03.397089+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3892029 parent=3595688 adj -> 0
+2026-11-01T13:59:03.397175+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3895785 parent=3595688 adj -> 0
+2026-11-01T13:59:03.397267+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3895617 parent=3595688 adj -> 0
+2026-11-01T13:59:03.397306+00:00 nixos dracon-system[2798562]: 🧹 oom-descendant-restore pid=3906117 parent=3595688 dropped — the process is defunct, so there is nothing to restore
+2026-11-01T13:59:03.397390+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3895630 parent=3595688 adj -> 0
+2026-11-01T13:59:03.397479+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3893944 parent=3595688 adj -> 0
+2026-11-01T13:59:03.397562+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3895008 parent=3595688 adj -> 0
+2026-11-01T13:59:45.111255+00:00 nixos dracon-system[2798562]: [2026-11-01T13:59:45.111121241+00:00] Warn: process/zombies - 21 zombies: xinput=569915,codex=406336,sleep=268285,sleep=268254,sleep=268254
+2026-11-01T13:59:45.188290+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3902170 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:59:45.191911+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3917658 cmd=git — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:59:45.192016+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3901072 cmd=chromium — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T13:59:45.285073+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3902170 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T13:59:45.286647+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3902170 cmd=MainThread: scope contains exempt process pi
+2026-11-01T13:59:45.431455+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3917658 cmd=git: process is outside the supported user workload slice
+2026-11-01T13:59:45.431713+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3901072 cmd=chromium: scope contains exempt process pi
+2026-11-01T13:59:45.540850+00:00 nixos dracon-system[2798562]: 🧹 oom-descendant-restore pid=3921676 parent=1057871 dropped — the process is defunct, so there is nothing to restore
+2026-11-01T13:59:45.540976+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3917658 parent=3595688 adj -> 0
+2026-11-01T13:59:45.541010+00:00 nixos dracon-system[2798562]: 🧹 oom-descendant-restore pid=3921678 parent=1057871 dropped — the process is defunct, so there is nothing to restore
+2026-11-01T13:59:45.541262+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3921677 parent=1057871 adj -> 200
+2026-11-01T14:00:32.932862+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3467005 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:00:32.951607+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3937012 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T14:00:32.968881+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3467005 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T14:00:32.969774+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3467005 cmd=MainThread: scope contains exempt process pi
+2026-11-01T14:00:33.140289+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3935231 parent=3595688 adj -> 0
+2026-11-01T14:00:33.140368+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3936506 parent=3595688 adj -> 0
+2026-11-01T14:00:33.140439+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3942715 parent=1057871 adj -> 200
+2026-11-01T14:00:33.140472+00:00 nixos dracon-system[2798562]: 🧹 oom-descendant-restore pid=3942875 parent=3595688 dropped — the process is defunct, so there is nothing to restore
+2026-11-01T14:00:33.140549+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3942879 parent=3595688 adj -> 0
+2026-11-01T14:00:33.140630+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3942848 parent=1057871 adj -> 200
+2026-11-01T14:00:33.140709+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3935239 parent=3595688 adj -> 0
+2026-11-01T14:00:33.140780+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3941691 parent=3595688 adj -> 0
+2026-11-01T14:00:33.140809+00:00 nixos dracon-system[2798562]: 🧹 oom-descendant-restore pid=3940871 parent=3595688 dropped — the process is defunct, so there is nothing to restore
+2026-11-01T14:00:33.142690+00:00 nixos dracon-system[2798562]: 🧹 oom-descendant-restore pid=3942824 parent=3595688 dropped — the process is defunct, so there is nothing to restore
+2026-11-01T14:00:33.142690+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3943156 parent=1057871 adj -> 200
+2026-11-01T14:00:33.142690+00:00 nixos dracon-system[2798562]: 🧹 oom-descendant-restore pid=3942720 parent=1057871 dropped — the process is defunct, so there is nothing to restore
+2026-11-01T14:00:33.142690+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3942731 parent=1057871 adj -> 200
+2026-11-01T14:00:33.142690+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3942984 parent=1057871 adj -> 200
+2026-11-01T14:00:33.142690+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3943157 parent=1057871 adj -> 200
+2026-11-01T14:00:33.142690+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3942847 parent=1057871 adj -> 200
+2026-11-01T14:00:33.142690+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3943159 parent=1057871 adj -> 200
+2026-11-01T14:00:33.142690+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3936527 parent=3595688 adj -> 0
+2026-11-01T14:01:03.276383+00:00 nixos dracon-system[2798562]: [2026-11-01T14:01:03.275508044+00:00] Warn: disk/rapid-fill - Disk growing at 27.5 GiB/h (87% used); 114.0 GiB available, estimated 4.1 hours until full if growth continues — inspect recent writes with dracon-system storage
+2026-11-01T14:01:03.745138+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3943185 cmd=chromium — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:01:03.745243+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3887705 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:01:03.745297+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3941717 cmd=chromium — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:01:03.749518+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3887705 cmd=MainThread adj 0 -> 250 (critical pressure)
+2026-11-01T14:01:03.753079+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3941717 cmd=chromium adj 200 -> 250 (critical pressure)
+2026-11-01T14:01:03.754332+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3943185 cmd=chromium: scope contains exempt process pi
+2026-11-01T14:01:03.756819+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3887705 cmd=MainThread: process is outside the supported user workload slice
+2026-11-01T14:01:03.760640+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3941717 cmd=chromium: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+2026-11-01T14:01:03.927168+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 32 processes 3842MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:01:03.930969+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3961275 parent=3595688 adj -> 0
+2026-11-01T14:01:03.931057+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3961277 parent=3595688 adj -> 0
+2026-11-01T14:01:03.931115+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3959609 parent=3595688 adj -> 0
+2026-11-01T14:01:03.931195+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3960876 parent=3595688 adj -> 0
+2026-11-01T14:01:03.931264+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3959541 parent=3595688 adj -> 0
+2026-11-01T14:01:03.931348+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3960843 parent=3595688 adj -> 0
+2026-11-01T14:01:34.537263+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 33 processes 3969MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:01:34.564549+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3966538 parent=3595688 adj -> 0
+2026-11-01T14:01:34.564549+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3966589 parent=3595688 adj -> 0
+2026-11-01T14:02:04.940325+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3893348 cmd=git — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:02:04.943463+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3893348 cmd=git adj 0 -> 250 (critical pressure)
+2026-11-01T14:02:04.947371+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3893348 cmd=git: process is outside the supported user workload slice
+2026-11-01T14:02:05.128788+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 35 processes 4151MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:02:05.133538+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3987464 parent=3595688 adj -> 0
+2026-11-01T14:02:05.133673+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3987651 parent=3595688 adj -> 0
+2026-11-01T14:02:05.133727+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3987691 parent=3595688 adj -> 0
+2026-11-01T14:02:05.133816+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3987696 parent=3595688 adj -> 0
+2026-11-01T14:02:35.535279+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3995926 cmd=chromium — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:02:35.535654+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3997448 cmd=chromium — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:02:35.546815+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3995926 cmd=chromium adj 200 -> 250 (critical pressure)
+2026-11-01T14:02:35.547130+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3995926 cmd=chromium: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+2026-11-01T14:02:35.547443+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3997448 cmd=chromium: scope contains exempt process pi
+2026-11-01T14:02:35.642864+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 35 processes 4202MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:02:35.655179+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4008918 parent=3595688 adj -> 0
+2026-11-01T14:02:35.655280+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4011066 parent=3595688 adj -> 0
+2026-11-01T14:02:35.655358+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4011046 parent=3595688 adj -> 0
+2026-11-01T14:02:35.655462+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4011044 parent=3595688 adj -> 0
+2026-11-01T14:02:35.655551+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4008920 parent=3595688 adj -> 0
+2026-11-01T14:03:05.786579+00:00 nixos dracon-system[2798562]: [2026-11-01T14:03:05.786557784+00:00] Warn: disk/rapid-fill - Disk growing at 107.6 GiB/h (87% used); 112.3 GiB available, estimated 1.0 hours until full if growth continues — inspect recent writes with dracon-system storage
+2026-11-01T14:03:06.228316+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4029756 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:03:06.243331+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3996650 cmd=chromium — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:03:06.255861+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4029756 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T14:03:06.266035+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=3996650 cmd=chromium adj 200 -> 250 (critical pressure)
+2026-11-01T14:03:06.266251+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4029756 cmd=MainThread: scope contains exempt process pi
+2026-11-01T14:03:06.267130+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3996650 cmd=chromium: scope contains exempt process pi
+2026-11-01T14:03:06.427977+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 32 processes 3817MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:03:06.437356+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4031458 parent=3595688 adj -> 0
+2026-11-01T14:03:06.437356+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4027255 parent=3595688 adj -> 0
+2026-11-01T14:03:06.437474+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4031753 parent=3595688 adj -> 0
+2026-11-01T14:03:06.437545+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4031750 parent=3595688 adj -> 0
+2026-11-01T14:03:06.437640+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4031459 parent=3595688 adj -> 0
+2026-11-01T14:03:06.437716+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4025349 parent=3595688 adj -> 0
+2026-11-01T14:03:06.437790+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4029964 parent=3595688 adj -> 0
+2026-11-01T14:03:06.437883+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4014725 parent=3595688 adj -> 0
+2026-11-01T14:03:06.437971+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4016163 parent=3595688 adj -> 0
+2026-11-01T14:03:06.438042+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4025214 parent=3595688 adj -> 0
+2026-11-01T14:03:06.438483+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4031413 parent=3595688 adj -> 0
+2026-11-01T14:03:06.438483+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4027299 parent=3595688 adj -> 0
+2026-11-01T14:03:06.438483+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4031821 parent=3595688 adj -> 0
+2026-11-01T14:03:06.438483+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4022989 parent=3595688 adj -> 0
+2026-11-01T14:03:06.438483+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4030801 parent=3595688 adj -> 0
+2026-11-01T14:03:06.438483+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4014664 parent=3595688 adj -> 0
+2026-11-01T14:03:06.439197+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4016031 parent=3595688 adj -> 0
+2026-11-01T14:03:06.439197+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4031773 parent=3595688 adj -> 0
+2026-11-01T14:03:06.439197+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4031437 parent=3595688 adj -> 0
+2026-11-01T14:03:36.963992+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4046569 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:03:36.964570+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4046400 cmd=rustc — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:03:36.978545+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4031933 cmd=bun — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:03:37.337917+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4046569 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T14:03:37.571207+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4046400 cmd=rustc adj 200 -> 250 (critical pressure)
+2026-11-01T14:03:37.572911+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4046569 cmd=MainThread: scope contains exempt process pi
+2026-11-01T14:03:37.573390+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4046400 cmd=rustc: scope contains exempt process pi
+2026-11-01T14:03:37.573825+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4031933 cmd=bun: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+2026-11-01T14:03:37.645817+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 31 processes 3703MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:03:37.976024+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4037716 parent=3595688 adj -> 0
+2026-11-01T14:03:37.976478+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4045545 parent=3595688 adj -> 0
+2026-11-01T14:03:37.976478+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4045948 parent=3595688 adj -> 0
+2026-11-01T14:03:37.976478+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4044535 parent=3595688 adj -> 0
+2026-11-01T14:03:37.976478+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4037856 parent=3595688 adj -> 0
+2026-11-01T14:03:37.976478+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4047033 parent=3595688 adj -> 0
+2026-11-01T14:03:37.976478+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4044519 parent=3595688 adj -> 0
+2026-11-01T14:03:37.976603+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4045636 parent=3595688 adj -> 0
+2026-11-01T14:03:37.976680+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4037713 parent=3595688 adj -> 0
+2026-11-01T14:03:37.976756+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4044520 parent=3595688 adj -> 0
+2026-11-01T14:03:37.976828+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4047492 parent=3595688 adj -> 0
+2026-11-01T14:03:37.976990+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4044508 parent=3595688 adj -> 0
+2026-11-01T14:03:37.977076+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4046985 parent=3595688 adj -> 0
+2026-11-01T14:03:37.977160+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4046025 parent=3595688 adj -> 0
+2026-11-01T14:04:08.664747+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4059773 cmd=rustc — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:04:08.665261+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4067533 cmd=rust-lld — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:04:08.665261+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4064391 cmd=chromium — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:04:08.665261+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4064273 cmd=chromium — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:04:08.965032+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4059773 cmd=rustc adj 200 -> 250 (critical pressure)
+2026-11-01T14:04:09.256122+00:00 nixos dracon-system[2798562]: OOM bias not applied pid=4067533: process changed before OOM bias
+2026-11-01T14:04:09.458272+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4064273 cmd=chromium adj 200 -> 250 (critical pressure)
+2026-11-01T14:04:09.458572+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4064391 cmd=chromium: scope contains exempt process pi
+2026-11-01T14:04:09.458639+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4064273 cmd=chromium: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+2026-11-01T14:04:09.537809+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 33 processes 3886MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:04:09.549633+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4067800 parent=3595688 adj -> 0
+2026-11-01T14:04:09.549732+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4065709 parent=3595688 adj -> 0
+2026-11-01T14:04:09.549842+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4065759 parent=3595688 adj -> 0
+2026-11-01T14:04:09.549973+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4067050 parent=3595688 adj -> 0
+2026-11-01T14:04:09.550144+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4065258 parent=3595688 adj -> 0
+2026-11-01T14:04:09.550235+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4065235 parent=3595688 adj -> 0
+2026-11-01T14:04:09.550322+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4067020 parent=3595688 adj -> 0
+2026-11-01T14:04:09.550409+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4067021 parent=3595688 adj -> 0
+2026-11-01T14:04:40.028292+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4083128 cmd=bun — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:04:40.028895+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4083128 cmd=bun: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+2026-11-01T14:04:40.143416+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 32 processes 3789MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:04:40.197305+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4088090 parent=3595688 adj -> 0
+2026-11-01T14:04:40.197413+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4088182 parent=3595688 adj -> 0
+2026-11-01T14:04:40.197520+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4082649 parent=1057871 adj -> 200
+2026-11-01T14:04:40.197629+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4088174 parent=3595688 adj -> 0
+2026-11-01T14:04:40.197731+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4082640 parent=1057871 adj -> 200
+2026-11-01T14:04:40.197826+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4082805 parent=1057871 adj -> 200
+2026-11-01T14:04:40.197969+00:00 nixos dracon-system[2798562]: 🧹 oom-descendant-restore pid=4082642 parent=1057871 dropped — the process is defunct, so there is nothing to restore
+2026-11-01T14:04:40.198012+00:00 nixos dracon-system[2798562]: 🧹 oom-descendant-restore pid=4082641 parent=1057871 dropped — the process is defunct, so there is nothing to restore
+2026-11-01T14:04:40.198112+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4088166 parent=3595688 adj -> 0
+2026-11-01T14:05:10.379279+00:00 nixos dracon-system[2798562]: [2026-11-01T14:05:10.379259005+00:00] Warn: disk/rapid-fill - Disk growing at 58.2 GiB/h (88% used); 111.2 GiB available, estimated 1.9 hours until full if growth continues — inspect recent writes with dracon-system storage
+2026-11-01T14:05:10.745814+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4105927 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:05:10.745907+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4064464 cmd=chromium — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:05:10.745936+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4078522 cmd=bun — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:05:10.758894+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4105927 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T14:05:10.761834+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4078522 cmd=bun adj 200 -> 250 (critical pressure)
+2026-11-01T14:05:10.762038+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4105927 cmd=MainThread: scope contains exempt process pi
+2026-11-01T14:05:10.762418+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4064464 cmd=chromium: scope contains exempt process pi
+2026-11-01T14:05:10.762631+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4078522 cmd=bun: scope contains exempt process pi
+2026-11-01T14:05:10.941148+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 33 processes 3921MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:05:11.046084+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4106989 parent=3595688 adj -> 0
+2026-11-01T14:05:11.046170+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4107013 parent=3595688 adj -> 0
+2026-11-01T14:05:11.046366+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4104989 parent=3595688 adj -> 0
+2026-11-01T14:05:11.046366+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4107563 parent=3595688 adj -> 0
+2026-11-01T14:05:11.046413+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4107574 parent=3595688 adj -> 0
+2026-11-01T14:05:11.046505+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4104988 parent=3595688 adj -> 0
+2026-11-01T14:05:11.046595+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4105003 parent=3595688 adj -> 0
+2026-11-01T14:05:41.444921+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4120951 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:05:41.445253+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4116270 cmd=bun — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:05:41.455107+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4120951 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T14:05:41.459000+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4120951 cmd=MainThread: scope contains exempt process pi
+2026-11-01T14:05:41.459000+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4116270 cmd=bun: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+2026-11-01T14:05:41.641685+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 30 processes 3641MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:05:41.666366+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4124358 parent=3595688 adj -> 0
+2026-11-01T14:05:41.666483+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4126731 parent=3595688 adj -> 0
+2026-11-01T14:05:41.666560+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4127106 parent=3595688 adj -> 0
+2026-11-01T14:05:41.666669+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4124496 parent=3595688 adj -> 0
+2026-11-01T14:05:41.666758+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4126677 parent=3595688 adj -> 0
+2026-11-01T14:05:41.667085+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4125056 parent=3595688 adj -> 0
+2026-11-01T14:05:41.667085+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4125137 parent=3595688 adj -> 0
+2026-11-01T14:05:41.667085+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4127094 parent=3595688 adj -> 0
+2026-11-01T14:06:12.343934+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4129412 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:06:12.343934+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4128343 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:06:12.344446+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4138128 cmd=rustc — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:06:12.344446+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4136702 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:06:12.344446+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4138525 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:06:12.354701+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4129412 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T14:06:12.366004+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4128343 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T14:06:12.376807+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4138128 cmd=rustc adj 200 -> 250 (critical pressure)
+2026-11-01T14:06:12.392143+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4136702 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T14:06:12.407946+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4138525 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T14:06:12.408447+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4129412 cmd=MainThread: scope contains exempt process pi
+2026-11-01T14:06:12.408774+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4128343 cmd=MainThread: scope contains exempt process pi
+2026-11-01T14:06:12.409075+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4138128 cmd=rustc: scope contains exempt process pi
+2026-11-01T14:06:12.409415+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4136702 cmd=MainThread: scope contains exempt process pi
+2026-11-01T14:06:12.409855+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4138525 cmd=MainThread: scope contains exempt process pi
+2026-11-01T14:06:12.546679+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 32 processes 3789MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:06:12.638154+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4142916 parent=3595688 adj -> 0
+2026-11-01T14:06:12.638466+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4142946 parent=3595688 adj -> 0
+2026-11-01T14:06:12.638675+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4142882 parent=3595688 adj -> 0
+2026-11-01T14:06:12.638882+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4143963 parent=3595688 adj -> 0
+2026-11-01T14:06:12.639086+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4135669 parent=3595688 adj -> 0
+2026-11-01T14:06:12.639378+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4143091 parent=3595688 adj -> 0
+2026-11-01T14:06:12.639592+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4135639 parent=3595688 adj -> 0
+2026-11-01T14:06:12.639798+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4140329 parent=3595688 adj -> 0
+2026-11-01T14:06:12.639998+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4142555 parent=3595688 adj -> 0
+2026-11-01T14:06:12.640194+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4142923 parent=3595688 adj -> 0
+2026-11-01T14:06:12.640416+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4135600 parent=3595688 adj -> 0
+2026-11-01T14:06:12.640694+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4141976 parent=3595688 adj -> 0
+2026-11-01T14:06:12.640890+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4143926 parent=3595688 adj -> 0
+2026-11-01T14:06:12.641183+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4141910 parent=3595688 adj -> 0
+2026-11-01T14:06:12.641407+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4142729 parent=3595688 adj -> 0
+2026-11-01T14:06:43.240801+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4125137 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:06:43.241825+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4135669 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:06:43.241825+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4154892 cmd=bun — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:06:43.263930+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4125137 cmd=MainThread adj 0 -> 250 (critical pressure)
+2026-11-01T14:06:43.290808+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4135669 cmd=MainThread adj 0 -> 250 (critical pressure)
+2026-11-01T14:06:43.291190+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4125137 cmd=MainThread: process is outside the supported user workload slice
+2026-11-01T14:06:43.291253+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4135669 cmd=MainThread: process is outside the supported user workload slice
+2026-11-01T14:06:43.291315+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4154892 cmd=bun: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+2026-11-01T14:06:43.437534+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 34 processes 4102MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:06:43.454137+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4160538 parent=3595688 adj -> 0
+2026-11-01T14:06:43.454401+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4160527 parent=3595688 adj -> 0
+2026-11-01T14:06:43.454708+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4161767 parent=4128343 adj -> 200
+2026-11-01T14:06:43.454887+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4161776 parent=4128343 adj -> 200
+2026-11-01T14:06:43.455054+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4157717 parent=3595688 adj -> 0
+2026-11-01T14:06:43.455219+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4160551 parent=3595688 adj -> 0
+2026-11-01T14:06:43.455391+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4161603 parent=4128343 adj -> 200
+2026-11-01T14:06:43.455564+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4161123 parent=4128343 adj -> 200
+2026-11-01T14:06:43.455719+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4156757 parent=3595688 adj -> 0
+2026-11-01T14:06:43.456294+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4161554 parent=4128343 adj -> 200
+2026-11-01T14:06:43.456294+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4158798 parent=3595688 adj -> 0
+2026-11-01T14:06:43.456294+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4161362 parent=4128343 adj -> 200
+2026-11-01T14:06:43.456294+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4157632 parent=3595688 adj -> 0
+2026-11-01T14:06:43.456462+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4160553 parent=3595688 adj -> 0
+2026-11-01T14:06:43.456634+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4153633 parent=3595688 adj -> 0
+2026-11-01T14:06:43.456884+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4156614 parent=3595688 adj -> 0
+2026-11-01T14:06:43.457057+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4154130 parent=3595688 adj -> 0
+2026-11-01T14:06:43.457287+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4154152 parent=3595688 adj -> 0
+2026-11-01T14:06:43.457443+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4153663 parent=3595688 adj -> 0
+2026-11-01T14:06:43.457597+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4152743 parent=3595688 adj -> 0
+2026-11-01T14:06:43.457748+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4160458 parent=3595688 adj -> 0
+2026-11-01T14:07:13.734305+00:00 nixos dracon-system[2798562]: [2026-11-01T14:07:13.734171407+00:00] Warn: disk/rapid-fill - Disk growing at 29.8 GiB/h (88% used); 111.7 GiB available, estimated 3.7 hours until full if growth continues — inspect recent writes with dracon-system storage
+2026-11-01T14:07:14.432272+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 34 processes 4070MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:07:14.450746+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4167812 parent=3595688 adj -> 0
+2026-11-01T14:07:14.450978+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4182230 parent=3595688 adj -> 0
+2026-11-01T14:07:14.451146+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4182010 parent=3595688 adj -> 0
+2026-11-01T14:07:14.451246+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4178903 parent=3595688 adj -> 0
+2026-11-01T14:07:14.451348+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4167772 parent=3595688 adj -> 0
+2026-11-01T14:07:14.451458+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4183524 parent=3595688 adj -> 0
+2026-11-01T14:07:14.451555+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4166809 parent=3595688 adj -> 0
+2026-11-01T14:07:14.451679+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4175901 parent=3595688 adj -> 0
+2026-11-01T14:07:14.453325+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4175413 parent=3595688 adj -> 0
+2026-11-01T14:07:14.453325+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4182295 parent=3595688 adj -> 0
+2026-11-01T14:07:14.453325+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4175375 parent=3595688 adj -> 0
+2026-11-01T14:07:14.453325+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4166730 parent=3595688 adj -> 0
+2026-11-01T14:07:14.453325+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4182074 parent=3595688 adj -> 0
+2026-11-01T14:07:44.544407+00:00 nixos dracon-system[2798562]: [2026-11-01T14:07:44.544389567+00:00] Warn: disk/trend-warning - Disk predicted to fill in 10.1 hours at 11.0 GiB/h (88% used, 111.7 GiB available) — the rate is below the rapid-fill threshold, so the disk will be full before it looks dangerous
+2026-11-01T14:07:44.937643+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=4186601 cmd=bun — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:07:44.937721+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=3169 cmd=git — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:07:44.948554+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=4186601 cmd=bun adj 200 -> 250 (critical pressure)
+2026-11-01T14:07:44.949484+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=4186601 cmd=bun: scope contains exempt process pi
+2026-11-01T14:07:44.949568+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=3169 cmd=git: process is outside the supported user workload slice
+2026-11-01T14:07:45.127977+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 33 processes 3974MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:07:45.137991+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4187984 parent=3595688 adj -> 0
+2026-11-01T14:07:45.138191+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=1613 parent=3595688 adj -> 0
+2026-11-01T14:07:45.138299+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3046 parent=3595688 adj -> 0
+2026-11-01T14:07:45.138398+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3041 parent=3595688 adj -> 0
+2026-11-01T14:07:45.138500+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3132 parent=3595688 adj -> 0
+2026-11-01T14:07:45.138878+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3971 parent=3595688 adj -> 0
+2026-11-01T14:07:45.138878+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4620 parent=3595688 adj -> 0
+2026-11-01T14:07:45.138878+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3081 parent=3595688 adj -> 0
+2026-11-01T14:07:45.138878+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4187986 parent=3595688 adj -> 0
+2026-11-01T14:07:45.138970+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4521 parent=3595688 adj -> 0
+2026-11-01T14:07:45.139054+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=4188000 parent=3595688 adj -> 0
+2026-11-01T14:07:45.143091+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3169 parent=3595688 adj -> 0
+2026-11-01T14:07:45.143091+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=3917 parent=3595688 adj -> 0
+2026-11-01T14:08:15.541520+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=13023 cmd=bun — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:08:15.542131+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=13023 cmd=bun: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+2026-11-01T14:08:15.728776+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 33 processes 3944MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:08:15.738216+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=26099 parent=3595688 adj -> 0
+2026-11-01T14:08:15.738303+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=26146 parent=3595688 adj -> 0
+2026-11-01T14:08:15.738366+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=23927 parent=4186601 adj -> 200
+2026-11-01T14:08:15.738444+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=26150 parent=3595688 adj -> 0
+2026-11-01T14:08:15.738513+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=26930 parent=3595688 adj -> 0
+2026-11-01T14:08:15.738588+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=26103 parent=3595688 adj -> 0
+2026-11-01T14:08:15.738657+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=26939 parent=3595688 adj -> 0
+2026-11-01T14:08:46.149031+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=40472 cmd=rustc — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:08:46.149488+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=41602 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:08:46.149488+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=44213 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:08:46.163085+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=40472 cmd=rustc adj 200 -> 250 (critical pressure)
+2026-11-01T14:08:46.172562+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=41602 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T14:08:46.172995+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=40472 cmd=rustc: scope contains exempt process pi
+2026-11-01T14:08:46.173200+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=41602 cmd=MainThread: scope contains exempt process pi
+2026-11-01T14:08:46.173491+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=44213 cmd=MainThread: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+2026-11-01T14:08:46.358275+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=44357 parent=4186601 adj -> 200
+2026-11-01T14:08:46.358385+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=39637 parent=3595688 adj -> 0
+2026-11-01T14:08:46.360180+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=39640 parent=3595688 adj -> 0
+2026-11-01T14:08:46.360180+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=45224 parent=3595688 adj -> 0
+2026-11-01T14:08:46.360180+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=39718 parent=3595688 adj -> 0
+2026-11-01T14:08:46.360180+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=45190 parent=3595688 adj -> 0
+2026-11-01T14:09:16.837193+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=55421 cmd=rustc — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:09:16.837608+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=47187 cmd=bun — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:09:16.837608+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=58417 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:09:16.851382+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=55421 cmd=rustc adj 200 -> 250 (critical pressure)
+2026-11-01T14:09:16.851834+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=55421 cmd=rustc: scope contains exempt process pi
+2026-11-01T14:09:16.852092+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=47187 cmd=bun: CPU cap requires an isolated per-job workload scope; shared/unknown units are untouched
+2026-11-01T14:09:16.852164+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=58417 cmd=MainThread: process is outside the supported user workload slice
+2026-11-01T14:09:17.033106+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 32 processes 3763MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:09:17.219638+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=58365 parent=3595688 adj -> 0
+2026-11-01T14:09:17.219741+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=57686 parent=3595688 adj -> 0
+2026-11-01T14:09:17.219832+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=57670 parent=3595688 adj -> 0
+2026-11-01T14:09:17.219934+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=59042 parent=3595688 adj -> 0
+2026-11-01T14:09:17.220028+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=58417 parent=3595688 adj -> 0
+2026-11-01T14:09:17.220123+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=64062 parent=3595688 adj -> 0
+2026-11-01T14:09:48.139485+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=77173 cmd=rustc — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:09:48.139797+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=67431 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:09:48.139797+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=67117 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:09:48.139797+00:00 nixos dracon-system[2798562]: ⚠️ renice mitigation skipped for pid=72111 cmd=MainThread — the guard cannot restore its priority in that process's user namespace, so it will not lower it
+2026-11-01T14:09:48.154277+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=77173 cmd=rustc adj 200 -> 250 (critical pressure)
+2026-11-01T14:09:48.165157+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=67431 cmd=MainThread adj 200 -> 250 (critical pressure)
+2026-11-01T14:09:48.175930+00:00 nixos dracon-system[2798562]: 🛡️ oom-bias pid=72111 cmd=MainThread adj 0 -> 250 (critical pressure)
+2026-11-01T14:09:48.176131+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=77173 cmd=rustc: scope contains exempt process pi
+2026-11-01T14:09:48.176557+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=67431 cmd=MainThread: scope contains exempt process pi
+2026-11-01T14:09:48.176634+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=67117 cmd=MainThread: process is outside the supported user workload slice
+2026-11-01T14:09:48.176705+00:00 nixos dracon-system[2798562]: ⚠️ cpu-cap failed for pid=72111 cmd=MainThread: process is outside the supported user workload slice
+2026-11-01T14:09:48.329007+00:00 nixos dracon-system[2798562]: 🛡️ heavy process tree vetoed: chrome pid=4119877 32 processes 3837MiB — no --user-data-dir: a normal browser session
+2026-11-01T14:09:48.343162+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=76435 parent=3595688 adj -> 0
+2026-11-01T14:09:48.343268+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=74855 parent=3595688 adj -> 0
+2026-11-01T14:09:48.343343+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=75856 parent=3595688 adj -> 0
+2026-11-01T14:09:48.343397+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=76378 parent=3595688 adj -> 0
+2026-11-01T14:09:48.343469+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=74776 parent=3595688 adj -> 0
+2026-11-01T14:09:48.343546+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=79522 parent=4186601 adj -> 200
+2026-11-01T14:09:48.343617+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=67098 parent=3595688 adj -> 0
+2026-11-01T14:09:48.343687+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=67100 parent=3595688 adj -> 0
+2026-11-01T14:09:48.343759+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=75808 parent=3595688 adj -> 0
+2026-11-01T14:09:48.343836+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=67117 parent=3595688 adj -> 0
+2026-11-01T14:09:48.343939+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=75671 parent=3595688 adj -> 0
+2026-11-01T14:09:48.344028+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=76702 parent=3595688 adj -> 0
+2026-11-01T14:09:48.344113+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=78196 parent=3595688 adj -> 0
+2026-11-01T14:09:48.344201+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=75805 parent=3595688 adj -> 0
+2026-11-01T14:09:48.344291+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=76752 parent=3595688 adj -> 0
+2026-11-01T14:09:48.344369+00:00 nixos dracon-system[2798562]: 🛡️ oom-descendant-restore pid=75657 parent=3595688 adj -> 0
