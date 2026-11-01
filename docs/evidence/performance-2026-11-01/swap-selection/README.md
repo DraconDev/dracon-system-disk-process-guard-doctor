@@ -59,6 +59,12 @@ This is source/test evidence, not historical loaded-image identity.
 | Tests reject meaningful regressions rather than only matching source text | [Qualification script](qualify.py), [baseline](baseline.log), [early-shortlist mutant](early-rss-shortlist.log), [missing-incarnation-check mutant](missing-incarnation-check.log). Both mutants compile successfully and fail the intended behavioral assertions; live source is never mutated. |
 | Required package gates pass | [Package tests](package-tests.log): 720 unit tests, 4 event CLI tests and 12 service tests pass, zero failures. [Strict Clippy](package-clippy.log) finishes successfully. These totals describe this run, not permanent requirements. |
 
+Exact command exit statuses and tested source hashes are retained in
+[gates.json](gates.json). An additional [all-targets strict Clippy run](all-targets-clippy.log)
+also passed. [Final verification](final-verification.txt) checks source/hash
+agreement, expected mutant outcomes, test results, citations and source diff
+whitespace.
+
 ## Reproduction
 
 Run from the nested `dracon-system` checkout:
