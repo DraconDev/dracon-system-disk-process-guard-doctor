@@ -6,10 +6,10 @@ Disksize: 60 GB
 Algorithm: lzo-rle lzo lz4 lz4hc [zstd] deflate 842
 
 Memory Usage:
-  Original data: 24.7 GB
-  Compressed:    7.5 GB
-  RAM used:      7.7 GB
-  Compression ratio: 3.3x (compressed data is 30.5% of original)
+  Original data: 25.8 GB
+  Compressed:    7.9 GB
+  RAM used:      8.2 GB
+  Compression ratio: 3.3x (compressed data is 30.7% of original)
 
 Configuration options:
   --gen-config           Generate NixOS configuration snippet

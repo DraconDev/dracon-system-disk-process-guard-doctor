@@ -1,0 +1,19 @@
+{
+  "capture": {
+    "command": "timeout 45 python3 docs/evidence/performance-2026-11-01/zram/capture.py",
+    "exit": 0,
+    "started_at": "2026-11-01T19:03:32.784149+00:00",
+    "finished_at": "2026-11-01T19:03:42.822519+00:00"
+  },
+  "status": {
+    "command": [
+      "../target/debug/dracon-system",
+      "zram",
+      "--status"
+    ],
+    "exit": 0,
+    "started_at": "2026-11-01T19:09:13.456812+00:00",
+    "finished_at": "2026-11-01T19:09:13.704971+00:00"
+  },
+  "production_zram_source_sha256": "9440447719c5c185e9cd0c7d3cde7b39c4e4458f82eb7c2b32bc83d405353191"
+}

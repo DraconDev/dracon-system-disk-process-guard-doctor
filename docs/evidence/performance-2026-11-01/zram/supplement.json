@@ -1,0 +1,22 @@
+{
+  "mountinfo": {
+    "path": "/proc/self/mountinfo",
+    "started_at": "2026-11-01T19:09:13.920739+00:00",
+    "monotonic_ns": 3267821080911412,
+    "text": "24 32 0:7 / /dev rw,nosuid shared:9 - devtmpfs devtmpfs rw,size=1595732k,nr_inodes=3970538,mode=755\n25 24 0:22 / /dev/pts rw,nosuid,noexec,relatime shared:10 - devpts devpts rw,gid=3,mode=620,ptmxmode=666\n26 24 0:23 / /dev/shm rw,nosuid,nodev shared:11 - tmpfs tmpfs rw,size=15957316k\n27 32 0:24 / /proc rw,nosuid,nodev,noexec,relatime shared:2 - proc proc rw\n28 32 0:25 / /run rw,nosuid,nodev shared:12 - tmpfs tmpfs rw,size=7978660k,mode=755\n29 28 0:26 / /run/keys rw,nosuid,nodev,relatime shared:13 - ramfs ramfs rw,mode=750\n30 32 0:27 / /sys rw,nosuid,nodev,noexec,relatime shared:3 - sysfs sysfs rw\n32 2 259:2 / / rw,relatime shared:1 - ext4 /dev/nvme0n1p2 rw\n33 32 259:2 /nix/store /nix/store ro,nosuid,nodev,relatime shared:14 - ext4 /dev/nvme0n1p2 rw\n34 30 0:8 / /sys/kernel/security rw,nosuid,nodev,noexec,relatime shared:4 - securityfs securityfs rw\n35 30 0:29 / /sys/fs/cgroup rw,nosuid,nodev,noexec,relatime shared:5 - cgroup2 cgroup2 rw,nsdelegate,memory_recursiveprot\n36 30 0:30 / /sys/fs/pstore rw,nosuid,nodev,noexec,relatime shared:6 - pstore none rw\n37 30 0:31 / /sys/firmware/efi/efivars rw,nosuid,nodev,noexec,relatime shared:7 - efivarfs efivarfs rw\n38 30 0:32 / /sys/fs/bpf rw,nosuid,nodev,noexec,relatime shared:8 - bpf bpf rw,mode=700\n39 27 0:33 / /proc/sys/fs/binfmt_misc rw,relatime shared:15 - autofs systemd-1 rw,fd=70,pgrp=1,timeout=0,minproto=5,maxproto=5,direct,pipe_ino=661\n40 24 0:20 / /dev/mqueue rw,nosuid,nodev,noexec,relatime shared:16 - mqueue mqueue rw\n41 30 0:13 / /sys/kernel/tracing rw,nosuid,nodev,noexec,relatime shared:17 - tracefs tracefs rw\n42 30 0:9 / /sys/kernel/debug rw,nosuid,nodev,noexec,relatime shared:18 - debugfs debugfs rw\n43 24 0:34 / /dev/hugepages rw,nosuid,nodev,relatime shared:19 - hugetlbfs hugetlbfs rw,pagesize=2M\n66 28 0:35 / /run/credentials/systemd-journald.service ro,nosuid,nodev,noexec,relatime,nosymfollow shared:20 - tmpfs tmpfs rw,size=1024k,nr_inodes=1024,mode=700,noswap\n44 30 0:36 / /sys/kernel/config rw,nosuid,nodev,noexec,relatime shared:21 - configfs configfs rw\n45 30 0:38 / /sys/fs/fuse/connections rw,nosuid,nodev,noexec,relatime shared:23 - fusectl fusectl rw\n51 28 0:45 / /run/wrappers rw,nodev,relatime shared:101 - tmpfs tmpfs rw,size=15957316k,mode=755\n59 32 259:1 / /boot rw,relatime shared:133 - vfat /dev/nvme0n1p1 rw,fmask=0077,dmask=0077,codepage=437,iocharset=iso8859-1,shortname=mixed,errors=remount-ro\n63 39 0:46 / /proc/sys/fs/binfmt_misc rw,nosuid,nodev,noexec,relatime shared:137 - binfmt_misc binfmt_misc rw\n505 28 0:55 / /run/user/1000 rw,nosuid,nodev,relatime shared:315 - tmpfs tmpfs rw,size=3191460k,nr_inodes=797865,mode=700,uid=1000,gid=100\n195 505 0:70 / /run/user/1000/doc rw,nosuid,nodev,relatime shared:171 - fuse.portal portal rw,user_id=1000,group_id=100\n55 32 8:2 / /mnt/data rw,noatime shared:129 - ext4 /dev/sda2 rw\n259 505 0:75 / /run/user/1000/kio-fuse-IeBOQm rw,nosuid,nodev,relatime shared:362 - fuse.kio-fuse kio-fuse rw,user_id=1000,group_id=100\n",
+    "sha256": "d73b00dc0bd1b8a4fd00074477e272313741c5cd6214b4be09907b8b9bfa87bf",
+    "error": null,
+    "finished_at": "2026-11-01T19:09:13.920952+00:00",
+    "finished_monotonic_ns": 3267821081111119
+  },
+  "kernel_release": {
+    "path": "/proc/sys/kernel/osrelease",
+    "started_at": "2026-11-01T19:09:13.920976+00:00",
+    "monotonic_ns": 3267821081133271,
+    "text": "7.1.2\n",
+    "sha256": "8e22256384ba8efd77f49755cc30210041c19e48c83e2b6fcb3edf0383f19dfa",
+    "error": null,
+    "finished_at": "2026-11-01T19:09:13.921113+00:00",
+    "finished_monotonic_ns": 3267821081270449
+  }
+}
