@@ -140,7 +140,11 @@ fn producer(roots: &Roots, server: &Reply) -> Producer {
         if !roots.proc.join(pid.to_string()).exists() { return Ok(Producer { state: ProducerState::Missing, pid: Some(pid), starttime: None, process_state: None, reason: "registered PID absent; other producers not searched".into() }); }
         let (id, state) = identity(roots, pid)?;
         let cmd = bytes(&roots.proc.join(format!("{pid}/cmdline")), RECORD)?;
-        if !cmd.split(|b| *b == 0).any(|a| a == roots.producer.as_os_str().as_bytes()) { return Err(Error::other("registered PID is not the recognized producer")); }
+        let argv: Vec<_> = cmd.split(|b| *b == 0).filter(|v| !v.is_empty()).collect();
+        let script = roots.producer.as_os_str().as_bytes();
+        let direct = argv.first().is_some_and(|a| *a == script);
+        let shell = argv.first().and_then(|a| a.rsplit(|b| *b == b'/').next()).is_some_and(|a| [b"bash".as_slice(), b"sh".as_slice()].contains(&a));
+        if !direct && !(shell && argv.get(1).is_some_and(|a| *a == script)) { return Err(Error::other("registered PID is not the recognized producer")); }
         let env = bytes(&roots.proc.join(format!("{pid}/environ")), RECORD)?;
         let bindings: Vec<_> = env.split(|b| *b == 0).filter_map(|v| v.strip_prefix(b"TMUX=")).collect();
         let expected = format!("{},{}", server.socket.display(), server.pid);
@@ -175,7 +179,7 @@ fn last_target(dir: &File) -> Result<String, Error> {
     let name = String::from_utf8(buf).map_err(|_| Error::other("non-UTF8 snapshot link"))?;
     at(dir, &name)?; Ok(name)
 }
-fn snapshot(roots: &Roots, server: &Reply, birth: SystemTime, now: SystemTime, max_age: u64) -> Save {
+fn snapshot(roots: &Roots, server: &Reply, birth: Result<SystemTime, Error>, now: SystemTime, max_age: u64) -> Save {
     let started = std::time::Instant::now();
     let mut observed = Save::unknown("save evidence unavailable");
     let result = (|| -> Result<(), Error> {
@@ -186,6 +190,7 @@ fn snapshot(roots: &Roots, server: &Reply, birth: SystemTime, now: SystemTime, m
         let dir_meta = dir.metadata()?;
         observed.directory = Some(path.clone());
         observed.directory_identity = Some((dir_meta.dev(), dir_meta.ino()));
+        let birth = birth?;
         let name = last_target(&dir)?; let file = at(&dir, &name)?; let before = file.metadata()?;
         if before.uid() != roots.uid || before.len() == 0 { return Err(Error::other("snapshot owner/content unavailable")); }
         let mut prefix = Vec::new(); file.take(RECORD as u64).read_to_end(&mut prefix)?;
@@ -224,10 +229,10 @@ async fn inspect(probe: &impl Probe, roots: &Roots, socket: &Path, now: SystemTi
     listening_owner(roots, &before).map_err(|e| e.to_string())?;
     let registered = producer(roots, &before);
     let now = now.checked_add(started.elapsed()).ok_or("observation clock overflow")?;
-    let save = birth(roots, &id, now).map_or_else(|e| Save::unknown(&e.to_string()), |born| snapshot(roots, &before, born, now, max_age));
+    let save = snapshot(roots, &before, birth(roots, &id, now), now, max_age);
     let after = probe.query(socket).await?;
     let final_meta = fs::symlink_metadata(socket).map_err(|_| "socket disappeared")?;
-    if before.pid != after.pid || before.socket != after.socket || before.directory != after.directory || identity(roots, before.pid).map_err(|e| e.to_string())? != (id.clone(), state) || metadata.dev() != final_meta.dev() || metadata.ino() != final_meta.ino() { return Err("server/socket/config incarnation changed during inspection".into()); }
+    if before.pid != after.pid || before.socket != after.socket || before.directory != after.directory || identity(roots, before.pid).map_err(|e| e.to_string())? != (id.clone(), state) || metadata.dev() != final_meta.dev() || metadata.ino() != final_meta.ino() || !final_meta.file_type().is_socket() || final_meta.uid() != roots.uid { return Err("server/socket/config incarnation changed during inspection".into()); }
     listening_owner(roots, &after).map_err(|e| e.to_string())?;
     let final_registered = producer(roots, &after);
     let registered = if registered == final_registered { registered } else { Producer::unknown("producer changed during server query bracket") };
