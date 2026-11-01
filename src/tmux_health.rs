@@ -319,7 +319,7 @@ fn socket_key(input: &[u8]) -> u32 {
     }
     !crc
 }
-fn producer(roots: &Roots, server: &Reply) -> Producer {
+fn producer(roots: &Roots, server: &Reply, server_starttime: u64) -> Producer {
     let lock = roots.locks.join(format!(
         "tmux-persist-{}-{}.lock",
         roots.uid,
@@ -333,16 +333,17 @@ fn producer(roots: &Roots, server: &Reply) -> Producer {
             .and_then(|p| p.trim().parse::<i32>().ok())
             .filter(|p| *p > 0)
             .ok_or_else(|| Error::other("invalid registered PID"))?;
-        if !roots.proc.join(pid.to_string()).exists() {
-            return Ok(Producer {
-                state: ProducerState::Missing,
-                pid: Some(pid),
-                starttime: None,
-                process_state: None,
+        match fs::symlink_metadata(roots.proc.join(pid.to_string())) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Producer {
+                state: ProducerState::Missing, pid: Some(pid), starttime: None, process_state: None,
                 reason: "registered PID absent; other producers not searched".into(),
-            });
+            }),
+            Err(e) => return Err(e),
+            Ok(m) if !m.is_dir() => return Err(Error::other("registered process directory provenance unavailable")),
+            Ok(_) => {},
         }
         let (id, state) = identity(roots, pid)?;
+        if id.starttime < server_starttime { return Err(Error::other("registered producer predates current server generation")); }
         let cmd = bytes(&roots.proc.join(format!("{pid}/cmdline")), RECORD)?;
         let argv: Vec<_> = cmd.split(|b| *b == 0).filter(|v| !v.is_empty()).collect();
         let script = roots.producer.as_os_str().as_bytes();
@@ -566,7 +567,7 @@ async fn inspect(
         return Err("server process unavailable/stopped during observation; cause unknown".into());
     }
     listening_owner(roots, &before).map_err(|e| e.to_string())?;
-    let registered = producer(roots, &before);
+    let registered = producer(roots, &before, id.starttime);
     let now = now
         .checked_add(started.elapsed())
         .ok_or("observation clock overflow")?;
@@ -585,7 +586,7 @@ async fn inspect(
         return Err("server/socket/config incarnation changed during inspection".into());
     }
     listening_owner(roots, &after).map_err(|e| e.to_string())?;
-    let final_registered = producer(roots, &after);
+    let final_registered = producer(roots, &after, id.starttime);
     let registered = if registered == final_registered {
         registered
     } else {
@@ -608,11 +609,15 @@ async fn collect(
     now: SystemTime,
     max_age: u64,
 ) -> Report {
+    let started = std::time::Instant::now();
     let mut servers = Vec::new();
     for socket in sockets.iter().take(MAX_SERVERS) {
+        let Some(observed_now) = now.checked_add(started.elapsed()) else {
+            servers.push(Server::unknown(socket, "collection clock overflow")); continue;
+        };
         let observed = tokio::time::timeout(
             Duration::from_secs(3),
-            inspect(probe, roots, socket, now, max_age),
+            inspect(probe, roots, socket, observed_now, max_age),
         )
         .await;
         servers.push(match observed {
