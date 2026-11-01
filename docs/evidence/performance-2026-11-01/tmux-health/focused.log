@@ -1,7 +1,7 @@
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.59s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.67s
      Running unittests src/main.rs (/home/dracon/Dev/dracon-utilities/target/debug/deps/dracon_system-b1c5790faf6d194a)
 
-running 8 tests
+running 9 tests
 test tmux_health::tests::budgets_and_parser_failures_are_explicit ... ok
 test tmux_health::tests::cksum_protocol_and_policy_compatibility ... ok
 test tmux_health::tests::delayed_first_server_does_not_shift_later_save_freshness ... ok
@@ -10,8 +10,9 @@ test tmux_health::tests::inspection_is_query_only_and_preserves_owned_files_and_
 test tmux_health::tests::missing_or_untrusted_provenance_is_unknown_not_healthy ... ok
 test tmux_health::tests::multiple_servers_do_not_borrow_other_producers_or_evidence ... ok
 test tmux_health::tests::query_bracket_rejects_server_and_producer_lifecycle_races ... ok
+test tmux_health::tests::snapshot_file_selection_rejects_special_files_and_symlinks ... ok
 
-test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 735 filtered out; finished in 1.16s
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 735 filtered out; finished in 1.18s
 
      Running tests/events_cli.rs (/home/dracon/Dev/dracon-utilities/target/debug/deps/events_cli-6fc62d5dc6f90263)
 

@@ -195,10 +195,10 @@ index cf3054e..9e12935 100644
          .take((limit + 1) as u64)
 diff --git a/src/tmux_health.rs b/src/tmux_health.rs
 new file mode 100644
-index 0000000..6a7a7ed
+index 0000000..a357487
 --- /dev/null
 +++ b/src/tmux_health.rs
-@@ -0,0 +1,704 @@
+@@ -0,0 +1,709 @@
 +//! Read-only, per-socket persistence observations for doctor. No recovery authority.
 +use crate::{policy::GuardPolicy, ProcessIdentity};
 +use serde::Serialize;
@@ -447,7 +447,7 @@ index 0000000..6a7a7ed
 +        libc::openat(
 +            dir.as_raw_fd(),
 +            name.as_ptr(),
-+            libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK,
++            libc::O_PATH | libc::O_CLOEXEC | libc::O_NOFOLLOW,
 +        )
 +    };
 +    if fd < 0 {
@@ -457,7 +457,12 @@ index 0000000..6a7a7ed
 +    if !f.metadata()?.is_file() {
 +        return Err(Error::other("not a regular file"));
 +    }
-+    Ok(f)
++    // Inspect the inode WITHOUT opening a device/FIFO for I/O. Reopen only
++    // this pinned regular inode; a pathname replacement cannot change its type.
++    OpenOptions::new()
++        .read(true)
++        .custom_flags(libc::O_NONBLOCK)
++        .open(format!("/proc/self/fd/{}", f.as_raw_fd()))
 +}
 +fn read(mut f: File, max: usize) -> Result<Vec<u8>, Error> {
 +    let mut bytes = Vec::new();
@@ -905,10 +910,10 @@ index 0000000..6a7a7ed
 +mod tests;
 diff --git a/src/tmux_health_tests.rs b/src/tmux_health_tests.rs
 new file mode 100644
-index 0000000..786338e
+index 0000000..c8ae567
 --- /dev/null
 +++ b/src/tmux_health_tests.rs
-@@ -0,0 +1,461 @@
+@@ -0,0 +1,480 @@
 +use super::*;
 +use std::{
 +    cell::RefCell,
@@ -1343,6 +1348,25 @@ index 0000000..786338e
 +    assert_eq!(g.tmux_persistence_max_save_age_secs, 60);
 +    assert_eq!(g.tmux_persistence_sockets, ["/a", "/b"]);
 +    assert!(crate::policy::normalize_guard_policy(&mut g).is_empty());
++}
++
++// Special files must be rejected before opening them for I/O, even in an
++// otherwise valid configured directory. All created endpoints are disposable.
++#[test]
++fn snapshot_file_selection_rejects_special_files_and_symlinks() {
++    let temp = tempfile::tempdir().unwrap();
++    let path = temp.path().join("pipe");
++    let name = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
++    assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
++    fs::write(temp.path().join("regular"), "safe fixture").unwrap();
++    symlink("regular", temp.path().join("link")).unwrap();
++    let dir = open_dir(temp.path(), unsafe { libc::geteuid() }).unwrap();
++    assert!(at(&dir, "pipe").is_err());
++    assert!(at(&dir, "link").is_err());
++    assert_eq!(
++        read(at(&dir, "regular").unwrap(), 64).unwrap(),
++        b"safe fixture"
++    );
 +}
 +
 +#[tokio::test]

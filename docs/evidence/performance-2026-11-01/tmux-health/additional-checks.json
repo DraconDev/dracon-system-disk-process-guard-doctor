@@ -1,0 +1,14 @@
+{
+  "recorded_at": "2026-11-01T18:51:51.119024+00:00",
+  "focused_exit": 0,
+  "host_doctor_exit": 0,
+  "host_command": "timeout 90 ../target/debug/dracon-system doctor --json",
+  "source_sha256": {
+    "src/main.rs": "3fcafbb59beceb10aa2d15383fdec3528123ab17d7c9ac83ee5d3a2b7a3d2065",
+    "src/doctor.rs": "f468ffafde6ecc18e102a4f8c76a78b8d55230e9d755c5710df4d3e8cbda9a1a",
+    "src/policy.rs": "e093e10c3eed209c2a8cae6f2bac1b144aa4eadd95cc4c32645ecc4d7cdaabd6",
+    "src/service_growth.rs": "2aedc7723a31579b04d8ee16206e32d65bf92d6b1f957a1eacfea2f1a0bd6e6b",
+    "src/tmux_health.rs": "9318cbae56fd109759269529e2b1e5ace3c2e4673a4336cf0174c09fe90fc913",
+    "src/tmux_health_tests.rs": "ae40ff281cc7c0107b644f4692f78c8305664af8db7d82b4cc56deeb48d0d2c1"
+  }
+}

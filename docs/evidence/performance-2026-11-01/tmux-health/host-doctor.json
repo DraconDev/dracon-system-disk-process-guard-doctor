@@ -30,11 +30,11 @@
         "save": {
           "state": "fresh",
           "directory": "/home/dracon/.tmux/resurrect",
-          "target": "tmux_resurrect_20261101T184539.txt",
-          "age_secs": 5,
+          "target": "tmux_resurrect_20261101T185148.txt",
+          "age_secs": 1,
           "bytes": 113,
           "device": 66306,
-          "inode": 7238287,
+          "inode": 7238335,
           "directory_identity": [
             66306,
             7237766
