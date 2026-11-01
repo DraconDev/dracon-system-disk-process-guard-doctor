@@ -153,3 +153,15 @@ command=timeout 1800 cargo test --workspace --locked
    Compiling arrayvec v0.7.8
    Compiling vte v0.14.1
    Compiling enumflags2 v0.7.12
+   Compiling icu_properties v2.3.0
+   Compiling icu_normalizer v2.3.0
+   Compiling libssh2-sys v0.3.3
+   Compiling idna_adapter v1.2.2
+   Compiling ansitok v0.3.0
+   Compiling tokio-util v0.7.19
+   Compiling rustls-pki-types v1.15.1
+   Compiling openssl v0.10.81
+   Compiling foreign-types-shared v0.1.1
+   Compiling foreign-types v0.3.2
+   Compiling console v0.16.6
+   Compiling h2 v0.4.19
