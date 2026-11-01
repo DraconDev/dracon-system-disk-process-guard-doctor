@@ -68,7 +68,7 @@ def swaps(text: str | None) -> list | None:
         if len(fields) != 5:
             return None
         size, used = uint(fields[2]), uint(fields[3])
-        if size is None or used is None or used > size or size > U64 // 1024 or not re.fullmatch(r"-?[0-9]+", fields[4]):
+        if size is None or used is None or used > size or size > U64 // 1024 or not re.fullmatch(r"-?[0-9]{1,10}", fields[4]):
             return None
         result.append(dict(path=fields[0], kind=fields[1], capacity_bytes=size * 1024, allocated_bytes=used * 1024, priority=int(fields[4])))
     if len({r['path'] for r in result}) != len(result):
@@ -131,7 +131,7 @@ def frame(sample: dict, path: str) -> dict:
 
 def interval(a: dict, b: dict, page_size: int) -> dict:
     boot_a, boot_b = raw(a, '/proc/sys/kernel/random/boot_id'), raw(b, '/proc/sys/kernel/random/boot_id')
-    continuous = bool(boot_a and re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', boot_a.strip()) and boot_a == boot_b)
+    continuous = bool(boot_a and re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', boot_a.strip()) and boot_a.strip() == (boot_b or '').strip())
     t = elapsed(a, b, '/proc/vmstat')
     x, y = counters(raw(a, '/proc/vmstat')), counters(raw(b, '/proc/vmstat'))
     result = dict(from_timestamp=a.get('reads', {}).get('/proc/vmstat', {}).get('started_at'), to_timestamp=b.get('reads', {}).get('/proc/vmstat', {}).get('started_at'), elapsed_seconds=t, boot_continuity_observed=continuous)

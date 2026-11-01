@@ -13,6 +13,7 @@ class Calculations(unittest.TestCase):
         self.assertIsNone(a.mm_stat('100 20')['ram_bytes'])
         self.assertIsNone(a.mm_stat('1 -2 3')['compressed_bytes'])
         self.assertIsNone(a.scalar(str(a.U64 + 1)))
+        self.assertIsNone(a.scalar('9' * 5000))
 
     def test_capacity_original_payload_and_allocated_ram_are_not_interchangeable(self):
         # Large logical size is not measured RAM. Payload ratio differs from
@@ -30,6 +31,7 @@ class Calculations(unittest.TestCase):
         self.assertEqual(parsed[0]['capacity_bytes'], 1024 * 1024)
         self.assertEqual(parsed[1]['allocated_bytes'], 10 * 1024)
         self.assertEqual(parsed[1]['priority'], -1)
+        self.assertIsNone(a.swaps('Filename Type Size Used Priority\n/a file 10 0 ' + '9' * 5000))
         for bad in [None, '', 'bad header', 'Filename Type Size Used Priority\n/a file 10 11 0', 'Filename Type Size Used Priority\n/a file bad 0 0']:
             self.assertIsNone(a.swaps(bad))
 
@@ -76,6 +78,8 @@ class Calculations(unittest.TestCase):
         self.assertEqual(r['pgmajfault_per_second'], 1)
         self.assertEqual(r['pswpin_mib_per_second'], 2 * 8192 / 1024 ** 2)
         self.assertNotIn('pgmajfault_mib_per_second', r)
+        after['reads']['/proc/sys/kernel/random/boot_id']['text'] += '\n'
+        self.assertEqual(a.interval(before, after, 8192)['pswpin_per_second'], 2)
         after['reads']['/proc/vmstat'].pop('monotonic_ns')
         self.assertIsNone(a.interval(before, after, 8192)['pswpin_per_second'])
         after = sample(2_000_000_000, 'pswpin 14', boot='different')
