@@ -36,3 +36,11 @@ command=timeout 1800 cargo test --workspace --locked
    Compiling jobserver v0.1.35
    Compiling cc v1.4.7
    Compiling tempfile v3.27.0
+   Compiling hmac v0.12.1
+   Compiling sha2 v0.10.9
+   Compiling futures-executor v0.3.34
+   Compiling ppv-lite86 v0.2.21
+   Compiling regex-syntax v0.8.11
+   Compiling unic-langid-impl v0.9.6
+   Compiling futures v0.3.34
+   Compiling aho-corasick v1.1.5
