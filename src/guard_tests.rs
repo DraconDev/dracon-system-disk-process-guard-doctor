@@ -201,6 +201,7 @@ fn guard_report_can_be_created_with_alerts() {
             nice_value: 5,
         }],
         memory: None,
+        service_memory_growth: crate::service_growth::Tracker::default().observe(&GuardPolicy::default(), Vec::new(), Instant::now()),
         zombies: Vec::new(),
         reap_candidates: Vec::new(),
         reaped: Vec::new(),
