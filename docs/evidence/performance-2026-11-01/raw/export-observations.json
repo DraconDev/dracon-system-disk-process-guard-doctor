@@ -28,6 +28,12 @@
       "text": "=== /proc numeric dirs vs ps count ===\n921\nps -e count:\n31\n\n=== pid namespace ===\npid:[4026531836]\n\n=== /proc/stat scheduling ===\nprocs_running 43\nprocs_blocked 11\nloadavg:\n63.56 59.89 42.45 31/4533 3800544\n\n=== hidepid / proc mounts ===\nproc /proc proc rw,nosuid,nodev,noexec,relatime 0 0\n"
     },
     {
+      "entry_index": 21,
+      "timestamp": "2026-11-01T13:53:03.600Z",
+      "role": "toolResult",
+      "text": "=== why ps underreports ===\nps is /run/current-system/sw/bin/ps\n---\n912\nwith --forest:\n918\nls /proc/*/cmdline readable count:\n931\n931\n"
+    },
+    {
       "entry_index": 25,
       "timestamp": "2026-11-01T13:53:20.681Z",
       "role": "toolResult",
