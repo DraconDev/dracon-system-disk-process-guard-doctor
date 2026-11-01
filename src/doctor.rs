@@ -69,9 +69,10 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
     // loaded falls back to the compiled-in defaults (policy.rs) rather
     // than failing the check on a host whose only problem is a missing
     // policy file — that problem already has its own REQUIRED check above.
+    let loaded_policy = crate::load_system_policy().ok().map(|(_, policy)| policy);
     let (expected_prefixes, swap_candidates, swap_config_path) =
-        match crate::load_system_policy() {
-            Ok((_, policy)) => (
+        match loaded_policy.as_ref() {
+            Some(policy) => (
                 policy
                     .guard
                     .expected_swap_prefixes
@@ -90,7 +91,7 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
                     .collect::<Vec<_>>(),
                 expand_tilde(&policy.guard.nixos_swap_config),
             ),
-            Err(_) => (
+            None => (
                 default_expected_swap_prefixes()
                     .split(',')
                     .map(str::to_string)
@@ -117,6 +118,7 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
         service_probe_available,
         swap_probe_available: swap_outcome.probe_ok,
         swap_ok: !swap_outcome.has_findings(),
+        tmux_persistence: crate::tmux_health::check(&loaded_policy.unwrap_or_default().guard).await,
     }
 }
 
@@ -391,6 +393,10 @@ pub(crate) async fn cmd_doctor(json: bool, strict: bool) -> Result<()> {
     }
 
     println!("{table}");
+    println!("Tmux persistence (observations only; not a strict requirement):");
+    for server in &report.tmux_persistence.servers {
+        println!("  {}", server.summary());
+    }
     if failures.is_empty() {
         eprintln!("\u{2705}  All required checks passed.");
     } else {
@@ -438,6 +444,7 @@ mod tests {
             service_probe_available: true,
             swap_probe_available: true,
             swap_ok: true,
+            tmux_persistence: crate::tmux_health::Report::default(),
         }
     }
 
