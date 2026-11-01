@@ -1,0 +1,10 @@
+
+running 5 tests
+test equivalent_target_reordering_preserves_observed_growth ... ok
+test service_and_process_generation_changes_never_bridge_history ... ok
+test swap_only_growth_and_irregular_intervals_use_elapsed_time_not_poll_count ... ok
+test a_single_burst_plateau_or_resident_swap_migration_is_not_sustained_growth ... ok
+test history_and_event_signatures_stay_bounded_and_quiet ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+

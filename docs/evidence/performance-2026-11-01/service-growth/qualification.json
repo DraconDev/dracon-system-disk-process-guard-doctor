@@ -1,0 +1,28 @@
+{
+  "source_sha256": "6fa14b7afa0eaa2fbb4ec73ca141527ad75ab30bb97c5441109560faadf87443",
+  "tests_sha256": "29659fd1da6d9718f32d44d8b67b22b96f893b455eb15ce975d7a076955128d3",
+  "scratch_path": "/tmp/dracon-growth-qualification-so3hp4_w",
+  "results": [
+    {
+      "variant": "baseline",
+      "compile_exit": 0,
+      "test_exit": 0,
+      "expected_failure": null,
+      "generated_source_sha256": "cb7c8f2f53e0c9d1ad8411c92a0bc4e7915454afeaa18bc1aab27e2b8e42aef9"
+    },
+    {
+      "variant": "negligible-drift",
+      "compile_exit": 0,
+      "test_exit": 101,
+      "expected_failure": "a_single_burst_plateau_or_resident_swap_migration_is_not_sustained_growth",
+      "generated_source_sha256": "f37900ee1c86ccaed46ece4de26e540434afc706618826b158ffedbb74a7734a"
+    },
+    {
+      "variant": "bridged-incarnation",
+      "compile_exit": 0,
+      "test_exit": 101,
+      "expected_failure": "service_and_process_generation_changes_never_bridge_history",
+      "generated_source_sha256": "81a32194fd1c2a2d69054f3262c298ec93503ede8234ab2c4e4f3232896ff348"
+    }
+  ]
+}
