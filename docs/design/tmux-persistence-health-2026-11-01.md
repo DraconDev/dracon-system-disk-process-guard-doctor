@@ -15,16 +15,19 @@ Keep separate typed observations:
   and fd links. No broad process scan or tmux command execution hooks.
 - Producer identity: the installed tmux-persist-daemon convention uses a
   per-socket POSIX-cksum lock and PID. Read that candidate only, validate UID,
-  script argv and TMUX socket AND server PID environment, bracket PID/starttime
+  script argv and TMUX socket AND server PID environment, require the producer
+  not predate the server generation, and bracket PID/starttime
   and process state. Missing/mismatched records mean unavailable registration,
   not proof that no other producer exists. T/t means observed stopped; its
   cause is unknown. Sleeping means only an existing producer, never success.
 - Save evidence: only the server's explicit @resurrect-dir; do not guess plugin
   defaults from the observer's environment. Safely inspect `last` and a regular
   nonempty snapshot with bounded pane-record inspection. Report age, path and
-  metadata identity. This establishes configured-path evidence, not who wrote
+  metadata identity. Pin selected inodes with Linux O_PATH before reopening
+  only verified regular files for reading; do not open FIFOs/devices for I/O.
+  This establishes configured-path evidence, not who wrote
   it, successful restoration, pane-content backup, or periodic execution.
-  Shared directories across selected servers are explicitly unattributed;
+  Shared directories or hardlinked files across selected servers are explicitly unattributed;
   fresh evidence cannot make a different server healthy. Future times and
   snapshots older than the server's current process generation are unavailable.
 - Continuum's optional last-save timestamp is a launch marker only, not a
