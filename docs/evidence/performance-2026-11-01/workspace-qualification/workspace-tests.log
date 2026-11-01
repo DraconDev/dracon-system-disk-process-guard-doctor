@@ -88,3 +88,42 @@ command=timeout 1800 cargo test --workspace --locked
    Compiling fluent-bundle v0.15.3
    Compiling rust-embed v8.12.0
    Compiling i18n-embed-impl v0.8.4
+   Compiling arc-swap v1.9.2
+   Compiling aead v0.5.2
+   Compiling curve25519-dalek-derive v0.1.1
+   Compiling proc-macro-error v1.0.4
+   Compiling lazy_static v1.5.0
+   Compiling fluent v0.16.1
+   Compiling parking_lot v0.12.5
+   Compiling poly1305 v0.8.0
+   Compiling chacha20 v0.9.1
+   Compiling rand_chacha v0.3.1
+   Compiling wait-timeout v0.2.1
+   Compiling quick-error v1.2.3
+   Compiling bit-vec v0.8.0
+   Compiling hashbrown v0.14.5
+   Compiling bit-set v0.8.0
+   Compiling rusty-fork v0.3.1
+   Compiling dashmap v5.5.3
+   Compiling rand v0.8.8
+   Compiling chacha20poly1305 v0.10.1
+   Compiling i18n-embed v0.14.1
+   Compiling rand_chacha v0.9.0
+   Compiling rand v0.9.4
+   Compiling rand_xorshift v0.4.0
+   Compiling polyval v0.6.2
+   Compiling salsa20 v0.10.2
+   Compiling cookie-factory v0.3.3
+   Compiling pbkdf2 v0.12.2
+   Compiling hkdf v0.12.4
+   Compiling secrecy v0.8.0
+   Compiling pin-project-internal v1.1.13
+   Compiling signature v2.2.0
+   Compiling base64 v0.21.7
+   Compiling strsim v0.10.0
+   Compiling unarray v0.1.4
+   Compiling io_tee v0.1.1
+   Compiling age-core v0.10.0
+   Compiling proptest v1.11.0
+   Compiling pin-project v1.1.13
+   Compiling i18n-embed-fl v0.7.0
