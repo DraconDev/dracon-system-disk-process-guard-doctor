@@ -1,0 +1,4 @@
+PASS: required package command exits zero; current source hashes match gate and tracker-qualification inputs
+PASS: compiled baseline/reordering checks pass; compiled noisy-drift/incarnation mutants fail intended checks
+PASS: package log reports no failed tests; all-targets strict Clippy also finished successfully
+PASS: report citations resolve
