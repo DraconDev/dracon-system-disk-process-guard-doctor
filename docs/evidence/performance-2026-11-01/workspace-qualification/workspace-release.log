@@ -5,3 +5,4 @@ command=timeout 2400 cargo build --release --locked
     Blocking waiting for file lock on package cache
     Blocking waiting for file lock on package cache
     Blocking waiting for file lock on build directory
+    Finished `release` profile [optimized] target(s) in 3m 12s

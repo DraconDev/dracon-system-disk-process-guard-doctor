@@ -337,3 +337,4 @@ command=timeout 2400 cargo build --release --locked
    Compiling git2 v0.21.0
    Compiling dracon-git v94.7.2
    Compiling dracon-warden v0.113.16 (/tmp/performance-workspace-20261101T231731Z/dracon-warden)
+    Finished `release` profile [optimized] target(s) in 9m 05s
