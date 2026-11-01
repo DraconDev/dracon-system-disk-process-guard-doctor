@@ -288,14 +288,18 @@ impl Tracker {
             // Balanced growth, not a dominant burst plus negligible drift:
             // each half contributes >= one quarter of BOTH the observed delta
             // and the configured minimum. Conservative, never a leak claim.
-            let meaningful_half = delta.div_ceil(4).max(settings.1.saturating_mul(MIB).div_ceil(4));
+            let meaningful_half = delta
+                .div_ceil(4)
+                .max(settings.1.saturating_mul(MIB).div_ceil(4));
             let both_halves = h
                 .points
                 .iter()
                 .rev()
                 .find(|p| p.at <= midpoint)
-                .is_some_and(|middle| middle.total.saturating_sub(baseline.total) >= meaningful_half
-                    && total.saturating_sub(middle.total) >= meaningful_half);
+                .is_some_and(|middle| {
+                    middle.total.saturating_sub(baseline.total) >= meaningful_half
+                        && total.saturating_sub(middle.total) >= meaningful_half
+                });
             row.status = if reset.is_some() {
                 "reset"
             } else if elapsed < window.as_secs_f64() {
@@ -334,17 +338,31 @@ async fn capped_output(reader: impl AsyncRead + Unpin, limit: usize) -> std::io:
 }
 fn manager_command(bin: &str, manager: Manager, units: &[String]) -> tokio::process::Command {
     let mut command = tokio::process::Command::new(bin);
-    command.args([
-        if manager == Manager::User { "--user" } else { "--system" },
-        "show", "--no-pager",
-        "--property=Id,LoadState,ActiveState,InvocationID,ControlGroup,MainPID", "--",
-    ]).args(units).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+    command
+        .args([
+            if manager == Manager::User {
+                "--user"
+            } else {
+                "--system"
+            },
+            "show",
+            "--no-pager",
+            "--property=Id,LoadState,ActiveState,InvocationID,ControlGroup,MainPID",
+            "--",
+        ])
+        .args(units)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
     command
 }
 impl Probe for Systemd {
     async fn properties(&self, manager: Manager, units: &[String]) -> Result<String, String> {
         let bin = crate::resolve_bin_strict("systemctl").map_err(|e| e.to_string())?;
-        let mut child = manager_command(&bin, manager, units).spawn().map_err(|e| e.to_string())?;
+        let mut child = manager_command(&bin, manager, units)
+            .spawn()
+            .map_err(|e| e.to_string())?;
         let stdout = child.stdout.take().ok_or("manager stdout unavailable")?;
         let stderr = child.stderr.take().ok_or("manager stderr unavailable")?;
         let result = tokio::time::timeout(Duration::from_secs(1), async {
@@ -623,7 +641,9 @@ async fn properties(
     result
 }
 async fn collect(probe: &impl Probe, roots: &Roots, names: &[String]) -> Vec<Observation> {
-    if names.is_empty() { return Vec::new(); }
+    if names.is_empty() {
+        return Vec::new();
+    }
     let unavailable = |reason: &str| {
         names
             .iter()
@@ -679,14 +699,17 @@ async fn collect(probe: &impl Probe, roots: &Roots, names: &[String]) -> Vec<Obs
                 .get(&target.manager)
                 .and_then(|r| r.as_ref().ok())
                 .and_then(|u| u.get(&target.unit));
-            let membership = main_group(roots, generation.pid).is_ok_and(|group|
-                group == generation.group || group.starts_with(&(generation.group.clone() + "/")));
+            let membership = main_group(roots, generation.pid).is_ok_and(|group| {
+                group == generation.group || group.starts_with(&(generation.group.clone() + "/"))
+            });
             let directory = open_beneath(roots, &generation.group)
                 .ok()
                 .and_then(|d| d.metadata().ok())
                 .is_some_and(|m| m.dev() == generation.device && m.ino() == generation.inode);
             let current = crate::read_proc_identity(&roots.proc, generation.pid)
-                .ok().as_ref() == Some(&generation.identity);
+                .ok()
+                .as_ref()
+                == Some(&generation.identity);
             if a != b || b.is_none() || !current || !directory || !membership {
                 *row = Observation::unavailable(
                     &row.target,
