@@ -17,7 +17,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-const MAX_SERVERS: usize = 8;
+pub(crate) const MAX_SERVERS: usize = 8;
 const SMALL: usize = 4096;
 const RECORD: usize = 65536;
 const SOCKET_TABLE: usize = 262144;
@@ -327,6 +327,7 @@ fn producer(roots: &Roots, server: &Reply) -> Producer {
     ));
     let result = (|| -> Result<Producer, Error> {
         let dir = open_dir(&lock, roots.uid)?;
+        let lock_meta = dir.metadata()?;
         let pid = String::from_utf8(read(at(&dir, "pid")?, 32)?)
             .ok()
             .and_then(|p| p.trim().parse::<i32>().ok())
@@ -363,6 +364,10 @@ fn producer(roots: &Roots, server: &Reply) -> Producer {
         let expected = format!("{},{}", server.socket.display(), server.pid);
         if bindings.len() != 1 || !bindings[0].starts_with(format!("{expected},").as_bytes()) {
             return Err(Error::other("producer socket/server binding unavailable"));
+        }
+        let current_lock = open_dir(&lock, roots.uid)?.metadata()?;
+        if (lock_meta.dev(), lock_meta.ino()) != (current_lock.dev(), current_lock.ino()) {
+            return Err(Error::other("producer registration directory changed"));
         }
         let final_pid = read(at(&dir, "pid")?, 32)?;
         if String::from_utf8_lossy(&final_pid).trim() != pid.to_string()
@@ -613,13 +618,18 @@ async fn collect(
     }
     // Compare physical directories too: aliases must not bypass server isolation.
     let mut counts = HashMap::new();
+    let mut file_counts = HashMap::new();
     for s in &servers {
+        if let (Some(dev), Some(ino)) = (s.save.device, s.save.inode) {
+            *file_counts.entry((dev, ino)).or_insert(0) += 1;
+        }
         if let Some(key) = s.save.directory_identity {
             *counts.entry(key).or_insert(0) += 1;
         }
     }
     for s in &mut servers {
-        if s.save
+        let shared_file = s.save.device.zip(s.save.inode).is_some_and(|key| file_counts.get(&key).is_some_and(|n| *n > 1));
+        if shared_file || s.save
             .directory_identity
             .is_some_and(|key| counts.get(&key).is_some_and(|n| *n > 1))
         {

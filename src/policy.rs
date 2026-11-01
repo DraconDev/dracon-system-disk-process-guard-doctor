@@ -1757,7 +1757,7 @@ pub(crate) fn normalize_guard_policy_with_home(
     let old_socket_count = policy.tmux_persistence_sockets.len();
     policy.tmux_persistence_sockets.sort();
     policy.tmux_persistence_sockets.dedup();
-    policy.tmux_persistence_sockets.truncate(8);
+    policy.tmux_persistence_sockets.truncate(crate::tmux_health::MAX_SERVERS);
     if old_socket_count != policy.tmux_persistence_sockets.len() {
         adjusted.push("tmux_persistence_sockets");
     }
