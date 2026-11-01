@@ -182,6 +182,16 @@ pub(crate) struct GuardPolicy {
     // and swap occupancy alone from disturbing active processes.
     #[serde(default = "default_memory_pressure_sustain_secs")]
     pub(crate) memory_pressure_sustain_secs: u64,
+    /// Independent observation-only service charged-memory growth. Never an
+    /// action or host-pressure eligibility signal.
+    #[serde(default = "default_true")]
+    pub(crate) monitor_service_memory_growth: bool,
+    #[serde(default = "default_service_memory_growth_window_secs")]
+    pub(crate) service_memory_growth_window_secs: u64,
+    #[serde(default = "default_service_memory_growth_min_mb")]
+    pub(crate) service_memory_growth_min_mb: u64,
+    #[serde(default = "crate::service_growth::default_targets")]
+    pub(crate) service_memory_growth_targets: Vec<String>,
     // ADDED 2026-08-10 (v0.112.36): during memory pressure, deprioritize
     // the top RSS offenders (graduated nice, reversible when pressure
     // drops). The runtime requires CAP_SYS_NICE so a user service cannot
@@ -570,6 +580,10 @@ impl Default for GuardPolicy {
             mem_psi_full_warn: default_mem_psi_full_warn(),
             mem_swapin_warn_pages_per_sec: default_mem_swapin_warn_pages_per_sec(),
             memory_pressure_sustain_secs: default_memory_pressure_sustain_secs(),
+            monitor_service_memory_growth: default_true(),
+            service_memory_growth_window_secs: default_service_memory_growth_window_secs(),
+            service_memory_growth_min_mb: default_service_memory_growth_min_mb(),
+            service_memory_growth_targets: crate::service_growth::default_targets(),
             auto_renice_on_memory: default_true(),
             bias_oom_on_pressure: default_true(),
             cap_offenders_cpu_percent: 0,
@@ -1157,6 +1171,9 @@ fn default_mem_swapin_warn_pages_per_sec() -> u64 {
     1000
 }
 
+fn default_service_memory_growth_window_secs() -> u64 { 600 }
+fn default_service_memory_growth_min_mb() -> u64 { 256 }
+
 fn default_memory_pressure_sustain_secs() -> u64 {
     120
 }
@@ -1725,6 +1742,15 @@ pub(crate) fn normalize_guard_policy_with_home(
     // never negative), pinning the state machine at warn on a healthy box.
     floor!(mem_swapin_warn_pages_per_sec, 1);
     floor!(memory_pressure_sustain_secs, 30);
+    floor!(service_memory_growth_window_secs, 60);
+    ceil!(service_memory_growth_window_secs, 86_400);
+    floor!(service_memory_growth_min_mb, 1);
+    ceil!(service_memory_growth_min_mb, u64::MAX / (1024 * 1024));
+    let old_targets = policy.service_memory_growth_targets.clone();
+    policy.service_memory_growth_targets.sort();
+    policy.service_memory_growth_targets.dedup();
+    policy.service_memory_growth_targets.truncate(crate::service_growth::MAX_TARGETS);
+    if old_targets != policy.service_memory_growth_targets { adjusted.push("service_memory_growth_targets"); }
     // systemd CPUQuota accepts values above 100%, but this knob is a cap
     // expressed as a percentage of one CPU. Keep invalid values from
     // reaching the per-pass cap loop, where they would fail and retry for

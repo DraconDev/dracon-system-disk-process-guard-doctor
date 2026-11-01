@@ -34,6 +34,7 @@ mod managed_oom;
 mod memory_sampling_tests;
 mod oom_job;
 mod oom_restore;
+mod service_growth;
 mod protection_probe;
 #[cfg(test)]
 mod protection_tests;
@@ -632,6 +633,8 @@ pub(crate) struct GuardReport {
     alerts: Vec<GuardProcessAlert>,
     /// ADDED 2026-08-10 (v0.112.35): memory/swap pressure snapshot.
     memory: Option<MemoryReport>,
+    /// Independent, report-only service accounting; never a mitigation input.
+    service_memory_growth: service_growth::Report,
     /// ADDED 2026-08-10 (v0.112.35): zombie detail (pid/ppid/age/parent).
     zombies: Vec<ZombieInfo>,
     /// Abandoned dev/test processes. A worklist for a human by default;
@@ -950,6 +953,7 @@ pub(crate) struct GuardRuntimeState {
     /// State-aware event throttling. Repeated unchanged observations are
     /// retained for on-demand inspection but are not emitted every cycle.
     pub(crate) report_states: HashMap<String, ReportState>,
+    pub(crate) service_memory_growth: service_growth::Tracker,
     pub(crate) last_disk_state: String,
     /// ADDED 2026-08-10 (v0.112.35): byte-precise df history for
     /// rapid-fill rate detection (percent deltas are too coarse on
@@ -10527,6 +10531,15 @@ pub(crate) async fn run_guard_once(
     };
     check_large_logs(guard, state).await;
     let memory = check_memory_pressure(guard, state, &samples).await;
+    let service_memory_growth = service_growth::check(guard, &mut state.service_memory_growth).await;
+    let signature = service_memory_growth.signature();
+    let (previous, due) = report_state_transition(state, "service-memory-growth", &signature, guard.report_repeat_secs);
+    let diagnostic = service_memory_growth.observations.iter().any(|o| o.status == "sustained_growth" || o.status == "unavailable");
+    if service_memory_growth.enabled && due && (diagnostic || previous.is_some_and(|p| p != signature)) {
+        emit_event(&DraconEvent::new("system",
+            if service_memory_growth.observations.iter().any(|o| o.status == "sustained_growth") { EventSeverity::Warn } else { EventSeverity::Info },
+            "memory/service-growth", service_memory_growth.summary()));
+    }
 
     // ADDED 2026-10-27 (wrong-swap check): every pass verifies that all
     // ACTIVE swap lives on an expected device (zram + /mnt/data by
@@ -10547,6 +10560,7 @@ pub(crate) async fn run_guard_once(
         relocated_bytes,
         alerts,
         memory,
+        service_memory_growth,
         zombies,
         reap_candidates,
         reaped,
@@ -11849,6 +11863,7 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
             Cell::new(summarize_reaped(&report.reaped)),
         ]);
     }
+    table.add_row(vec![Cell::new(""), Cell::new("Service memory growth (report only)"), Cell::new(report.service_memory_growth.summary())]);
     if let Some(memory) = &report.memory {
         if !memory.pressure_reaped.is_empty() {
             table.add_row(vec![
