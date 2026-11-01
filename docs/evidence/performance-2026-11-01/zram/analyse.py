@@ -3,6 +3,7 @@
 Unknowns remain None; positional fields never shift past malformed tokens.
 """
 import json
+import math
 from pathlib import Path
 import re
 
@@ -94,8 +95,8 @@ def psi(text: str | None) -> dict:
     return result
 
 
-def rate(before: int | None, after: int | None, elapsed: float, continuous: bool = True) -> float | None:
-    if not continuous or before is None or after is None or after < before or elapsed <= 0:
+def rate(before: int | None, after: int | None, elapsed: float | None, continuous: bool = True) -> float | None:
+    if not continuous or before is None or after is None or after < before or elapsed is None or not math.isfinite(elapsed) or elapsed <= 0:
         return None
     return (after - before) / elapsed
 
@@ -105,8 +106,12 @@ def raw(sample: dict, path: str) -> str | None:
     return record.get('text') if not record.get('error') else None
 
 
-def elapsed(a: dict, b: dict, path: str) -> float:
-    return (b['reads'][path]['monotonic_ns'] - a['reads'][path]['monotonic_ns']) / 1e9
+def elapsed(a: dict, b: dict, path: str) -> float | None:
+    start = a.get('reads', {}).get(path, {}).get('monotonic_ns')
+    end = b.get('reads', {}).get(path, {}).get('monotonic_ns')
+    if not isinstance(start, int) or not isinstance(end, int):
+        return None
+    return (end - start) / 1e9
 
 
 def frame(sample: dict, path: str) -> dict:
@@ -124,10 +129,10 @@ def frame(sample: dict, path: str) -> dict:
 
 def interval(a: dict, b: dict, page_size: int) -> dict:
     boot_a, boot_b = raw(a, '/proc/sys/kernel/random/boot_id'), raw(b, '/proc/sys/kernel/random/boot_id')
-    continuous = bool(boot_a and boot_a.strip() and boot_a == boot_b)
+    continuous = bool(boot_a and re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', boot_a.strip()) and boot_a == boot_b)
     t = elapsed(a, b, '/proc/vmstat')
     x, y = counters(raw(a, '/proc/vmstat')), counters(raw(b, '/proc/vmstat'))
-    result = dict(from_timestamp=a['reads']['/proc/vmstat']['started_at'], to_timestamp=b['reads']['/proc/vmstat']['started_at'], elapsed_seconds=t, boot_continuity_observed=continuous)
+    result = dict(from_timestamp=a.get('reads', {}).get('/proc/vmstat', {}).get('started_at'), to_timestamp=b.get('reads', {}).get('/proc/vmstat', {}).get('started_at'), elapsed_seconds=t, boot_continuity_observed=continuous)
     for key in ['pswpin', 'pswpout', 'pgmajfault']:
         r = rate(x.get(key), y.get(key), t, continuous)
         result[key + '_per_second'] = r
@@ -148,9 +153,11 @@ def main():
     historical = json.loads((OUT.parent / 'raw/export-observations.json').read_text())
     entry = next(r for r in historical['observations'] if r['entry_index'] == 27)
     historical_stats = mm_stat(entry['text'].split('raw mm_stat: ', 1)[1].splitlines()[0])
+    swap_entry = next(r for r in historical['observations'] if r['entry_index'] == 25)
+    historical_swaps = swaps(swap_entry['text'].split('=== swap devices ===\n', 1)[1].split('\n\n', 1)[0])
     result = dict(units='bytes; binary GiB=1024^3; rates pswp base-pages/s and MiB/s; PSI percent',
                   page_size_bytes=host['page_size_bytes'],
-                  incident=dict(timestamp=entry['timestamp'], source_entry=27, **historical_stats,
+                  incident=dict(timestamp=entry['timestamp'], source_entry=27, swap_timestamp=swap_entry['timestamp'], swap_entries=historical_swaps, **historical_stats,
                                 compression_original_per_payload=ratio(historical_stats['original_bytes'], historical_stats['compressed_bytes']),
                                 effective_original_per_allocated_ram=ratio(historical_stats['original_bytes'], historical_stats['ram_bytes'])),
                   frames=[frame(s, path) for s in samples],
