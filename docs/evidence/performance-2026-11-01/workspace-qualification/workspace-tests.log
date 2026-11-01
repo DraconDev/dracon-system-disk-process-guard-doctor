@@ -17,3 +17,19 @@ command=timeout 1800 cargo test --workspace --locked
    Compiling rustversion v1.0.23
    Compiling zeroize v1.9.0
    Compiling futures-macro v0.3.34
+   Compiling futures-task v0.3.34
+   Compiling cpufeatures v0.2.17
+   Compiling futures-util v0.3.34
+   Compiling block-buffer v0.10.4
+   Compiling thiserror v1.0.69
+   Compiling thiserror-impl v1.0.69
+   Compiling mime v0.3.17
+   Compiling getrandom v0.3.4
+   Compiling digest v0.10.7
+   Compiling minimal-lexical v0.2.1
+   Compiling getrandom v0.4.3
+   Compiling nom v7.1.3
+   Compiling uuid v1.26.1
+   Compiling num-traits v0.2.19
+   Compiling fnv v1.0.7
+   Compiling zerocopy v0.8.57
