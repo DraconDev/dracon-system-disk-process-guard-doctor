@@ -127,3 +127,7 @@ command=timeout 1800 cargo test --workspace --locked
    Compiling proptest v1.11.0
    Compiling pin-project v1.1.13
    Compiling i18n-embed-fl v0.7.0
+   Compiling ed25519 v2.2.3
+   Compiling scrypt v0.11.0
+   Compiling ghash v0.5.1
+   Compiling x25519-dalek v2.0.1
