@@ -78,3 +78,13 @@ command=timeout 1800 cargo test --workspace --locked
    Compiling i18n-config v0.4.8
    Compiling curve25519-dalek v4.1.3
    Compiling rust-embed-impl v8.12.0
+   Compiling parking_lot_core v0.9.12
+   Compiling intl-memoizer v0.5.3
+   Compiling intl_pluralrules v7.0.2
+   Compiling fluent-langneg v0.13.1
+   Compiling rand_core v0.9.5
+   Compiling proc-macro-error-attr v1.0.4
+   Compiling syn v1.0.109
+   Compiling fluent-bundle v0.15.3
+   Compiling rust-embed v8.12.0
+   Compiling i18n-embed-impl v0.8.4
