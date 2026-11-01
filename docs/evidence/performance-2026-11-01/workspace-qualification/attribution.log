@@ -121,3 +121,42 @@ command=timeout 900 cargo test --locked -p dracon-system memory_sampling_tests -
    Compiling async-signal v0.2.14
    Compiling idna v1.1.0
    Compiling async-lock v3.4.2
+   Compiling piper v0.2.5
+   Compiling libssh2-sys v0.3.3
+   Compiling sync_wrapper v1.0.2
+   Compiling utf8parse v0.2.2
+   Compiling tower-layer v0.3.3
+   Compiling memchr v2.8.3
+   Compiling serde_json v1.0.151
+   Compiling ipnet v2.12.2
+   Compiling base64 v0.22.1
+   Compiling hyper-util v0.1.20
+   Compiling tower v0.5.3
+   Compiling anstyle-parse v1.0.0
+   Compiling blocking v1.7.0
+   Compiling async-process v2.5.0
+   Compiling url v2.5.8
+   Compiling tokio-rustls v0.26.5
+   Compiling zbus_macros v5.19.0
+   Compiling async-executor v1.14.0
+   Compiling webpki-roots v1.0.10
+   Compiling async-broadcast v0.7.2
+   Compiling num-traits v0.2.19
+   Compiling async-recursion v1.1.1
+   Compiling async-trait v0.1.92
+   Compiling serde_repr v0.1.21
+   Compiling ordered-stream v0.2.0
+   Compiling uuid v1.26.1
+   Compiling ryu v1.0.23
+   Compiling option-ext v0.2.0
+   Compiling hex v0.4.3
+   Compiling anstyle-query v1.1.5
+   Compiling log v0.4.34
+   Compiling colorchoice v1.0.5
+   Compiling anyhow v1.0.104
+   Compiling getrandom v0.3.4
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling either v1.18.0
+   Compiling litrs v1.0.0
+   Compiling anstyle v1.0.14
+   Compiling anstream v1.0.0
