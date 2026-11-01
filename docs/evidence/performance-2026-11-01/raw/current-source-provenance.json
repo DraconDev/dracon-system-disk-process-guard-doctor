@@ -1,0 +1,23 @@
+{
+  "observed_at": "2026-11-01T15:20:35.340488+00:00",
+  "head": "c8d8bed8d51f090963993a4326080b2da9767fea",
+  "files": [
+    {
+      "path": "src/main.rs",
+      "sha256": "6a335715df2fee05d9dce4856dbe58b3cd6a157e5e3fa7e620427ba5688801a9"
+    },
+    {
+      "path": "src/policy.rs",
+      "sha256": "fbf037625e46d3217a2ad15b1b4989c7cdb8ddab9edbbd2c41c2bb444d620311"
+    },
+    {
+      "path": "src/cpu_limit.rs",
+      "sha256": "bfb327ce7c2c40f439296038cbd27092ac4ecc085e6e4e12449a0151a6eab68c"
+    },
+    {
+      "path": "src/zram.rs",
+      "sha256": "9440447719c5c185e9cd0c7d3cde7b39c4e4458f82eb7c2b32bc83d405353191"
+    }
+  ],
+  "historical_loaded_revision_proven": false
+}
