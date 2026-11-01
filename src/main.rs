@@ -30,6 +30,8 @@ mod doctor;
 #[cfg(test)]
 mod ledger_safety_tests;
 mod managed_oom;
+#[cfg(test)]
+mod memory_sampling_tests;
 mod oom_job;
 mod oom_restore;
 mod protection_probe;
