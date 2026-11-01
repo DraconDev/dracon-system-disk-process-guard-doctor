@@ -240,11 +240,13 @@ exit 0"#
         .expect("the user-profile prune must pass exactly three arguments");
     assert_eq!(lines[delete_at + 1], "nix-env-arg:--delete-generations");
     assert_eq!(
-        lines[delete_at + 2], "nix-env-arg:3",
+        lines[delete_at + 2],
+        "nix-env-arg:3",
         "generation 3 is its own argv element"
     );
     assert_eq!(
-        lines[delete_at + 3], "nix-env-arg:6",
+        lines[delete_at + 3],
+        "nix-env-arg:6",
         "generation 6 is its own argv element"
     );
     assert!(
@@ -2817,10 +2819,7 @@ fn stash_budget_boundary_is_exclusive() {
         !stash_over_budget(0, ten, ten),
         "exactly at budget is allowed"
     );
-    assert!(
-        stash_over_budget(0, ten + 1, ten),
-        "one byte over defers"
-    );
+    assert!(stash_over_budget(0, ten + 1, ten), "one byte over defers");
     assert!(
         !stash_over_budget(ten, 0, ten),
         "zero-size entry always fits"
@@ -5129,10 +5128,7 @@ fn a_profile_outside_the_validated_tmp_roots_is_never_reclaimed() {
     let roots = vec![PathBuf::from("/tmp")];
     // The operator's real profile: outside every tmp root.
     assert_eq!(
-        crate::reclaim_root_for(
-            Path::new("/home/dracon/.config/google-chrome"),
-            &roots
-        ),
+        crate::reclaim_root_for(Path::new("/home/dracon/.config/google-chrome"), &roots),
         None
     );
     // A test profile under the tmp root: reclaimable.

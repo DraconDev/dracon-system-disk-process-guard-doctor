@@ -121,7 +121,12 @@ fn unknown_swap_is_not_a_measured_zero_even_outside_shortlist() {
     let measured = samples.iter().find(|p| p.pid == 1).unwrap();
     assert_eq!(measured.swap_mb, Some(0));
     assert_eq!(serde_json::to_value(measured).unwrap()["swap_mb"], 0);
-    assert_ne!(memory_offender_description(unknown), memory_offender_description(measured));
+    let mut same_process_measured_zero = unknown.clone();
+    same_process_measured_zero.swap_mb = Some(0);
+    assert_ne!(
+        memory_offender_description(unknown),
+        memory_offender_description(&same_process_measured_zero)
+    );
     let (top, unavailable) = memory_pressure_offenders(&samples, &HashSet::new());
     assert!(!pids(&top).contains(&8));
     // Even an omitted unknown is disclosed as incomplete ranking coverage.
@@ -195,7 +200,11 @@ fn initial_identity_failure_does_not_read_swap_or_fabricate_samples() {
     fs::write(root.join("2/stat"), "malformed").unwrap();
     let samples = verified_process_samples_with(
         root,
-        vec![row(1, 1, "worker"), row(2, 1, "worker"), row(3, 1, "worker")],
+        vec![
+            row(1, 1, "worker"),
+            row(2, 1, "worker"),
+            row(3, 1, "worker"),
+        ],
         |_| panic!("unverified PID must not be sampled"),
     );
     assert!(samples.is_empty());
@@ -206,7 +215,11 @@ fn exemptions_and_kernel_threads_never_become_memory_offenders() {
     let fixture = tempfile::tempdir().unwrap();
     let root = fixture.path();
     let mut parsed = Vec::new();
-    for (pid, command, mb) in [(1, "editor", 64 * 1024), (2, "kworker/0:1", 64 * 1024), (3, "worker", 1)] {
+    for (pid, command, mb) in [
+        (1, "editor", 64 * 1024),
+        (2, "kworker/0:1", 64 * 1024),
+        (3, "worker", 1),
+    ] {
         identity(root, pid, command, pid as u64);
         swap(root, pid, mb);
         parsed.push(row(pid, 1, command));
@@ -218,7 +231,8 @@ fn exemptions_and_kernel_threads_never_become_memory_offenders() {
     // An exempt process's unknown footprint cannot claim eligible coverage loss.
     let mut unknown_exempt = samples;
     unknown_exempt[0].swap_mb = None;
-    let (_, unavailable) = memory_pressure_offenders(&unknown_exempt, &HashSet::from(["editor".into()]));
+    let (_, unavailable) =
+        memory_pressure_offenders(&unknown_exempt, &HashSet::from(["editor".into()]));
     assert_eq!(unavailable, 0);
 }
 

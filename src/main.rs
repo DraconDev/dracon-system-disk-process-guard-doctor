@@ -42,11 +42,11 @@ mod events;
 pub(crate) use events::*;
 mod forgotten;
 pub(crate) use forgotten::*;
-#[cfg(test)]
-mod forgotten_tests;
 mod disk;
 mod disk_refs;
 mod disk_tmp;
+#[cfg(test)]
+mod forgotten_tests;
 mod git_temp;
 pub(crate) use git_temp::*;
 mod space_report;
@@ -77,13 +77,13 @@ mod links_tests;
 #[cfg(test)]
 mod policy_tests;
 #[cfg(test)]
-mod stash_tests;
-#[cfg(test)]
 mod reap_tests;
 #[cfg(test)]
 mod relocate_tests;
 #[cfg(test)]
 mod setup_tests;
+#[cfg(test)]
+mod stash_tests;
 #[cfg(test)]
 mod zram_tests;
 
@@ -770,7 +770,9 @@ fn read_proc_swap_mb_from(root: &Path, pid: i32) -> Option<u64> {
     if status.len() > MAX_PROCESS_STATUS_BYTES {
         return None;
     }
-    let mut fields = status.lines().filter_map(|line| line.strip_prefix("VmSwap:"));
+    let mut fields = status
+        .lines()
+        .filter_map(|line| line.strip_prefix("VmSwap:"));
     let mut parts = fields.next()?.split_whitespace();
     let kb = parts.next()?.parse::<u64>().ok()?;
     if parts.next()? != "kB" || parts.next().is_some() || fields.next().is_some() {
@@ -806,8 +808,14 @@ fn memory_pressure_offenders(
 }
 
 fn memory_offender_description(p: &ProcSample) -> String {
-    let swap = p.swap_mb.map(|mb| format!("{mb}MiB")).unwrap_or_else(|| "unknown".into());
-    format!("{} pid={} rss={}MiB swap={swap}", p.command, p.pid, p.rss_mb)
+    let swap = p
+        .swap_mb
+        .map(|mb| format!("{mb}MiB"))
+        .unwrap_or_else(|| "unknown".into());
+    format!(
+        "{} pid={} rss={}MiB swap={swap}",
+        p.command, p.pid, p.rss_mb
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1748,7 +1756,14 @@ pub(crate) fn looks_credential_like(name: &str) -> bool {
     // its environment. On this host they held six deleted projects of
     // 0.84 GiB each — 5 GiB of build trees kept alive by a template file
     // that contains no secret at all.
-    const TEMPLATE: &[&str] = &[".example", ".sample", ".template", ".dist", ".default", ".tpl"];
+    const TEMPLATE: &[&str] = &[
+        ".example",
+        ".sample",
+        ".template",
+        ".dist",
+        ".default",
+        ".tpl",
+    ];
     if (lower == ".env" || lower.starts_with(".env."))
         && !TEMPLATE.iter().any(|s| lower.ends_with(s))
     {
@@ -1958,11 +1973,8 @@ pub(crate) fn dir_allocated_bytes(root: &Path, max_depth: usize, depth: usize) -
         let allocated = std::os::unix::fs::MetadataExt::blocks(&metadata).saturating_mul(512);
         if file_type.is_dir() {
             if depth < max_depth {
-                total = total.saturating_add(dir_allocated_bytes(
-                    &entry.path(),
-                    max_depth,
-                    depth + 1,
-                ));
+                total =
+                    total.saturating_add(dir_allocated_bytes(&entry.path(), max_depth, depth + 1));
             }
         } else if !file_type.is_symlink() {
             total = total.saturating_add(allocated);
@@ -3905,9 +3917,7 @@ async fn auto_cleanup_rust_targets(
         // move to stash (TTL'd, restorable) instead of deleting.
         // ADDED 2026-10-12 (stall guard): over-budget entries defer with an
         // explicit operator note instead of stalling the desktop mid-pass.
-        if guard.clean_stash_first
-            && stash_over_budget(stashed_bytes, target.bytes, stash_budget)
-        {
+        if guard.clean_stash_first && stash_over_budget(stashed_bytes, target.bytes, stash_budget) {
             result.protected_paths.push(format!(
                 "{} ({}, over per-pass stash budget {}, deferred — needs operator)",
                 target.path.display(),
@@ -4073,9 +4083,7 @@ async fn proactive_cleanup_rust_targets(
         // ADDED 2026-09-27 (space tiers Phase 2): stash-first routing.
         // ADDED 2026-10-12 (stall guard): over-budget entries defer with an
         // explicit operator note instead of stalling the desktop mid-pass.
-        if guard.clean_stash_first
-            && stash_over_budget(stashed_bytes, target.bytes, stash_budget)
-        {
+        if guard.clean_stash_first && stash_over_budget(stashed_bytes, target.bytes, stash_budget) {
             result.protected_paths.push(format!(
                 "{} ({}, over per-pass stash budget {}, deferred — needs operator)",
                 target.path.display(),
@@ -4790,7 +4798,8 @@ async fn empty_trash_at(
                     // not the old all-or-nothing abort).
                     let mut depth_capped = 0u64;
                     let mut walk_errors = 0u64;
-                    for entry in walkdir::WalkDir::new(&trash_files).max_depth(TRASH_SCAN_MAX_DEPTH) {
+                    for entry in walkdir::WalkDir::new(&trash_files).max_depth(TRASH_SCAN_MAX_DEPTH)
+                    {
                         match entry {
                             Ok(e) if e.file_type().is_file() => {
                                 if let Some(name) = e.file_name().to_str() {
@@ -4807,7 +4816,9 @@ async fn empty_trash_at(
                                     }
                                 }
                             }
-                            Ok(e) if e.file_type().is_dir() && e.depth() == TRASH_SCAN_MAX_DEPTH => {
+                            Ok(e)
+                                if e.file_type().is_dir() && e.depth() == TRASH_SCAN_MAX_DEPTH =>
+                            {
                                 // AT the cap: children unobservable (files
                                 // AT depth 8 are still yielded and scanned
                                 // above — only descent stops). Keep the
@@ -5225,7 +5236,12 @@ pub(crate) fn nix_generations_to_delete_highest_protected(
     generations: &[u32],
     keep: usize,
 ) -> Vec<u32> {
-    let highest = generations.iter().copied().max().into_iter().collect::<Vec<_>>();
+    let highest = generations
+        .iter()
+        .copied()
+        .max()
+        .into_iter()
+        .collect::<Vec<_>>();
     nix_generations_to_delete_protecting(generations, keep, &highest)
 }
 
@@ -5283,7 +5299,8 @@ pub(crate) fn nix_generations_referenced_by_closure(
         .iter()
         .copied()
         .filter(|generation| {
-            let Ok(target) = std::fs::read_link(profile_dir.join(format!("system-{generation}-link")))
+            let Ok(target) =
+                std::fs::read_link(profile_dir.join(format!("system-{generation}-link")))
             else {
                 // An unreadable generation is not evidence that it is
                 // unreferenced, so it is protected.
@@ -5429,9 +5446,7 @@ pub(crate) fn system_profile_spread_plan(nix_env: &Path, keep: u32) -> Option<Ve
         return None;
     }
     let mut protected: Vec<u32> = match running_system_closure(Path::new("/run")) {
-        Some(closure) => {
-            nix_generations_referenced_by_closure(profile_dir, &generations, &closure)
-        }
+        Some(closure) => nix_generations_referenced_by_closure(profile_dir, &generations, &closure),
         None => Vec::new(),
     };
     if let Some(highest) = generations.iter().copied().max() {
@@ -5625,8 +5640,7 @@ async fn clean_nix_garbage_with_bins(
         if nix_args.is_empty() {
             return Ok((reclaimed, cleaned));
         }
-        match Command::new(nix_env).args(&nix_args).output().await
-        {
+        match Command::new(nix_env).args(&nix_args).output().await {
             Ok(output) if output.status.success() => {}
             Ok(output) => eprintln!(
                 "⚠️ nix-env user-profile generation prune failed ({}): {}",
@@ -6185,12 +6199,7 @@ async fn check_disk_trends(
         avail_bytes as f64 / 1_073_741_824.0
     );
     if previous.as_deref() != Some("soon") {
-        send_notification(
-            guard,
-            "Dracon System Guard - Disk Trend Warning",
-            &detail,
-        )
-        .await;
+        send_notification(guard, "Dracon System Guard - Disk Trend Warning", &detail).await;
     }
     if event_due {
         // ADDED 2026-10-25 (audit D8): the warning used to reach only a
@@ -6250,10 +6259,7 @@ async fn check_disk_early_warning(guard: &GuardPolicy, state: &mut GuardRuntimeS
 /// the wrong state sends one notification, and the event stream carries
 /// repeats at `report_repeat_secs`, mirroring the disk-trend checks.
 /// Unknown (unreadable `/proc/swaps` or config) is silence, not failure.
-async fn check_swap_devices(
-    guard: &GuardPolicy,
-    state: &mut GuardRuntimeState,
-) -> Vec<String> {
+async fn check_swap_devices(guard: &GuardPolicy, state: &mut GuardRuntimeState) -> Vec<String> {
     let expected: Vec<String> = guard
         .expected_swap_prefixes
         .split(',')
@@ -6602,10 +6608,7 @@ async fn check_memory_pressure(
                             p.pid, p.command, e
                         );
                     }
-                    state.cap_refusals.insert(
-                        p.pid,
-                        CapRefusal { reason: e },
-                    );
+                    state.cap_refusals.insert(p.pid, CapRefusal { reason: e });
                 }
             }
         }
@@ -6706,23 +6709,14 @@ async fn check_memory_pressure(
         let policy = reap_policy_from_guard(guard);
         let trees = forgotten.candidates.clone();
         forgotten_reaped = tokio::task::spawn_blocking(move || {
-            reap_forgotten_orphan_trees(
-                Path::new("/proc"),
-                &policy,
-                &trees,
-                PROC_TICKS_PER_SEC,
-            )
+            reap_forgotten_orphan_trees(Path::new("/proc"), &policy, &trees, PROC_TICKS_PER_SEC)
         })
         .await
         .unwrap_or_default();
         for r in &forgotten_reaped {
             limited.push(format!(
                 "forgotten-reap tree {}={} ({} processes, {}MiB, {} ended)",
-                r.root_comm,
-                r.root_pid,
-                r.member_count,
-                r.aggregate_footprint_mb,
-                r.members_ended
+                r.root_comm, r.root_pid, r.member_count, r.aggregate_footprint_mb, r.members_ended
             ));
         }
         // A leaked browser is two halves: the processes and the profile
@@ -7834,11 +7828,7 @@ pub(crate) fn stash_budget_bytes(max_mb: u64) -> u64 {
 /// True when moving `entry_bytes` would exceed the per-pass stash
 /// budget. Pure boundary helper: exactly-at-budget is allowed, one byte
 /// over defers.
-pub(crate) fn stash_over_budget(
-    moved_bytes: u64,
-    entry_bytes: u64,
-    budget_bytes: u64,
-) -> bool {
+pub(crate) fn stash_over_budget(moved_bytes: u64, entry_bytes: u64, budget_bytes: u64) -> bool {
     moved_bytes.saturating_add(entry_bytes) > budget_bytes
 }
 
@@ -8508,9 +8498,7 @@ async fn reclaim_reaped_browser_profiles(
     let root_paths = match resolve_safe_tmp_roots(&roots) {
         Ok(r) if !r.is_empty() => r,
         _ => {
-            eprintln!(
-                "⚠️ browser-profile reclaim: no validated tmp root — reclaiming nothing"
-            );
+            eprintln!("⚠️ browser-profile reclaim: no validated tmp root — reclaiming nothing");
             return reclaimed;
         }
     };
@@ -8564,11 +8552,7 @@ async fn reclaim_reaped_browser_profiles(
             continue;
         }
         if let Err(e) = check_safe_to_delete_tmp_entry(dir, &root, &guard.protected_paths) {
-            eprintln!(
-                "🛡️ keeping browser profile {}: {}",
-                dir.display(),
-                e
-            );
+            eprintln!("🛡️ keeping browser profile {}: {}", dir.display(), e);
             continue;
         }
         let size = get_dir_size(dir).await.unwrap_or(0);
@@ -9442,22 +9426,24 @@ fn spawn_background_cleanup(
         }
         let outcome = match mode {
             CleanupMode::Pressure => run_auto_cleanup(&guard, &mut scratch, used, true).await,
-            CleanupMode::Proactive => async {
-                // ADDED 2026-10-25 (audit D7): the "the rust cleanup is
-                // switched off" report used to live HERE, inside the
-                // proactive tier. The proactive tier only runs while the
-                // disk is between `proactive_cleanup_percent` (80%) and
-                // `disk_action_percent` (85%) — at the action tier the guard
-                // takes the pressure branch instead, so the report went
-                // silent at exactly the disk pressure that makes the
-                // unreclaimed build trees matter. It is now emitted by the
-                // guard PASS (see `run_guard_once`), so every tier says it.
-                if guard.auto_cleanup_rust {
-                    run_proactive_cleanup(&guard, &mut scratch).await?;
+            CleanupMode::Proactive => {
+                async {
+                    // ADDED 2026-10-25 (audit D7): the "the rust cleanup is
+                    // switched off" report used to live HERE, inside the
+                    // proactive tier. The proactive tier only runs while the
+                    // disk is between `proactive_cleanup_percent` (80%) and
+                    // `disk_action_percent` (85%) — at the action tier the guard
+                    // takes the pressure branch instead, so the report went
+                    // silent at exactly the disk pressure that makes the
+                    // unreclaimed build trees matter. It is now emitted by the
+                    // guard PASS (see `run_guard_once`), so every tier says it.
+                    if guard.auto_cleanup_rust {
+                        run_proactive_cleanup(&guard, &mut scratch).await?;
+                    }
+                    run_auto_cleanup(&guard, &mut scratch, used, false).await
                 }
-                run_auto_cleanup(&guard, &mut scratch, used, false).await
+                .await
             }
-            .await,
         };
         if let Err(e) = outcome {
             eprintln!("⚠️ background cleanup failed: {e:#}");
@@ -9898,10 +9884,7 @@ async fn check_reap_candidates(
     if candidates.len() > listed.len() {
         detail.push_str(&format!(" … and {} more", candidates.len() - listed.len()));
     }
-    let grew = previous
-        .as_deref()
-        .map(|p| p.is_empty())
-        .unwrap_or(false)
+    let grew = previous.as_deref().map(|p| p.is_empty()).unwrap_or(false)
         || candidates.len()
             > previous
                 .as_deref()
@@ -9909,7 +9892,12 @@ async fn check_reap_candidates(
                 .unwrap_or(0);
     if grew {
         // New abandoned servers appeared: the operator should know promptly.
-        send_notification(guard, "Dracon System Guard - Abandoned Dev Servers", &detail).await;
+        send_notification(
+            guard,
+            "Dracon System Guard - Abandoned Dev Servers",
+            &detail,
+        )
+        .await;
     }
     emit_event(&DraconEvent::new(
         "system",
@@ -10455,7 +10443,13 @@ pub(crate) async fn run_guard_once(
             // Set the timestamp before the scan so a persistent filesystem
             // error cannot turn into a 30-second retry loop.
             state.last_auto_cleanup = Some(now);
-            spawn_background_cleanup(guard, state, used, CleanupMode::Pressure, cleanup_slot.clone());
+            spawn_background_cleanup(
+                guard,
+                state,
+                used,
+                CleanupMode::Pressure,
+                cleanup_slot.clone(),
+            );
         }
     } else if used >= guard.proactive_cleanup_percent {
         state.guard_cycle += 1;
@@ -10471,7 +10465,13 @@ pub(crate) async fn run_guard_once(
             // fills 20–60 GiB/h. The cheap non-rust kinds now run here too
             // (include_rust=false keeps the heavy ~/Dev scan on its own path).
             state.last_proactive_cleanup = Some(Instant::now());
-            spawn_background_cleanup(guard, state, used, CleanupMode::Proactive, cleanup_slot.clone());
+            spawn_background_cleanup(
+                guard,
+                state,
+                used,
+                CleanupMode::Proactive,
+                cleanup_slot.clone(),
+            );
         }
     }
 
@@ -11058,7 +11058,11 @@ async fn cmd_disk(
     print!("{}", report_data.render(mode, detail));
     if !report {
         println!();
-        println!("Deleted {} path(s), {} freed.", records.len(), human_bytes(freed));
+        println!(
+            "Deleted {} path(s), {} freed.",
+            records.len(),
+            human_bytes(freed)
+        );
         if !records.is_empty() {
             println!();
             println!("| path | pre-delete bytes | class | pre-delete /proc refs |");
@@ -11068,9 +11072,7 @@ async fn cmd_disk(
             }
         }
         println!();
-        println!(
-            "df -B1 / : {before} available before, {after} available after."
-        );
+        println!("df -B1 / : {before} available before, {after} available after.");
         println!(
             "Note: available-byte movement on a busy filesystem is not exact per-path attribution."
         );
@@ -11870,11 +11872,19 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
             table.add_row(vec![
                 Cell::new("🧹"),
                 Cell::new("Forgotten orphan trees"),
-                Cell::new(format!("{} — {}", memory.forgotten_trees.len(), parts.join(", "))),
+                Cell::new(format!(
+                    "{} — {}",
+                    memory.forgotten_trees.len(),
+                    parts.join(", ")
+                )),
             ]);
         }
         if !memory.forgotten_reaped.is_empty() {
-            let ended: usize = memory.forgotten_reaped.iter().map(|r| r.members_ended).sum();
+            let ended: usize = memory
+                .forgotten_reaped
+                .iter()
+                .map(|r| r.members_ended)
+                .sum();
             table.add_row(vec![
                 Cell::new("🪓"),
                 Cell::new("Reaped (forgotten trees)"),
@@ -12604,7 +12614,9 @@ async fn cmd_guard_clean(
         }
         for f in &outcome.skipped_owned {
             let owner = repo_root_for_git_path(&f.path)
-                .and_then(|repo| git_owner_for(&owners, &repo).map(|o| format!("{}(pid {})", o.name, o.pid)))
+                .and_then(|repo| {
+                    git_owner_for(&owners, &repo).map(|o| format!("{}(pid {})", o.name, o.pid))
+                })
                 .unwrap_or_else(|| "a live git process".to_string());
             actions.push(format!(
                 "Skipped (live {} is working in this repo): {} ({})",
@@ -12698,7 +12710,8 @@ async fn cmd_guard_clean(
                 } else {
                     entry.metadata().map(|m| m.len()).unwrap_or(0)
                 };
-                if let Some(item) = classify_stray(&entry.path(), &name, bytes, file_type.is_dir()) {
+                if let Some(item) = classify_stray(&entry.path(), &name, bytes, file_type.is_dir())
+                {
                     actions.push(format!(
                         "REPORT-ONLY {}: {} ({}) — needs explicit approval",
                         item.kind.label(),
@@ -13001,29 +13014,16 @@ mod nix_current_generation_tests {
         let store = dir.path().join("store");
         std::fs::create_dir_all(store.join("abc-system")).expect("mkdir store");
         // Two generations resolve to the running closure, one does not.
-        std::os::unix::fs::symlink(
-            store.join("abc-system"),
-            dir.path().join("system-4-link"),
-        )
-        .expect("symlink 4");
-        std::os::unix::fs::symlink(
-            store.join("abc-system"),
-            dir.path().join("system-5-link"),
-        )
-        .expect("symlink 5");
+        std::os::unix::fs::symlink(store.join("abc-system"), dir.path().join("system-4-link"))
+            .expect("symlink 4");
+        std::os::unix::fs::symlink(store.join("abc-system"), dir.path().join("system-5-link"))
+            .expect("symlink 5");
         std::fs::create_dir_all(store.join("other-system")).expect("mkdir other");
-        std::os::unix::fs::symlink(
-            store.join("other-system"),
-            dir.path().join("system-6-link"),
-        )
-        .expect("symlink 6");
+        std::os::unix::fs::symlink(store.join("other-system"), dir.path().join("system-6-link"))
+            .expect("symlink 6");
 
         let running = std::fs::read_link(dir.path().join("system-5-link")).expect("resolve");
-        let protected = nix_generations_referenced_by_closure(
-            dir.path(),
-            &[4, 5, 6],
-            &running,
-        );
+        let protected = nix_generations_referenced_by_closure(dir.path(), &[4, 5, 6], &running);
         assert_eq!(
             protected,
             vec![4, 5],
@@ -13088,11 +13088,8 @@ mod system_profile_spread_tests {
     fn system_generations_are_read_from_link_names() {
         let dir = tempfile::tempdir().expect("tempdir");
         for generation in [3, 1, 12] {
-            std::fs::write(
-                dir.path().join(format!("system-{generation}-link")),
-                b"",
-            )
-            .expect("write link");
+            std::fs::write(dir.path().join(format!("system-{generation}-link")), b"")
+                .expect("write link");
         }
         // Not generation links: must be ignored rather than misparsed.
         std::fs::write(dir.path().join("default"), b"").expect("write");
@@ -13109,7 +13106,8 @@ mod system_profile_spread_tests {
 
     #[test]
     fn the_system_profile_prune_passes_one_argument_per_generation() {
-        let argv = nix_delete_generations_argv_with_profile(&[2, 7], "/nix/var/nix/profiles/default");
+        let argv =
+            nix_delete_generations_argv_with_profile(&[2, 7], "/nix/var/nix/profiles/default");
         assert_eq!(
             argv,
             vec![
@@ -13126,7 +13124,8 @@ mod system_profile_spread_tests {
     fn the_live_system_profile_is_never_asked_to_delete_the_booted_generation() {
         // Runs against the real profile directory. If it is unreadable this
         // host has no NixOS system profile, and there is nothing to assert.
-        let Some(generations) = system_profile_generations(std::path::Path::new("/nix/var/nix/profiles"))
+        let Some(generations) =
+            system_profile_generations(std::path::Path::new("/nix/var/nix/profiles"))
         else {
             return;
         };
@@ -13198,7 +13197,11 @@ mod nix_spread_tests {
             .filter(|g| !deleted.contains(g))
             .collect();
         assert_eq!(kept.len(), 5, "exactly keep survivors");
-        assert_eq!(*kept.first().unwrap(), 1, "oldest generation retained as an anchor");
+        assert_eq!(
+            *kept.first().unwrap(),
+            1,
+            "oldest generation retained as an anchor"
+        );
         assert_eq!(*kept.last().unwrap(), 18, "current generation retained");
         // And the spread must actually span the middle, unlike +5.
         assert!(kept.iter().any(|g| (7..=12).contains(g)), "kept {kept:?}");

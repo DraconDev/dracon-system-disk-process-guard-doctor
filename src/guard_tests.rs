@@ -564,13 +564,8 @@ fn a_slow_fill_warns_even_though_it_is_below_the_rapid_fill_threshold() {
     let gib = 1_073_741_824u64;
     // 138 GiB free, filling at 10 GiB/h → 13.8 hours to full, inside the
     // 24-hour horizon, and BELOW the 20 GiB/h rapid-fill threshold.
-    let warning = disk_trend_warning(
-        DiskFillRate::Filling(10.0),
-        138 * gib,
-        24,
-        20.0,
-    )
-    .expect("a disk 13.8 hours from full must warn");
+    let warning = disk_trend_warning(DiskFillRate::Filling(10.0), 138 * gib, 24, 20.0)
+        .expect("a disk 13.8 hours from full must warn");
     assert!(
         (warning.hours - 13.8).abs() < 0.05,
         "the figure must be the honest one: {}",
@@ -1852,7 +1847,10 @@ fn the_published_rate_is_stable_when_a_burst_arrives() {
     let before = crate::disk_fill_rate(&history)
         .rate_gbph()
         .expect("a steady fill measures");
-    assert!((before - 20.0).abs() < 2.0, "expected ~20 GiB/h, got {before}");
+    assert!(
+        (before - 20.0).abs() < 2.0,
+        "expected ~20 GiB/h, got {before}"
+    );
 
     // Now a burst lands in the newest interval.
     used += 4.8;
@@ -1921,7 +1919,10 @@ async fn the_pass_stores_the_measured_fill_rate_for_the_scratch_report() {
         .disk_fill_rate
         .rate_gbph()
         .expect("the pass must have measured a rate");
-    assert!((stored - 10.0).abs() < 0.5, "expected ~10 GiB/h, got {stored}");
+    assert!(
+        (stored - 10.0).abs() < 0.5,
+        "expected ~10 GiB/h, got {stored}"
+    );
     assert_eq!(
         reported,
         Some(stored),
@@ -1973,9 +1974,11 @@ async fn an_unmeasurable_rate_is_stored_as_unmeasured_not_as_not_filling() {
     let mut state = crate::GuardRuntimeState::default();
     // A brand-new state has no history at all.
     assert_eq!(state.disk_fill_rate, crate::DiskFillRate::Unmeasured);
-    assert!(crate::check_rapid_disk_fill(&guard, &mut state, 600, 60, 400)
-        .await
-        .is_none());
+    assert!(
+        crate::check_rapid_disk_fill(&guard, &mut state, 600, 60, 400)
+            .await
+            .is_none()
+    );
     assert_eq!(
         state.disk_fill_rate,
         crate::DiskFillRate::Unmeasured,
@@ -2008,7 +2011,10 @@ fn the_namespace_link_parses_to_an_inode_number() {
         parse_namespace_inode(Path::new("user:[4026532749]")),
         Some(4026532749)
     );
-    assert_eq!(parse_namespace_inode(Path::new("user:[not-a-number]")), None);
+    assert_eq!(
+        parse_namespace_inode(Path::new("user:[not-a-number]")),
+        None
+    );
     assert_eq!(parse_namespace_inode(Path::new("pid:[4026531837]")), None);
     assert_eq!(parse_namespace_inode(Path::new("4026531837")), None);
 }
@@ -2016,11 +2022,20 @@ fn the_namespace_link_parses_to_an_inode_number() {
 #[test]
 fn a_capability_in_one_namespace_does_not_reach_another() {
     // The same namespace: the guard's CAP_SYS_NICE reaches the target.
-    assert!(nice_restore_namespace_ok(Some(4026531837), Some(4026531837)));
+    assert!(nice_restore_namespace_ok(
+        Some(4026531837),
+        Some(4026531837)
+    ));
     // A different namespace: it does not. This is the case that made the
     // mitigation one-way on this host.
-    assert!(!nice_restore_namespace_ok(Some(4026532749), Some(4026531837)));
-    assert!(!nice_restore_namespace_ok(Some(4026531837), Some(4026532749)));
+    assert!(!nice_restore_namespace_ok(
+        Some(4026532749),
+        Some(4026531837)
+    ));
+    assert!(!nice_restore_namespace_ok(
+        Some(4026531837),
+        Some(4026532749)
+    ));
     // Unreadable on either side fails closed.
     assert!(!nice_restore_namespace_ok(None, Some(4026531837)));
     assert!(!nice_restore_namespace_ok(Some(4026531837), None));
@@ -2301,7 +2316,9 @@ fn a_credential_word_in_the_middle_of_a_name_is_not_a_credential_file() {
 /// build tree alive on the strength of a test name.
 #[test]
 fn a_credential_word_that_leads_an_ordinary_compound_name_is_not_a_credential_file() {
-    assert!(!crate::looks_credential_like("secret_scan-a5b13cc6b5fee239.d"));
+    assert!(!crate::looks_credential_like(
+        "secret_scan-a5b13cc6b5fee239.d"
+    ));
     assert!(!crate::looks_credential_like("secret_scan"));
     assert!(!crate::looks_credential_like("token_bucket.rs"));
     assert!(!crate::looks_credential_like("secrets-scan.rs"));
