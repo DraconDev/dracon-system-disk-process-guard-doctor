@@ -171,3 +171,11 @@ command=timeout 1800 cargo test --workspace --locked
    Compiling native-tls v0.2.18
    Compiling rustls v0.23.46
    Compiling chrono v0.4.45
+   Compiling comfy-table v7.2.2
+   Compiling hyper v1.11.1
+   Compiling url v2.5.8
+   Compiling rustls-webpki v0.103.16
+   Compiling zvariant v5.15.0
+   Compiling openssl-probe v0.2.1
+   Compiling zbus_names v4.3.4
+   Compiling hyper-util v0.1.20
