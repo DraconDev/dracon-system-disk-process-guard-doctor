@@ -17,7 +17,7 @@ pub(crate) enum ProducerState { Unavailable, Missing, Existing, Stopped }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum SaveState { Unavailable, Fresh, Stale, Shared }
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct Producer {
     pub(crate) state: ProducerState,
     pid: Option<i32>, starttime: Option<u64>, process_state: Option<char>,
@@ -31,10 +31,11 @@ pub(crate) struct Save {
     pub(crate) state: SaveState,
     directory: Option<PathBuf>, target: Option<String>, age_secs: Option<u64>,
     bytes: Option<u64>, device: Option<u64>, inode: Option<u64>,
+    directory_identity: Option<(u64, u64)>,
     reason: String,
 }
 impl Save {
-    fn unknown(reason: &str) -> Self { Self { state: SaveState::Unavailable, directory: None, target: None, age_secs: None, bytes: None, device: None, inode: None, reason: reason.into() } }
+    fn unknown(reason: &str) -> Self { Self { state: SaveState::Unavailable, directory: None, target: None, age_secs: None, bytes: None, device: None, inode: None, directory_identity: None, reason: reason.into() } }
 }
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct Server {
@@ -175,11 +176,16 @@ fn last_target(dir: &File) -> Result<String, Error> {
     at(dir, &name)?; Ok(name)
 }
 fn snapshot(roots: &Roots, server: &Reply, birth: SystemTime, now: SystemTime, max_age: u64) -> Save {
-    let result = (|| -> Result<Save, Error> {
+    let started = std::time::Instant::now();
+    let mut observed = Save::unknown("save evidence unavailable");
+    let result = (|| -> Result<(), Error> {
         if server.directory.is_empty() { return Err(Error::other("explicit @resurrect-dir unavailable; defaults not guessed")); }
         let path = crate::policy::expand_tilde(&server.directory);
         if !safe_path(&path) { return Err(Error::other("unsafe snapshot directory")); }
         let dir = open_dir(&path, roots.uid)?;
+        let dir_meta = dir.metadata()?;
+        observed.directory = Some(path.clone());
+        observed.directory_identity = Some((dir_meta.dev(), dir_meta.ino()));
         let name = last_target(&dir)?; let file = at(&dir, &name)?; let before = file.metadata()?;
         if before.uid() != roots.uid || before.len() == 0 { return Err(Error::other("snapshot owner/content unavailable")); }
         let mut prefix = Vec::new(); file.take(RECORD as u64).read_to_end(&mut prefix)?;
@@ -187,10 +193,16 @@ fn snapshot(roots: &Roots, server: &Reply, birth: SystemTime, now: SystemTime, m
         let after = at(&dir, &name)?.metadata()?;
         if last_target(&dir)? != name || before.dev() != after.dev() || before.ino() != after.ino() || before.len() != after.len() || before.modified()? != after.modified()? { return Err(Error::other("snapshot changed during inspection")); }
         let modified = before.modified()?;
-        let age = now.duration_since(modified).map_err(|_| Error::other("future snapshot timestamp"))?.as_secs();
+        let clock = now.checked_add(started.elapsed()).ok_or_else(|| Error::other("observation clock overflow"))?;
+        let age = clock.duration_since(modified).map_err(|_| Error::other("future snapshot timestamp"))?.as_secs();
         if modified < birth { return Err(Error::other("snapshot predates current server incarnation")); }
-        Ok(Save { state: if age <= max_age { SaveState::Fresh } else { SaveState::Stale }, directory: Some(path), target: Some(name), age_secs: Some(age), bytes: Some(before.len()), device: Some(before.dev()), inode: Some(before.ino()), reason: "configured-path pane evidence only; not producer attribution, periodic execution or restore validation".into() })
-    })(); result.unwrap_or_else(|e| Save::unknown(&e.to_string()))
+        let current_dir = open_dir(&path, roots.uid)?.metadata()?;
+        if (current_dir.dev(), current_dir.ino()) != (dir_meta.dev(), dir_meta.ino()) { return Err(Error::other("snapshot directory changed during inspection")); }
+        observed.state = if age <= max_age { SaveState::Fresh } else { SaveState::Stale };
+        observed.target = Some(name); observed.age_secs = Some(age); observed.bytes = Some(before.len()); observed.device = Some(before.dev()); observed.inode = Some(before.ino());
+        observed.reason = "configured-path pane evidence only; not producer attribution, periodic execution or restore validation".into();
+        Ok(())
+    })(); if let Err(e) = result { observed.reason = e.to_string(); } observed
 }
 fn birth(roots: &Roots, id: &ProcessIdentity, now: SystemTime) -> Result<SystemTime, Error> {
     let uptime = text(&roots.proc.join("uptime"), 128)?.split_whitespace().next().and_then(|s| s.parse::<f64>().ok()).filter(|n| n.is_finite() && *n >= 0.0).ok_or_else(|| Error::other("boot uptime unavailable"))?;
@@ -201,6 +213,7 @@ fn birth(roots: &Roots, id: &ProcessIdentity, now: SystemTime) -> Result<SystemT
     now.checked_sub(Duration::from_secs_f64(age)).ok_or_else(|| Error::other("server generation time overflow"))
 }
 async fn inspect(probe: &impl Probe, roots: &Roots, socket: &Path, now: SystemTime, max_age: u64) -> Result<Server, String> {
+    let started = std::time::Instant::now();
     if !safe_path(socket) { return Err("unsafe socket path".into()); }
     let metadata = fs::symlink_metadata(socket).map_err(|_| "socket metadata unavailable")?;
     if !metadata.file_type().is_socket() || metadata.uid() != roots.uid { return Err("owned Unix socket unavailable".into()); }
@@ -210,11 +223,14 @@ async fn inspect(probe: &impl Probe, roots: &Roots, socket: &Path, now: SystemTi
     if matches!(state, 'T' | 't' | 'Z' | 'X' | 'x') { return Err("server process unavailable/stopped during observation; cause unknown".into()); }
     listening_owner(roots, &before).map_err(|e| e.to_string())?;
     let registered = producer(roots, &before);
+    let now = now.checked_add(started.elapsed()).ok_or("observation clock overflow")?;
     let save = birth(roots, &id, now).map_or_else(|e| Save::unknown(&e.to_string()), |born| snapshot(roots, &before, born, now, max_age));
     let after = probe.query(socket).await?;
     let final_meta = fs::symlink_metadata(socket).map_err(|_| "socket disappeared")?;
     if before.pid != after.pid || before.socket != after.socket || before.directory != after.directory || identity(roots, before.pid).map_err(|e| e.to_string())? != (id.clone(), state) || metadata.dev() != final_meta.dev() || metadata.ino() != final_meta.ino() { return Err("server/socket/config incarnation changed during inspection".into()); }
     listening_owner(roots, &after).map_err(|e| e.to_string())?;
+    let final_registered = producer(roots, &after);
+    let registered = if registered == final_registered { registered } else { Producer::unknown("producer changed during server query bracket") };
     let marker = before.marker.parse::<u64>().ok().filter(|s| *s > 0).and_then(|s| UNIX_EPOCH.checked_add(Duration::from_secs(s))).and_then(|t| now.duration_since(t).ok()).map(|d| d.as_secs());
     Ok(Server { socket: socket.into(), server_pid: Some(before.pid), server_starttime: Some(id.starttime), producer: registered, save, launch_marker_age_secs: marker, reason: "observations only; continuum marker means launch, sleeping means existence; neither proves successful autosave".into() })
 }
@@ -226,8 +242,8 @@ async fn collect(probe: &impl Probe, roots: &Roots, sockets: &[PathBuf], now: Sy
     }
     // Compare physical directories too: aliases must not bypass server isolation.
     let mut counts = HashMap::new();
-    for s in &servers { if let Some(p) = &s.save.directory { if let Ok(m) = fs::metadata(p) { *counts.entry((m.dev(), m.ino())).or_insert(0) += 1; } } }
-    for s in &mut servers { if let Some(p) = &s.save.directory { if let Ok(m) = fs::metadata(p) { if counts.get(&(m.dev(), m.ino())).is_some_and(|n| *n > 1) { s.save.state = SaveState::Shared; s.save.reason = "shared snapshot directory: fresh evidence cannot be attributed to this server".into(); } } } }
+    for s in &servers { if let Some(key) = s.save.directory_identity { *counts.entry(key).or_insert(0) += 1; } }
+    for s in &mut servers { if s.save.directory_identity.is_some_and(|key| counts.get(&key).is_some_and(|n| *n > 1)) { s.save.state = SaveState::Shared; s.save.reason = "shared snapshot directory: fresh evidence cannot be attributed to this server".into(); } }
     Report { servers }
 }
 pub(crate) async fn check(guard: &GuardPolicy) -> Report {
