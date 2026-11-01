@@ -1,0 +1,5 @@
+PASS: export digest and selected raw observations match original artifact
+PASS: journal-derived excerpts and key detection/action/refusal observations match raw capture
+PASS: all capture commands exited zero; bounded journal scope disclosed
+PASS: all incident report local evidence links resolve
+PASS: later policy explicitly not historical policy proof
