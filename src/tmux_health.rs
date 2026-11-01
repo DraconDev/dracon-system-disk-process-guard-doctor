@@ -246,7 +246,7 @@ fn at(dir: &File, name: &str) -> Result<File, Error> {
         libc::openat(
             dir.as_raw_fd(),
             name.as_ptr(),
-            libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK,
+            libc::O_PATH | libc::O_CLOEXEC | libc::O_NOFOLLOW,
         )
     };
     if fd < 0 {
@@ -256,7 +256,10 @@ fn at(dir: &File, name: &str) -> Result<File, Error> {
     if !f.metadata()?.is_file() {
         return Err(Error::other("not a regular file"));
     }
-    Ok(f)
+    // Inspect the inode WITHOUT opening a device/FIFO for I/O. Reopen only
+    // this pinned regular inode; a pathname replacement cannot change its type.
+    OpenOptions::new().read(true).custom_flags(libc::O_NONBLOCK)
+        .open(format!("/proc/self/fd/{}", f.as_raw_fd()))
 }
 fn read(mut f: File, max: usize) -> Result<Vec<u8>, Error> {
     let mut bytes = Vec::new();
