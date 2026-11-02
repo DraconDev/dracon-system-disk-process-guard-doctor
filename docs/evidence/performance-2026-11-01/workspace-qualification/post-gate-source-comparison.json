@@ -22,5 +22,12 @@
       "qualified_sha256": "e6a6d0b7295ccf9e77fbb6cec57c31d0abc2afa58b3b380e9fdb24f66a833eb6",
       "current_sha256": "fe864915c3223936fd4863e22fa67dfa93129fa93f8ff65fbbab6623d5bc90bf"
     }
-  ]
+  ],
+  "snapshot_status_at_final_check": {
+    ".": "",
+    "dracon-sync": "",
+    "dracon-system": "",
+    "dracon-warden": ""
+  },
+  "final_status_recorded_at": "2026-11-02T00:07:43.643842+00:00"
 }

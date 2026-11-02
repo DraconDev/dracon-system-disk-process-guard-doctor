@@ -106,7 +106,7 @@ and raw-log hashes. Required commands were not narrowed or weakened:
 
 | Gate, from frozen parent | Outcome | Raw evidence |
 |---|---|---|
-| `cargo test --workspace --locked` | Exit 0; 3,016 passed, zero failed across 44 summaries. 27 existing ignored tests remain explicitly reported by the standard command; no ignore attributes or filters were added for this run. | [Workspace tests](workspace-qualification/workspace-tests.log) |
+| `cargo test --workspace --locked` | Exit 0; 3,016 aggregate passes, zero failures across 44 summaries, including nested helper-process summaries (not a unique-test count). 27 existing ignored tests remain explicitly reported by the standard command; no ignore attributes or filters were added for this run. | [Workspace tests](workspace-qualification/workspace-tests.log) |
 | `cargo clippy --workspace --locked -- -D warnings` | Exit 0; strict warnings remain enabled. | [Workspace Clippy](workspace-qualification/workspace-clippy.log) |
 | `cargo build --release --locked` | Exit 0; release artifacts stayed inside the isolated target, not installed. | [Release receipt](workspace-qualification/workspace-release.log) |
 | `cargo deny check` | Exit 0; advisories, bans, licenses and sources all report `ok`. | [Dependency/policy gate](workspace-qualification/workspace-deny.log) |
@@ -159,6 +159,23 @@ Remaining limits are operationally significant:
 - Deployment, service control, workload admission, browser cleanup and paused
   epoch-spool reclamation are outside this qualification. Their absence is
   deliberate, not a failed gate recast as operational success.
+
+## Evidence verification and independent review
+
+The [stored-evidence checker](workspace-qualification/verify.py) verifies exact
+required argv/exit receipts, raw-log hashes, nonempty passing targeted tests,
+frozen source/SDK integrity, isolated target/helper paths and local citations.
+It keeps the interrupted exit unknown and rejects drift in the performance
+source rather than silently lending old results to new code. Its
+[raw outcome](workspace-qualification/verification.log) and
+[derived summary](workspace-qualification/verification.json) retain the report
+hash and distinguish qualified frozen inputs from unqualified sibling edits.
+
+A [fresh-context review](workspace-qualification/review.md) independently
+inspected the source assertions, production wiring, receipts and scope. No
+substantive issue was found. The reviewer had no execution tool: this is not
+an independent rerun or digest recomputation. The parent retained execution
+outputs; final acceptance remains separate from that rehearsal.
 
 The next useful operational step is a separately approved deployment and
 observational validation plan, not an automatic restart or tuning action from
