@@ -1,0 +1,7 @@
+LoadState=loaded
+ActiveState=active
+SubState=running
+FragmentPath=/home/dracon/.config/systemd/user/dracon-system-guard.service
+MainPID=2798562
+ExecMainStartTimestamp=Sun 2026-10-25 23:40:40 GMT
+ExecStart={ path=/home/dracon/.local/bin/dracon-system ; argv[]=/home/dracon/.local/bin/dracon-system guard daemon ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }

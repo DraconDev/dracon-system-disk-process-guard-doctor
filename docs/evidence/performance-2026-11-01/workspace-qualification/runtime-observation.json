@@ -1,0 +1,27 @@
+{
+  "started_at": "2026-11-02T00:01:56.379769+00:00",
+  "finished_at": "2026-11-02T00:01:56.401837+00:00",
+  "command": [
+    "systemctl",
+    "--user",
+    "show",
+    "dracon-system-guard.service",
+    "-p",
+    "LoadState",
+    "-p",
+    "ActiveState",
+    "-p",
+    "SubState",
+    "-p",
+    "MainPID",
+    "-p",
+    "ExecMainStartTimestamp",
+    "-p",
+    "ExecStart",
+    "-p",
+    "FragmentPath"
+  ],
+  "timeout_seconds": 10,
+  "exit": 0,
+  "meaning": "read-only unit observation, not installed code qualification or historical loaded-image digest"
+}
