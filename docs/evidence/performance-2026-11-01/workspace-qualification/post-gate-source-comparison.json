@@ -1,0 +1,26 @@
+{
+  "recorded_at": "2026-11-02T00:00:49.057278+00:00",
+  "frozen_source_unchanged": true,
+  "live_source_differences": [
+    {
+      "path": "dracon-sync/src/daemon.rs",
+      "qualified_sha256": "2691b0b94e20d0f15e81af71edf9117bbd60be412473c5d638b8bd3690fcffda",
+      "current_sha256": "006994f7ec5857da4a81da9b9c1dadcb1175e1f108ae5e115bb8d7d76ab60494"
+    },
+    {
+      "path": "dracon-sync/src/git/push.rs",
+      "qualified_sha256": "4928eb4ebd0aa4efac684959b70c2b8685458d32567d57cc8cb0494d24209f85",
+      "current_sha256": "36c3d1b15e720fc95785f064d869cf60a842dfebbb5133010d05d96de4cf16b0"
+    },
+    {
+      "path": "dracon-sync/src/report.rs",
+      "qualified_sha256": "7618bc92853eda8c77879a86a6ee7b9f6480d91fb7bd2c099fe08e4bc4c8d3b5",
+      "current_sha256": "77049beea1c93a4ee4a171bd45aefb2fe48da954f196ca864d6b86d5ad1916e6"
+    },
+    {
+      "path": "dracon-sync/src/sync.rs",
+      "qualified_sha256": "e6a6d0b7295ccf9e77fbb6cec57c31d0abc2afa58b3b380e9fdb24f66a833eb6",
+      "current_sha256": "fe864915c3223936fd4863e22fa67dfa93129fa93f8ff65fbbab6623d5bc90bf"
+    }
+  ]
+}
