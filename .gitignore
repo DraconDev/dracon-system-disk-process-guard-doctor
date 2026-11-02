@@ -129,3 +129,9 @@ web/games/wip/football-forever/docs/audit/
 !rustfmt.toml
 !state/events/*.jsonl
 # --- END DRACON MANAGED BLOCK ---
+# --- OPERATOR DECISION 2026-11-02 ---
+# Session HTML export churned a fresh 69MB encrypted blob every round
+# (randomized age nonce defeats clean/smudge stability) AND carried a
+# skip-worktree bit that wedged index capture for 16h. Untracked
+# (blob stays in history for recovery); file stays on disk, ignored.
+pi-session-2026-10-28T15-44-14-957Z_01a1832e-f46b-76e7-80b3-2377bc0b4468.html
