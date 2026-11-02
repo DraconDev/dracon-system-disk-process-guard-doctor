@@ -1,5 +1,5 @@
 {
-  "verified_at": "2026-11-02T00:06:09.890031+00:00",
+  "verified_at": "2026-11-02T00:07:51.260243+00:00",
   "scope": "recorded frozen workspace only; newer sibling source unqualified",
   "summaries": {
     "attribution": {
@@ -34,6 +34,6 @@
     "dracon-sync/src/report.rs",
     "dracon-sync/src/sync.rs"
   ],
-  "local_citations": 30,
-  "report_sha256": "45cad584543cc13c0f519c0e05b441bbe8bdc61c48d308ad54a0063df48098e3"
+  "local_citations": 34,
+  "report_sha256": "18c5ba85f39d965377221abe1d377afd43c0f8de76ef52d826338c28711a7d0a"
 }

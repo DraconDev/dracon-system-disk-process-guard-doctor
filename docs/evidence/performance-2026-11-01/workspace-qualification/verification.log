@@ -1,0 +1,40 @@
+PASS: exact seven gate receipts/log hashes; all four workspace gates exit0; nonempty targeted behaviors; frozen source/SDK integrity; citations; isolated target/helper; interrupted exit stays unknown
+{
+  "verified_at": "2026-11-02T00:07:51.260243+00:00",
+  "scope": "recorded frozen workspace only; newer sibling source unqualified",
+  "summaries": {
+    "attribution": {
+      "summaries": 3,
+      "passed": 8,
+      "failed": 0,
+      "ignored": 0
+    },
+    "growth": {
+      "summaries": 3,
+      "passed": 15,
+      "failed": 0,
+      "ignored": 0
+    },
+    "persistence": {
+      "summaries": 3,
+      "passed": 9,
+      "failed": 0,
+      "ignored": 0
+    },
+    "workspace-tests": {
+      "summaries": 44,
+      "passed": 3016,
+      "failed": 0,
+      "ignored": 27
+    }
+  },
+  "source_hashes_match_frozen": true,
+  "current_unqualified_sibling_paths": [
+    "dracon-sync/src/daemon.rs",
+    "dracon-sync/src/git/push.rs",
+    "dracon-sync/src/report.rs",
+    "dracon-sync/src/sync.rs"
+  ],
+  "local_citations": 34,
+  "report_sha256": "18c5ba85f39d965377221abe1d377afd43c0f8de76ef52d826338c28711a7d0a"
+}
