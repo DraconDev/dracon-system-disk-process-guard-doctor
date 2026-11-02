@@ -1,0 +1,39 @@
+{
+  "verified_at": "2026-11-02T00:06:09.890031+00:00",
+  "scope": "recorded frozen workspace only; newer sibling source unqualified",
+  "summaries": {
+    "attribution": {
+      "summaries": 3,
+      "passed": 8,
+      "failed": 0,
+      "ignored": 0
+    },
+    "growth": {
+      "summaries": 3,
+      "passed": 15,
+      "failed": 0,
+      "ignored": 0
+    },
+    "persistence": {
+      "summaries": 3,
+      "passed": 9,
+      "failed": 0,
+      "ignored": 0
+    },
+    "workspace-tests": {
+      "summaries": 44,
+      "passed": 3016,
+      "failed": 0,
+      "ignored": 27
+    }
+  },
+  "source_hashes_match_frozen": true,
+  "current_unqualified_sibling_paths": [
+    "dracon-sync/src/daemon.rs",
+    "dracon-sync/src/git/push.rs",
+    "dracon-sync/src/report.rs",
+    "dracon-sync/src/sync.rs"
+  ],
+  "local_citations": 30,
+  "report_sha256": "45cad584543cc13c0f519c0e05b441bbe8bdc61c48d308ad54a0063df48098e3"
+}
