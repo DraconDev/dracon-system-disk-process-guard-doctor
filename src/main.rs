@@ -1355,7 +1355,17 @@ fn read_package_process_cmdline(root: &Path, pid: i32) -> Result<Option<String>>
 }
 
 fn load_process_cmdline(mut sample: ProcSample) -> ProcSample {
-    sample.args = read_process_cmdline_from(Path::new("/proc"), sample.pid);
+    // The row was verified earlier, but the PID may have been reused since.
+    // Only overwrite args when the incarnation matches both before and after
+    // the read; otherwise keep the sample's own args rather than attaching a
+    // stranger's cmdline to the reported row.
+    if !process_sample_is_current(&sample) {
+        return sample;
+    }
+    let args = read_process_cmdline_from(Path::new("/proc"), sample.pid);
+    if process_sample_is_current(&sample) {
+        sample.args = args;
+    }
     sample
 }
 
@@ -2471,7 +2481,7 @@ fn guard_owns_sync_freeze_marker(marker: &Path) -> bool {
 /// while CPUQuota throttles the process without killing it.
 pub(crate) fn graduated_nice_value(
     cpu_percent: f32,
-    rss_mb: u64,
+    footprint_mb: u64,
     base_nice: i32,
     current_nice: i32,
 ) -> i32 {
@@ -2484,10 +2494,23 @@ pub(crate) fn graduated_nice_value(
         .unwrap_or(base_nice);
     let mem_nice = mem_tiers
         .iter()
-        .find(|(threshold, _)| rss_mb >= *threshold)
+        .find(|(threshold, _)| footprint_mb >= *threshold)
         .map(|(_, nice)| *nice)
         .unwrap_or(0);
     cpu_nice.max(mem_nice).clamp(0, 19).max(current_nice)
+}
+
+/// Nice target for a pressure offender: the memory tiers run on the
+/// swap-aware footprint (RSS + known swap), matching offender selection.
+/// A mostly-swapped low-RSS process must still reach the graduated tiers;
+/// unknown swap falls back to RSS via `memory_pressure_footprint_mb`.
+pub(crate) fn memory_offender_nice_value(p: &ProcSample, base_nice: i32) -> i32 {
+    graduated_nice_value(
+        p.cpu_percent,
+        memory_pressure_footprint_mb(p),
+        base_nice,
+        p.nice,
+    )
 }
 
 async fn renice_process_with_bin(bin: &Path, pid: i32, value: i32) -> Result<()> {
@@ -6472,8 +6495,7 @@ async fn check_memory_pressure(
             }
             let current_identity = process_sample_identity(p);
             drop_stale_nice_adjustments(state, p.pid, &current_identity);
-            let nice_val =
-                graduated_nice_value(p.cpu_percent, p.rss_mb, guard.renice_value, p.nice);
+            let nice_val = memory_offender_nice_value(p, guard.renice_value);
             let applied_nice = state
                 .memory_reniced_pids
                 .get(&p.pid)
@@ -9138,8 +9160,7 @@ async fn check_heavy_processes(
                 .reniced_pids
                 .get(&p.pid)
                 .map(|entry| entry.applied_nice);
-            let nice_val =
-                graduated_nice_value(p.cpu_percent, p.rss_mb, guard.renice_value, p.nice);
+            let nice_val = memory_offender_nice_value(&p, guard.renice_value);
             if already_niced != Some(nice_val) {
                 match renice_process(p.pid, nice_val).await {
                     Ok(()) => {

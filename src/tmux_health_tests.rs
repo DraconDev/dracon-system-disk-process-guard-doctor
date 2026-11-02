@@ -225,10 +225,38 @@ async fn multiple_servers_do_not_borrow_other_producers_or_evidence() {
         900,
     )
     .await;
-    assert!(linked
+    // The server with valid evidence still cannot claim it exclusively, but
+    // the rejected server keeps its true reason instead of a sharing claim.
+    let states: Vec<SaveState> = linked.servers.iter().map(|s| s.save.state).collect();
+    assert_eq!(
+        states.iter().filter(|s| **s == SaveState::Shared).count(),
+        1
+    );
+    assert_eq!(
+        states
+            .iter()
+            .filter(|s| **s == SaveState::Unavailable)
+            .count(),
+        1
+    );
+}
+
+// Two saves with no valid evidence must stay Unavailable: absence of evidence
+// is not shared evidence, even when both point at the same directory.
+#[tokio::test]
+async fn unavailable_saves_are_not_relabeled_shared() {
+    let mut f = Fixture::new();
+    let a = f.add(1, 10, 'S');
+    let b = f.add(2, 10, 'S');
+    f.replies.get_mut(&b).unwrap().directory =
+        f.temp.path().join("save1").display().to_string();
+    fs::remove_file(f.temp.path().join("save1/snapshot")).unwrap();
+    fs::remove_file(f.temp.path().join("save1/last")).unwrap();
+    let report = collect(&f.probe(), &f.roots, &[a, b], f.now, 900).await;
+    assert!(report
         .servers
         .iter()
-        .all(|s| s.save.state == SaveState::Shared));
+        .all(|s| s.save.state == SaveState::Unavailable));
 }
 
 #[tokio::test]

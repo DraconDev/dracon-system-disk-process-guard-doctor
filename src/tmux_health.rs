@@ -662,10 +662,14 @@ async fn collect(
             .device
             .zip(s.save.inode)
             .is_some_and(|key| file_counts.get(&key).is_some_and(|n| *n > 1));
-        if shared_file
+        // Only live evidence can be shared evidence: an Unavailable save has
+        // no attributable content, so relabeling it Shared would hide the
+        // missing/birth-failed evidence behind a sharing claim.
+        if (shared_file
             || s.save
                 .directory_identity
-                .is_some_and(|key| counts.get(&key).is_some_and(|n| *n > 1))
+                .is_some_and(|key| counts.get(&key).is_some_and(|n| *n > 1)))
+            && matches!(s.save.state, SaveState::Fresh | SaveState::Stale)
         {
             s.save.state = SaveState::Shared;
             s.save.reason =

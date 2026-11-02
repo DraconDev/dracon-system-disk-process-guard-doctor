@@ -281,6 +281,36 @@ fn graduated_nice_value_high_base_clamped_to_max() {
     assert_eq!(crate::graduated_nice_value(0.0, 0, 20, 0), 19);
 }
 
+#[test]
+fn memory_offender_nice_value_uses_swap_aware_footprint() {
+    // A mostly-swapped low-RSS offender must still reach the graduated
+    // memory tiers (regression: mitigation tiers previously ran on RSS alone,
+    // so this class never graduated past base nice).
+    let mut p = crate::parse_ps_output("4242 1 0 102400 0 worker\n")
+        .pop()
+        .unwrap();
+    assert_eq!(p.rss_mb, 100);
+    p.swap_mb = Some(30 * 1024);
+    assert_eq!(crate::memory_pressure_footprint_mb(&p), 100 + 30 * 1024);
+    assert_eq!(crate::memory_offender_nice_value(&p, 0), 10);
+    // Unknown swap falls back to RSS behavior, not to a tier.
+    p.swap_mb = None;
+    assert_eq!(crate::memory_offender_nice_value(&p, 0), 0);
+}
+
+#[test]
+fn load_process_cmdline_skips_args_for_dead_pid() {
+    // A PID that cannot exist must keep its existing args: overwriting them
+    // after the incarnation changed would attach a stranger's (or empty)
+    // cmdline to the reported row.
+    let mut p = crate::parse_ps_output("2147483647 1 0 102400 0 worker\n")
+        .pop()
+        .unwrap();
+    p.args = String::from("sentinel");
+    let out = crate::load_process_cmdline(p);
+    assert_eq!(out.args, "sentinel");
+}
+
 // ---------------------------------------------------------------------------
 // ProcSample parsing
 // ---------------------------------------------------------------------------

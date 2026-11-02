@@ -104,18 +104,17 @@ Unprivileged `du` reported denied descendants in `~/.local/share`,
 read the UID-mapped container tree. The operator pasted exact privileged totals
 for the share, state, Trash, and log paths; they are retained below as a
 separate point-in-time sample and are the full-area figures for those rows. The
-five root-owned state handover-backup directories are identified and carry a
-`needs-operator-call` verdict with their individual sizes marked not measured;
-`sudo -n true` requires an interactive password here, so a per-subtree split of
-those five is the one remaining unsized detail inside an area whose total is
-known.
+five root-owned state handover-backup directories are identified, carry a
+`needs-operator-call` verdict, and were individually sized by an
+operator-pasted privileged reading on 2026-11-02T02:34:52Z (19,020 bytes
+combined); no unsized detail remains inside the known `~/.local/state` total.
 
 ## Swept areas
 
 | Area | Bytes | Verdict | Notes |
 |---|---:|---|---|
 | `~/.local/share` | 30,840,087,166 | needs-operator-call | Operator privileged `sudo du` full-area total; the v6.2 unprivileged pass read 27,626,278,939 |
-| `~/.local/state` | 58,139,938,674 | needs-operator-call | v6.2 pass; the operator privileged `sudo du` total was 49,316,690,397 at an earlier time. Five root-owned handover backups still lack individual sizes |
+| `~/.local/state` | 58,139,938,674 | needs-operator-call | v6.2 pass; the operator privileged `sudo du` total was 49,316,690,397 at an earlier time. Five root-owned handover backups sized 2026-11-02 (19,020 bytes combined) |
 | `~/.local/bin` | 3,090,902,820 | keep | v6.2 pass |
 | `/nix/store` | 48,312,514,794 | keep | v6.2 pass; store entries 37,539→37,539, `--print-dead` 0→0, no GC record in window. 8,366,644,248 bytes remains a historical pre-GC unreachable-output estimate; see Nix section |
 | Agent-tool state (six named tools) | 32,244,520,372 | keep | Exact sum of the six roots in the v6.2 pass; overlaps `~/.local/share` |
@@ -681,10 +680,12 @@ flagged for cleaning.
   sample (2026-10-30)” above and in the read-only command list: `~/.local/share`
   30,840,087,166; `~/.local/state` 49,316,690,397; `~/.local/share/Trash`
   553,982,709; `/var/log` 598,374,272; `/var/log/private` 0; `/var/log/gdm` 0.
-  What is still missing is not the privileged reading from `/` but a per-subtree
-  split of five root-owned state handover backups under `/root`-descended
-  paths, which needs an interactive `sudo` that `sudo -n true` reported as
-  unavailable. Those rows carry `needs-operator-call` with the exact command.
+  What was still missing at that time was not the privileged reading from `/`
+  but a per-subtree split of five root-owned state handover backups under
+  `~/.local/state/dracon-sync/service-migration/`, which needed an interactive
+  `sudo` that `sudo -n true` reported as unavailable. Those rows carried
+  `needs-operator-call` with the exact command; the gap was closed by the
+  operator-pasted reading on 2026-11-02T02:34:52Z (see below).
   The Oct-30 scheduled GC removed 368 store paths; no host-wide
   no-GC/no-deletion claim is made.
 
@@ -922,41 +923,46 @@ command against surveyed data; the scheduled host GC is separately recorded
 above. The earlier helper's generated-scratch removal is qualified above.
 Workspace-test fixtures remained confined to their temporary test directories.
 
-## Remaining sizing gap: five handover-backup subtrees
+## Handover-backup subtrees: sized 2026-11-02 (gap closed)
 
 The user's exact privileged readings for `~/.local/share`, Trash,
 `~/.local/state`, and `/var/log` are now preserved in the supplemental sample
-above. They remain separate from the 19:40 pass and their command timestamp
-was not recorded. The only remaining size gap is the five root-owned handover
-backup directories. A read-only path search at 22:14:18 UTC found all five,
-but traversal of each returned `Permission denied`; no sizes were obtained.
-`sudo -n true` still requires a password here, so a per-subtree split needs the
-targeted read-only measurement below. This is a detail *inside* a known area,
+above. The last remaining size gap — the five root-owned handover backup
+directories, previously `Permission denied` to unprivileged traversal — was
+closed by an operator-pasted timestamped reading on 2026-11-02T02:34:52Z
+(an earlier attempt the same night only yielded v2 because the long command
+line wrapped in the terminal; the v2 figure agreed at 3170 bytes). Combined
+total: 19,020 bytes. This is a detail *inside* a known area,
 not a gap in the area total: `~/.local/state` is sized both by the v6.2 pass
 (58,139,938,674 bytes) and by the operator's privileged `sudo du`
 (49,316,690,397 bytes at an earlier time). No cleanup or GC is requested.
 
 | Handover-backup path | Bytes | Verdict | Evidence |
 |---|---:|---|---|
-| `~/.local/state/dracon-sync/service-migration/20261018-operator-v8/handover-backup` | not measured | needs-operator-call | `drwx------ root:root`; unprivileged traversal returns `Permission denied` |
-| `~/.local/state/dracon-sync/service-migration/20261018-operator-v3/handover-backup` | not measured | needs-operator-call | `drwx------ root:root`; unprivileged traversal returns `Permission denied` |
-| `~/.local/state/dracon-sync/service-migration/20261018-operator-v2/handover-backup` | not measured | needs-operator-call | `drwx------ root:root`; unprivileged traversal returns `Permission denied` |
-| `~/.local/state/dracon-sync/service-migration/20261018-operator-v6/handover-backup` | not measured | needs-operator-call | `drwx------ root:root`; unprivileged traversal returns `Permission denied` |
-| `~/.local/state/dracon-sync/service-migration/20261018-operator-v7/handover-backup` | not measured | needs-operator-call | `drwx------ root:root`; unprivileged traversal returns `Permission denied` |
+| `~/.local/state/dracon-sync/service-migration/20261018-operator-v2/handover-backup` | 3170 | needs-operator-call | operator-pasted `sudo du -sx --bytes`, 2026-11-02T02:34:52Z; `drwx------ root:root` |
+| `~/.local/state/dracon-sync/service-migration/20261018-operator-v3/handover-backup` | 3170 | needs-operator-call | operator-pasted `sudo du -sx --bytes`, 2026-11-02T02:34:52Z; `drwx------ root:root` |
+| `~/.local/state/dracon-sync/service-migration/20261018-operator-v6/handover-backup` | 3170 | needs-operator-call | operator-pasted `sudo du -sx --bytes`, 2026-11-02T02:34:52Z; `drwx------ root:root` |
+| `~/.local/state/dracon-sync/service-migration/20261018-operator-v7/handover-backup` | 3170 | needs-operator-call | operator-pasted `sudo du -sx --bytes`, 2026-11-02T02:34:52Z; `drwx------ root:root` |
+| `~/.local/state/dracon-sync/service-migration/20261018-operator-v8/handover-backup` | 6340 | needs-operator-call | operator-pasted `sudo du -sx --bytes`, 2026-11-02T02:34:52Z; `drwx------ root:root` |
 
 The parent `service-migration` directory is `drwxr-xr-x dracon:users`, so the
 paths are enumerable; only the five backup subtrees are restricted. Their
-verdict is `needs-operator-call` because root-owned migration backups must not
-be flagged for cleaning on size alone.
+verdict stays `needs-operator-call` because root-owned migration backups must
+not be flagged for cleaning on size alone.
+
+Command as run (read-only):
 
 ```sh
-date -Is
-sudo du -sx --bytes \
-  "$HOME/.local/state/dracon-sync/service-migration/20261018-operator-v8/handover-backup" \
-  "$HOME/.local/state/dracon-sync/service-migration/20261018-operator-v3/handover-backup" \
-  "$HOME/.local/state/dracon-sync/service-migration/20261018-operator-v2/handover-backup" \
-  "$HOME/.local/state/dracon-sync/service-migration/20261018-operator-v6/handover-backup" \
-  "$HOME/.local/state/dracon-sync/service-migration/20261018-operator-v7/handover-backup"
+date -u +%Y-%m-%dT%H:%M:%SZ; for v in v2 v3 v6 v7 v8; do sudo du -sx --bytes "$HOME/.local/state/dracon-sync/service-migration/20261018-operator-$v/handover-backup"; done
+```
+
+```text
+2026-11-02T02:34:52Z
+3170    /home/dracon/.local/state/dracon-sync/service-migration/20261018-operator-v2/handover-backup
+3170    /home/dracon/.local/state/dracon-sync/service-migration/20261018-operator-v3/handover-backup
+3170    /home/dracon/.local/state/dracon-sync/service-migration/20261018-operator-v6/handover-backup
+3170    /home/dracon/.local/state/dracon-sync/service-migration/20261018-operator-v7/handover-backup
+6340    /home/dracon/.local/state/dracon-sync/service-migration/20261018-operator-v8/handover-backup
 ```
 
 ## Workspace test transcript
