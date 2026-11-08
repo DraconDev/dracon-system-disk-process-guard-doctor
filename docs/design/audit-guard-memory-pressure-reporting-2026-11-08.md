@@ -471,17 +471,38 @@ The operator selected the amendment, quoting their decision:
 
 ### 8.3 The amended gate
 
-| | Original | Amended |
-| --- | --- | --- |
-| `events.jsonl` commits / 30 min | 0 | **≤ 3** |
-| Flip-triggered emits | not stated | **0** |
+The operator amended this gate **twice**, each time in response to a
+measurement that showed the previous constant was wrong. Both are
+recorded because the second supersedes the first, and the reason it
+changed is itself the finding.
+
+**First amendment** (approved): 0 flip-triggered emits, and events.jsonl
+commits down from 7 to at most 3 per 30 minutes.
+
+**Second amendment** (approved, CURRENT):
+
+> "Correct the constant to match the measured floor: 0 flip-triggered
+> emits, and at most one events.jsonl commit per distinct held condition
+> per window (measured 4-5 on this host, down from 7)"
+
+The first constant (3) was wrong because it was chosen when only two or
+three conditions were held. After the churn fixes of §9–§11 the residual
+became exactly *one report per distinct condition*, and this host holds
+four or five at once — so the residual is not a defect to suppress, it is
+the count of real findings. The gate is therefore stated in the form the
+guard can actually honour:
+
+| | Original | First amendment | CURRENT gate |
+| --- | --- | --- | --- |
+| `events.jsonl` commits / 30 min | 0 | ≤ 3 | **≤ one per distinct held condition (4–5 here, was 7)** |
+| Flip-triggered emits | not stated | 0 | **0** |
 
 ### 8.4 Measured
 
 | | Before the fixes | After |
 | --- | --- | --- |
-| `events.jsonl` commits / 30 min | 7 (executor) / 6 (auditor) | **2** |
-| Events / 24 h | 518 (~27/hour) | 2 per measured 30-min window |
+| `events.jsonl` commits / 30 min | 7 (executor) / 6 (auditor) | **4** |
+| Events / 24 h | 518 (~27/hour) | 5 per measured 30-min window |
 | `memory/pressure` flip-triggered emits | 13 consecutive before the first fix | **0** |
 | `disk/trend-warning` + `disk/rapid-fill` | ~19/hour, 10 of 12 gaps under 1800 s | **0 emits** in the measured window |
 | `process/heavy` | 94/24 h, 10 of 12 gaps under 1800 s | 0 in the measured window |
