@@ -2606,8 +2606,6 @@ pub(crate) struct ReportTransition {
     /// The state the report held before this pass. `None` on the very
     /// first observation of a key.
     pub previous: Option<String>,
-    /// The state the report holds after this pass.
-    pub current: String,
     /// True when THIS pass accepted a new state — a real transition.
     pub changed: bool,
     /// True when an event should be emitted now: a transition, or the
@@ -2661,7 +2659,6 @@ pub(crate) fn report_state_transition_stabilized(
             // this is not a transition: no event, no notification.
             return ReportTransition {
                 previous: Some(entry.value.clone()),
-                current: entry.value.clone(),
                 changed: false,
                 emit_event: false,
             };
@@ -2686,7 +2683,6 @@ pub(crate) fn report_state_transition_stabilized(
     }
     ReportTransition {
         previous,
-        current: observed.to_string(),
         changed,
         emit_event: should_emit,
     }
