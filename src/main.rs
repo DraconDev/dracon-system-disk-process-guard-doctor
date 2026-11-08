@@ -6533,11 +6533,22 @@ async fn check_disk_trends(
     // The state is tracked whether or not the warning fires, so the ENTRY
     // into the warning condition is what triggers the notification — not a
     // per-pass repetition of it.
-    let (previous, event_due) = report_state_transition(
+    //
+    // STABILIZED 2026-11-08: the observed value is derived from the disk's
+    // measured fill rate, which oscillates across the rapid-fill threshold.
+    // Every crossing was a "changed" report state, and every changed state
+    // was an event appended to `~/.dracon/events.jsonl` — which the sync
+    // daemon auto-commits. This pair of disk paths was ~19 of the ~27
+    // events/hour the guard produced on this host. A value must now HOLD
+    // for the sustain window before it is accepted as the new state, so a
+    // rate oscillating across a threshold produces no events at all.
+    let transition = report_state_transition_stabilized(
         state,
         "disk-trend",
         if warning.is_some() { "soon" } else { "ok" },
         guard.report_repeat_secs,
+        REPORT_STATE_SUSTAIN_SECS,
+        Instant::now(),
     );
     let Some(warning) = warning else {
         return;
@@ -6550,10 +6561,10 @@ async fn check_disk_trends(
         used,
         avail_bytes as f64 / 1_073_741_824.0
     );
-    if previous.as_deref() != Some("soon") {
+    if transition.changed {
         send_notification(guard, "Dracon System Guard - Disk Trend Warning", &detail).await;
     }
-    if event_due {
+    if transition.emit_event {
         // ADDED 2026-10-25 (audit D8): the warning used to reach only a
         // desktop notification — nothing in the journal, nothing in the
         // event stream. A monitoring feature that says nothing to the
