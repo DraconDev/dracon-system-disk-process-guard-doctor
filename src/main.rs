@@ -7178,7 +7178,9 @@ async fn check_memory_pressure(
     // not the raw severity. The memory path never used `should_notify`, so
     // a warn<->critical oscillation produced a desktop Error on every flip
     // with no cooldown at all.
-    if pressure_class != "ok" && pressure_class != last_reported_class {
+    if pressure_class != "ok"
+        && last_reported_class.as_deref().is_some_and(|previous| previous != "ok")
+    {
         let offenders: String = top_rss
             .iter()
             .map(memory_offender_description)
