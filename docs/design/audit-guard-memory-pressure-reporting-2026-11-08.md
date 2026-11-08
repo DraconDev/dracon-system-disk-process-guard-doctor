@@ -500,3 +500,88 @@ A caveat stated plainly: the measured window contained a genuine
 `memory/pressure` arrival at 17:07:43 (`ok -> pressure`, one event). That is
 the behaviour items 3 and 4 require to be preserved, and it is exactly the
 kind of legitimate report the residual gate now permits.
+
+---
+
+## 9. `disk/rapid-fill`, second attempt — the sustain window was the wrong tool
+
+### 9.1 What the first attempt got wrong
+
+The first attempt routed `disk/rapid-fill` through the 120 s sustain window
+of §2.3 and declared the path fixed. A later audit measured the live
+stream and found it was not: transitions 782 s and 426 s apart, far below
+the configured `report_repeat_secs = 1800`.
+
+The mistake was assumptive rather than random: a sustain window only
+suppresses a value whose oscillation PERIOD is SHORTER than the window.
+Here each side of the threshold held for 5–13 minutes, so the 120 s window
+accepted both sides and the state flapped exactly as before. A time-based
+window cannot fix an oscillation slower than itself.
+
+### 9.2 The actual root cause
+
+The deadband alone would not have been enough either. Reading the emitted
+messages rather than only their timestamps showed the real mechanism:
+
+| Time | Quoted rate | Live threshold |
+| --- | --- | --- |
+| 17:57:37 | 145.8 GiB/h | 20.0 GiB/h |
+| 18:10:39 | 44.8 GiB/h | 20.0 GiB/h |
+| 18:17:45 | 32.1 GiB/h | 20.0 GiB/h |
+| 18:58:16 | 59.3 GiB/h | 20.0 GiB/h |
+
+Every one of those events reported a rate of 31–146 GiB/h against a
+20 GiB/h threshold. `rapid` was therefore true *continuously* — the alarm
+never actually stopped being true. Those events were not re-entries into
+rapid; they were the **re-arm cycle**:
+
+```rust
+let Some(rate) = rate.rate_gbph() else {
+    // Re-arm the entry alert after reclamation...
+    report_state_transition(state, "disk-rapid-fill", "unmeasured", ...);
+    return None;
+};
+```
+
+`rate_gbph()` returns `None` for BOTH `Unmeasured` and `NotFilling`, so
+this branch wrote the state label `"unmeasured"` for both. The next
+measurable pass then saw `unmeasured -> rapid` and treated it as a fresh
+transition, emitting an event and a notification for an episode that had
+never ended. Since the guard measures every 30 s, any pass whose slope came
+out momentarily non-positive — a flat sample, a reclamation, or a growth
+window still too young to measure — re-armed a duplicate alarm.
+
+This directly contradicted the `DiskFillRate` type's own documented
+purpose, quoted in its doc comment:
+
+> The three states are kept apart on purpose. "The rate cannot be measured
+> right now" and "the disk is not filling" are different facts.
+
+The type preserved the distinction and the caller discarded it.
+
+### 9.3 The fix
+
+Two changes, both structural rather than tuning:
+
+1. **A deadband** (`DISK_RAPID_FILL_EXIT_RATIO = 0.75`): entering rapid
+   needs the threshold; leaving it needs a fall to 75 % of the threshold.
+   A rate wandering around the threshold is now permanently `rapid` and
+   emits nothing, regardless of how long it wanders — while a genuine
+   reclamation, which drops the rate far below, still exits promptly.
+   `disk_rapid_verdict` is pure and independently tested.
+2. **Honour the three-state distinction** in `disk_rapid_observed_state`:
+   - `Filling` → a verdict, via the deadband.
+   - `NotFilling` (non-positive slope) → the `ok` verdict. This is real
+     evidence of reclamation, so it is what re-arms the entry notification
+     for a genuinely NEW episode.
+   - `Unmeasured` → **no verdict at all**; the caller holds the accepted
+     state. A measurement gap is not evidence that the disk stopped
+     filling.
+
+The re-arm guarantee that the existing test
+`disk_reclamation_rearms_the_rapid_fill_notification` protects is
+**preserved** — but it is now asserted on the evidence that actually means
+reclamation (a non-positive slope) instead of on a young sample window.
+That test simulated "reclamation" as two samples 30 s apart, which is
+precisely the conflation being fixed; it was rewritten to drive
+`NotFilling` and to assert that `Unmeasured` holds rather than re-arms.
