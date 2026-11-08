@@ -7205,14 +7205,17 @@ async fn check_memory_pressure(
         )
         .await;
     }
-
     // Emit on entry/escalation/recovery, then only at the configured summary
     // interval while the same non-OK state persists.
-    let recovery = pressure == "ok"
-        && last_reported_pressure
+    //
+    // CHANGED 2026-11-08: recovery is a CLASS transition (pressure -> ok).
+    // The old comparison was on the raw severity, so a warn<->critical
+    // oscillation was read as an escalation AND a recovery in alternation.
+    let recovery = pressure_class == "ok"
+        && last_reported_class
             .as_deref()
             .is_some_and(|previous| previous != "ok");
-    if event_due && (pressure != "ok" || recovery) {
+    if event_due && (pressure_class != "ok" || recovery) {
         emit_event(&DraconEvent::new(
             "system",
             if pressure == "critical" {
@@ -7224,7 +7227,7 @@ async fn check_memory_pressure(
             },
             "memory/pressure",
             format!(
-                "{}: observed={}, mem available {}%, swap used {}%, PSI full {:?}, top footprint lower bounds: {}; swap measurements unavailable: {}",
+                "{}: observed={}, mem available {}%, swap used {}%, PSI full {:?}, top footprint lower bounds: {}; swap measurements unavailable: {}; {}",
                 pressure,
                 observed_pressure,
                 mem_available_percent,
@@ -7235,7 +7238,8 @@ async fn check_memory_pressure(
                     .map(memory_offender_description)
                     .collect::<Vec<_>>()
                     .join(","),
-                swap_samples_unavailable
+                swap_samples_unavailable,
+                mitigation_note
             ),
         ));
     }
@@ -7248,6 +7252,7 @@ async fn check_memory_pressure(
         observed_pressure: observed_pressure.to_string(),
         pressure,
         top_rss,
+        mitigation_note,
         swap_samples_unavailable,
         limited,
         pressure_reaped,
