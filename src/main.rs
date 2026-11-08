@@ -2495,6 +2495,67 @@ pub(crate) fn memory_pressure_class(pressure: &str) -> &'static str {
     }
 }
 
+/// The body of the `memory/pressure` event.
+///
+/// Pure, so the emitted text can be asserted directly — the daemon's test
+/// build never persists events (`events::emit_event` returns under
+/// `cfg!(test)`), so "does the event actually say why nothing was
+/// mitigated?" has to be answerable without reading the live stream.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn memory_pressure_event_message(
+    pressure: &str,
+    observed_pressure: &str,
+    mem_available_percent: u8,
+    swap_used_percent: u8,
+    psi_full_avg10: Option<f64>,
+    top_rss: &[ProcSample],
+    swap_samples_unavailable: usize,
+    mitigation_note: &str,
+) -> String {
+    format!(
+        "{}: observed={}, mem available {}%, swap used {}%, PSI full {:?}, top footprint lower bounds: {}; swap measurements unavailable: {}; {}",
+        pressure,
+        observed_pressure,
+        mem_available_percent,
+        swap_used_percent,
+        psi_full_avg10,
+        top_rss
+            .iter()
+            .map(memory_offender_description)
+            .collect::<Vec<_>>()
+            .join(","),
+        swap_samples_unavailable,
+        mitigation_note
+    )
+}
+
+/// The body of the desktop "Memory Pressure" notification.
+///
+/// Pure, for the same reason as [`memory_pressure_event_message`].
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn memory_pressure_notification_body(
+    pressure: &str,
+    mem_available_percent: u8,
+    swap_used_percent: u8,
+    psi_full_avg10: Option<f64>,
+    offenders: &str,
+    swap_samples_unavailable: usize,
+    mitigation_note: &str,
+) -> String {
+    format!(
+        "[{}] mem available {}%, swap used {}%{} top: {}; swap measurements unavailable: {} (ranking uses footprint lower bounds); {}",
+        pressure,
+        mem_available_percent,
+        swap_used_percent,
+        psi_full_avg10
+            .map(|v| format!(", PSI full {:.1}%", v))
+            .unwrap_or_default(),
+        offenders,
+        swap_samples_unavailable,
+        mitigation_note
+    )
+}
+
 /// What a memory-pressure pass should report.
 ///
 /// Pure, and it owns the state transition, so the flapping contract is
