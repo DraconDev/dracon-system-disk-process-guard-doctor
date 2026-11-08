@@ -10090,7 +10090,7 @@ async fn check_zombie_processes(
             )
             .await;
         }
-        if event_due {
+        if transition.emit_event {
             emit_event(&DraconEvent::new(
                 "system",
                 EventSeverity::Warn,
