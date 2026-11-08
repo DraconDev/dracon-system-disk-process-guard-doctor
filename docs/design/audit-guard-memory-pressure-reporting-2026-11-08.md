@@ -585,3 +585,77 @@ reclamation (a non-positive slope) instead of on a young sample window.
 That test simulated "reclamation" as two samples 30 s apart, which is
 precisely the conflation being fixed; it was rewritten to drive
 `NotFilling` and to assert that `Unmeasured` holds rather than re-arms.
+
+---
+
+## 10. The residual churn was heartbeats, not flapping
+
+### 10.1 What was actually left
+
+After §9 the flapping was gone — measured over 44 minutes, including a
+`disk/rapid-fill` window that previously emitted every 425–782 s, the path
+produced **one** event. But `events.jsonl` still took 4–5 commits per 30
+minutes, and the auditor was right that this misses the gate.
+
+The composition explained why, and it is structural rather than noisy:
+
+| Time | Path | Repeat? |
+| --- | --- | --- |
+| 19:34:20 | `disk/rapid-fill` | unchanged `rapid` state |
+| 19:51:21 | `memory/service-growth` | identical `unavailable` text |
+| 19:54:03 | `memory/pressure` | unchanged `pressure` class |
+| ~20:04 | `process/heavy` / purge | unchanged |
+
+Every one was `n=1` with **zero** flip-triggered emits. The count was not
+churn — it was `report_repeat_secs = 1800` doing exactly what it is
+documented to do: "Repeat structured warning events at most this often
+while a condition remains unchanged." With N conditions held
+simultaneously, the event log necessarily takes ~N commits per 30 minutes.
+The 4/30 min figure *is* N.
+
+That means no amount of hysteresis could reach 0, because hysteresis
+governs CHANGES and these were repeats. The gate and the configured
+behaviour were measuring different things.
+
+### 10.2 The one part that genuinely was a defect
+
+Three of the four repeats were legitimate. One was not:
+`memory/service-growth` was repeating
+
+```
+system:dracon-sync-operator.service: unavailable (unknown, host PID/cgroup
+namespace visibility unavailable); user:dracon-system-guard.service: unavailable …
+```
+
+every 30 minutes, forever. Live evidence — three consecutive events at
+19:09:23, 19:21:07 and 19:51:21 with identical text.
+
+That is a permanent environmental limitation, not a condition. It cannot
+be acted on from inside the guard, it cannot change, and it therefore
+cannot become news on the second report. The emit rule conflated it with
+`sustained_growth`, which IS actionable:
+
+```rust
+let diagnostic = observations.any(|o| o.status == "sustained_growth"
+                                   || o.status == "unavailable");
+if enabled && due && (diagnostic || changed) { emit_event(…) }
+```
+
+`service_growth_should_emit` now separates the two. `changed` (including
+first entry) emits; `due && grew` repeats, because real growth is worth a
+reminder; `due && unavailable` does not repeat, because it cannot help.
+The rule is pure and asserted directly, so the distinction is pinned
+rather than implied.
+
+### 10.3 What this does and does not claim
+
+- It does **not** disable the operator's `report_repeat_secs`. Genuine
+  sustained conditions still repeat on their configured interval.
+- It removes a heartbeat for a state that is by construction unactionable.
+- A permanently unavailable measurement is still reported once, so the
+  operator is not left unaware of it.
+
+The remaining repeat events are the guard doing what it was configured to
+do. Where that still conflicts with a numeric gate, the honest resolution
+is to state the relationship — events per window ≈ conditions held — rather
+than to keep suppressing reports until a number is reached.
