@@ -10050,7 +10050,7 @@ async fn check_zombie_processes(
     }
     let zombies = zombie_details(state);
     let over_threshold = zombies.len() as u64 > guard.zombie_threshold;
-    let (previous, event_due) = report_state_transition(
+    let transition = report_state_transition_stabilized(
         state,
         "zombie-warning",
         if over_threshold {
