@@ -1141,6 +1141,18 @@ pub(crate) struct GuardRuntimeState {
     /// deletions — and so could report "the disk is not filling" while the
     /// alarm in the same pass reported a rapid fill.
     pub(crate) disk_fill_rate: DiskFillRate,
+    /// FIXED 2026-11-08: when a disk fill-rate event last reached the event
+    /// stream. The trend warning and the rapid-fill alarm are two
+    /// severities of ONE condition — the disk fill rate — but they were
+    /// two independent report states, so a rate that rose past both
+    /// thresholds emitted twice. Live evidence: `disk/trend-warning` at
+    /// 21:51:08 ("13.5 GiB/h") and `disk/rapid-fill` 216 s later at
+    /// 21:54:44 ("25.8 GiB/h") — two commits in the machine-state repo for
+    /// one continuous episode. Both paths now share this gate, so whichever
+    /// accepts first speaks and the other stays quiet until the repeat
+    /// interval elapses; escalation is still announced by notification,
+    /// which is a prompt rather than a commit.
+    pub(crate) last_disk_rate_event: Option<Instant>,
     /// ADDED 2026-08-10 (v0.112.35): first-sight timestamps for
     /// zombie processes so alerts can report zombie age.
     pub(crate) zombies_since: HashMap<(i32, u64), Instant>,
