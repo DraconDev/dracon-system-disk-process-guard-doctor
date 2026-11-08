@@ -659,3 +659,35 @@ The remaining repeat events are the guard doing what it was configured to
 do. Where that still conflicts with a numeric gate, the honest resolution
 is to state the relationship — events per window ≈ conditions held — rather
 than to keep suppressing reports until a number is reached.
+
+---
+
+## 11. `process/reap-candidates` — a live 31-second flip
+
+Found by grouping the event stream per PATH during the §10 measurement, which
+exposed the last genuine flip in the guard:
+
+```
+20:54:13  22 abandoned dev/test process(es) …
+20:54:44  23 abandoned dev/test process(es) …      <- 31 s later
+```
+
+The path emitted on **any change of the sorted `pid:comm` signature**, so on
+a host where processes constantly spawn and exit, the worklist membership
+churns continuously and every membership change was an event. One process
+appearing is noise; it is not a new assessment.
+
+The guard's actual finding is "abandoned dev/test servers are present"
+(report-only — `reap_stale_dev_servers` is off, and stays off). That
+assessment is now what carries the sustain window:
+
+```rust
+let assessment = if candidates.is_empty() { "none" } else { "present" };
+let transition = report_state_transition_stabilized(
+    state, "reap-candidates", assessment, … );
+```
+
+The exact membership still drives the prompt "new abandoned servers
+appeared" **notification**, because there a new process genuinely is the
+news. Only the EVENT is gated on the coarse assessment, so entering or
+leaving the state is one event and membership churn is silent.
