@@ -457,6 +457,196 @@ fn should_notify_respects_cooldown() {
 
 #[test]
 fn report_state_transition_suppresses_unchanged_events() {
+    let mut state = crate::GuardRuntimeState::default();
+    let (previous, first) = crate::report_state_transition(&mut state, "memory", "warn", 1800);
+    assert!(previous.is_none());
+    assert!(first);
+
+    let (previous, repeated) = crate::report_state_transition(&mut state, "memory", "warn", 1800);
+    assert_eq!(previous.as_deref(), Some("warn"));
+    assert!(!repeated, "unchanged state must not emit every guard cycle");
+
+    let (previous, recovery) = crate::report_state_transition(&mut state, "memory", "ok", 1800);
+    assert_eq!(previous.as_deref(), Some("warn"));
+    assert!(recovery, "state transitions should emit immediately");
+}
+
+// ---------------------------------------------------------------------------
+// memory-pressure reporting: class hysteresis + the exempt-consumer note
+//
+// ADDED 2026-11-08 (audit guard-memory-pressure-reporting-2026-11-08).
+// The stabilized level flipped warn<->critical on a ~10-20 minute cadence
+// for hours on this host, because the fourth classification input
+// (swap-in velocity) is bursty. Every flip counted as a transition, and the
+// memory notification path never used `should_notify`, so each flip
+// produced a desktop Error with no cooldown — and an event, which the sync
+// daemon then auto-committed into the machine-state repo.
+//
+// The daemon's test build never persists events (`events::emit_event`
+// returns under `cfg!(test)`), so these tests drive the SAME decision
+// function the daemon calls and assert on the decision itself.
+// ---------------------------------------------------------------------------
+
+/// A level oscillating between warn and critical is NOT a new condition.
+///
+/// Before the fix, each flip was a transition: one event and one desktop
+/// notification per flip. Now the pair share the class "pressure", so the
+/// oscillation emits nothing and notifies nothing.
+#[test]
+fn memory_pressure_flipping_between_warn_and_critical_is_not_a_transition() {
+    let mut state = crate::GuardRuntimeState::default();
+
+    // Start clean: no pressure at all. The first "ok" pass is not an event
+    // and not a notification.
+    let decision = crate::memory_pressure_report_decision(&mut state, "ok", 1800);
+    assert!(!decision.emit_event, "a calm pass must not emit");
+    assert!(!decision.notify, "a calm pass must not notify");
+
+    // Now oscillate: warn, critical, warn, critical ... 40 passes.
+    let mut events = 0usize;
+    let mut notifications = 0usize;
+    for index in 0..40 {
+        let level = if index % 2 == 0 { "warn" } else { "critical" };
+        let decision = crate::memory_pressure_report_decision(&mut state, level, 1800);
+        if decision.emit_event {
+            events += 1;
+        }
+        if decision.notify {
+            notifications += 1;
+        }
+    }
+    assert_eq!(
+        events, 1,
+        "an oscillating level must produce exactly one event (the arrival), got {events}"
+    );
+    assert_eq!(
+        notifications, 1,
+        "an oscillating level must produce exactly one notification (the arrival), got {notifications}"
+    );
+}
+
+/// A GENUINE arrival into pressure still reports, immediately.
+#[test]
+fn memory_pressure_arrival_still_emits_and_notifies() {
+    let mut state = crate::GuardRuntimeState::default();
+    assert!(!crate::memory_pressure_report_decision(&mut state, "ok", 1800).emit_event);
+
+    let arrival = crate::memory_pressure_report_decision(&mut state, "critical", 1800);
+    assert!(arrival.emit_event, "arrival into pressure must emit");
+    assert!(arrival.notify, "arrival into pressure must notify");
+
+    // And it is not repeated while the condition persists.
+    let sustained = crate::memory_pressure_report_decision(&mut state, "warn", 1800);
+    assert!(!sustained.emit_event, "a sustained condition must not re-emit");
+    assert!(!sustained.notify, "a sustained condition must not re-notify");
+}
+
+/// A GENUINE recovery still reports, immediately.
+#[test]
+fn memory_pressure_recovery_still_emits() {
+    let mut state = crate::GuardRuntimeState::default();
+    crate::memory_pressure_report_decision(&mut state, "warn", 1800);
+
+    let recovery = crate::memory_pressure_report_decision(&mut state, "ok", 1800);
+    assert!(recovery.emit_event, "recovery must emit");
+    assert!(!recovery.notify, "recovery must not notify: nothing is wrong");
+}
+
+/// The report must say WHY nothing was mitigated when every top consumer is
+/// exempt.
+///
+/// The offenders list excludes exempt processes BY POLICY, so the report
+/// could read "critical, top: (none)" while the real consumers — the
+/// operator's agent sessions and browser — were invisible. That opaque
+/// report is what turns into a manual intervention under pressure
+/// (docs/design/performance-swap-thrash-2026-10-21.md).
+#[test]
+fn memory_pressure_note_explains_an_exempt_only_offender_set() {
+    let exempt = vec![("pi".to_string(), 3_072u64), ("chrome".to_string(), 4_608)];
+    let note = crate::build_mitigation_note(&[], &exempt);
+    assert!(
+        note.contains("no mitigation applied"),
+        "the note must say no mitigation was applied: {note}"
+    );
+    assert!(
+        note.contains("exempt"),
+        "the note must say the consumers are exempt: {note}"
+    );
+    assert!(note.contains("pi"), "the note must name the consumer: {note}");
+    assert!(
+        note.contains("chrome"),
+        "the note must name every named consumer: {note}"
+    );
+}
+
+/// When there IS a mitigation candidate, the note must say so and must not
+/// claim nothing was done.
+#[test]
+fn memory_pressure_note_reports_mitigation_candidates() {
+    let sample = ProcSample {
+        swap_mb: Some(64),
+        pid: 4242,
+        ppid: 1,
+        cpu_percent: 0.0,
+        rss_mb: 512,
+        nice: 0,
+        command: "node".to_string(),
+        args: String::new(),
+        starttime: 99,
+    };
+    let note = crate::build_mitigation_note(&[sample], &[]);
+    assert!(
+        !note.contains("no mitigation applied"),
+        "a report with candidates must not claim nothing was done: {note}"
+    );
+    assert!(
+        note.contains("mitigation candidates"),
+        "the note must point at the candidates: {note}"
+    );
+}
+
+/// The exempt-consumer footprint is tallied PER COMMAND and ordered by
+/// footprint, so the report names "pi 3072MiB" rather than 31 separate
+/// lines.
+#[test]
+fn exempt_consumer_footprint_groups_by_command() {
+    let sample = |pid: i32, command: &str, rss_mb: u64| ProcSample {
+        swap_mb: Some(0),
+        pid,
+        ppid: 1,
+        cpu_percent: 0.0,
+        rss_mb,
+        nice: 0,
+        command: command.to_string(),
+        args: String::new(),
+        starttime: pid as u64,
+    };
+    let samples = vec![
+        sample(10, "pi", 300),
+        sample(11, "pi", 200),
+        sample(12, "chrome", 400),
+        sample(13, "node", 900),
+    ];
+    let exempt: std::collections::HashSet<String> =
+        ["pi".to_string(), "chrome".to_string()].into_iter().collect();
+    let rows = crate::exempt_consumer_footprint(&samples, &exempt);
+    assert_eq!(rows.len(), 2, "one row per exempt command: {rows:?}");
+    assert_eq!(rows[0].0, "chrome", "the biggest consumer is named first");
+    assert_eq!(rows[1].0, "pi");
+    assert_eq!(rows[1].1, 500, "the footprint of a command is summed");
+    assert!(
+        !rows.iter().any(|(command, _)| command == "node"),
+        "a non-exempt process must not be reported as an exempt consumer"
+    );
+}
+
+/// warn and critical are the same CLASS; ok is its own class.
+#[test]
+fn memory_pressure_class_collapses_warn_and_critical() {
+    assert_eq!(crate::memory_pressure_class("ok"), "ok");
+    assert_eq!(crate::memory_pressure_class("warn"), "pressure");
+    assert_eq!(crate::memory_pressure_class("critical"), "pressure");
+}
 
 /// ADDED 2026-10-27 (wrong-swap check, falsification fix): the periodic
 /// finding must be OBSERVABLE from the daemon pass — recorded in the
