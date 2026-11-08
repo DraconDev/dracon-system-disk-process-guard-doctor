@@ -1044,6 +1044,40 @@ pub(crate) const REPORT_STATE_SUSTAIN_SECS: u64 = 120;
 /// threshold, still exits promptly.
 pub(crate) const DISK_RAPID_FILL_EXIT_RATIO: f64 = 0.75;
 
+/// What a measured fill rate says about the rapid-fill report state.
+///
+/// Returns `None` when the rate states no verdict at all — which is the
+/// case that caused the churn. `DiskFillRate` keeps "cannot be measured"
+/// and "not filling" apart on purpose; this function is where that
+/// distinction is finally honoured by the alarm.
+///
+/// * `Filling` — a verdict, via the deadband in [`disk_rapid_verdict`].
+/// * `NotFilling` — evidence the disk stopped filling (a reclamation), so
+///   the verdict is `ok`. This is what re-arms the entry notification for
+///   a genuinely NEW growth episode: the state leaves `rapid` on real
+///   evidence, so re-entering it later is a real transition.
+/// * `Unmeasured` — no evidence either way, so no verdict: the caller HOLDS
+///   the accepted state. Reading a measurement gap as "stopped filling" is
+///   what made the alarm re-fire for one continuous episode.
+pub(crate) fn disk_rapid_observed_state(
+    rate: DiskFillRate,
+    previously_rapid: bool,
+    threshold_gbph: f64,
+) -> Option<(&'static str, f64)> {
+    match rate {
+        DiskFillRate::Filling(gbph) => Some((
+            if disk_rapid_verdict(gbph, previously_rapid, threshold_gbph) {
+                "rapid"
+            } else {
+                "ok"
+            },
+            gbph,
+        )),
+        DiskFillRate::NotFilling => Some(("ok", 0.0)),
+        DiskFillRate::Unmeasured => None,
+    }
+}
+
 /// The rapid-fill verdict with hysteresis.
 ///
 /// Pure, so the deadband is testable directly. `previously_rapid` is the
