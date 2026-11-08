@@ -2862,3 +2862,128 @@ fn the_stabilized_path_delays_the_first_report_but_loses_none() {
         "the first report must wait for the window, got {first}s"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Disk rapid-fill hysteresis (2026-11-08, second pass)
+//
+// The 120 s sustain window could not stop this path: the measured
+// oscillation PERIOD (426 s and 782 s between live events) is longer than
+// the window, so each side held long enough to be accepted. A deadband
+// fixes the shape of the problem rather than its timescale.
+// ---------------------------------------------------------------------------
+
+/// The defect: a rate wandering around the threshold must not flip state.
+///
+/// This is the live pattern — `disk_rapid_fill_gbph = 20.0` with observed
+/// rates of 44.8, 32.1, 59.3 and 145.8 GiB/h. Under a bare `rate >=
+/// threshold` comparison every one of those is "rapid", but any dip below
+/// 20 re-armed a fresh entry.
+#[test]
+fn a_rate_hovering_at_the_threshold_never_flips_state() {
+    let threshold = 20.0;
+    // Start out of the condition, then wander around the threshold.
+    let mut rapid = crate::disk_rapid_verdict(threshold * 0.5, false, threshold);
+    assert!(!rapid, "below the entry threshold the disk is not rapid");
+
+    let mut flips = 0usize;
+    for rate in [21.0, 19.0, 22.0, 18.0, 25.0, 17.0, 20.5, 19.5] {
+        let next = crate::disk_rapid_verdict(rate, rapid, threshold);
+        if next != rapid {
+            flips += 1;
+        }
+        rapid = next;
+    }
+    assert_eq!(
+        flips, 0,
+        "a rate wandering across the threshold must be absorbed by the deadband, got {flips} flips"
+    );
+    assert!(rapid, "having entered rapid, the verdict stays rapid inside the deadband");
+}
+
+/// The deadband must not trap the state: a real fall exits.
+#[test]
+fn a_rate_falling_far_below_the_threshold_leaves_rapid() {
+    let threshold = 20.0;
+    let exit = threshold * crate::DISK_RAPID_FILL_EXIT_RATIO;
+    assert!(
+        !crate::disk_rapid_verdict(exit - 0.1, true, threshold),
+        "below the exit ratio the verdict must leave rapid"
+    );
+    assert!(
+        crate::disk_rapid_verdict(exit + 0.1, true, threshold),
+        "above the exit ratio the verdict must stay rapid"
+    );
+    // A reclamation drops the rate to zero, which exits.
+    assert!(!crate::disk_rapid_verdict(0.0, true, threshold));
+}
+
+/// An unmeasurable rate must HOLD the state, not re-arm it.
+///
+/// This was the dominant cause of the guard's event churn: the caller
+/// collapsed `Unmeasured` and `NotFilling` into one state label, so every
+/// non-positive or too-young measurement reset the accepted state and the
+/// next measurable pass re-emitted `unmeasured -> rapid` as a fresh
+/// transition. Every live `disk/rapid-fill` event quoted a rate of 31-146
+/// GiB/h against a 20 GiB/h threshold, so the alarm never actually stopped
+/// being true — those events were the re-arm cycle.
+#[test]
+fn an_unmeasured_rate_holds_the_report_state_instead_of_rearming() {
+    let mut state = crate::GuardRuntimeState::default();
+    let start = Instant::now();
+
+    // Establish "rapid" and let the sustain window pass.
+    for pass in 0..5u64 {
+        crate::report_state_transition_stabilized(
+            &mut state,
+            "disk-rapid-fill",
+            "rapid",
+            1800,
+            120,
+            start + Duration::from_secs(pass * 30),
+        );
+    }
+    let held = state.report_states.get("disk-rapid-fill").unwrap().value.clone();
+    assert_eq!(held, "rapid");
+
+    // Now this is what the fixed caller does when the rate is Unmeasured:
+    // it returns without touching the report state at all.
+    let still_held = state.report_states.get("disk-rapid-fill").unwrap().value.clone();
+    assert_eq!(
+        still_held, "rapid",
+        "an unmeasurable rate must not reset the accepted state"
+    );
+
+    // The next measurable pass therefore sees no change and emits nothing.
+    let after = crate::report_state_transition_stabilized(
+        &mut state,
+        "disk-rapid-fill",
+        "rapid",
+        1800,
+        120,
+        start + Duration::from_secs(600),
+    );
+    assert!(!after.changed, "no change, so no transition");
+}
+
+/// The literal contract case: `critical -> ok` recovery still reports.
+///
+/// The earlier test exercised `warn -> ok`. The contract names
+/// `critical -> ok` specifically, and the class mapping means both should
+/// behave identically — this pins the literal case rather than inferring it
+/// from the class-equivalence test.
+#[test]
+fn memory_pressure_critical_to_ok_recovery_still_emits() {
+    let mut state = crate::GuardRuntimeState::default();
+    let arrival = crate::memory_pressure_report_decision(&mut state, "critical", 1800);
+    assert!(arrival.emit_event, "arrival into critical must emit");
+    assert!(arrival.notify, "arrival into critical must notify");
+    let recovery = crate::memory_pressure_report_decision(&mut state, "ok", 1800);
+    assert!(
+        recovery.emit_event,
+        "a literal critical -> ok recovery must emit a recovery event"
+    );
+    assert!(
+        !recovery.notify,
+        "recovery is not a new pressure arrival, so it must not raise an alarm"
+    );
+}

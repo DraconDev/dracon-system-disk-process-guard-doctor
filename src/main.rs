@@ -1027,6 +1027,40 @@ pub(crate) struct ReportState {
 /// now uses the same tolerance for "this condition is real".
 pub(crate) const REPORT_STATE_SUSTAIN_SECS: u64 = 120;
 
+/// How far the measured fill rate must fall BELOW the rapid-fill threshold
+/// before a "rapid" verdict is left behind.
+///
+/// WHY (2026-11-08): a sustain window alone cannot stop threshold chatter
+/// when the oscillation PERIOD is longer than the window. Measured on this
+/// host, `disk/rapid-fill` emitted transitions 782 s and 426 s apart while
+/// `REPORT_STATE_SUSTAIN_SECS` was 120 s — each side of the threshold held
+/// for minutes, so the window accepted both and the state flapped anyway.
+///
+/// A deadband fixes the shape of the problem rather than its timescale: to
+/// ENTER rapid the rate must reach the threshold, but to LEAVE it must fall
+/// to 75 % of the threshold. A rate wandering around the threshold is then
+/// permanently "rapid" and emits nothing, no matter how long it wanders —
+/// while a genuine reclamation, which drops the rate far below the
+/// threshold, still exits promptly.
+pub(crate) const DISK_RAPID_FILL_EXIT_RATIO: f64 = 0.75;
+
+/// The rapid-fill verdict with hysteresis.
+///
+/// Pure, so the deadband is testable directly. `previously_rapid` is the
+/// accepted state, which is what makes this hysteresis rather than a bare
+/// threshold comparison: the exit threshold depends on where we are now.
+pub(crate) fn disk_rapid_verdict(
+    rate_gbph: f64,
+    previously_rapid: bool,
+    threshold_gbph: f64,
+) -> bool {
+    if previously_rapid {
+        rate_gbph >= threshold_gbph * DISK_RAPID_FILL_EXIT_RATIO
+    } else {
+        rate_gbph >= threshold_gbph
+    }
+}
+
 /// What a background disk-cleanup pass produced, handed back to the guard
 /// pass so the report can still show it.
 ///
@@ -6713,18 +6747,47 @@ async fn check_rapid_disk_fill(
     // two different sample windows, is how the two lines came to disagree.
     let rate = disk_fill_rate(&state.disk_bytes_history);
     state.disk_fill_rate = rate;
-    let Some(rate) = rate.rate_gbph() else {
-        // Re-arm the entry alert after reclamation. An old "rapid" verdict
-        // must not suppress notification when a fresh growth window appears.
-        report_state_transition(
-            state,
-            "disk-rapid-fill",
-            "unmeasured",
-            guard.report_repeat_secs,
-        );
+    // FIXED 2026-11-08: this branch used to collapse `Unmeasured` and
+    // `NotFilling` into the single state label "unmeasured", which is
+    // exactly the distinction `DiskFillRate` was introduced to preserve —
+    // its own doc comment says "The rate cannot be measured right now" and
+    // "the disk is not filling" are different facts, and the caller threw
+    // the difference away.
+    //
+    // The consequence was the dominant cause of this guard's event churn:
+    // every pass whose slope came out non-positive (a momentary flat, a
+    // reclamation, or a growth window too young to measure) reset the
+    // accepted state to "unmeasured", so the NEXT measurable pass saw
+    // `unmeasured -> rapid` as a fresh transition and re-emitted the same
+    // alarm. Live evidence: every one of the recent `disk/rapid-fill`
+    // events quoted a rate of 31-146 GiB/h against a 20 GiB/h threshold,
+    // so "rapid" never actually stopped being true — the events were this
+    // re-arm cycle, not a genuine re-entry.
+    let previously_rapid = state
+        .report_states
+        .get("disk-rapid-fill")
+        .is_some_and(|entry| entry.value == "rapid");
+    let observed = match rate {
+        DiskFillRate::Filling(gbph) => Some((
+            if disk_rapid_verdict(gbph, previously_rapid, guard.disk_rapid_fill_gbph) {
+                "rapid"
+            } else {
+                "ok"
+            },
+            gbph,
+        )),
+        // A non-positive slope IS evidence the disk stopped filling, so it
+        // states a verdict — subject to the sustain window, which keeps one
+        // noisy flat sample from ending a real rapid-growth episode.
+        DiskFillRate::NotFilling => Some(("ok", 0.0)),
+        // No evidence either way. HOLD the accepted state: an unmeasurable
+        // rate must never be read as "the disk stopped filling".
+        DiskFillRate::Unmeasured => None,
+    };
+    let Some((observed_state, rate)) = observed else {
         return None;
     };
-    let rapid = rate >= guard.disk_rapid_fill_gbph;
+    let rapid = observed_state == "rapid";
     // STABILIZED 2026-11-08: same rate estimate as the disk-trend path,
     // crossing the SAME threshold from the other side. Left unstabilized,
     // `disk-trend` and `disk/rapid-fill` flip against each other as the
@@ -6734,7 +6797,7 @@ async fn check_rapid_disk_fill(
     let transition = report_state_transition_stabilized(
         state,
         "disk-rapid-fill",
-        if rapid { "rapid" } else { "ok" },
+        observed_state,
         guard.report_repeat_secs,
         REPORT_STATE_SUSTAIN_SECS,
         Instant::now(),
