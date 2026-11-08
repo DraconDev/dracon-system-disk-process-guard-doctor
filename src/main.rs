@@ -10391,6 +10391,29 @@ async fn check_reap_candidates(
     ));
 }
 
+/// Whether a service-memory-growth pass should emit an event.
+///
+/// Pure, so the rule is asserted directly. The distinction it encodes is
+/// between an ACTIONABLE condition and an unactionable limitation:
+///
+/// * `changed` — the observation signature differs from the last accepted
+///   one (including the first observation), so this is news.
+/// * `due && grew` — the repeat came due AND there is real growth to
+///   report, so the reminder is worth sending.
+///
+/// Deliberately missing: `due && unavailable`. A permanently unavailable
+/// measurement ("host PID/cgroup namespace visibility unavailable") cannot
+/// be acted on and does not change, so repeating it every
+/// `report_repeat_secs` adds no information. It is reported once on entry.
+pub(crate) fn service_growth_should_emit(
+    enabled: bool,
+    due: bool,
+    grew: bool,
+    changed: bool,
+) -> bool {
+    enabled && ((due && grew) || changed)
+}
+
 async fn check_large_logs(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
     if !guard.monitor_logs {
         return;
@@ -11042,7 +11065,7 @@ pub(crate) async fn run_guard_once(
         .iter()
         .any(|o| o.status == "sustained_growth");
     let changed = previous.as_deref() != Some(signature.as_str());
-    if service_memory_growth.enabled && ((due && grew) || changed) {
+    if service_growth_should_emit(service_memory_growth.enabled, due, grew, changed) {
         emit_event(&DraconEvent::new(
             "system",
             if grew {

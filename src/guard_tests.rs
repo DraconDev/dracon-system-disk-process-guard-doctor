@@ -3070,3 +3070,34 @@ fn memory_pressure_critical_to_ok_recovery_still_emits() {
         "recovery is not a new pressure arrival, so it must not raise an alarm"
     );
 }
+
+/// A permanently unavailable measurement must not be heartbeated.
+///
+/// `memory/service-growth` was emitting an identical "unavailable (host
+/// PID/cgroup namespace visibility unavailable)" event every
+/// `report_repeat_secs` — three consecutive live events at 19:09:23,
+/// 19:21:07 and 19:51:21 carried the same text. That state cannot be acted
+/// on and cannot change, so the repeat carries no information. It is now
+/// reported once on entry, and repeated only while there is real growth.
+#[test]
+fn an_unavailable_service_growth_measurement_is_not_heartbeated() {
+    // Entering the state is news, so it emits even with no growth.
+    assert!(
+        crate::service_growth_should_emit(true, true, false, true),
+        "entry into unavailable must be reported once"
+    );
+    // The repeat is NOT news: unchanged and nothing actionable.
+    assert!(
+        !crate::service_growth_should_emit(true, true, false, false),
+        "an unchanged unavailable state must not repeat"
+    );
+    // Real growth still repeats — that IS actionable.
+    assert!(
+        crate::service_growth_should_emit(true, true, true, false),
+        "sustained growth must still repeat on the configured interval"
+    );
+    // A never-due pass with a change is still news.
+    assert!(crate::service_growth_should_emit(true, false, false, true));
+    // Disabled monitoring says nothing at all.
+    assert!(!crate::service_growth_should_emit(false, true, true, true));
+}
