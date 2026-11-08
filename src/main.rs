@@ -2593,6 +2593,105 @@ pub(crate) struct PressureDecision {
     pub notify: bool,
 }
 
+/// The outcome of a stabilized report-state transition.
+///
+/// WHY a struct and not a tuple: a stabilized transition distinguishes
+/// three things a caller must not confuse — the state it held BEFORE this
+/// pass, the state it holds NOW, and whether this pass ACCEPTED a change.
+/// The old `(previous, should_emit)` tuple could not express "this pass
+/// held a candidate that has not been accepted yet", which is exactly the
+/// case a caller must NOT treat as a transition (it must not notify, and
+/// it must not emit).
+pub(crate) struct ReportTransition {
+    /// The state the report held before this pass. `None` on the very
+    /// first observation of a key.
+    pub previous: Option<String>,
+    /// The state the report holds after this pass.
+    pub current: String,
+    /// True when THIS pass accepted a new state — a real transition.
+    pub changed: bool,
+    /// True when an event should be emitted now: a transition, or the
+    /// configured summary repeat of a condition that still holds.
+    pub emit_event: bool,
+}
+
+/// A report-state transition that accepts a new value only once it has
+/// held for the sustain window.
+///
+/// WHY (2026-11-08): `report_state_transition` treats every difference
+/// between the observed value and the accepted state as a transition. When
+/// the observed value is a noisy MEASUREMENT — a disk fill rate, the set
+/// of reap candidates, a heavy process — the measurement crosses its
+/// threshold back and forth, and every crossing was a "changed" report
+/// state, and every changed state was an event appended to
+/// `~/.dracon/events.jsonl`, which the sync daemon auto-commits. The
+/// machine-state repo churned at the rate the measurement flapped rather
+/// than at the rate something was actually wrong.
+///
+/// The candidate must hold for `sustain_secs` before it is accepted, so:
+/// - a value oscillating across a threshold never becomes the state, and
+///   produces no event and no notification at all;
+/// - a genuine, sustained change IS reported — after the sustain window,
+///   as one transition.
+///
+/// The summary repeat is unchanged: a condition that holds still reports
+/// on its configured `repeat_secs` interval.
+pub(crate) fn report_state_transition_stabilized(
+    state: &mut GuardRuntimeState,
+    key: &str,
+    observed: &str,
+    repeat_secs: u64,
+    sustain_secs: u64,
+    now: Instant,
+) -> ReportTransition {
+    let entry = state.report_states.entry(key.to_string()).or_default();
+    if entry.value == observed {
+        // The accepted state still holds: drop any candidate that has
+        // gone away and fall through to the ordinary transition logic.
+        entry.candidate.clear();
+        entry.candidate_since = None;
+    } else {
+        if entry.candidate != observed {
+            entry.candidate = observed.to_string();
+            entry.candidate_since = Some(now);
+        }
+        let candidate_since = entry.candidate_since.unwrap_or(now);
+        if now.duration_since(candidate_since).as_secs() < sustain_secs {
+            // Held, but not long enough yet. The state does NOT change, so
+            // this is not a transition: no event, no notification.
+            return ReportTransition {
+                previous: Some(entry.value.clone()),
+                current: entry.value.clone(),
+                changed: false,
+                emit_event: false,
+            };
+        }
+    }
+
+    let previous = if entry.value.is_empty() {
+        None
+    } else {
+        Some(entry.value.clone())
+    };
+    let changed = previous.as_deref() != Some(observed);
+    let repeat_due = entry
+        .last_emitted
+        .is_none_or(|last| now.duration_since(last).as_secs() >= repeat_secs.max(1));
+    let should_emit = changed || (observed != "ok" && repeat_due);
+    entry.value = observed.to_string();
+    entry.candidate.clear();
+    entry.candidate_since = None;
+    if should_emit {
+        entry.last_emitted = Some(now);
+    }
+    ReportTransition {
+        previous,
+        current: observed.to_string(),
+        changed,
+        emit_event: should_emit,
+    }
+}
+
 /// Decide what a memory-pressure pass reports.
 ///
 /// `warn` and `critical` share the class "pressure" (see
