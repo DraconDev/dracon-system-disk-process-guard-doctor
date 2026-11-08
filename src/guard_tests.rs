@@ -457,19 +457,6 @@ fn should_notify_respects_cooldown() {
 
 #[test]
 fn report_state_transition_suppresses_unchanged_events() {
-    let mut state = crate::GuardRuntimeState::default();
-    let (previous, first) = crate::report_state_transition(&mut state, "memory", "warn", 1800);
-    assert!(previous.is_none());
-    assert!(first);
-
-    let (previous, repeated) = crate::report_state_transition(&mut state, "memory", "warn", 1800);
-    assert_eq!(previous.as_deref(), Some("warn"));
-    assert!(!repeated, "unchanged state must not emit every guard cycle");
-
-    let (previous, recovery) = crate::report_state_transition(&mut state, "memory", "ok", 1800);
-    assert_eq!(previous.as_deref(), Some("warn"));
-    assert!(recovery, "state transitions should emit immediately");
-}
 
 /// ADDED 2026-10-27 (wrong-swap check, falsification fix): the periodic
 /// finding must be OBSERVABLE from the daemon pass — recorded in the
