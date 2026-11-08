@@ -6569,6 +6569,11 @@ async fn check_memory_pressure(
     let exempt = parse_kinds(&guard.process_exempt_names);
     let (offenders, swap_samples_unavailable) = memory_pressure_offenders(all_processes, &exempt);
     let top_rss: Vec<ProcSample> = offenders.into_iter().map(load_process_cmdline).collect();
+    // ADDED 2026-11-08: the offenders list excludes exempt processes BY
+    // POLICY, so name the exempt consumers' footprint too. Nothing may be
+    // done about them, but the operator must be able to see them.
+    let exempt_top = exempt_consumer_footprint(all_processes, &exempt);
+    let mitigation_note = build_mitigation_note(&top_rss, &exempt_top);
 
     // ── Limiting (ADDED 2026-08-10, v0.112.36) ──────────────────
     // Deprioritize (never kill) the offenders while pressure lasts;
@@ -7153,17 +7158,27 @@ async fn check_memory_pressure(
         )
     });
 
-    let (last_reported_pressure, event_due) = report_state_transition(
+    // ADDED 2026-11-08: the transition is decided on the CLASS (ok vs
+    // pressure), not the raw severity, so a warn<->critical oscillation is
+    // not treated as a new condition. A genuine arrival into pressure and a
+    // genuine recovery still are.
+    let pressure_class = memory_pressure_class(&pressure);
+    let (last_reported_class, event_due) = report_state_transition(
         state,
         "memory-pressure",
-        &pressure,
+        pressure_class,
         guard.report_repeat_secs,
     );
 
     // Desktop notifications are reserved for stabilized state transitions.
     // An unchanged warning may still produce an occasional structured event,
     // but it will not repeatedly interrupt the operator.
-    if pressure_changed && pressure != "ok" {
+    //
+    // CHANGED 2026-11-08: the gate is the CLASS transition (ok -> pressure),
+    // not the raw severity. The memory path never used `should_notify`, so
+    // a warn<->critical oscillation produced a desktop Error on every flip
+    // with no cooldown at all.
+    if pressure_class != "ok" && pressure_class != last_reported_class {
         let offenders: String = top_rss
             .iter()
             .map(memory_offender_description)
