@@ -2523,18 +2523,16 @@ pub(crate) fn memory_pressure_report_decision(
     pressure: &str,
     repeat_secs: u64,
 ) -> PressureDecision {
-    let class = memory_pressure_class(pressure);
+    // PRE-FIX BEHAVIOUR (severity-level transitions, no class hysteresis).
     let (previous_class, event_due) =
-        report_state_transition(state, "memory-pressure", class, repeat_secs);
+        report_state_transition(state, "memory-pressure", pressure, repeat_secs);
     let was_pressure = previous_class
         .as_deref()
         .is_some_and(|previous| previous != "ok");
-    let recovery = class == "ok" && was_pressure;
+    let recovery = pressure == "ok" && was_pressure;
     PressureDecision {
-        emit_event: event_due && (class != "ok" || recovery),
-        // A genuine ARRIVAL into pressure only. A severity oscillation
-        // inside the pressure class is not a new condition.
-        notify: class != "ok" && !was_pressure,
+        emit_event: event_due && (pressure != "ok" || recovery),
+        notify: pressure != "ok" && !was_pressure,
     }
 }
 
