@@ -2011,6 +2011,14 @@ pub(crate) enum DiskFillRate {
 
 impl DiskFillRate {
     /// The rate in GiB/hour, when there is one.
+    ///
+    /// TEST-ONLY since 2026-11-08: the alarm stopped using this, because
+    /// collapsing `Unmeasured` and `NotFilling` into a single `None` is
+    /// precisely the bug that made `disk/rapid-fill` re-arm its own alarm.
+    /// Production goes through `disk_rapid_observed_state`, which keeps the
+    /// three states apart. This accessor remains as a convenient reading for
+    /// the rate-maths tests.
+    #[cfg(test)]
     pub(crate) fn rate_gbph(self) -> Option<f64> {
         match self {
             DiskFillRate::Filling(rate) => Some(rate),
@@ -6806,9 +6814,7 @@ async fn check_rapid_disk_fill(
         previously_rapid,
         guard.disk_rapid_fill_gbph,
     );
-    let Some((observed_state, rate)) = observed else {
-        return None;
-    };
+    let (observed_state, rate) = observed?;
     let rapid = observed_state == "rapid";
     // STABILIZED 2026-11-08: same rate estimate as the disk-trend path,
     // crossing the SAME threshold from the other side. Left unstabilized,
