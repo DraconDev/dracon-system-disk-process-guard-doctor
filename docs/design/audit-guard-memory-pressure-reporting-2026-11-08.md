@@ -227,10 +227,35 @@ restart, under the old code and in the same pressure episode, produced
 **3** `memory/pressure` events — 12:41:31 `warn`, 12:52:13 `critical`,
 13:04:06 `warn` — every one of them a SEVERITY CHANGE, and therefore
 under the old code also a desktop notification. The 32 minutes AFTER the
-restart produced **1** event. Same episode, same inputs, ~3x fewer
-events, and the one that remains is the periodic summary repeat rather
-than a flip. The behavioural proof is in §3's falsification check; this
-is the same effect observed on the live stream.
+restart produced **1** event.
+
+The decisive measurement came at 13:53:57: the gap from the previous
+`memory/pressure` event (13:23:56) was **1801 s — exactly
+`report_repeat_secs`**. Throughout that 29.5-minute window the guard
+journal shows it was actively mitigating (oom-bias applied at 13:24:27,
+13:24:57, 13:28:32, 13:48:50 and 13:51:24), so the pressure genuinely
+persisted; the reporting stayed at one summary event per interval
+instead of one per flip.
+
+**The live event text carries the explanation.** The event emitted at
+13:53:57 ends:
+
+```
+... top footprint lower bounds: .plasmashell-wr pid=2537680 rss=123MiB
+swap=1523MiB, muxad pid=928896 rss=17MiB swap=1299MiB, ...;
+swap measurements unavailable: 28;
+exempt consumers are not eligible for mitigation
+(pi 14970MiB, chrome 11717MiB, systemd 496MiB, dbus-daemon 19MiB);
+mitigation candidates are listed above
+```
+
+Before this change the same event ended after "swap measurements
+unavailable" — the operator could see `critical` and a list of processes
+the guard WAS acting on, with no indication that `pi` (14.9 GiB) and
+`chrome` (11.7 GiB) — the actual consumers — were both untouchable by
+policy. The footprint figures are RSS + measured swap lower bounds, which
+is why they exceed the resident figures: much of that memory is already
+swapped out.
 
 ---
 
