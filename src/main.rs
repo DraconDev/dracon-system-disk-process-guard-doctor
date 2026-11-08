@@ -7285,21 +7285,18 @@ async fn check_memory_pressure(
         send_notification(
             guard,
             "Dracon System Guard - Memory Pressure",
-            &format!(
-                "[{}] mem available {}%, swap used {}%{} top: {}; swap measurements unavailable: {} (ranking uses footprint lower bounds); {}",
-                pressure,
+            &crate::memory_pressure_notification_body(
+                &pressure,
                 mem_available_percent,
                 swap_used_percent,
-                psi_full_avg10
-                    .map(|v| format!(", PSI full {:.1}%", v))
-                    .unwrap_or_default(),
-                if offenders.is_empty() {
+                psi_full_avg10,
+                &if offenders.is_empty() {
                     "(none)".to_string()
                 } else {
                     offenders
                 },
                 swap_samples_unavailable,
-                mitigation_note
+                &mitigation_note,
             ),
         )
         .await;
@@ -7321,20 +7318,15 @@ async fn check_memory_pressure(
                 EventSeverity::Info
             },
             "memory/pressure",
-            format!(
-                "{}: observed={}, mem available {}%, swap used {}%, PSI full {:?}, top footprint lower bounds: {}; swap measurements unavailable: {}; {}",
-                pressure,
+            crate::memory_pressure_event_message(
+                &pressure,
                 observed_pressure,
                 mem_available_percent,
                 swap_used_percent,
                 psi_full_avg10,
-                top_rss
-                    .iter()
-                    .map(memory_offender_description)
-                    .collect::<Vec<_>>()
-                    .join(","),
+                &top_rss,
                 swap_samples_unavailable,
-                mitigation_note
+                &mitigation_note,
             ),
         ));
     }
