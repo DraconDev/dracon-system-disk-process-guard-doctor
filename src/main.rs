@@ -10059,9 +10059,11 @@ async fn check_zombie_processes(
             "ok"
         },
         guard.report_repeat_secs,
+        REPORT_STATE_SUSTAIN_SECS,
+        Instant::now(),
     );
     if over_threshold {
-        if previous.as_deref() != Some("over-threshold") {
+        if transition.changed {
             let top: Vec<String> = zombies
                 .iter()
                 .take(3)
@@ -10344,11 +10346,13 @@ async fn check_large_logs(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
             // guard now tracks it like every other observation: one
             // notification on entry, and an event that repeats while the
             // condition holds.
-            let (previous, event_due) = report_state_transition(
+            let transition = report_state_transition_stabilized(
                 state,
                 "log-size-warning",
                 "over-threshold",
                 guard.report_repeat_secs,
+                REPORT_STATE_SUSTAIN_SECS,
+                Instant::now(),
             );
             let top_logs: Vec<_> = logs.iter().take(3).collect();
             let msg = format!(
@@ -10361,10 +10365,10 @@ async fn check_large_logs(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
                     .collect::<Vec<_>>()
                     .join(", ")
             );
-            if previous.as_deref() != Some("over-threshold") {
+            if transition.changed {
                 send_notification(guard, "Dracon System Guard - Large Log Files", &msg).await;
             }
-            if event_due {
+            if transition.emit_event {
                 emit_event(&DraconEvent::new(
                     "system",
                     EventSeverity::Warn,
