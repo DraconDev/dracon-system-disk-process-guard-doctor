@@ -6801,23 +6801,11 @@ async fn check_rapid_disk_fill(
         .report_states
         .get("disk-rapid-fill")
         .is_some_and(|entry| entry.value == "rapid");
-    let observed = match rate {
-        DiskFillRate::Filling(gbph) => Some((
-            if disk_rapid_verdict(gbph, previously_rapid, guard.disk_rapid_fill_gbph) {
-                "rapid"
-            } else {
-                "ok"
-            },
-            gbph,
-        )),
-        // A non-positive slope IS evidence the disk stopped filling, so it
-        // states a verdict — subject to the sustain window, which keeps one
-        // noisy flat sample from ending a real rapid-growth episode.
-        DiskFillRate::NotFilling => Some(("ok", 0.0)),
-        // No evidence either way. HOLD the accepted state: an unmeasurable
-        // rate must never be read as "the disk stopped filling".
-        DiskFillRate::Unmeasured => None,
-    };
+    let observed = disk_rapid_observed_state(
+        rate,
+        previously_rapid,
+        guard.disk_rapid_fill_gbph,
+    );
     let Some((observed_state, rate)) = observed else {
         return None;
     };

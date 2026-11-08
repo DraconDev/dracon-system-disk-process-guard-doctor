@@ -2149,9 +2149,25 @@ fn rapid_fill_warning_reports_user_available_runway() {
 
 #[tokio::test]
 async fn disk_reclamation_rearms_the_rapid_fill_notification() {
+    // REWRITTEN 2026-11-08: this test used to simulate a reclamation as an
+    // UNMEASURED rate (two samples 30 s apart), assert that
+    // `check_rapid_disk_fill` parked the state at "unmeasured", and assert
+    // that the next "rapid" therefore re-notified. That is the conflation
+    // the `DiskFillRate` type was introduced to prevent: a growth window
+    // too young to measure is not evidence that the disk stopped filling.
+    // Because the guard measures every 30 s, this made the alarm re-fire
+    // for one continuous episode — the live `disk/rapid-fill` events
+    // quoted 31-146 GiB/h against a 20 GiB/h threshold, so "rapid" never
+    // actually stopped being true.
+    //
+    // The re-arm guarantee itself is PRESERVED, and is asserted below on
+    // the evidence that actually means reclamation: a non-positive slope.
     let guard = crate::GuardPolicy::default();
     let mut state = crate::GuardRuntimeState::default();
     crate::report_state_transition(&mut state, "disk-rapid-fill", "rapid", 3600);
+
+    // 1. A window too young to measure holds the state, and check_rapid_disk_fill
+    //    reports no rate (there is no deadline it can honestly compute).
     let now = Instant::now();
     state.disk_bytes_history = vec![
         (now - Duration::from_secs(60), 800),
@@ -2162,11 +2178,55 @@ async fn disk_reclamation_rearms_the_rapid_fill_notification() {
             .await
             .is_none()
     );
-    assert_eq!(state.report_states["disk-rapid-fill"].value, "unmeasured");
-    let (previous, due) =
-        crate::report_state_transition(&mut state, "disk-rapid-fill", "rapid", 3600);
-    assert_ne!(previous.as_deref(), Some("rapid"));
-    assert!(due);
+    assert_eq!(
+        state.report_states["disk-rapid-fill"].value, "rapid",
+        "an unmeasurable rate must HOLD the state, not re-arm it"
+    );
+
+    // 2. A genuine reclamation — a non-positive slope — IS evidence, so it
+    //    states the "ok" verdict. After the sustain window that becomes the
+    //    accepted state, so re-entering "rapid" is a real transition and
+    //    the operator is notified again for the new episode.
+    let threshold = guard.disk_rapid_fill_gbph;
+    let reclaimed = crate::disk_rapid_observed_state(
+        crate::DiskFillRate::NotFilling,
+        true,
+        threshold,
+    );
+    assert_eq!(
+        reclaimed.map(|(state, _)| state),
+        Some("ok"),
+        "a non-positive slope must state the ok verdict"
+    );
+    let clock = Instant::now();
+    crate::report_state_transition_stabilized(
+        &mut state,
+        "disk-rapid-fill",
+        "ok",
+        guard.report_repeat_secs,
+        crate::REPORT_STATE_SUSTAIN_SECS,
+        clock,
+    );
+    let settled = crate::report_state_transition_stabilized(
+        &mut state,
+        "disk-rapid-fill",
+        "ok",
+        guard.report_repeat_secs,
+        crate::REPORT_STATE_SUSTAIN_SECS,
+        clock + Duration::from_secs(crate::REPORT_STATE_SUSTAIN_SECS + 1),
+    );
+    assert!(settled.changed, "the reclamation is accepted after the sustain window");
+
+    // 3. Rapid growth resumes: this is a NEW episode, so it re-notifies.
+    let resumed = crate::report_state_transition_stabilized(
+        &mut state,
+        "disk-rapid-fill",
+        "rapid",
+        guard.report_repeat_secs,
+        crate::REPORT_STATE_SUSTAIN_SECS,
+        clock + Duration::from_secs(2 * crate::REPORT_STATE_SUSTAIN_SECS + 2),
+    );
+    assert!(resumed.changed, "resumed growth is a fresh transition and re-notifies");
 }
 
 /// ADDED 2026-10-24 (audit): the fill rate is measured ONCE per pass and
@@ -2885,8 +2945,13 @@ fn a_rate_hovering_at_the_threshold_never_flips_state() {
     let mut rapid = crate::disk_rapid_verdict(threshold * 0.5, false, threshold);
     assert!(!rapid, "below the entry threshold the disk is not rapid");
 
+    // The legitimate ENTRY is not a flip — it is the one transition allowed.
+    rapid = crate::disk_rapid_verdict(21.0, rapid, threshold);
+    assert!(rapid, "crossing the entry threshold from below enters rapid");
+
+    // From here the rate wanders across the threshold and must be absorbed.
     let mut flips = 0usize;
-    for rate in [21.0, 19.0, 22.0, 18.0, 25.0, 17.0, 20.5, 19.5] {
+    for rate in [19.0, 22.0, 18.0, 25.0, 17.0, 20.5, 19.5] {
         let next = crate::disk_rapid_verdict(rate, rapid, threshold);
         if next != rapid {
             flips += 1;
