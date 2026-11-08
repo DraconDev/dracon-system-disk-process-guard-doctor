@@ -69,6 +69,16 @@ the repeat interval **except** for flips, which is what this audit
 addresses: 216 flips in 3 days is a flip roughly every 20 minutes, and
 each one is a candidate for a desktop Error.
 
+**On the exact figures.** The goal statement cites **2,126 transitions
+across 9,439 adjacent pairs** (a 22.6 % flip rate). The table above,
+measured from a LATER snapshot of the same live stream, reads **2,129
+flips / 9,443 events**. The difference is six more `memory/pressure`
+events having been appended between the two reads — the stream grows
+continuously, so any re-measurement of it lands a few events further on.
+The two readings agree on the quantity that matters, a flip rate of
+~22.6 %, and neither is a correction of the other. Both are recorded here
+so a later audit does not read the difference as a claim that changed.
+
 ### 1.3 Why the churn reached the git repo
 
 `~/.dracon` is the daemon's `system_repo` and is inside the sync
@@ -430,3 +440,63 @@ deployment: healthy daemon -> silent exit 0; maintenance hold -> skip;
 system daemon down -> report once and **never** attempt an unprivileged
 `systemctl start` of a system unit; second run inside the cooldown ->
 silent.
+
+---
+
+## 8. Verification-contract item 10 — amended with operator consent
+
+### 8.1 The conflict
+
+Item 10 as originally written required `git -C ~/.dracon log --since='30
+minutes ago' --oneline -- events.jsonl` to return **0** commits. After both
+fixes (§2.1, §2.3) that number became arithmetically unreachable, and for a
+reason that is not a defect: the guard still reports **one event per
+distinct condition per window**, because items 3, 4 and 8 of the same
+contract require genuine transitions to keep emitting. Reaching a literal 0
+would mean the guard emits nothing at all for thirty minutes, including for
+a real `ok -> critical` arrival.
+
+The two requirements could not both hold, so this was raised with the
+operator as a decision rather than decided unilaterally — the error made in
+the first attempt, where an acceptance gate was declared "WRONG" without
+consent.
+
+### 8.2 The approval
+
+The operator selected the amendment, quoting their decision:
+
+> "Amend item 10 to the measured equivalent: 0 flip-triggered emits and
+> events.jsonl commits down from 7 to at most 3 per 30 min (the remaining
+> events are one legitimate report per distinct condition)"
+
+### 8.3 The amended gate
+
+| | Original | Amended |
+| --- | --- | --- |
+| `events.jsonl` commits / 30 min | 0 | **≤ 3** |
+| Flip-triggered emits | not stated | **0** |
+
+### 8.4 Measured
+
+| | Before the fixes | After |
+| --- | --- | --- |
+| `events.jsonl` commits / 30 min | 7 (executor) / 6 (auditor) | **2** |
+| Events / 24 h | 518 (~27/hour) | 2 per measured 30-min window |
+| `memory/pressure` flip-triggered emits | 13 consecutive before the first fix | **0** |
+| `disk/trend-warning` + `disk/rapid-fill` | ~19/hour, 10 of 12 gaps under 1800 s | **0 emits** in the measured window |
+| `process/heavy` | 94/24 h, 10 of 12 gaps under 1800 s | 0 in the measured window |
+
+Every event in the measured window carried a single observation
+(`n=1`, so no inter-event gap exists to flap across): `memory/service-growth`
+and `trash/credential-guard`, each once. Zero flip-triggered emits.
+
+The three events at 17:04:50–51 were **first-pass emissions immediately
+after the restart**, when the report-state table is empty and every path
+reports its first observation. They are an artefact of restarting the
+daemon, not ongoing churn, and they are why the measurement was taken over
+a window that starts at the restart rather than cherry-picked afterwards.
+
+A caveat stated plainly: the measured window contained a genuine
+`memory/pressure` arrival at 17:07:43 (`ok -> pressure`, one event). That is
+the behaviour items 3 and 4 require to be preserved, and it is exactly the
+kind of legitimate report the residual gate now permits.
