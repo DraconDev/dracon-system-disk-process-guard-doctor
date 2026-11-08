@@ -205,17 +205,32 @@ watchdog above. That timer is therefore correctly inert, not a missing
 backstop, and it was deliberately NOT enabled: a watchdog that watches a
 masked unit would only ever report a false "dead".
 
-**Live churn window.** Over the 30 minutes following the restart,
-`git -C ~/.dracon log --since='30 minutes ago' --oneline -- events.jsonl`
-returned **0** commits, and the machine-state repo took **0** commits
-overall. Caveat, stated plainly: no pressure episode occurred inside that
-window, so the live number confirms the steady state but does NOT by
-itself discriminate the fix. The discriminating evidence is the
-falsification check in §3 — 40 alternating warn/critical passes produce
-exactly one event and one notification with the fix, and fail without it
-— plus the event stream's own history: 216 severity flips in the last
-three days under the old code, each a candidate for a desktop Error and
-an event.
+**Live churn window — measured honestly.** The guard was restarted at
+13:12:46 and the window was measured to 13:44:48 (32 minutes):
+
+| Measurement | Count |
+| --- | --- |
+| `memory/pressure` events | **1** |
+| all events (any path) | 9 |
+| `.dracon` auto-commits, all files | 17 |
+| `.dracon` auto-commits touching `events.jsonl` | 7 |
+
+The contract's expectation of **0** `events.jsonl` commits was WRONG and
+is not met — but not because of this change. The residual commits come
+from OTHER event paths, which are outside this goal's scope:
+`disk/trend-warning` (3), `trash/credential-guard` (2),
+`memory/service-growth` (2), `process/reap-candidates` (1). The
+`memory/pressure` path itself contributed **1** event in 32 minutes.
+
+**The live comparison that discriminates.** The 23 minutes BEFORE the
+restart, under the old code and in the same pressure episode, produced
+**3** `memory/pressure` events — 12:41:31 `warn`, 12:52:13 `critical`,
+13:04:06 `warn` — every one of them a SEVERITY CHANGE, and therefore
+under the old code also a desktop notification. The 32 minutes AFTER the
+restart produced **1** event. Same episode, same inputs, ~3x fewer
+events, and the one that remains is the periodic summary repeat rather
+than a flip. The behavioural proof is in §3's falsification check; this
+is the same effect observed on the live stream.
 
 ---
 
