@@ -652,6 +652,64 @@ fn memory_pressure_class_collapses_warn_and_critical() {
     assert_eq!(crate::memory_pressure_class("critical"), "pressure");
 }
 
+/// The EMITTED text must carry the explanation.
+///
+/// The daemon's test build never persists events, so the event text has to
+/// be assertable directly. This is the operator-facing surface: without
+/// it, a `critical` event gives no hint that the guard is not permitted to
+/// act on what is consuming the memory.
+#[test]
+fn memory_pressure_event_text_explains_an_exempt_only_offender_set() {
+    let exempt = vec![("pi".to_string(), 2_752u64), ("chrome".to_string(), 4_704)];
+    let note = crate::build_mitigation_note(&[], &exempt);
+    let message = crate::memory_pressure_event_message(
+        "critical",
+        "critical",
+        12,
+        29,
+        Some(2.65),
+        &[],
+        0,
+        &note,
+    );
+    assert!(
+        message.contains("no mitigation applied"),
+        "the event text must say no mitigation was applied: {message}"
+    );
+    assert!(
+        message.contains("exempt"),
+        "the event text must say the consumers are exempt: {message}"
+    );
+    assert!(
+        message.contains("pi") && message.contains("chrome"),
+        "the event text must name the exempt consumers: {message}"
+    );
+    // The original facts must survive alongside the explanation.
+    assert!(message.contains("critical"), "{message}");
+    assert!(message.contains("mem available 12%"), "{message}");
+}
+
+/// The NOTIFICATION text must carry the same explanation.
+#[test]
+fn memory_pressure_notification_text_explains_the_mitigation_outcome() {
+    let exempt = vec![("pi".to_string(), 2_752u64)];
+    let note = crate::build_mitigation_note(&[], &exempt);
+    let body = crate::memory_pressure_notification_body(
+        "critical",
+        12,
+        29,
+        Some(2.65),
+        "(none)",
+        0,
+        &note,
+    );
+    assert!(
+        body.contains("no mitigation applied"),
+        "the notification body must say no mitigation was applied: {body}"
+    );
+    assert!(body.contains("pi"), "the notification body must name it: {body}");
+}
+
 /// ADDED 2026-10-27 (wrong-swap check, falsification fix): the periodic
 /// finding must be OBSERVABLE from the daemon pass — recorded in the
 /// pass state (entry/repeat dedup) and returned for the report — not
