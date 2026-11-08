@@ -6715,20 +6715,28 @@ async fn check_rapid_disk_fill(
         return None;
     };
     let rapid = rate >= guard.disk_rapid_fill_gbph;
-    let (previous, event_due) = report_state_transition(
+    // STABILIZED 2026-11-08: same rate estimate as the disk-trend path,
+    // crossing the SAME threshold from the other side. Left unstabilized,
+    // `disk-trend` and `disk/rapid-fill` flip against each other as the
+    // estimate wobbles, and each flip was an event in the machine-state
+    // repo. Together they were ~19 of the ~27 events/hour the guard
+    // produced on this host.
+    let transition = report_state_transition_stabilized(
         state,
         "disk-rapid-fill",
         if rapid { "rapid" } else { "ok" },
         guard.report_repeat_secs,
+        REPORT_STATE_SUSTAIN_SECS,
+        Instant::now(),
     );
     if rapid {
         let detail = rapid_disk_fill_message(rate, used_pct, avail_bytes);
         // One notification on entry; unchanged rapid growth is retained in
         // structured telemetry and summarized only at the repeat interval.
-        if previous.as_deref() != Some("rapid") {
+        if transition.changed {
             send_notification(guard, "Dracon System Guard - Disk Filling Rapidly", &detail).await;
         }
-        if event_due {
+        if transition.emit_event {
             emit_event(&DraconEvent::new(
                 "system",
                 EventSeverity::Warn,
