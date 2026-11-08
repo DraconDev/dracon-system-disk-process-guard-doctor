@@ -674,6 +674,11 @@ pub(crate) struct MemoryReport {
     /// Top resident + swapped footprint lower bounds. The legacy field name
     /// is retained for JSON consumers; unknown swap is explicit on each row.
     pub(crate) top_rss: Vec<ProcSample>,
+    /// ADDED 2026-11-08: what the guard did, or did not do, about the
+    /// pressure — in particular whether every top consumer is exempt and
+    /// therefore untouchable. Without it a "critical" report could not be
+    /// distinguished from "the guard is handling it".
+    pub(crate) mitigation_note: String,
     /// Eligible, identity-verified samples whose swap could not be measured,
     /// including those outside the shortlist. Rankings may be incomplete.
     pub(crate) swap_samples_unavailable: usize,
@@ -820,6 +825,76 @@ fn memory_offender_description(p: &ProcSample) -> String {
     format!(
         "{} pid={} rss={}MiB swap={swap}",
         p.command, p.pid, p.rss_mb
+    )
+}
+
+/// How many exempt consumers the report names.
+const EXEMPT_FOOTPRINT_LIMIT: usize = 4;
+
+/// Footprint of the processes the guard is NOT allowed to act on, grouped by
+/// command name and ordered by footprint lower bound (RSS + measured swap).
+///
+/// The offenders list deliberately EXCLUDES exempt processes — the guard
+/// must never renice or OOM-bias them — so the report could read
+/// "critical, top: (none)" while the actual consumers (the operator's
+/// agent sessions and browser) were invisible. Nothing may be DONE about an
+/// exempt process, but the operator must be able to SEE it: an opaque
+/// "critical" with no named consumer is exactly the signal shape that
+/// turns into a manual intervention under pressure
+/// (docs/design/performance-swap-thrash-2026-10-21.md).
+fn exempt_consumer_footprint(
+    samples: &[ProcSample],
+    exempt: &HashSet<String>,
+) -> Vec<(String, u64)> {
+    let mut by_command: HashMap<String, u64> = HashMap::new();
+    for p in samples {
+        if !exempt.contains(&p.command) || is_kernel_process(&p.command) {
+            continue;
+        }
+        let footprint = memory_pressure_footprint_mb(p);
+        *by_command.entry(p.command.clone()).or_default() += footprint;
+    }
+    let mut rows: Vec<(String, u64)> = by_command.into_iter().collect();
+    rows.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    rows.truncate(EXEMPT_FOOTPRINT_LIMIT);
+    rows
+}
+
+fn exempt_consumer_description(rows: &[(String, u64)]) -> String {
+    if rows.is_empty() {
+        return "(none)".to_string();
+    }
+    rows.iter()
+        .map(|(command, mb)| format!("{command} {mb}MiB"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Explain what the guard did, or did not do, about the pressure.
+///
+/// The offenders list excludes exempt processes BY POLICY, so a report that
+/// only lists offenders cannot tell the operator whether "critical" meant
+/// "the guard is handling it" or "the guard is not permitted to touch
+/// what is actually consuming the memory".
+pub(crate) fn build_mitigation_note(
+    offenders: &[ProcSample],
+    exempt: &[(String, u64)],
+) -> String {
+    if offenders.is_empty() && exempt.is_empty() {
+        return "no process data available; no mitigation applied".to_string();
+    }
+    if offenders.is_empty() {
+        return format!(
+            "no mitigation applied: every top consumer is exempt from the guard's actions ({})",
+            exempt_consumer_description(exempt)
+        );
+    }
+    if exempt.is_empty() {
+        return "no exempt consumers present; mitigation candidates are listed above".to_string();
+    }
+    format!(
+        "exempt consumers are not eligible for mitigation ({}); mitigation candidates are listed above",
+        exempt_consumer_description(exempt)
     )
 }
 
@@ -2394,6 +2469,29 @@ pub(crate) fn classify_memory_pressure(
         "warn"
     } else {
         "ok"
+    }
+}
+
+/// Coarse class of a memory-pressure level.
+///
+/// `warn` and `critical` are the SAME class for transition purposes. The
+/// exact severity is still reported and still drives mitigation, but a
+/// level oscillating between the two is not a new condition.
+///
+/// WHY (2026-11-08): the stabilized level flipped warn->critical->warn on
+/// a ~10-20 minute cadence for hours on this host, because the fourth
+/// classification input (swap-in velocity) is bursty. Every flip was
+/// treated as a transition, and the memory notification path does NOT use
+/// `should_notify`, so there was no cooldown at all: each flip produced a
+/// desktop "Memory Pressure" Error. Classing the two together keeps a
+/// genuine arrival into pressure (ok -> warn/critical) and a genuine
+/// recovery (warn/critical -> ok) as transitions, and stops the severity
+/// oscillation from being one.
+pub(crate) fn memory_pressure_class(pressure: &str) -> &'static str {
+    if pressure == "ok" {
+        "ok"
+    } else {
+        "pressure"
     }
 }
 
