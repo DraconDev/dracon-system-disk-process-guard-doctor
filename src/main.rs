@@ -11022,21 +11022,30 @@ pub(crate) async fn run_guard_once(
         &signature,
         guard.report_repeat_secs,
     );
-    let diagnostic = service_memory_growth
+    // FIXED 2026-11-08: an UNAVAILABLE measurement must not be heartbeated.
+    //
+    // The old condition emitted whenever the repeat came due and ANY
+    // observation was `sustained_growth` OR `unavailable`. Those two are not
+    // the same kind of fact. `sustained_growth` is an actionable condition
+    // the operator may need to be reminded about. `unavailable` is a
+    // permanent environmental limitation — on this host "host PID/cgroup
+    // namespace visibility unavailable" — which cannot be fixed from inside
+    // the guard and therefore cannot be acted on, ever.
+    //
+    // Repeating it every `report_repeat_secs` adds no information: the
+    // operator learned it the first time, and the state is unchanged. Live
+    // evidence: three consecutive events at 19:09:23, 19:21:07 and 19:51:21
+    // carried the identical text. It is now reported once on ENTRY into the
+    // state, and repeated only while there is real growth to report.
+    let grew = service_memory_growth
         .observations
         .iter()
-        .any(|o| o.status == "sustained_growth" || o.status == "unavailable");
-    if service_memory_growth.enabled
-        && due
-        && (diagnostic || previous.is_some_and(|p| p != signature))
-    {
+        .any(|o| o.status == "sustained_growth");
+    let changed = previous.as_deref() != Some(signature.as_str());
+    if service_memory_growth.enabled && ((due && grew) || changed) {
         emit_event(&DraconEvent::new(
             "system",
-            if service_memory_growth
-                .observations
-                .iter()
-                .any(|o| o.status == "sustained_growth")
-            {
+            if grew {
                 EventSeverity::Warn
             } else {
                 EventSeverity::Info
