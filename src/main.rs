@@ -10363,8 +10363,12 @@ async fn check_reap_candidates(
     if candidates.is_empty() {
         // The worklist emptied. That IS news: the operator may have cleaned
         // up, and silence would leave them unsure. A first sighting of an
-        // EMPTY worklist is not news — there was nothing to empty.
-        if previous.as_deref().map(|p| !p.is_empty()).unwrap_or(false) {
+        // EMPTY worklist is not news — there was nothing to empty. The
+        // emit is gated on the same stabilized assessment, so leaving the
+        // state is still one event (after the sustain window).
+        if transition.emit_event
+            && previous.as_deref().map(|p| !p.is_empty()).unwrap_or(false)
+        {
             emit_event(&DraconEvent::new(
                 "system",
                 EventSeverity::Info,
