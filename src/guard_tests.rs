@@ -2633,3 +2633,217 @@ async fn the_credential_guard_reports_the_disk_cost_of_what_it_keeps() {
     assert_eq!(sizes[1].1, 1024);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+// ---------------------------------------------------------------------------
+// Stabilized report states (2026-11-08)
+//
+// Every guard report state keys on a MEASURED value — a disk fill rate, a
+// zombie count, a heavy process's CPU share. Those measurements oscillate
+// across their thresholds, and every crossing was a "changed" report
+// state, and every changed state was an event appended to
+// `~/.dracon/events.jsonl`, which the sync daemon auto-commits. The
+// machine-state repo churned at the rate the measurement flapped.
+//
+// A stabilized transition accepts a new value only after it has held for
+// the sustain window.
+// ---------------------------------------------------------------------------
+
+/// The defect this protects against: a measurement that oscillates across
+/// its threshold must not produce a stream of transitions.
+///
+/// Before the fix, each crossing produced an event (and, on the
+/// notification paths, a desktop popup). The disk-trend and disk-rapid-fill
+/// pair alone was ~19 of the ~27 events/hour this guard produced on the
+/// live host, because both key off the same fill-rate estimate from
+/// opposite sides of the same threshold.
+#[test]
+fn an_oscillating_measurement_produces_no_transitions() {
+    let mut state = crate::GuardRuntimeState::default();
+    let start = Instant::now();
+
+    // The rate estimate crosses the threshold every pass.
+    let mut events = 0usize;
+    let mut transitions = 0usize;
+    for pass in 0..40u64 {
+        let observed = if pass % 2 == 0 { "soon" } else { "ok" };
+        let transition = crate::report_state_transition_stabilized(
+            &mut state,
+            "disk-trend",
+            observed,
+            1800,
+            120,
+            start + Duration::from_secs(pass * 30),
+        );
+        if transition.changed {
+            transitions += 1;
+        }
+        if transition.emit_event {
+            events += 1;
+        }
+    }
+    assert_eq!(
+        transitions, 0,
+        "a value that never holds for the sustain window must never become the state"
+    );
+    assert_eq!(
+        events, 0,
+        "an oscillating measurement must produce no events at all"
+    );
+}
+
+/// A value that HOLDS is accepted — and reported exactly once.
+///
+/// The flip above must not be achieved by suppressing reports altogether:
+/// a disk that really is filling toward full has to be reported.
+#[test]
+fn a_sustained_value_is_accepted_and_reported_once() {
+    let mut state = crate::GuardRuntimeState::default();
+    let start = Instant::now();
+
+    // 60 passes at 30 s = 30 minutes of a genuinely sustained condition.
+    let mut events = 0usize;
+    let mut transitions = 0usize;
+    for pass in 0..60u64 {
+        let transition = crate::report_state_transition_stabilized(
+            &mut state,
+            "disk-trend",
+            "soon",
+            1800,
+            120,
+            start + Duration::from_secs(pass * 30),
+        );
+        if transition.changed {
+            transitions += 1;
+        }
+        if transition.emit_event {
+            events += 1;
+        }
+    }
+    assert_eq!(transitions, 1, "a sustained condition is one transition");
+    // One transition event, plus the 1800 s summary repeats of a condition
+    // that still holds: 30 minutes of condition = the entry plus one
+    // repeat, not one event per pass.
+    assert!(
+        events <= 3,
+        "a sustained condition must not produce an event per pass, got {events}"
+    );
+}
+
+/// The sustain window delays the transition; it does not swallow it.
+///
+/// A condition that starts and then holds is reported once the window has
+/// passed — the report is never lost.
+#[test]
+fn a_transition_is_reported_once_the_sustain_window_has_passed() {
+    let mut state = crate::GuardRuntimeState::default();
+    let start = Instant::now();
+
+    // First observation: the candidate starts, nothing is reported.
+    let first = crate::report_state_transition_stabilized(
+        &mut state,
+        "disk-trend",
+        "soon",
+        1800,
+        120,
+        start,
+    );
+    assert!(!first.changed, "the first observation is not yet a transition");
+    assert!(!first.emit_event, "the first observation emits nothing");
+
+    // Still inside the window.
+    let inside = crate::report_state_transition_stabilized(
+        &mut state,
+        "disk-trend",
+        "soon",
+        1800,
+        120,
+        start + Duration::from_secs(60),
+    );
+    assert!(!inside.changed, "60 s in, the window has not passed");
+    assert!(!inside.emit_event, "60 s in, nothing is emitted");
+
+    // Past the window: the transition is accepted and reported.
+    let after = crate::report_state_transition_stabilized(
+        &mut state,
+        "disk-trend",
+        "soon",
+        1800,
+        120,
+        start + Duration::from_secs(130),
+    );
+    assert!(after.changed, "past the window, the transition is accepted");
+    assert!(after.emit_event, "past the window, the transition is reported");
+}
+
+/// A recovery is a transition too — the state must be able to come back.
+#[test]
+fn a_sustained_recovery_is_accepted_and_reported() {
+    let mut state = crate::GuardRuntimeState::default();
+    let start = Instant::now();
+
+    // Enter the condition and hold it.
+    for pass in 0..6u64 {
+        crate::report_state_transition_stabilized(
+            &mut state,
+            "zombie-warning",
+            "over-threshold",
+            1800,
+            120,
+            start + Duration::from_secs(pass * 30),
+        );
+    }
+    // Now it clears and holds.
+    let mut recoveries = 0usize;
+    for pass in 0..6u64 {
+        let transition = crate::report_state_transition_stabilized(
+            &mut state,
+            "zombie-warning",
+            "ok",
+            1800,
+            120,
+            start + Duration::from_secs(180 + pass * 30),
+        );
+        if transition.changed {
+            recoveries += 1;
+        }
+    }
+    assert_eq!(
+        recoveries, 1,
+        "a sustained recovery is one transition, not one per pass"
+    );
+}
+
+/// The stabilized path must not change the plain path's behaviour for a
+/// value that never moves.
+///
+/// The plain `report_state_transition` is still used by the memory-pressure
+/// path and by the action-reporting paths; this pins that the two agree
+/// when there is nothing to stabilize.
+#[test]
+fn the_stabilized_and_plain_transitions_agree_on_a_steady_value() {
+    let mut plain = crate::GuardRuntimeState::default();
+    let mut stabilized = crate::GuardRuntimeState::default();
+    let start = Instant::now();
+
+    for pass in 0..10u64 {
+        let at = start + Duration::from_secs(pass * 30);
+        let (plain_previous, plain_emit) =
+            crate::report_state_transition(&mut plain, "k", "warn", 1800);
+        let stabilized_transition = crate::report_state_transition_stabilized(
+            &mut stabilized,
+            "k",
+            "warn",
+            1800,
+            120,
+            at,
+        );
+        assert_eq!(
+            plain_emit, stabilized_transition.emit_event,
+            "pass {pass}: the two must agree on a value that never changes"
+        );
+        assert_eq!(
+            plain_previous, stabilized_transition.previous,
+            "pass {pass}: the two must agree on the previous state"
+        );
+    }
+}
