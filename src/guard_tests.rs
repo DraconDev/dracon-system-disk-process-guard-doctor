@@ -631,9 +631,13 @@ fn exempt_consumer_footprint_groups_by_command() {
         ["pi".to_string(), "chrome".to_string()].into_iter().collect();
     let rows = crate::exempt_consumer_footprint(&samples, &exempt);
     assert_eq!(rows.len(), 2, "one row per exempt command: {rows:?}");
-    assert_eq!(rows[0].0, "chrome", "the biggest consumer is named first");
-    assert_eq!(rows[1].0, "pi");
-    assert_eq!(rows[1].1, 500, "the footprint of a command is summed");
+    assert_eq!(rows[0].0, "pi", "the biggest consumer is named first");
+    assert_eq!(rows[1].0, "chrome");
+    assert_eq!(
+        rows[0].1, 500,
+        "the footprint of a command is summed across its processes"
+    );
+    assert_eq!(rows[1].1, 400);
     assert!(
         !rows.iter().any(|(command, _)| command == "node"),
         "a non-exempt process must not be reported as an exempt consumer"
