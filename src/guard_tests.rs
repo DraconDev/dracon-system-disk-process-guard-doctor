@@ -2813,37 +2813,47 @@ fn a_sustained_recovery_is_accepted_and_reported() {
     );
 }
 
-/// The stabilized path must not change the plain path's behaviour for a
-/// value that never moves.
+/// The stabilized path must not LOSE reports — it may only delay them.
 ///
-/// The plain `report_state_transition` is still used by the memory-pressure
-/// path and by the action-reporting paths; this pins that the two agree
-/// when there is nothing to stabilize.
+/// The plain `report_state_transition` reports a value the first time it
+/// sees it. The stabilized path holds a new value for the sustain window
+/// before accepting it, so its FIRST report is later — by at most the
+/// window. Over a long enough run the two must produce the SAME number of
+/// reports: stabilization changes WHEN a condition is reported, never
+/// WHETHER it is.
 #[test]
-fn the_stabilized_and_plain_transitions_agree_on_a_steady_value() {
+fn the_stabilized_path_delays_the_first_report_but_loses_none() {
     let mut plain = crate::GuardRuntimeState::default();
     let mut stabilized = crate::GuardRuntimeState::default();
     let start = Instant::now();
 
-    for pass in 0..10u64 {
+    let mut plain_events = 0usize;
+    let mut stabilized_events = 0usize;
+    let mut first_stabilized_at: Option<u64> = None;
+    // Two hours at 30 s per pass.
+    for pass in 0..240u64 {
         let at = start + Duration::from_secs(pass * 30);
-        let (plain_previous, plain_emit) =
-            crate::report_state_transition(&mut plain, "k", "warn", 1800);
-        let stabilized_transition = crate::report_state_transition_stabilized(
-            &mut stabilized,
-            "k",
-            "warn",
-            1800,
-            120,
-            at,
-        );
-        assert_eq!(
-            plain_emit, stabilized_transition.emit_event,
-            "pass {pass}: the two must agree on a value that never changes"
-        );
-        assert_eq!(
-            plain_previous, stabilized_transition.previous,
-            "pass {pass}: the two must agree on the previous state"
-        );
+        if crate::report_state_transition(&mut plain, "k", "warn", 1800).1 {
+            plain_events += 1;
+        }
+        let transition =
+            crate::report_state_transition_stabilized(&mut stabilized, "k", "warn", 1800, 120, at);
+        if transition.emit_event {
+            stabilized_events += 1;
+            first_stabilized_at.get_or_insert(pass * 30);
+        }
     }
+    assert_eq!(
+        stabilized_events, plain_events,
+        "stabilization must not lose or add reports over a long run"
+    );
+    let first = first_stabilized_at.expect("the sustained value must be reported");
+    assert!(
+        first <= 120,
+        "the first report must be delayed by at most the sustain window, got {first}s"
+    );
+    assert!(
+        first >= 120,
+        "the first report must wait for the window, got {first}s"
+    );
 }
