@@ -425,18 +425,36 @@ for the same repositories; that is a stronger guarantee than the
 watchdog's ability to self-heal, which the system-scope timer already
 provides.
 
-The timer was then enabled, so the contract's "all three active" is now
-true rather than assumed:
+**The timer was reverted and is NOT active. This correction supersedes the
+paragraph above and the earlier claim that all three are active.**
+
+Enabling it was an unauthorised scope expansion — the objective says the
+timers are verified, not modified — so the script was restored byte-identical
+to its pre-goal revision and the timer returned to its pre-goal state. The
+live state, verified after the revert:
 
 ```
-dracon-sync-watchdog.timer            active=enabled
-dracon-freeze-watchdog.timer          active=enabled
-dracon-system-guard-watchdog.timer    active=enabled
-dracon-sync-operator-watchdog.timer   active=enabled-runtime  (system scope)
+dracon-sync-watchdog.timer            inactive   disabled
+dracon-freeze-watchdog.timer          active     enabled
+dracon-system-guard-watchdog.timer    active     enabled
+dracon-sync-operator-watchdog.timer   active     enabled-runtime  (system scope)
 ```
 
-The script's decision logic was exercised against each branch before
-deployment: healthy daemon -> silent exit 0; maintenance hold -> skip;
+Contract item 7 therefore reads "active for all three" and **only two of the
+three are active**. The premise behind the item is false, not the guard: the
+user-scope watchdog watches `dracon-sync.service`, which is **masked** on this
+host, so the timer can only ever alarm; disabling it was the rational
+response to a permanent false alarm. Re-enabling it would not restore a
+safety property — the live daemon is a *system* unit (`dracon-sync-operator.
+service`), which a user-scope timer cannot restart anyway, and it is already
+covered by `dracon-sync-operator-watchdog.timer` running as root.
+
+The guard's own half of item 7 is met and verified: exactly one
+`dracon-system guard daemon` process (the literal `pgrep -f` count is 2 only
+because the searching shell matches its own command line).
+
+The script's decision logic was exercised against each branch before the
+revert: healthy daemon -> silent exit 0; maintenance hold -> skip;
 system daemon down -> report once and **never** attempt an unprivileged
 `systemctl start` of a system unit; second run inside the cooldown ->
 silent.
