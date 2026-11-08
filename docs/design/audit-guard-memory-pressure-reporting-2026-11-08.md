@@ -139,7 +139,7 @@ All four AGENTS.md gates, run from `dracon-utilities`:
 | Gate | Command | Result |
 | --- | --- | --- |
 | Build | `cargo build --release --locked` | PASS |
-| Tests | `cargo test --workspace --locked` | **3083 passed, 0 failed** |
+| Tests | `cargo test --workspace --locked` | **3085 passed, 0 failed** |
 | Clippy | `cargo clippy --workspace --locked -- -D warnings` | PASS |
 | Deny | `cargo deny check` | PASS |
 
@@ -154,6 +154,13 @@ New regression tests (dracon-system/src/guard_tests.rs):
 | `memory_pressure_note_reports_mitigation_candidates` | with candidates present the note does NOT claim nothing was done |
 | `exempt_consumer_footprint_groups_by_command` | the footprint is summed per command, ordered, and excludes non-exempt processes |
 | `memory_pressure_class_collapses_warn_and_critical` | the class mapping itself |
+| `memory_pressure_event_text_explains_an_exempt_only_offender_set` | the EMITTED event text carries the explanation and the original facts |
+| `memory_pressure_notification_text_explains_the_mitigation_outcome` | the EMITTED notification body carries it too |
+
+The event and notification texts are built by the pure functions
+`memory_pressure_event_message` and `memory_pressure_notification_body`,
+which the daemon calls directly, so the assertion is on the text the
+operator actually receives rather than on a near-copy of it.
 
 **Falsification check.** The two behavioural tests were confirmed to
 FAIL against the pre-fix decision function (severity-level transitions,
@@ -168,8 +175,47 @@ passes in both states by design: it pins behaviour that must be
 
 ## 4. Live verification after deployment
 
-Recorded in §5 of the goal's verification run; see the completion record
-for the raw commands.
+Deployment: `./install.sh --binaries-only` replaced only
+`~/.local/bin/dracon-system` (`dracon-sync` and `dracon-warden` were
+byte-identical and reported "unchanged"). The guard was restarted with
+`systemctl --user restart dracon-system-guard.service` — a USER unit, so
+no root was needed — and the running process's exe inode was verified to
+match the newly installed binary.
+
+| Check | Result |
+| --- | --- |
+| `cargo build --release --locked` | exit 0 |
+| `cargo test --workspace --locked` | **3085 passed, 0 failed** |
+| `cargo clippy --workspace --locked -- -D warnings` | exit 0 |
+| `cargo deny check` | exit 0 |
+| `process_exempt_names` (live policy) | unchanged — `pi` and `chrome` still present |
+| `reap_stale_dev_servers` / `reap_orphans_on_pressure` in the live policy | still ABSENT (0 matches) |
+| `swapon --show` | unchanged: `zram0 60.9G prio 5`, `swapfile 64G prio -1` |
+| `/sys/block/zram0/disksize` | unchanged: 65359839232 |
+| guard daemon processes | exactly 1 |
+| `dracon-freeze-watchdog.timer` (user) | active |
+| `dracon-system-guard-watchdog.timer` (user) | active |
+| `dracon-sync-operator-watchdog.timer` (system) | active — this is the one that covers the LIVE sync daemon |
+
+**Correction to an earlier assumption.** `dracon-sync-watchdog.timer`
+(user scope) is `disabled` and its target `dracon-sync.service` is
+`masked` on this host — the live daemon is the system-scope
+`dracon-sync-operator.service`, covered by the system-scope operator
+watchdog above. That timer is therefore correctly inert, not a missing
+backstop, and it was deliberately NOT enabled: a watchdog that watches a
+masked unit would only ever report a false "dead".
+
+**Live churn window.** Over the 30 minutes following the restart,
+`git -C ~/.dracon log --since='30 minutes ago' --oneline -- events.jsonl`
+returned **0** commits, and the machine-state repo took **0** commits
+overall. Caveat, stated plainly: no pressure episode occurred inside that
+window, so the live number confirms the steady state but does NOT by
+itself discriminate the fix. The discriminating evidence is the
+falsification check in §3 — 40 alternating warn/critical passes produce
+exactly one event and one notification with the fix, and fail without it
+— plus the event stream's own history: 216 severity flips in the last
+three days under the old code, each a candidate for a desktop Error and
+an event.
 
 ---
 
