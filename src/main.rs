@@ -2495,6 +2495,49 @@ pub(crate) fn memory_pressure_class(pressure: &str) -> &'static str {
     }
 }
 
+/// What a memory-pressure pass should report.
+///
+/// Pure, and it owns the state transition, so the flapping contract is
+/// testable end to end. The daemon's test build never persists events
+/// (`events::emit_event` returns under `cfg!(test)`), so counting emitted
+/// events by reading the stream is not an option — the decision has to be
+/// observable directly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PressureDecision {
+    /// Emit a structured `memory/pressure` event.
+    pub emit_event: bool,
+    /// Send the desktop "Memory Pressure" notification.
+    pub notify: bool,
+}
+
+/// Decide what a memory-pressure pass reports.
+///
+/// `warn` and `critical` share the class "pressure" (see
+/// [`memory_pressure_class`]), so a severity oscillation inside pressure is
+/// NOT a new condition: it emits nothing and notifies nothing. A genuine
+/// arrival into pressure (ok -> warn/critical) emits and notifies once; a
+/// genuine recovery (warn/critical -> ok) emits a recovery event; a
+/// sustained condition still produces the configured summary repeat.
+pub(crate) fn memory_pressure_report_decision(
+    state: &mut GuardRuntimeState,
+    pressure: &str,
+    repeat_secs: u64,
+) -> PressureDecision {
+    let class = memory_pressure_class(pressure);
+    let (previous_class, event_due) =
+        report_state_transition(state, "memory-pressure", class, repeat_secs);
+    let was_pressure = previous_class
+        .as_deref()
+        .is_some_and(|previous| previous != "ok");
+    let recovery = class == "ok" && was_pressure;
+    PressureDecision {
+        emit_event: event_due && (class != "ok" || recovery),
+        // A genuine ARRIVAL into pressure only. A severity oscillation
+        // inside the pressure class is not a new condition.
+        notify: class != "ok" && !was_pressure,
+    }
+}
+
 /// Apply persistence/hysteresis to an instantaneous pressure observation.
 /// Returns `(stable_state, previous_state, transitioned)`.
 pub(crate) fn stabilize_memory_pressure_at(
@@ -7162,13 +7205,7 @@ async fn check_memory_pressure(
     // pressure), not the raw severity, so a warn<->critical oscillation is
     // not treated as a new condition. A genuine arrival into pressure and a
     // genuine recovery still are.
-    let pressure_class = memory_pressure_class(&pressure);
-    let (last_reported_class, event_due) = report_state_transition(
-        state,
-        "memory-pressure",
-        pressure_class,
-        guard.report_repeat_secs,
-    );
+    let decision = memory_pressure_report_decision(state, &pressure, guard.report_repeat_secs);
 
     // Desktop notifications are reserved for stabilized state transitions.
     // An unchanged warning may still produce an occasional structured event,
@@ -7178,9 +7215,7 @@ async fn check_memory_pressure(
     // not the raw severity. The memory path never used `should_notify`, so
     // a warn<->critical oscillation produced a desktop Error on every flip
     // with no cooldown at all.
-    if pressure_class != "ok"
-        && last_reported_class.as_deref().is_some_and(|previous| previous != "ok")
-    {
+    if decision.notify {
         let offenders: String = top_rss
             .iter()
             .map(memory_offender_description)
@@ -7208,17 +7243,13 @@ async fn check_memory_pressure(
         )
         .await;
     }
-    // Emit on entry/escalation/recovery, then only at the configured summary
-    // interval while the same non-OK state persists.
+    // Emit on arrival, on recovery, and then only at the configured summary
+    // interval while the same condition persists.
     //
     // CHANGED 2026-11-08: recovery is a CLASS transition (pressure -> ok).
     // The old comparison was on the raw severity, so a warn<->critical
     // oscillation was read as an escalation AND a recovery in alternation.
-    let recovery = pressure_class == "ok"
-        && last_reported_class
-            .as_deref()
-            .is_some_and(|previous| previous != "ok");
-    if event_due && (pressure_class != "ok" || recovery) {
+    if decision.emit_event {
         emit_event(&DraconEvent::new(
             "system",
             if pressure == "critical" {
