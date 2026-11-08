@@ -6547,7 +6547,7 @@ async fn check_memory_pressure(
     let psi_thrash = psi_full_avg10.is_some_and(|v| v >= guard.mem_psi_full_warn)
         || swapin_velocity_thrash(pswpin_rate, guard.mem_swapin_warn_pages_per_sec);
     let observed_pressure = classify_memory_pressure(mem_low, swap_high, psi_thrash);
-    let (pressure, _previous_pressure, pressure_changed) = stabilize_memory_pressure_at(
+    let (pressure, _previous_pressure, _pressure_changed) = stabilize_memory_pressure_at(
         state,
         observed_pressure,
         guard.memory_pressure_sustain_secs,
@@ -7188,7 +7188,7 @@ async fn check_memory_pressure(
             guard,
             "Dracon System Guard - Memory Pressure",
             &format!(
-                "[{}] mem available {}%, swap used {}%{} top: {}; swap measurements unavailable: {} (ranking uses footprint lower bounds)",
+                "[{}] mem available {}%, swap used {}%{} top: {}; swap measurements unavailable: {} (ranking uses footprint lower bounds); {}",
                 pressure,
                 mem_available_percent,
                 swap_used_percent,
@@ -7200,7 +7200,8 @@ async fn check_memory_pressure(
                 } else {
                     offenders
                 },
-                swap_samples_unavailable
+                swap_samples_unavailable,
+                mitigation_note
             ),
         )
         .await;
