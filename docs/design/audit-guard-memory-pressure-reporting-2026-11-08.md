@@ -375,10 +375,14 @@ Per `docs/design/performance-swap-thrash-2026-10-21.md` and the
 - **No memory caps**, no change to the CPU-throttle behaviour, no change
   to the operator's desktop browsers.
 - **The commit-all policy and every ignore rule are unchanged.**
-- The three user-scope watchdog timers (`dracon-sync-watchdog.timer`,
-  `dracon-freeze-watchdog.timer`, `dracon-system-guard-watchdog.timer`)
-  are installed, enabled and active — **but this was not true when this
-  goal started, and the correction is a real change (see §7).**
+- The three user-scope watchdog timers were **not** all active when this goal
+  started, contradicting the objective's premise. `dracon-freeze-watchdog.timer`
+  and `dracon-system-guard-watchdog.timer` are active; `dracon-sync-watchdog.timer`
+  is **inactive and disabled** over a **masked** `dracon-sync.service`. It was
+  briefly enabled during this goal and then **reverted** to its pre-goal state
+  once that was recognised as an unauthorised scope expansion, with the script
+  restored byte-identical to revision `b932832e`. `swapon`, zram, the exemption
+  list, the kill paths and the commit-all policy were never touched. See §7.
 
 ---
 
