@@ -10336,6 +10336,30 @@ async fn check_reap_candidates(
         // Unchanged: not news.
         return;
     }
+    // FIXED 2026-11-08: the EVENT is gated on the coarse assessment, not on
+    // the exact process set.
+    //
+    // This used to emit on any change of the sorted `pid:comm` signature,
+    // so on a host where processes are constantly spawning and exiting the
+    // set churned continuously. Live evidence: two events 31 seconds apart
+    // (20:54:13 and 20:54:44) because the worklist went from 22 to 23
+    // abandoned processes — one process appeared, which is noise, not a new
+    // assessment.
+    //
+    // The guard's actual finding is "abandoned dev/test servers are
+    // present" (report-only — `reap_stale_dev_servers` is off). That
+    // assessment is what gets the sustain window; the exact membership
+    // still drives the prompt "new servers appeared" notification below,
+    // where a new process IS the news.
+    let assessment = if candidates.is_empty() { "none" } else { "present" };
+    let transition = report_state_transition_stabilized(
+        state,
+        "reap-candidates",
+        assessment,
+        guard.report_repeat_secs,
+        REPORT_STATE_SUSTAIN_SECS,
+        Instant::now(),
+    );
     if candidates.is_empty() {
         // The worklist emptied. That IS news: the operator may have cleaned
         // up, and silence would leave them unsure. A first sighting of an
@@ -10383,12 +10407,14 @@ async fn check_reap_candidates(
         )
         .await;
     }
-    emit_event(&DraconEvent::new(
-        "system",
-        EventSeverity::Warn,
-        "process/reap-candidates",
-        detail,
-    ));
+    if transition.emit_event {
+        emit_event(&DraconEvent::new(
+            "system",
+            EventSeverity::Warn,
+            "process/reap-candidates",
+            detail,
+        ));
+    }
 }
 
 /// Whether a service-memory-growth pass should emit an event.
