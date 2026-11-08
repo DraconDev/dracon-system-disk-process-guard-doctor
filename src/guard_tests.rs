@@ -2217,16 +2217,34 @@ async fn disk_reclamation_rearms_the_rapid_fill_notification() {
     );
     assert!(settled.changed, "the reclamation is accepted after the sustain window");
 
-    // 3. Rapid growth resumes: this is a NEW episode, so it re-notifies.
+    // 3. Rapid growth resumes: this is a NEW episode, so it re-notifies —
+    //    after its own sustain window, because every accepted state change
+    //    waits for the value to hold (a spike must not raise an alarm).
+    let resume_at = clock + Duration::from_secs(2 * crate::REPORT_STATE_SUSTAIN_SECS + 2);
+    let resume_candidate = crate::report_state_transition_stabilized(
+        &mut state,
+        "disk-rapid-fill",
+        "rapid",
+        guard.report_repeat_secs,
+        crate::REPORT_STATE_SUSTAIN_SECS,
+        resume_at,
+    );
+    assert!(
+        !resume_candidate.changed,
+        "a re-entry must hold for the sustain window before it is accepted"
+    );
     let resumed = crate::report_state_transition_stabilized(
         &mut state,
         "disk-rapid-fill",
         "rapid",
         guard.report_repeat_secs,
         crate::REPORT_STATE_SUSTAIN_SECS,
-        clock + Duration::from_secs(2 * crate::REPORT_STATE_SUSTAIN_SECS + 2),
+        resume_at + Duration::from_secs(crate::REPORT_STATE_SUSTAIN_SECS + 1),
     );
-    assert!(resumed.changed, "resumed growth is a fresh transition and re-notifies");
+    assert!(
+        resumed.changed,
+        "resumed growth is a fresh transition and re-notifies"
+    );
 }
 
 /// ADDED 2026-10-24 (audit): the fill rate is measured ONCE per pass and
