@@ -11984,6 +11984,15 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
                 }
             )),
         ]);
+        // ADDED 2026-11-08: say WHY nothing was (or was) mitigated. The
+        // offenders list excludes exempt processes by policy, so without
+        // this the row could not distinguish "handled" from "not
+        // permitted to touch what is actually consuming the memory".
+        table.add_row(vec![
+            Cell::new(""),
+            Cell::new("Memory Pressure (mitigation)"),
+            Cell::new(m.mitigation_note.clone()),
+        ]);
     }
 
     // ADDED 2026-10-27 (wrong-swap check): periodic placement/reference
