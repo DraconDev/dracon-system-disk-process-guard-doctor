@@ -2451,7 +2451,21 @@ pub(crate) fn report_state_transition(
     value: &str,
     repeat_secs: u64,
 ) -> (Option<String>, bool) {
-    let now = Instant::now();
+    report_state_transition_at(state, key, value, repeat_secs, Instant::now())
+}
+
+/// [`report_state_transition`] with an explicit clock.
+///
+/// Split out so the repeat cadence can be tested against a controlled
+/// clock: the plain path reads the wall clock internally, which makes a
+/// 30-minute repeat interval untestable in a unit test.
+pub(crate) fn report_state_transition_at(
+    state: &mut GuardRuntimeState,
+    key: &str,
+    value: &str,
+    repeat_secs: u64,
+    now: Instant,
+) -> (Option<String>, bool) {
     let entry = state.report_states.entry(key.to_string()).or_default();
     let previous = if entry.value.is_empty() {
         None
