@@ -1003,7 +1003,29 @@ fn record_oom_retry(
 pub(crate) struct ReportState {
     pub(crate) value: String,
     pub(crate) last_emitted: Option<Instant>,
+    /// A value observed since the last ACCEPTED state, and when it was
+    /// first observed. A new value must hold for the sustain window before
+    /// it is accepted — this is what stops a noisy measurement from
+    /// flapping the state. See `report_state_transition_stabilized`.
+    pub(crate) candidate: String,
+    pub(crate) candidate_since: Option<Instant>,
 }
+
+/// How long a newly observed report value must hold before it is accepted
+/// as the new state.
+///
+/// WHY (2026-11-08): every guard report state keys on a MEASURED value —
+/// a disk fill rate, a set of reap candidates, a heavy process — and those
+/// measurements oscillate around their thresholds. Before this window
+/// existed, each crossing was a "changed" report state, and each changed
+/// state was an event appended to `~/.dracon/events.jsonl`, which the sync
+/// daemon auto-commits. The machine-state repo was therefore churned at
+/// the rate the measurement flapped, not at the rate anything was wrong.
+///
+/// 120 s matches the memory-pressure sustain window
+/// (`memory_pressure_sustain_secs`), so every report path in the guard
+/// now uses the same tolerance for "this condition is real".
+pub(crate) const REPORT_STATE_SUSTAIN_SECS: u64 = 120;
 
 /// What a background disk-cleanup pass produced, handed back to the guard
 /// pass so the report can still show it.
