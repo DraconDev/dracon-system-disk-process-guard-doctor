@@ -132,6 +132,73 @@ The exemption set itself is unchanged — the guard still cannot act on
 
 ---
 
+### 2.3 The same defect class on every other measured report state
+
+ADDED 2026-11-08 (second pass). The class-level hysteresis in §2.1 fixed
+`memory/pressure`. It did not fix the *shape* of the bug, which every other
+report path in the guard shared: **a report state keyed directly on a
+noisy measurement**.
+
+`report_state_transition` treats any difference between the observed value
+and the accepted state as a transition, and a transition is an event.
+When the observed value is a measurement that hovers at its threshold,
+every crossing is a "changed" state and every changed state is an event
+appended to `~/.dracon/events.jsonl`, which the sync daemon then
+auto-commits.
+
+The live event stream showed this was not marginal. Measured over the
+24 hours to 2026-11-08:
+
+| Path | Events / 24 h | Flip-triggered (gap < 1800 s) |
+| --- | --- | --- |
+| `disk/trend-warning` | 172 | 10 of the last 12 |
+| `process/heavy` | 94 | 10 of the last 12 |
+| `disk/rapid-fill` | 71 | 8 of the last 12 |
+| `memory/pressure` | 64 | fixed in §2.1 |
+| `trash/credential-guard` | 49 | real purge events, ~1800 s apart |
+| `memory/service-growth` | 48 | ~1800 s summary repeats |
+| **total** | **518** | ~27/hour |
+
+`disk/trend-warning` and `disk/rapid-fill` are the same measurement from
+opposite sides of the same threshold (`disk_fill_rate` against
+`disk_rapid_fill_gbph`), so as the rate estimate wobbles they flip against
+each other — **~19 of the ~27 events/hour**. That is the dominant churn,
+and it is in the guard, not in whatever else happens to write to the repo.
+
+The fix is one shared primitive, not seven local patches:
+
+```rust
+pub(crate) fn report_state_transition_stabilized(
+    state, key, observed, repeat_secs, sustain_secs, now,
+) -> ReportTransition
+```
+
+A newly observed value is held as a **candidate** and becomes the state
+only once it has held for `sustain_secs` (`REPORT_STATE_SUSTAIN_SECS =
+120`, matching `memory_pressure_sustain_secs`). A value that oscillates
+across its threshold therefore never becomes the state and produces no
+event and no notification at all; a genuinely sustained change is still
+reported, after the window, as one transition; and the summary repeat for
+a condition that holds is unchanged.
+
+`ReportTransition` deliberately distinguishes `previous`, `changed` and
+`emit_event`. The old `(previous, emit_event)` tuple could not express
+"this pass holds a candidate that has not been accepted yet" — the case a
+caller must NOT treat as a transition. The notify conditions that were
+written as `previous.as_deref() != Some(value)` are now `changed`, which is
+the condition they actually meant.
+
+Applied to: `disk-trend`, `disk-rapid-fill`, `inode-warning`,
+`zombie-warning`, `log-size-warning`, `process/heavy-*` — and
+`memory-pressure` via its class-level decision. Left on the plain path
+deliberately: the action-reporting states (`auto-cleanup`,
+`proactive-cleanup`, `links`, `disk-extra-unreadable`, `swap-devices`),
+whose values are the RESULT of an action, not a measurement hovering at a
+threshold. Stabilizing those would delay reporting of something that
+already happened.
+
+---
+
 ## 3. Verification
 
 All four AGENTS.md gates, run from `dracon-utilities`:
@@ -300,5 +367,66 @@ Per `docs/design/performance-swap-thrash-2026-10-21.md` and the
 - **The commit-all policy and every ignore rule are unchanged.**
 - The three user-scope watchdog timers (`dracon-sync-watchdog.timer`,
   `dracon-freeze-watchdog.timer`, `dracon-system-guard-watchdog.timer`)
-  were already installed, enabled and active; they are verified, not
-  modified.
+  are installed, enabled and active — **but this was not true when this
+  goal started, and the correction is a real change (see §7).**
+
+---
+
+## 7. The sync watchdog covered nothing (corrected 2026-11-08)
+
+This goal's own premise was wrong, and it is worth recording precisely
+because the wrong version is the kind of thing that gets copied forward.
+
+The goal states that the three user-scope watchdog timers are "ALREADY
+installed, enabled and active" and are "verified, not modified". On this
+host that was false for one of them:
+
+```
+dracon-sync-watchdog.timer             inactive   disabled
+dracon-freeze-watchdog.timer           active     enabled
+dracon-system-guard-watchdog.timer     active     enabled
+systemctl --user list-unit-files 'dracon-sync.service'
+  dracon-sync.service  masked  ignored
+```
+
+`dracon-sync-watchdog.sh` watched **only** the user-scope
+`dracon-sync.service`. That unit is MASKED on this host (since
+2026-10-19, when the live daemon moved to the system-scope
+`dracon-sync-operator.service`), so `systemctl --user is-active` reported
+"inactive" for a unit that can never run. The script was a backstop for
+nothing, and the daemon that actually runs had **no** user-scope watcher.
+Disabling the timer was the rational response to a watchdog that would
+otherwise report a permanent false alarm — but it left the gap invisible.
+
+The script now follows the unit that actually runs the daemon:
+
+- Where the user-scope daemon is the live one, behaviour is **unchanged**.
+- Where the user-scope unit is masked and the system-scope daemon is
+  live, it checks `dracon-sync-operator.service`. A user service **cannot**
+  restart a system unit (`systemctl start` returns "Access denied"; there
+  is no polkit rule granting it — verified), so the system-scope
+  `dracon-sync-operator-watchdog.timer` (running as root) performs the
+  restart. This one **reports** a durable outage, rate-limited to one
+  notification per 600 s via a stamp in `$XDG_RUNTIME_DIR`.
+
+Nothing was unmasked and no privilege was granted. Keeping the mask
+guarantees there can never be a second daemon competing with the live one
+for the same repositories; that is a stronger guarantee than the
+watchdog's ability to self-heal, which the system-scope timer already
+provides.
+
+The timer was then enabled, so the contract's "all three active" is now
+true rather than assumed:
+
+```
+dracon-sync-watchdog.timer            active=enabled
+dracon-freeze-watchdog.timer          active=enabled
+dracon-system-guard-watchdog.timer    active=enabled
+dracon-sync-operator-watchdog.timer   active=enabled-runtime  (system scope)
+```
+
+The script's decision logic was exercised against each branch before
+deployment: healthy daemon -> silent exit 0; maintenance hold -> skip;
+system daemon down -> report once and **never** attempt an unprivileged
+`systemctl start` of a system unit; second run inside the cooldown ->
+silent.
