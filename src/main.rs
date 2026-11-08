@@ -6608,6 +6608,22 @@ pub(crate) fn disk_trend_warning(
     Some(DiskTrendWarning { hours, gbph })
 }
 
+/// Whether a disk fill-rate event may reach the event stream now.
+///
+/// The trend warning and the rapid-fill alarm report ONE condition — the
+/// disk fill rate — at two severities. They were two independent report
+/// states, so a rate that rose past both thresholds emitted twice: live
+/// `disk/trend-warning` at 21:51:08 ("13.5 GiB/h") and `disk/rapid-fill`
+/// 216 s later at 21:54:44 ("25.8 GiB/h"), two commits for one continuous
+/// episode. Sharing this gate makes the condition speak once per repeat
+/// interval no matter how many of its severities trip. Escalation is still
+/// announced, by notification — a prompt, not a commit.
+pub(crate) fn disk_rate_event_due(state: &GuardRuntimeState, repeat_secs: u64) -> bool {
+    state
+        .last_disk_rate_event
+        .is_none_or(|at| at.elapsed().as_secs() >= repeat_secs)
+}
+
 /// The disk-trend warning, computed from the rate this pass measured.
 ///
 /// ADDED 2026-08-10. REWRITTEN 2026-10-25 (audit D8) — see
@@ -6662,7 +6678,7 @@ async fn check_disk_trends(
     if transition.changed {
         send_notification(guard, "Dracon System Guard - Disk Trend Warning", &detail).await;
     }
-    if transition.emit_event {
+    if transition.emit_event && disk_rate_event_due(state, guard.report_repeat_secs) {
         // ADDED 2026-10-25 (audit D8): the warning used to reach only a
         // desktop notification — nothing in the journal, nothing in the
         // event stream. A monitoring feature that says nothing to the
@@ -6674,6 +6690,7 @@ async fn check_disk_trends(
             "disk/trend-warning",
             detail,
         ));
+        state.last_disk_rate_event = Some(Instant::now());
     }
 }
 
@@ -6849,13 +6866,14 @@ async fn check_rapid_disk_fill(
         if transition.changed {
             send_notification(guard, "Dracon System Guard - Disk Filling Rapidly", &detail).await;
         }
-        if transition.emit_event {
+        if transition.emit_event && disk_rate_event_due(state, guard.report_repeat_secs) {
             emit_event(&DraconEvent::new(
                 "system",
                 EventSeverity::Warn,
                 "disk/rapid-fill",
                 detail,
             ));
+            state.last_disk_rate_event = Some(Instant::now());
         }
     }
     Some(rate)

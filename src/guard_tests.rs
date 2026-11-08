@@ -3101,3 +3101,53 @@ fn an_unavailable_service_growth_measurement_is_not_heartbeated() {
     // Disabled monitoring says nothing at all.
     assert!(!crate::service_growth_should_emit(false, true, true, true));
 }
+
+/// The LIVE cross-path pair that survived every earlier fix.
+///
+/// 2026-11-08: `disk/trend-warning` at 21:51:08 ("13.5 GiB/h") and
+/// `disk/rapid-fill` at 21:54:44 ("25.8 GiB/h") — 216 s apart, two
+/// commits in the machine-state repo. Both paths were already stabilized
+/// and both had passed their 120 s sustain window, so the sustain could
+/// never have caught this: the defect was that ONE condition (the disk
+/// fill rate) was being reported by TWO independent report states.
+///
+/// The guard's rule is one report per distinct held condition per window.
+/// Whichever severity speaks first owns the window; the other stays
+/// silent even though it is a fresh transition of its own state, and even
+/// though it is an escalation worth telling the operator about — the
+/// notification still fires, because a notification is a prompt and not a
+/// commit in the machine-state repo.
+#[test]
+fn an_escalation_from_trend_to_rapid_is_one_report_not_two() {
+    let mut state = crate::GuardRuntimeState::default();
+    let repeat = 1800u64;
+
+    // The trend warning accepts first and speaks.
+    assert!(
+        crate::disk_rate_event_due(&state, repeat),
+        "the first report of a fill episode must be allowed"
+    );
+    state.last_disk_rate_event = Some(Instant::now());
+
+    // 216 s later the rate has risen past the rapid threshold. Its own
+    // stabilized transition is genuinely accepted — the state machine is
+    // right — but the condition already spoke, so nothing is committed.
+    assert!(
+        !crate::disk_rate_event_due(&state, repeat),
+        "an escalation 216 s after the trend warning must not commit a second \
+         event for the same fill episode, got a due event"
+    );
+
+    // The escalation is not lost: the notification path does not consult
+    // this gate, so the operator is still told promptly (see
+    // `check_rapid_disk_fill`'s `transition.changed` notification).
+
+    // Once the repeat interval passes the condition may speak again, so a
+    // still-filling disk is never permanently silenced.
+    state.last_disk_rate_event = Some(Instant::now() - Duration::from_secs(repeat + 1));
+    assert!(
+        crate::disk_rate_event_due(&state, repeat),
+        "the fill-rate condition must be allowed to report again after the \
+         repeat interval, otherwise a worsening disk goes silent forever"
+    );
+}
