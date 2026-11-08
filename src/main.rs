@@ -9553,8 +9553,19 @@ async fn check_heavy_processes(
         }
 
         let alert_state = if stuck { "stuck" } else { "heavy" };
-        let (previous, event_due) =
-            report_state_transition(state, &report_key, alert_state, guard.report_repeat_secs);
+        // STABILIZED 2026-11-08: "heavy" and "stuck" are the same condition
+        // at different intensities, and a process's CPU figure crosses the
+        // "still heavy" line back and forth. Each crossing was a new report
+        // state, and a new event in the machine-state repo. The value must
+        // now hold for the sustain window before it is accepted.
+        let transition = report_state_transition_stabilized(
+            state,
+            &report_key,
+            alert_state,
+            guard.report_repeat_secs,
+            REPORT_STATE_SUSTAIN_SECS,
+            Instant::now(),
+        );
         let detail = format!(
             "Heavy process {} (pid={} cpu={:.1}% rss={}MiB) sustained {}s{}{}",
             p.command,
@@ -9573,14 +9584,14 @@ async fn check_heavy_processes(
                 String::new()
             }
         );
-        if previous.as_deref() != Some(alert_state) {
+        if transition.changed {
             send_notification(guard, "Dracon System Guard", &detail).await;
         }
         // ADDED 2026-10-25 (audit D9): this check already tracked its state
         // and computed the event flag — and then DISCARDED it, so a heavy
         // process reached only a desktop popup and left no record of how long
         // it had been heavy, or of when it stopped being heavy.
-        if event_due {
+        if transition.emit_event {
             emit_event(&DraconEvent::new(
                 "system",
                 EventSeverity::Warn,
@@ -9970,15 +9981,17 @@ async fn check_inode_usage(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
     let inode_percent = match inode_use_percent(&guard.disk_mount_path).await {
         Ok(percent) => percent,
         Err(e) => {
-            let (previous, event_due) = report_state_transition(
+            let transition = report_state_transition_stabilized(
                 state,
                 "inode-warning",
                 "unreadable",
                 guard.report_repeat_secs,
+                REPORT_STATE_SUSTAIN_SECS,
+                Instant::now(),
             );
-            if event_due {
+            if transition.emit_event {
                 let detail = format!("Inode usage could not be read: {e:#}");
-                if previous.as_deref() != Some("unreadable") {
+                if transition.previous.as_deref() != Some("unreadable") {
                     eprintln!("⚠️ {detail}");
                 }
                 emit_event(&DraconEvent::new(
@@ -9992,7 +10005,7 @@ async fn check_inode_usage(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
         }
     };
     let over_threshold = inode_percent >= guard.inode_warn_percent;
-    let (previous, event_due) = report_state_transition(
+    let transition = report_state_transition_stabilized(
         state,
         "inode-warning",
         if over_threshold {
@@ -10001,6 +10014,8 @@ async fn check_inode_usage(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
             "ok"
         },
         guard.report_repeat_secs,
+        REPORT_STATE_SUSTAIN_SECS,
+        Instant::now(),
     );
     if !over_threshold {
         return;
@@ -10009,14 +10024,14 @@ async fn check_inode_usage(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
         "Inode usage at {}% (threshold: {}%) - disk may have space but no file slots",
         inode_percent, guard.inode_warn_percent
     );
-    if previous.as_deref() != Some("over-threshold") {
+    if transition.changed {
         send_notification(guard, "Dracon System Guard - Inode Warning", &detail).await;
     }
     // ADDED 2026-10-25 (audit D9): the inode warning reached only a desktop
     // popup. "The disk has space but no file slots" is the one disk failure
     // that `df` does not show, and it left no record in the journal or in
     // the event stream.
-    if event_due {
+    if transition.emit_event {
         emit_event(&DraconEvent::new(
             "system",
             EventSeverity::Warn,
