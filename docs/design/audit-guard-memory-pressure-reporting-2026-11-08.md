@@ -734,3 +734,57 @@ The exact membership still drives the prompt "new abandoned servers
 appeared" **notification**, because there a new process genuinely is the
 news. Only the EVENT is gated on the coarse assessment, so entering or
 leaving the state is one event and membership churn is silent.
+
+---
+
+## 12. The last cross-path pair: trend-warning → rapid-fill
+
+The audit's final live finding was a 216 s pair on 2026-11-08:
+
+```
+21:51:08  disk/trend-warning   13.5 GiB/h
+21:54:44  disk/rapid-fill      25.8 GiB/h
+```
+
+Both paths were already stabilized and both had cleared the 120 s sustain
+window, so the sustain could never have caught this. The defect was
+structural: **one condition — the disk fill rate — was being reported by two
+independent report states.** Each was individually correct; together they
+committed twice for a single continuous fill episode.
+
+The fix shares one event gate between them:
+
+```rust
+pub(crate) fn disk_rate_event_due(state: &GuardRuntimeState, repeat_secs: u64) -> bool {
+    state.last_disk_rate_event
+        .is_none_or(|at| at.elapsed().as_secs() >= repeat_secs)
+}
+```
+
+Whichever severity accepts first owns the window; the other stays silent until
+`report_repeat_secs` elapses. Escalation is **not** lost — the notification
+path does not consult this gate, so an escalation to rapid still prompts the
+operator promptly. A prompt is not a commit in the machine-state repo, which
+is the distinction that matters here.
+
+`an_escalation_from_trend_to_rapid_is_one_report_not_two` pins all three
+properties: first report allowed, escalation 216 s later suppressed, and the
+condition allowed to speak again after the repeat interval so a worsening
+disk never goes permanently silent.
+
+**Post-fix live state (deploy 23:20:34):** the only disk events are
+`23:29:38` and `00:01:12` — 1894 s apart, both `disk/rapid-fill`, no
+`trend-warning` companion. The cross-path pair is gone.
+
+## 13. Final measured window (2026-11-09 00:22:32, the 30 min from 23:52)
+
+| | Value |
+| --- | --- |
+| `events.jsonl` commits | **3** |
+| Distinct conditions reporting | 3 (`disk/rapid-fill`, `memory/pressure`, `trash/credential-guard`) |
+| Flip-triggered emits | **0** |
+| Named baseline | ~23/hour (≈11–12 per 30 min) during the episode |
+
+Three events, three distinct conditions, one report each, zero flips — which
+is exactly the acceptance the operator approved when they replaced the
+original "0 commits" constant.
