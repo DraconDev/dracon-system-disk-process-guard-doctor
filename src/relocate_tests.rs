@@ -1194,3 +1194,54 @@ fn already_cold_requires_identical_manifests_not_just_matching_totals() {
     assert!(crate::find_already_cold_trees(std::slice::from_ref(&scan), 1024 * 1024, &cold).is_empty());
     cleanup(&root);
 }
+
+
+/// End-to-end behaviour of the real incident scenario on the LIVE policy shape:
+/// candidate trees under a scanned root, one of which is byte-identical to an
+/// existing cold-root twin. The duplicate must be skipped and the guard pass
+/// must not move it.
+#[cfg(unix)]
+#[test]
+fn auto_relocate_pass_skips_the_duplicate_tree_instead_of_moving_it() {
+    let root = test_root("auto-duplicate");
+    cleanup(&root);
+    let scan = root.join("scan");
+    let cold = root.join("cold");
+    let live = scan.join("media");
+    fs::create_dir_all(live.join("audio")).unwrap();
+    fs::create_dir_all(cold.join("media").join("audio")).unwrap();
+    let payload = vec![5u8; 2 * 1024 * 1024 + 7];
+    fs::write(live.join("audio").join("a.mp3"), &payload).unwrap();
+    fs::write(cold.join("media").join("audio").join("a.mp3"), &payload).unwrap();
+    touch_aged(&live, "20 days ago");
+
+    let guards = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let guard = GuardPolicy {
+        relocate_cold_root: cold.to_string_lossy().to_string(),
+        relocate_candidate_roots: scan.to_string_lossy().to_string(),
+        relocate_min_size_mb: 1,
+        relocate_min_age_days: 14,
+        auto_relocate_apply: true,
+        disk_mount_path: "/".to_string(),
+        disk_action_percent: 0, // force past the pressure gate
+        ..Default::default()
+    };
+    let (moves, bytes, cands, already) = guards.block_on(crate::run_auto_relocate(&guard));
+
+    assert_eq!(moves, 0, "a duplicated tree must never be moved");
+    assert_eq!(bytes, 0);
+    assert!(
+        !cands.iter().any(|c| c.path.ends_with("media")),
+        "the duplicate must not be a candidate: {cands:?}"
+    );
+    assert_eq!(
+        already.len(),
+        1,
+        "the duplicate must be REPORTED as already cold: {already:?}"
+    );
+    assert!(live.is_dir() && !live.is_symlink(), "the live tree stays put");
+    cleanup(&root);
+}
