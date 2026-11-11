@@ -30,8 +30,12 @@ pub(crate) struct RelocatePlan {
     pub(crate) ready: bool,
     pub(crate) issues: Vec<String>,
     /// ADDED 2026-11-11: how git's ignore rules treat the source. Serialized
-    /// as a short label so a dry-run / `--json` plan shows WHY it refused.
+    /// as a short label so a dry-run / `--json` plan shows WHY it would be risky.
     pub(crate) link_safety: String,
+    /// True when the symlink swap would expose the tree to git. AUTO mode
+    /// refuses such a candidate; `apply_relocate` rolls the move back if the
+    /// path becomes visible for any reason.
+    pub(crate) exposes_after_swap: bool,
 }
 
 /// Outcome of an applied relocation.
@@ -435,11 +439,18 @@ pub(crate) fn plan_relocate(
     // matching the moment the tree becomes a link and the path is exposed.
     // Tracked-ness is the wrong question; ignore-survival is the right one.
     let safety = link_safety(&canon_src)?;
+    // The CLI keeps working on such a tree (it is the operator's explicit act,
+    // and `--allow-tracked` says "I know git will see this") but the warning is
+    // always reported. AUTO mode refuses outright — see `exposes_after_swap`
+    // on the plan, which `run_auto_relocate` honours — and `apply_relocate`
+    // still rolls back if the swap becomes visible anyway.
+    let exposes = safety.exposes_after_swap();
     if let Some(reason) = safety.refusal_reason() {
-        if !allow_tracked {
-            anyhow::bail!("refusing to relocate {}: {reason}", source.display());
-        }
-        issues.push(format!("link-safety (overridden by --allow-tracked): {reason}"));
+        issues.push(if allow_tracked {
+            format!("link-safety (overridden by --allow-tracked): {reason}")
+        } else {
+            format!("link-safety: {reason}")
+        });
     }
 
     let dest_meta = fs::symlink_metadata(dest_root)
@@ -493,7 +504,12 @@ pub(crate) fn plan_relocate(
         bytes,
         dest_avail_bytes: avail,
         fits,
-        ready: fits && issues.is_empty(),
+        // Link-safety is NOT a readiness gate for the CLI: it is reported in
+        // `issues` and refused by auto mode via `exposes_after_swap`. Readiness
+        // stays exactly "the copy fits", which is what every existing caller
+        // and test already means by it.
+        ready: fits,
+        exposes_after_swap: exposes,
         link_safety: format!("{safety:?}"),
         issues,
     })

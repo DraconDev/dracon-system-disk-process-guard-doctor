@@ -10847,7 +10847,18 @@ async fn run_auto_relocate(
             break;
         }
         let src = PathBuf::from(&cand.path);
+        // AUTO mode never performs a swap that would expose an ignored tree to
+        // git (the 2026-11-11 gitlink trap). The scanner already filters these,
+        // but the plan is recomputed here against the live tree.
         let plan = match plan_relocate(&src, &cold_root, &guard.protected_paths, false) {
+            Ok(p) if p.ready && p.exposes_after_swap => {
+                eprintln!(
+                    "⚠️ auto-relocate: {} skipped — {}",
+                    cand.path,
+                    p.issues.join("; ")
+                );
+                continue;
+            }
             Ok(p) if p.ready => p,
             Ok(p) => {
                 eprintln!(
