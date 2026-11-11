@@ -855,7 +855,7 @@ async fn auto_relocate_pauses_when_df_fails() {
         ..Default::default()
     };
 
-    let (moves, _bytes, _cands) = crate::run_auto_relocate(&guard)
+    let (moves, _bytes, _cands, _cold) = crate::run_auto_relocate(&guard)
         .await
         .expect("relocate pass runs");
     assert_eq!(moves, 0, "df failure must pause moves, not move blind");
