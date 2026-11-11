@@ -494,11 +494,38 @@ trend_warn_hours = 24
 # action/critical — move big idle dirs to the cold root BEFORE deleting
 # anything rebuildable. Report-only unless auto_relocate_apply. Tracked
 # content is never a candidate (no override in auto mode).
+#
+# ARMED 2026-11-11 (v0.112.51+, operator approved) after a 100%-full `/` while
+# 163 GiB of media sat duplicated. The code default stays `false`, so a fresh
+# deployment is still report-only until an operator opts in explicitly; the
+# guard that makes it safe now exists and applies either way:
+#
+#   - LINK SAFETY: replacing a directory with a symlink changes what git sees.
+#     A DIRECTORY-ONLY ignore rule (`out/`) stops matching a symlink, so the
+#     whole tree becomes an untracked gitlink (an empty directory for a
+#     cloner) or every file in it. The scanner asks git itself with a swap
+#     probe and auto mode REFUSES such a candidate, reporting the reason;
+#     `apply_relocate` additionally verifies the swap against the live index
+#     and rolls the move back (restoring the directory from staging) if the
+#     path became visible. CI proof:
+#     `link_safety_refuses_a_directory_only_ignore_rule` and
+#     `post_swap_exposure_reports_an_exposed_symlink_and_is_silent_when_ignored`.
+#   - DUPLICATE SKIP: a tree whose file manifest (relative paths + sizes) is
+#     already byte-identical under the cold root is reported `already cold` —
+#     never moved (moving it would duplicate the bytes on the second disk and
+#     leave the copy on `/` untouched) and never deleted. That report runs on
+#     every tier, not only at action, because the age floor means an
+#     actively-written tree can never become a relocation candidate. CI proof:
+#     `second_identical_tree_is_reported_already_cold_not_as_a_candidate`.
+#
+# `relocate_min_age_days` measures the NEWEST file in the tree, so a directory
+# written every few minutes never qualifies no matter how large it is. 0 allows
+# fresh dirs and is dangerous for a live generator; keep >= 7 for shared hosts.
 # auto_relocate = true
-# auto_relocate_apply = false
+# auto_relocate_apply = false     # code default; arm deliberately per host
 # relocate_candidate_roots = "~/Dev"
 # relocate_cold_root = "/mnt/data/cold"
-# relocate_min_size_mb = 2048
+# relocate_min_size_mb = 2048     # floor 1 MiB
 # relocate_min_age_days = 14      # idle days before a candidate (0 allows fresh dirs)
 # relocate_max_moves_per_pass = 3
 
