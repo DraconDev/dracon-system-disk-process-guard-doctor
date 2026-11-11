@@ -346,9 +346,9 @@ pub(crate) fn link_safety_with(path: &Path, git_bin: &str) -> Result<LinkSafety>
         anyhow::bail!("git reported an empty work-tree root for {}", parent.display());
     }
 
-    // `--no-index` makes check-ignore work for an ignored path even when the
-    // caller's cwd is a subdirectory, and the returned source line is
-    // `<file>:<lineno>:<pattern><TAB><path>`.
+    // `--no-index` makes check-ignore answer for a path git does not track.
+    // Exit 1 = "ran fine, no rule matched"; 0 = ignored (parse the pattern);
+    // anything else is a real failure and must fail closed.
     let check = Command::new(git_bin)
         .arg("-C")
         .arg(&root_text)
@@ -356,13 +356,8 @@ pub(crate) fn link_safety_with(path: &Path, git_bin: &str) -> Result<LinkSafety>
         .arg(path)
         .output()
         .map_err(|e| {
-            anyhow::anyhow!(
-                "cannot run git check-ignore for {}: {e}",
-                path.display()
-            )
+            anyhow::anyhow!("cannot run git check-ignore for {}: {e}", path.display())
         })?;
-    // Exit 1 = "ran fine, no rule matched". Exit 0 = ignored (parse the
-    // pattern). Anything else is a real failure and must fail closed.
     match check.status.code() {
         Some(0) => {}
         Some(1) => return Ok(LinkSafety::ExposedAsSymlink),
@@ -372,11 +367,10 @@ pub(crate) fn link_safety_with(path: &Path, git_bin: &str) -> Result<LinkSafety>
             String::from_utf8_lossy(&check.stderr).trim()
         ),
     }
-
     let line = String::from_utf8_lossy(&check.stdout).trim_end().to_string();
     let Some(pattern) = ignore_pattern_of(&line) else {
-        // Ignored, but the source line could not be parsed: unknown whether
-        // the rule survives the swap, so refuse rather than guess.
+        // Ignored, but the source line could not be parsed: unknown whether the
+        // rule survives the swap, so refuse rather than guess.
         anyhow::bail!(
             "cannot parse the git ignore rule for {}: {line}",
             path.display()
@@ -385,7 +379,101 @@ pub(crate) fn link_safety_with(path: &Path, git_bin: &str) -> Result<LinkSafety>
     if pattern.ends_with('/') {
         return Ok(LinkSafety::DirectoryOnlyIgnore { pattern });
     }
-    Ok(LinkSafety::IgnoredAsSymlink)
+
+    // FIXED 2026-11-11 (found by fixture test): for a DIRECTORY, git reports
+    // the LAST matching pattern, which is not necessarily the one that would
+    // apply to a symlink. With `/out` + `out/` in one file git answers
+    // `out/` — yet a symlink is ignored by `/out`, so a text-only rule
+    // inspection would refuse a swap that git actually tolerates. Ask git
+    // directly instead: temporarily materialise the swapped object (the
+    // directory is moved aside and a symlink is created at the same path),
+    // re-run check-ignore, and always restore the directory. If either step
+    // fails the verdict is the fail-closed one (the directory is restored by
+    // the rename, so the caller's data is never at risk).
+    match swapped_still_ignored(git_bin, &root_text, path) {
+        Ok(true) => Ok(LinkSafety::IgnoredAsSymlink),
+        Ok(false) => Ok(LinkSafety::ExposedAsSymlink),
+        Err(e) => anyhow::bail!(
+            "cannot verify whether the swap keeps {} ignored: {e:#}",
+            path.display()
+        ),
+    }
+}
+
+/// Swap-probe: MOVE `target` aside, create a symlink to the moved directory at
+/// its original path, ask git whether that path is still ignored, then restore
+/// the directory unconditionally.
+///
+/// This is the only way to get git's own answer for the post-swap object, and
+/// it is not merely theoretical: on the real 2026-11-11 tree git reported the
+/// directory-only `out/` pattern while the slashless `/out` rule (added the
+/// same day) is what governs a symlink. Unlinking a path for a moment is safe
+/// for a guard/CLI decision — the caller owns the tree and no writer is
+/// expected mid-observe — and the restore is attempted on every exit path.
+fn swapped_still_ignored(git_bin: &str, repo_root: &str, target: &Path) -> Result<bool> {
+    let name = target
+        .file_name()
+        .ok_or_else(|| anyhow::anyhow!("no file name for {}", target.display()))?;
+    let aside = target.with_file_name(format!(
+        ".dracon-swap-probe-{}-{}",
+        name.to_string_lossy(),
+        std::process::id()
+    ));
+    if fs::symlink_metadata(&aside).is_ok() {
+        anyhow::bail!(
+            "swap probe staging {} already exists — refusing to guess",
+            aside.display()
+        );
+    }
+    fs::rename(target, &aside)
+        .map_err(|e| anyhow::anyhow!("cannot stage {} for the swap probe: {e}", target.display()))?;
+    let probe_result = (|| -> Result<bool> {
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&aside, target).map_err(|e| {
+                anyhow::anyhow!("cannot create the probe symlink for {}: {e}", target.display())
+            })?;
+        }
+        #[cfg(not(unix))]
+        {
+            anyhow::bail!("the swap probe is only supported on unix");
+        }
+        let out = Command::new(git_bin)
+            .arg("-C")
+            .arg(repo_root)
+            .args(["check-ignore", "--no-index", "-q"])
+            .arg(target)
+            .output()
+            .map_err(|e| {
+                anyhow::anyhow!("cannot run git check-ignore for {}: {e}", target.display())
+            })?;
+        match out.status.code() {
+            Some(0) => Ok(true),
+            Some(1) => Ok(false),
+            _ => anyhow::bail!(
+                "git check-ignore failed after the swap for {}: {}",
+                target.display(),
+                String::from_utf8_lossy(&out.stderr).trim()
+            ),
+        }
+    })();
+    // Always remove the probe symlink, then always restore the real directory.
+    let _ = fs::remove_file(target);
+    let restore = fs::rename(&aside, target);
+    match (probe_result, restore) {
+        (Ok(ignored), Ok(())) => Ok(ignored),
+        (Ok(_), Err(e)) => anyhow::bail!(
+            "the tree is intact at {} but restoring {} failed: {e}",
+            aside.display(),
+            target.display()
+        ),
+        (Err(e), Ok(())) => Err(e),
+        (Err(e), Err(restore_err)) => anyhow::bail!(
+            "swap probe failed ({e:#}) AND restoring {} from {} failed ({restore_err})",
+            target.display(),
+            aside.display()
+        ),
+    }
 }
 
 /// Extract the PATTERN field from `git check-ignore -v` output.
