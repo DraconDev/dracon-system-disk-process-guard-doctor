@@ -1062,22 +1062,24 @@ fn link_safety_allows_a_rule_without_a_trailing_slash() {
     assert!(!verdict.exposes_after_swap());
     assert!(verdict.refusal_reason().is_none());
 
-    // And git really does ignore the path once it IS a symlink — the property
-    // the guard is asserting, verified against git itself rather than assumed.
-    let elsewhere = root.join("storage");
-    fs::create_dir_all(&elsewhere).unwrap();
-    let link = repo.join("out-link");
-    std::os::unix::fs::symlink(&out, &link).unwrap();
+    // And git really does ignore the same PATH once it IS a symlink — the
+    // property the guard is asserting, verified against git itself rather than
+    // assumed. The probe swaps `out` itself, because `/out` matches the PATH,
+    // not a differently-named link that happens to point at it.
+    let storage = root.join("storage");
+    fs::create_dir_all(&storage).unwrap();
+    fs::rename(&out, storage.join("out")).unwrap();
+    std::os::unix::fs::symlink(storage.join("out"), &out).unwrap();
     let check = std::process::Command::new("git")
         .arg("-C")
         .arg(&repo)
         .args(["check-ignore", "--no-index", "-q"])
-        .arg(&link)
+        .arg(&out)
         .status()
         .expect("git check-ignore runs");
     assert!(
         check.success(),
-        "a symlink matching a slashless rule must still be ignored"
+        "a symlink at an ignored path must still be ignored by the slashless rule"
     );
     cleanup(&root);
 }
