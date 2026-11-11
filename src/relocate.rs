@@ -1005,14 +1005,6 @@ fn dir_sizes_bottom_up(root: &Path) -> HashMap<PathBuf, (u64, u64, u64)> {
 /// enough, not symlinked, not git-tracked, and not invisible-to-git after the
 /// swap. Nested qualifiers collapse to the outermost dir. Sorted
 /// biggest-first, capped.
-pub(crate) fn find_cold_candidates(
-    roots: &[PathBuf],
-    min_bytes: u64,
-    min_age_days: u64,
-) -> Vec<ColdCandidate> {
-    find_cold_candidates_with(roots, min_bytes, min_age_days, None)
-}
-
 /// ADDED 2026-11-11 (duplicate-tree report): a candidate whose file manifest
 /// (relative path + byte size for every file) is ALREADY present and identical
 /// under the cold root is not cold data waiting to move — it is data that has
@@ -1134,6 +1126,9 @@ pub(crate) fn find_already_cold_trees(
     kept
 }
 
+/// Convenience wrapper with no duplicate screening (used by dry-run callers and
+/// by tests that only exercise the size/age/build-dir filters).
+#[cfg(test)]
 /// `cold_root` is `None` for the CLI planner (which reports a cold root of its
 /// own via `--to`) and `Some` for the daemon scanner.
 pub(crate) fn find_cold_candidates_with(
