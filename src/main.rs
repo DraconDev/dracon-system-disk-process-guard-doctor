@@ -1105,6 +1105,10 @@ pub(crate) struct CleanupSummary {
     pub(crate) relocated_count: usize,
     pub(crate) relocated_bytes: u64,
     pub(crate) relocate_candidates: Vec<ColdCandidate>,
+    /// ADDED 2026-11-11 (duplicate-tree report): trees under the candidate
+    /// roots whose content is already byte-identical on the cold root.
+    /// Reported, never moved and never deleted.
+    pub(crate) already_cold_trees: Vec<AlreadyColdTree>,
 }
 
 #[derive(Default, Debug)]
