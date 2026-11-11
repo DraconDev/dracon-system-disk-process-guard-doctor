@@ -10813,8 +10813,7 @@ async fn run_auto_relocate(
     // a deletion candidate — it is a second copy of bytes that are already
     // stored where they were supposed to go, and only the operator can decide
     // which copy to drop.
-    let already_cold = find_already_cold_trees(&roots, min_bytes, &cold_root);
-    let candidates = find_cold_candidates_with(
+    let (candidates, already_cold) = find_cold_candidates_reporting_cold(
         &roots,
         min_bytes,
         guard.relocate_min_age_days,

@@ -1239,7 +1239,30 @@ pub(crate) fn find_cold_candidates(
     min_bytes: u64,
     min_age_days: u64,
 ) -> Vec<ColdCandidate> {
-    find_cold_candidates_with(roots, min_bytes, min_age_days, None)
+    let (candidates, _) = find_cold_candidates_reporting_cold(roots, min_bytes, min_age_days, None);
+    candidates
+}
+
+/// One pass that both SCREENS duplicates and produces the candidate list.
+///
+/// ADDED 2026-11-11 (found by `auto_relocate_pass_skips_the_duplicate_tree...`):
+/// screening a duplicated parent out of the candidate list used to PROMOTE its
+/// children into candidates — `media` was dropped as already-cold, so
+/// `media/audio` became the outermost qualifier and was relocated anyway, on
+/// top of the duplicate. The duplicate set must suppress the whole subtree,
+/// not just the node that matched.
+pub(crate) fn find_cold_candidates_reporting_cold(
+    roots: &[PathBuf],
+    min_bytes: u64,
+    min_age_days: u64,
+    cold_root: Option<&Path>,
+) -> (Vec<ColdCandidate>, Vec<AlreadyColdTree>) {
+    let already = match cold_root {
+        Some(cold) => find_already_cold_trees(roots, min_bytes, cold),
+        None => Vec::new(),
+    };
+    let candidates = find_cold_candidates_with(roots, min_bytes, min_age_days, &already);
+    (candidates, already)
 }
 
 /// `cold_root` is `None` for the CLI planner (which reports a cold root of its
@@ -1248,7 +1271,7 @@ pub(crate) fn find_cold_candidates_with(
     roots: &[PathBuf],
     min_bytes: u64,
     min_age_days: u64,
-    cold_root: Option<&Path>,
+    already_cold: &[AlreadyColdTree],
 ) -> Vec<ColdCandidate> {
     let now = crate::now_unix();
     let mut qualified: Vec<(PathBuf, u64, u64, u64)> = Vec::new();
@@ -1269,12 +1292,14 @@ pub(crate) fn find_cold_candidates_with(
             if is_git_tracked(&dir).unwrap_or(true) {
                 continue;
             }
-            // ADDED 2026-11-11: fail closed on git's verdict. `unwrap_or(...)`
-            // must not read "cannot tell" as "safe".
-            if let Some(cold) = cold_root {
-                if already_cold_under(&dir, cold).unwrap_or(false) {
-                    continue;
-                }
+            // ADDED 2026-11-11: a duplicated tree — and everything inside it —
+            // is never a relocation candidate. Skipping only the matching node
+            // would promote its children (see `find_cold_candidates_reporting_cold`).
+            if already_cold
+                .iter()
+                .any(|tree| Path::new(&tree.path) == dir.as_path() || dir.starts_with(&tree.path))
+            {
+                continue;
             }
             if link_safety(&dir)
                 .map(|s| s.exposes_after_swap())
