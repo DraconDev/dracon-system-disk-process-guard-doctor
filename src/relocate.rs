@@ -682,6 +682,43 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
         })?;
         anyhow::bail!("symlink failed ({e:#}) — source restored");
     }
+    // ADDED 2026-11-11 (link-safety backstop): the plan already refused a
+    // directory whose ignore rule only matches directories, but the plan is
+    // minutes old by now in daemon mode and `.gitignore` is editable by any
+    // concurrent writer. Verify the swap against the LIVE index and put the
+    // original directory back if the path became visible to git. This is the
+    // difference between "the repo lost 160 GB of media" and "the move was
+    // declined": git conflation means an exposed symlink is either an
+    // untracked gitlink blob (an empty directory for every cloner) or the
+    // entire tree, so a silent success here is not acceptable.
+    if let Some(exposure) = post_swap_exposure(source).transpose()? {
+        let restore = fs::remove_file(source)
+            .map_err(|e| anyhow::anyhow!("cannot remove the exposed symlink {}: {e}", source.display()))
+            .and_then(|()| {
+                fs::rename(&staging, source).map_err(|e| {
+                    anyhow::anyhow!(
+                        "the tree is intact at {} but restoring {} failed: {e}",
+                        staging.display(),
+                        source.display()
+                    )
+                })
+            })
+            .and_then(|()| fs::remove_dir_all(dest).map_err(|e| e.into()));
+        return Err(match restore {
+            Ok(()) => anyhow::anyhow!(
+                "{} became visible to git after the swap — move ROLLED BACK, source restored and the copy at {} removed: {exposure}",
+                source.display(),
+                dest.display()
+            ),
+            Err(e) => anyhow::anyhow!(
+                "{} became visible to git after the swap ({exposure}) AND the rollback failed ({e:#}) — recover with: rm {} (the symlink), mv {} {}",
+                source.display(),
+                source.display(),
+                staging.display(),
+                source.display()
+            ),
+        });
+    }
     // FIXED 2026-10-01 (audit): the staging copy is removed AFTER the symlink is
     // already in place, and the `?` made a removal failure report the whole move
     // as failed. The move had in fact succeeded: the source is a correct symlink
