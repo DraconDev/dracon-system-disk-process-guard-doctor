@@ -1002,15 +1002,41 @@ fn link_safety_refuses_a_directory_only_ignore_rule() {
         "the refusal must explain itself to the operator"
     );
 
-    // And the plan must refuse it, not merely flag it.
+    // The plan must CARRY that verdict so auto mode can refuse it, and
+    // `apply_relocate` must roll the swap back if it is attempted anyway.
     let elsewhere = root.join("cold");
     fs::create_dir_all(&elsewhere).unwrap();
-    let err = crate::plan_relocate(&out, &elsewhere, &[], false)
-        .expect_err("a directory-only ignore must refuse the relocate");
+    let plan = crate::plan_relocate(&out, &elsewhere, &[], true).expect("plan computes");
+    assert!(
+        plan.exposes_after_swap,
+        "the plan must flag the exposure: {:?}",
+        plan.issues
+    );
+    assert!(
+        plan.issues
+            .iter()
+            .any(|i| i.contains("DIRECTORY-ONLY") || i.contains("directory-only")),
+        "the issue must name the trap: {:?}",
+        plan.issues
+    );
+
+    // End-to-end rollback: the copy is made, the symlink would expose the
+    // tree, and apply puts the ORIGINAL directory back untouched.
+    let err = crate::apply_relocate(&plan).expect_err("the swap must be rolled back");
     let text = format!("{err:#}");
     assert!(
-        text.contains("DIRECTORY-ONLY") || text.contains("directory-only"),
-        "the refusal must name the trap: {text}"
+        text.contains("ROLLED BACK"),
+        "the failure must report a rollback rather than a lost tree: {text}"
+    );
+    let restored = fs::symlink_metadata(&out).expect("the source must exist again");
+    assert!(
+        restored.is_dir() && !restored.file_type().is_symlink(),
+        "the original directory must be restored, not left as a symlink"
+    );
+    assert!(out.join("audio").join("a.mp3").is_file());
+    assert!(
+        !elsewhere.join("out").exists(),
+        "the redundant cold copy must be removed by the rollback"
     );
     cleanup(&root);
 }
@@ -1103,7 +1129,6 @@ fn second_identical_tree_is_reported_already_cold_not_as_a_candidate() {
     fs::create_dir_all(live.join("audio")).unwrap();
     fs::create_dir_all(cold.join("media").join("audio")).unwrap();
     fs::write(live.join("audio").join("a.mp3"), vec![3u8; 1_100_000]).unwrap();
-    fs::write(live.join("covers").with_extension("jpg"), vec![9u8; 100]).ok();
     fs::write(cold.join("media").join("audio").join("a.mp3"), vec![3u8; 1_100_000]).unwrap();
     touch_aged(&live, "20 days ago");
 

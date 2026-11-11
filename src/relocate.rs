@@ -376,10 +376,6 @@ pub(crate) fn link_safety_with(path: &Path, git_bin: &str) -> Result<LinkSafety>
             path.display()
         );
     };
-    if pattern.ends_with('/') {
-        return Ok(LinkSafety::DirectoryOnlyIgnore { pattern });
-    }
-
     // FIXED 2026-11-11 (found by fixture test): for a DIRECTORY, git reports
     // the LAST matching pattern, which is not necessarily the one that would
     // apply to a symlink. With `/out` + `out/` in one file git answers
@@ -392,6 +388,11 @@ pub(crate) fn link_safety_with(path: &Path, git_bin: &str) -> Result<LinkSafety>
     // the rename, so the caller's data is never at risk).
     match swapped_still_ignored(git_bin, &root_text, path) {
         Ok(true) => Ok(LinkSafety::IgnoredAsSymlink),
+        // The swap exposes the path. Name the reason from the pattern git
+        // reported for the DIRECTORY: a trailing slash is the directory-only
+        // trap, anything else was a rule that simply does not survive the
+        // swap (and `ExposedAsSymlink` is then the honest verdict).
+        Ok(false) if pattern.ends_with('/') => Ok(LinkSafety::DirectoryOnlyIgnore { pattern }),
         Ok(false) => Ok(LinkSafety::ExposedAsSymlink),
         Err(e) => anyhow::bail!(
             "cannot verify whether the swap keeps {} ignored: {e:#}",
