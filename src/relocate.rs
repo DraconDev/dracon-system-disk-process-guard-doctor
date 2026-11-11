@@ -1126,9 +1126,17 @@ pub(crate) fn find_already_cold_trees(
     kept
 }
 
-/// Convenience wrapper with no duplicate screening (used by dry-run callers and
-/// by tests that only exercise the size/age/build-dir filters).
+/// Convenience wrapper with no duplicate screening, for tests that only
+/// exercise the size/age/build-dir filters.
 #[cfg(test)]
+pub(crate) fn find_cold_candidates(
+    roots: &[PathBuf],
+    min_bytes: u64,
+    min_age_days: u64,
+) -> Vec<ColdCandidate> {
+    find_cold_candidates_with(roots, min_bytes, min_age_days, None)
+}
+
 /// `cold_root` is `None` for the CLI planner (which reports a cold root of its
 /// own via `--to`) and `Some` for the daemon scanner.
 pub(crate) fn find_cold_candidates_with(
