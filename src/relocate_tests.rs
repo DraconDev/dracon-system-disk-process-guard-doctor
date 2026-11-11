@@ -1215,10 +1215,11 @@ fn auto_relocate_pass_skips_the_duplicate_tree_instead_of_moving_it() {
     fs::write(cold.join("media").join("audio").join("a.mp3"), &payload).unwrap();
     touch_aged(&live, "20 days ago");
 
-    let guards = tokio::runtime::Builder::new_current_thread()
+    let guards = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
         .enable_all()
         .build()
-        .unwrap();
+        .expect("runtime builds");
     let guard = GuardPolicy {
         relocate_cold_root: cold.to_string_lossy().to_string(),
         relocate_candidate_roots: scan.to_string_lossy().to_string(),
