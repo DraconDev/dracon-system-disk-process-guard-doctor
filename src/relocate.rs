@@ -429,6 +429,18 @@ pub(crate) fn plan_relocate(
             source.display()
         );
     }
+    // ADDED 2026-11-11: an UNTRACKED directory inside a work tree can be just
+    // as dangerous. Git hides a directory with an ignore rule, but a symlink
+    // is a different object, so a DIRECTORY-ONLY rule (trailing `/`) stops
+    // matching the moment the tree becomes a link and the path is exposed.
+    // Tracked-ness is the wrong question; ignore-survival is the right one.
+    let safety = link_safety(&canon_src)?;
+    if let Some(reason) = safety.refusal_reason() {
+        if !allow_tracked {
+            anyhow::bail!("refusing to relocate {}: {reason}", source.display());
+        }
+        issues.push(format!("link-safety (overridden by --allow-tracked): {reason}"));
+    }
 
     let dest_meta = fs::symlink_metadata(dest_root)
         .map_err(|e| anyhow::anyhow!("destination root {}: {}", dest_root.display(), e))?;
@@ -481,7 +493,8 @@ pub(crate) fn plan_relocate(
         bytes,
         dest_avail_bytes: avail,
         fits,
-        ready: fits,
+        ready: fits && issues.is_empty(),
+        link_safety: format!("{safety:?}"),
         issues,
     })
 }
