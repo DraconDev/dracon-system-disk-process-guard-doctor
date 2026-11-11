@@ -10769,11 +10769,13 @@ async fn run_proactive_cleanup(guard: &GuardPolicy, state: &mut GuardRuntimeStat
 /// At action/critical, move cold candidates to the cold root until usage
 /// drops below action% or candidates/moves run out. Report-only unless
 /// `auto_relocate_apply`. Tracked content is never a candidate.
-/// Returns (moves applied, bytes moved, candidates scanned).
-async fn run_auto_relocate(guard: &GuardPolicy) -> Result<(usize, u64, Vec<ColdCandidate>)> {
+/// Returns (moves applied, bytes moved, candidates scanned, already-cold trees).
+async fn run_auto_relocate(
+    guard: &GuardPolicy,
+) -> Result<(usize, u64, Vec<ColdCandidate>, Vec<AlreadyColdTree>)> {
     let cold_raw = guard.relocate_cold_root.trim();
     if cold_raw.is_empty() {
-        return Ok((0, 0, Vec::new()));
+        return Ok((0, 0, Vec::new(), Vec::new()));
     }
     let cold_root = crate::resolve_policy_path(cold_raw);
     if !cold_root.is_dir() {
@@ -10781,7 +10783,7 @@ async fn run_auto_relocate(guard: &GuardPolicy) -> Result<(usize, u64, Vec<ColdC
             "⚠️ auto-relocate: cold root {} missing — run `dracon-system setup`",
             cold_root.display()
         );
-        return Ok((0, 0, Vec::new()));
+        return Ok((0, 0, Vec::new(), Vec::new()));
     }
     let roots: Vec<PathBuf> = guard
         .relocate_candidate_roots
@@ -10800,15 +10802,26 @@ async fn run_auto_relocate(guard: &GuardPolicy) -> Result<(usize, u64, Vec<ColdC
         })
         .collect();
     if roots.is_empty() {
-        return Ok((0, 0, Vec::new()));
+        return Ok((0, 0, Vec::new(), Vec::new()));
     }
     let min_bytes = guard
         .relocate_min_size_mb
         .saturating_mul(1024)
         .saturating_mul(1024);
-    let candidates = find_cold_candidates(&roots, min_bytes, guard.relocate_min_age_days);
+    // ADDED 2026-11-11: report duplicated trees BEFORE anything else. A tree
+    // already present on the cold root is neither a relocation candidate nor
+    // a deletion candidate — it is a second copy of bytes that are already
+    // stored where they were supposed to go, and only the operator can decide
+    // which copy to drop.
+    let already_cold = find_already_cold_trees(&roots, min_bytes, &cold_root);
+    let candidates = find_cold_candidates_with(
+        &roots,
+        min_bytes,
+        guard.relocate_min_age_days,
+        Some(&cold_root),
+    );
     if candidates.is_empty() {
-        return Ok((0, 0, Vec::new()));
+        return Ok((0, 0, Vec::new(), already_cold));
     }
     let mut moves = 0usize;
     let mut moved_bytes = 0u64;
@@ -10889,7 +10902,7 @@ async fn run_auto_relocate(guard: &GuardPolicy) -> Result<(usize, u64, Vec<ColdC
         )
         .await;
     }
-    Ok((moves, moved_bytes, candidates))
+    Ok((moves, moved_bytes, candidates, already_cold))
 }
 
 /// ADDED 2026-09-27 (space tiers Phase 2): monitor managed + auto-relocated
