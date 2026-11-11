@@ -1229,7 +1229,9 @@ fn auto_relocate_pass_skips_the_duplicate_tree_instead_of_moving_it() {
         disk_action_percent: 0, // force past the pressure gate
         ..Default::default()
     };
-    let (moves, bytes, cands, already) = guards.block_on(crate::run_auto_relocate(&guard));
+    let (moves, bytes, cands, already) = guards
+        .block_on(crate::run_auto_relocate(&guard))
+        .expect("relocate pass runs");
 
     assert_eq!(moves, 0, "a duplicated tree must never be moved");
     assert_eq!(bytes, 0);
