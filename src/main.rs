@@ -9926,15 +9926,32 @@ fn spawn_background_cleanup(
         // move cold bulk before deleting anything rebuildable.
         if guard.auto_relocate {
             match run_auto_relocate(&guard).await {
-                Ok((moves, moved_bytes, candidates)) => {
+                Ok((moves, moved_bytes, candidates, already_cold)) => {
                     summary.relocated_count = moves;
                     summary.relocated_bytes = moved_bytes;
                     summary.relocate_candidates = candidates;
+                    summary.already_cold_trees = already_cold;
                 }
                 Err(e) => eprintln!("⚠️ auto-relocate failed: {e:#}"),
             }
         }
-        // Re-read pressure after moves so delete-based cleanup (and the
+        // ADDED 2026-11-11: report duplicated trees on EVERY tier, not only at
+        // action. The whole point of the check is that a tree which already
+        // exists on the cold root can never be relocated (it is not idle, and
+        // moving it would duplicate the bytes) — so the only moment the
+        // operator can act on it is BEFORE the disk fills.
+        if guard.auto_relocate && guard.relocate_cold_root.trim().is_empty() {
+            eprintln!("📦 duplicate-tree scan skipped: relocate_cold_root is unset");
+        }
+        for tree in &summary.already_cold_trees {
+            eprintln!(
+                "📦 already cold (not moved, not deleted): {} ({} in {} files) is byte-identical to {} — remove one copy by hand if the space is needed",
+                tree.path,
+                human_bytes(tree.bytes),
+                tree.files,
+                tree.twin
+            );
+        }        // Re-read pressure after moves so delete-based cleanup (and the
         // critical age-gate bypass) acts on post-move reality.
         let mut used = used;
         if summary.relocated_count > 0 {
