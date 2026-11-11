@@ -1068,6 +1068,72 @@ fn source_manifest_matches(a: &Path, b: &Path) -> Result<bool> {
     Ok(manifest(a)? == manifest(b)?)
 }
 
+/// ADDED 2026-11-11: a tree whose bytes already exist on the cold root.
+/// Reported, never moved and never deleted.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct AlreadyColdTree {
+    pub(crate) path: String,
+    pub(crate) twin: String,
+    pub(crate) bytes: u64,
+    pub(crate) files: u64,
+}
+
+/// Report candidate roots whose content is byte-identical to an existing tree
+/// under `cold_root`. Read-only and cheap by comparison order: the size walk
+/// runs first (`walk_stats_strict`), and the per-file manifest walk only runs
+/// for a directory that already matched on file count AND total bytes.
+pub(crate) fn find_already_cold_trees(
+    roots: &[PathBuf],
+    min_bytes: u64,
+    cold_root: &Path,
+) -> Vec<AlreadyColdTree> {
+    if !cold_root.is_dir() {
+        return Vec::new();
+    }
+    let mut found: Vec<AlreadyColdTree> = Vec::new();
+    for root in roots {
+        if !root.is_dir() {
+            continue;
+        }
+        let canon_root = root.canonicalize().unwrap_or_else(|_| root.clone());
+        for (dir, (bytes, files, _newest)) in dir_sizes_bottom_up(&canon_root) {
+            if dir == canon_root || bytes < min_bytes {
+                continue;
+            }
+            // Never report a tree that is not `canonical`-comparable, and
+            // never report one that is already a link (it IS the cold copy).
+            if fs::symlink_metadata(&dir).map(|m| m.file_type().is_symlink()).unwrap_or(true) {
+                continue;
+            }
+            if !already_cold_under(&dir, cold_root).unwrap_or(false) {
+                continue;
+            }
+            let twin = cold_root
+                .join(dir.file_name().unwrap_or_default())
+                .display()
+                .to_string();
+            found.push(AlreadyColdTree {
+                path: dir.display().to_string(),
+                twin,
+                bytes,
+                files,
+            });
+        }
+    }
+    // Collapse nesting to the outermost trees, then sort biggest-first.
+    found.sort_by_key(|c| Path::new(&c.path).components().count());
+    let mut kept: Vec<AlreadyColdTree> = Vec::new();
+    for item in found {
+        if kept.iter().any(|k| item.path.starts_with(&k.path)) {
+            continue;
+        }
+        kept.push(item);
+    }
+    kept.sort_by_key(|c| std::cmp::Reverse(c.bytes));
+    kept.truncate(SCAN_MAX_CANDIDATES);
+    kept
+}
+
 /// `cold_root` is `None` for the CLI planner (which reports a cold root of its
 /// own via `--to`) and `Some` for the daemon scanner.
 pub(crate) fn find_cold_candidates_with(
