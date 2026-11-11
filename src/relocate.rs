@@ -775,7 +775,7 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
     // declined": git conflation means an exposed symlink is either an
     // untracked gitlink blob (an empty directory for every cloner) or the
     // entire tree, so a silent success here is not acceptable.
-    if let Some(exposure) = post_swap_exposure(source).transpose()? {
+    if let Some(exposure) = post_swap_exposure(source)? {
         let restore = fs::remove_file(source)
             .map_err(|e| anyhow::anyhow!("cannot remove the exposed symlink {}: {e}", source.display()))
             .and_then(|()| {
