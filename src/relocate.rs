@@ -1002,12 +1002,79 @@ fn dir_sizes_bottom_up(root: &Path) -> HashMap<PathBuf, (u64, u64, u64)> {
 }
 
 /// Find cold relocation candidates under `roots`: big enough, idle long
-/// enough, not symlinked, not git-tracked. Nested qualifiers collapse to
-/// the outermost dir. Sorted biggest-first, capped.
+/// enough, not symlinked, not git-tracked, and not invisible-to-git after the
+/// swap. Nested qualifiers collapse to the outermost dir. Sorted
+/// biggest-first, capped.
 pub(crate) fn find_cold_candidates(
     roots: &[PathBuf],
     min_bytes: u64,
     min_age_days: u64,
+) -> Vec<ColdCandidate> {
+    find_cold_candidates_with(roots, min_bytes, min_age_days, None)
+}
+
+/// ADDED 2026-11-11 (duplicate-tree report): a candidate whose file manifest
+/// (relative path + byte size for every file) is ALREADY present and identical
+/// under the cold root is not cold data waiting to move — it is data that has
+/// already moved once. Relocating it again would duplicate 163 GB on the
+/// second disk and leave the copy on `/` untouched, so it is reported as
+/// `already cold` and skipped by both the scanner and the CLI/dry-run.
+///
+/// Sizes are compared, not hashes: the recorded precedent (music media, 2026-11-11)
+/// was verified by full manifest equality (0 size mismatches across 35,751 files)
+/// plus a sha256 spot-check, and hashing 160 GB in a guard pass is not affordable.
+/// The check is therefore a SCREEN: an exact manifest match is reported as
+/// already cold; anything else falls through to the normal relocate decision.
+pub(crate) fn already_cold_under(source: &Path, cold_root: &Path) -> Result<bool> {
+    let name = source
+        .file_name()
+        .ok_or_else(|| anyhow::anyhow!("no file name for {}", source.display()))?;
+    let twin = cold_root.join(name);
+    if !twin.is_dir() {
+        return Ok(false);
+    }
+    let (src_files, src_bytes) = walk_stats_strict(source)?;
+    let (twin_files, twin_bytes) = walk_stats_strict(&twin)?;
+    if src_files != twin_files || src_bytes != twin_bytes {
+        return Ok(false);
+    }
+    Ok(source_manifest_matches(source, &twin)?)
+}
+
+/// True when both trees hold the same relative paths with the same byte sizes.
+fn source_manifest_matches(a: &Path, b: &Path) -> Result<bool> {
+    fn manifest(root: &Path) -> Result<HashMap<String, u64>> {
+        let mut map = HashMap::new();
+        for entry in walkdir::WalkDir::new(root).follow_links(false) {
+            let entry = entry
+                .map_err(|e| anyhow::anyhow!("cannot walk {}: {e}", root.display()))?;
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let rel = entry
+                .path()
+                .strip_prefix(root)
+                .map_err(|e| anyhow::anyhow!("cannot relativize {}: {e}", entry.path().display()))?
+                .to_string_lossy()
+                .to_string();
+            let len = entry
+                .metadata()
+                .map_err(|e| anyhow::anyhow!("cannot stat {}: {e}", entry.path().display()))?
+                .len();
+            map.insert(rel, len);
+        }
+        Ok(map)
+    }
+    Ok(manifest(a)? == manifest(b)?)
+}
+
+/// `cold_root` is `None` for the CLI planner (which reports a cold root of its
+/// own via `--to`) and `Some` for the daemon scanner.
+pub(crate) fn find_cold_candidates_with(
+    roots: &[PathBuf],
+    min_bytes: u64,
+    min_age_days: u64,
+    cold_root: Option<&Path>,
 ) -> Vec<ColdCandidate> {
     let now = crate::now_unix();
     let mut qualified: Vec<(PathBuf, u64, u64, u64)> = Vec::new();
@@ -1026,6 +1093,19 @@ pub(crate) fn find_cold_candidates(
             }
             // Auto mode never touches tracked content (no override).
             if is_git_tracked(&dir).unwrap_or(true) {
+                continue;
+            }
+            // ADDED 2026-11-11: fail closed on git's verdict. `unwrap_or(...)`
+            // must not read "cannot tell" as "safe".
+            if let Some(cold) = cold_root {
+                if already_cold_under(&dir, cold).unwrap_or(false) {
+                    continue;
+                }
+            }
+            if link_safety(&dir)
+                .map(|s| s.exposes_after_swap())
+                .unwrap_or(true)
+            {
                 continue;
             }
             qualified.push((dir, bytes, files, age_days));
