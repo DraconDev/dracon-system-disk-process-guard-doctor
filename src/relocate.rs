@@ -29,6 +29,9 @@ pub(crate) struct RelocatePlan {
     pub(crate) fits: bool,
     pub(crate) ready: bool,
     pub(crate) issues: Vec<String>,
+    /// ADDED 2026-11-11: how git's ignore rules treat the source. Serialized
+    /// as a short label so a dry-run / `--json` plan shows WHY it refused.
+    pub(crate) link_safety: String,
 }
 
 /// Outcome of an applied relocation.
@@ -529,6 +532,74 @@ fn stale_staging_refusal(source: &Path, dest: &Path, staging: &Path) -> String {
             staging.display(),
             source.display()
         ),
+    }
+}
+
+/// Post-swap verification: after `source` has been replaced by a symlink,
+/// report whether git now SEES that path (i.e. the swap published content that
+/// the pre-move ignore rules used to hide).
+///
+/// `Ok(None)` means the path is still ignored, `Ok(Some(reason))` means it is
+/// visible (the caller must roll back), and `Err` means the question could not
+/// be answered — which the caller treats as exposure, because "cannot tell"
+/// must never be rounded to "safe" for a 160 GB tree.
+///
+/// Outside a work tree the swap is irrelevant to git, so this is `Ok(None)`.
+pub(crate) fn post_swap_exposure(after_swap: &Path) -> Result<Option<String>> {
+    post_swap_exposure_with(after_swap, "git")
+}
+
+/// `git_bin` is injectable for race-free tests.
+///
+/// Uses `git status --porcelain -- <path>` rather than `check-ignore`, so the
+/// verdict is the INDEX's opinion (what the daemon would actually stage) and
+/// also catches a path that is ignored-but-staged.
+pub(crate) fn post_swap_exposure_with(
+    after_swap: &Path,
+    git_bin: &str,
+) -> Result<Option<String>> {
+    let parent = after_swap.parent().unwrap_or_else(|| Path::new("/"));
+    let probe = match Command::new(git_bin)
+        .arg("-C")
+        .arg(parent)
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            return Err(anyhow::anyhow!(
+                "cannot verify the swap for {} (git unavailable: {e})",
+                after_swap.display()
+            ))
+        }
+    };
+    if !probe.status.success() {
+        return Ok(None);
+    }
+    let status = Command::new(git_bin)
+        .arg("-C")
+        .arg(parent)
+        .args(["--no-optional-locks", "status", "--porcelain", "--"])
+        .arg(after_swap)
+        .output()
+        .map_err(|e| {
+            anyhow::anyhow!("cannot run git status for {}: {e}", after_swap.display())
+        })?;
+    if !status.status.success() {
+        return Err(anyhow::anyhow!(
+            "git status failed for {}: {}",
+            after_swap.display(),
+            String::from_utf8_lossy(&status.stderr).trim()
+        ));
+    }
+    let lines = String::from_utf8_lossy(&status.stdout);
+    match lines.lines().find(|l| !l.trim().is_empty()) {
+        Some(line) => Ok(Some(format!(
+            "git reports `{}` for the relocated path (a symlink is not hidden by a \
+             directory-only ignore pattern)",
+            line.trim()
+        ))),
+        None => Ok(None),
     }
 }
 
