@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use crate::{
     check_safe_to_delete_guard, expand_tilde, human_bytes, load_system_policy, parse_df_details,
@@ -232,6 +233,170 @@ pub(crate) fn is_git_tracked_with(path: &Path, git_bin: &str) -> Result<bool> {
         anyhow::bail!("git ls-files failed for {}", path.display());
     }
     Ok(!out.stdout.iter().all(|b| b.is_ascii_whitespace()))
+}
+
+// ---------------------------------------------------------------------------
+// Link safety: the directory-only ignore trap
+// ---------------------------------------------------------------------------
+//
+// ADDED 2026-11-11 (2026-11-11 disk-full incident): relocating a directory
+// replaces it with a SYMLINK, and git CONFLATES a symlink with the path it
+// names. This broke a real repo in two directions:
+//
+//   1. `web/music/out` was ignored by the DIRECTORY-ONLY pattern `out/`
+//      (web/music/.gitignore). Inside a tracked work tree that rule hides
+//      the whole 163 GB tree. The moment relocate swapped it for a symlink,
+//      `out/` stopped matching (git only applies a trailing-slash pattern
+//      to a directory) and the SAME path became an untracked entry — the
+//      daemon would have committed a ~400-byte gitlink blob for a 160 GB
+//      tree, and a cloner would receive an empty directory.
+//   2. `dracon-strategy/ai-auto-music/out` had been relocated to the same
+//      cold root long ago; nothing ever detected that the platform copy was
+//      byte-identical to it, so 163 GB of duplicate media sat on `/` while
+//      the guard reported disk pressure.
+//
+// Auto mode previously refused only TRACKED content. A directory that git
+// ignores as a directory is arguably MORE dangerous, because the ignore rule
+// silently stops applying after the swap.
+
+/// Verdict for one candidate directory inside a git work tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum LinkSafety {
+    /// Not inside a git work tree — the swap cannot change git's view.
+    NotInWorkTree,
+    /// Inside a work tree and still ignored as a SYMLINK (the rule has no
+    /// trailing slash and no deeper rule exposes the path). Safe to move.
+    IgnoredAsSymlink,
+    /// Inside a work tree and ignored ONLY because the pattern is
+    /// directory-only (trailing `/`): the swap would EXPOSE the path.
+    DirectoryOnlyIgnore { pattern: String },
+    /// Inside a work tree and not ignored at all as a symlink — the swap
+    /// would expose every byte of the tree to the index.
+    ExposedAsSymlink,
+}
+
+impl LinkSafety {
+    /// True when replacing the directory with a symlink would PUBLISH
+    /// previously-hidden content to git's index.
+    pub(crate) fn exposes_after_swap(&self) -> bool {
+        matches!(
+            self,
+            LinkSafety::DirectoryOnlyIgnore { .. } | LinkSafety::ExposedAsSymlink
+        )
+    }
+
+    /// Operator-facing reason, or `None` when the swap is safe.
+    pub(crate) fn refusal_reason(&self) -> Option<String> {
+        match self {
+            LinkSafety::NotInWorkTree | LinkSafety::IgnoredAsSymlink => None,
+            LinkSafety::DirectoryOnlyIgnore { pattern } => Some(format!(
+                "ignored only by the DIRECTORY-ONLY pattern `{pattern}` — a symlink would stop \
+                 matching it and the whole tree would become visible to git (untracked gitlink \
+                 or every file). Add a pattern without the trailing slash (e.g. `/out`) to that \
+                 .gitignore first, or manage the move as an explicit [[links.entries]] link"
+            )),
+            LinkSafety::ExposedAsSymlink => Some(
+                "not ignored by any git rule — replacing it with a symlink would expose the whole \
+                 tree to git. Untrack it, ignore it (including a non-trailing-slash pattern), or \
+                 keep it where it is"
+                    .to_string(),
+            ),
+        }
+    }
+}
+
+/// Classify how the git ignore rules of the surrounding work tree treat `path`.
+///
+/// Fail-closed: an unrunnable git or an unreadable index means the caller must
+/// treat the candidate as uncertain. `find_cold_candidates` does exactly that
+/// (`unwrap_or(true)` on the "skip" flag), so a broken git never authorizes a
+/// move.
+pub(crate) fn link_safety(path: &Path) -> Result<LinkSafety> {
+    link_safety_with(path, "git")
+}
+
+/// `git_bin` is injectable for the same race-free-testing reason as
+/// `is_git_tracked_with`: no process-global `PATH` mutation.
+pub(crate) fn link_safety_with(path: &Path, git_bin: &str) -> Result<LinkSafety> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("/"));
+    let probe = Command::new(git_bin)
+        .arg("-C")
+        .arg(parent)
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "cannot run git rev-parse for {}: {e}",
+                parent.display()
+            )
+        })?;
+    // rev-parse ran and failed → not a work tree → nothing to expose.
+    if !probe.status.success() {
+        return Ok(LinkSafety::NotInWorkTree);
+    }
+    let root_text = String::from_utf8_lossy(&probe.stdout).trim().to_string();
+    if root_text.is_empty() {
+        anyhow::bail!("git reported an empty work-tree root for {}", parent.display());
+    }
+
+    // `--no-index` makes check-ignore work for an ignored path even when the
+    // caller's cwd is a subdirectory, and the returned source line is
+    // `<file>:<lineno>:<pattern><TAB><path>`.
+    let check = Command::new(git_bin)
+        .arg("-C")
+        .arg(&root_text)
+        .args(["check-ignore", "--no-index", "-v"])
+        .arg(path)
+        .output()
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "cannot run git check-ignore for {}: {e}",
+                path.display()
+            )
+        })?;
+    // Exit 1 = "ran fine, no rule matched". Exit 0 = ignored (parse the
+    // pattern). Anything else is a real failure and must fail closed.
+    match check.status.code() {
+        Some(0) => {}
+        Some(1) => return Ok(LinkSafety::ExposedAsSymlink),
+        _ => anyhow::bail!(
+            "git check-ignore failed for {}: {}",
+            path.display(),
+            String::from_utf8_lossy(&check.stderr).trim()
+        ),
+    }
+
+    let line = String::from_utf8_lossy(&check.stdout).trim_end().to_string();
+    let Some(pattern) = ignore_pattern_of(&line) else {
+        // Ignored, but the source line could not be parsed: unknown whether
+        // the rule survives the swap, so refuse rather than guess.
+        anyhow::bail!(
+            "cannot parse the git ignore rule for {}: {line}",
+            path.display()
+        );
+    };
+    if pattern.ends_with('/') {
+        return Ok(LinkSafety::DirectoryOnlyIgnore { pattern });
+    }
+    Ok(LinkSafety::IgnoredAsSymlink)
+}
+
+/// Extract the PATTERN field from `git check-ignore -v` output.
+///
+/// Format: `<source>:<lineno>:<pattern>\t<pathspec>`. The pattern itself may
+/// contain `:` (and a Windows drive letter contains one too), so the pattern
+/// is parsed from the RIGHT after the path separator, and the source may be
+/// omitted entirely (`::<pattern>\t<pathspec>`).
+fn ignore_pattern_of(line: &str) -> Option<String> {
+    let source_and_pattern = line.split('\t').next()?;
+    let mut parts = source_and_pattern.rsplitn(3, ':');
+    let pattern = parts.next()?.to_string();
+    // Reject the case where the split consumed everything (no pattern left)
+    // and where the fields are clearly not `source:lineno:pattern`.
+    if pattern.is_empty() {
+        return None;
+    }
+    Some(pattern)
 }
 
 /// Build a relocation plan. Pure except for the `df`/git probes; never mutates.
