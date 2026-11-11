@@ -945,3 +945,225 @@ async fn node_modules_absurd_max_age_does_not_overflow() {
     assert!(nm.exists(), "the tree must be left alone");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+
+// ---------------------------------------------------------------------------
+// 2026-11-11 disk-full incident — link-safety and duplicate-tree regressions
+// ---------------------------------------------------------------------------
+//
+// Both fixtures below reproduce the exact conditions of the real incident:
+// a directory hidden from git by a DIRECTORY-ONLY ignore rule, and a tree
+// whose bytes already live on the cold root.
+
+/// Initialise a git work tree at `root` with the given `.gitignore` content.
+#[cfg(unix)]
+fn git_fixture(root: &Path, gitignore: &str) -> PathBuf {
+    use std::process::Command;
+    fs::create_dir_all(root).unwrap();
+    let init = Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["init", "-q"])
+        .status()
+        .expect("git must be available for the link-safety fixture");
+    assert!(init.success(), "git init failed in {}", root.display());
+    fs::write(root.join(".gitignore"), gitignore).unwrap();
+    root.to_path_buf()
+}
+
+#[cfg(unix)]
+#[test]
+fn link_safety_refuses_a_directory_only_ignore_rule() {
+    // THE REGRESSION: `out/` hides the directory, but git only applies a
+    // trailing-slash pattern to a directory. Once relocate replaces the tree
+    // with a symlink the rule stops matching and the whole tree becomes an
+    // untracked gitlink — which is how a 163 GiB media tree nearly landed in
+    // the index on 2026-11-11.
+    let root = test_root("link-safety-dir-only");
+    cleanup(&root);
+    let repo = git_fixture(&root, "out/\n");
+    let out = repo.join("out");
+    fs::create_dir_all(out.join("audio")).unwrap();
+    fs::write(out.join("audio").join("a.mp3"), b"x").unwrap();
+
+    let verdict = crate::link_safety(&out).expect("git is available and the rule parses");
+    match verdict {
+        crate::LinkSafety::DirectoryOnlyIgnore { ref pattern } => {
+            assert_eq!(pattern, "out/", "the trailing-slash rule must be reported");
+        }
+        other => panic!("expected a directory-only verdict, got {other:?}"),
+    }
+    assert!(
+        verdict.exposes_after_swap(),
+        "a directory-only rule exposes the path after the swap"
+    );
+    assert!(
+        verdict.refusal_reason().is_some(),
+        "the refusal must explain itself to the operator"
+    );
+
+    // And the plan must refuse it, not merely flag it.
+    let elsewhere = root.join("cold");
+    fs::create_dir_all(&elsewhere).unwrap();
+    let err = crate::plan_relocate(&out, &elsewhere, &[], false)
+        .expect_err("a directory-only ignore must refuse the relocate");
+    let text = format!("{err:#}");
+    assert!(
+        text.contains("DIRECTORY-ONLY") || text.contains("directory-only"),
+        "the refusal must name the trap: {text}"
+    );
+    cleanup(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn link_safety_allows_a_rule_without_a_trailing_slash() {
+    // The fix we applied to the real repo (`/out` in addition to `out/`) must
+    // be accepted: this proves the guard is not a blanket "no git work trees".
+    let root = test_root("link-safety-slashless");
+    cleanup(&root);
+    let repo = git_fixture(&root, "/out\nout/\n");
+    let out = repo.join("out");
+    fs::create_dir_all(&out).unwrap();
+    fs::write(out.join("a.mp3"), b"x").unwrap();
+
+    let verdict = crate::link_safety(&out).expect("git is available");
+    assert_eq!(
+        verdict,
+        crate::LinkSafety::IgnoredAsSymlink,
+        "a slashless rule keeps matching after the swap"
+    );
+    assert!(!verdict.exposes_after_swap());
+    assert!(verdict.refusal_reason().is_none());
+
+    // And git really does ignore the path once it IS a symlink — the property
+    // the guard is asserting, verified against git itself rather than assumed.
+    let elsewhere = root.join("storage");
+    fs::create_dir_all(&elsewhere).unwrap();
+    let link = repo.join("out-link");
+    std::os::unix::fs::symlink(&out, &link).unwrap();
+    let check = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&repo)
+        .args(["check-ignore", "--no-index", "-q"])
+        .arg(&link)
+        .status()
+        .expect("git check-ignore runs");
+    assert!(
+        check.success(),
+        "a symlink matching a slashless rule must still be ignored"
+    );
+    cleanup(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn post_swap_exposure_reports_an_exposed_symlink_and_is_silent_when_ignored() {
+    let root = test_root("post-swap");
+    cleanup(&root);
+    let repo = git_fixture(&root, "out/\n");
+    let out = repo.join("out");
+    fs::create_dir_all(&out).unwrap();
+    fs::write(out.join("a.mp3"), b"x").unwrap();
+
+    // Simulate the swap: replace the ignored directory with a symlink.
+    let storage = root.join("storage");
+    fs::create_dir_all(&storage).unwrap();
+    fs::rename(&out, storage.join("out")).unwrap();
+    std::os::unix::fs::symlink(storage.join("out"), &out).unwrap();
+
+    let exposure = crate::post_swap_exposure(&out).expect("git status runs");
+    assert!(
+        exposure.is_some(),
+        "an exposed symlink must be reported so the caller can roll back"
+    );
+
+    // With the slashless rule the same swap stays invisible to git.
+    fs::write(repo.join(".gitignore"), "/out\nout/\n").unwrap();
+    let exposure = crate::post_swap_exposure(&out).expect("git status runs");
+    assert!(
+        exposure.is_none(),
+        "the slashless rule must keep the swapped path ignored"
+    );
+    cleanup(&root);
+}
+
+#[test]
+fn second_identical_tree_is_reported_already_cold_not_as_a_candidate() {
+    // THE SECOND REGRESSION: 163 GiB of media sat on `/` while a byte-identical
+    // copy already lived on the cold root. The scanner happily reported the
+    // live tree as a relocation candidate (and the age floor hid it forever),
+    // so the duplicate was never surfaced. A duplicated tree must be reported
+    // as `already cold` and must NOT appear as a candidate.
+    let root = test_root("already-cold");
+    cleanup(&root);
+    let scan = root.join("scan");
+    let cold = root.join("cold");
+    let live = scan.join("media");
+    fs::create_dir_all(live.join("audio")).unwrap();
+    fs::create_dir_all(cold.join("media").join("audio")).unwrap();
+    fs::write(live.join("audio").join("a.mp3"), vec![3u8; 1_100_000]).unwrap();
+    fs::write(live.join("covers").with_extension("jpg"), vec![9u8; 100]).ok();
+    fs::write(cold.join("media").join("audio").join("a.mp3"), vec![3u8; 1_100_000]).unwrap();
+    touch_aged(&live, "20 days ago");
+
+    let report = crate::find_already_cold_trees(
+        std::slice::from_ref(&scan),
+        1024 * 1024,
+        &cold,
+    );
+    assert_eq!(report.len(), 1, "exactly one duplicated tree: {report:?}");
+    assert!(report[0].path.ends_with("media"));
+    assert_eq!(report[0].files, 1);
+    assert_eq!(report[0].bytes, 1_100_000);
+    assert!(report[0].twin.ends_with("cold/media"));
+
+    // With the cold root supplied the duplicate is dropped from the candidate
+    // list; without it the old behaviour (a candidate) is reproduced, which is
+    // what makes this a regression test rather than a tautology.
+    let with_cold = crate::find_cold_candidates_with(
+        std::slice::from_ref(&scan),
+        1024 * 1024,
+        14,
+        Some(&cold),
+    );
+    assert!(
+        !with_cold.iter().any(|c| c.path.ends_with("media")),
+        "an already-cold tree must not be reported as a candidate: {with_cold:?}"
+    );
+    let without_cold = crate::find_cold_candidates_with(
+        std::slice::from_ref(&scan),
+        1024 * 1024,
+        14,
+        None,
+    );
+    assert!(
+        without_cold.iter().any(|c| c.path.ends_with("media")),
+        "sanity: without duplicate screening the tree IS a candidate: {without_cold:?}"
+    );
+    cleanup(&root);
+}
+
+#[test]
+fn already_cold_requires_identical_manifests_not_just_matching_totals() {
+    // A size-only screen would call these identical (same file count, same
+    // total bytes) while their CONTENT differs. The check must not.
+    let root = test_root("already-cold-content");
+    cleanup(&root);
+    let scan = root.join("scan");
+    let cold = root.join("cold");
+    fs::create_dir_all(scan.join("pair")).unwrap();
+    fs::create_dir_all(cold.join("pair")).unwrap();
+    fs::write(scan.join("pair").join("one.bin"), vec![1u8; 600_000]).unwrap();
+    fs::write(scan.join("pair").join("two.bin"), vec![2u8; 600_000]).unwrap();
+    // Same names, same totals (1.2 MB across 2 files), swapped sizes.
+    fs::write(cold.join("pair").join("one.bin"), vec![1u8; 600_001]).unwrap();
+    fs::write(cold.join("pair").join("two.bin"), vec![2u8; 599_999]).unwrap();
+
+    assert!(
+        !crate::already_cold_under(&scan.join("pair"), &cold).expect("manifests are readable"),
+        "differing per-file sizes must not read as already cold"
+    );
+    assert!(crate::find_already_cold_trees(std::slice::from_ref(&scan), 1024 * 1024, &cold).is_empty());
+    cleanup(&root);
+}
