@@ -1148,11 +1148,16 @@ fn second_identical_tree_is_reported_already_cold_not_as_a_candidate() {
     // With the cold root supplied the duplicate is dropped from the candidate
     // list; without it the old behaviour (a candidate) is reproduced, which is
     // what makes this a regression test rather than a tautology.
-    let (with_cold, report) =
+    let (with_cold, reported_again) =
         crate::find_cold_candidates_reporting_cold(std::slice::from_ref(&scan), 1024 * 1024, 14, Some(&cold));
     assert!(
         !with_cold.iter().any(|c| c.path.ends_with("media")),
         "an already-cold tree must not be reported as a candidate: {with_cold:?}"
+    );
+    assert_eq!(
+        reported_again.len(),
+        1,
+        "the one pass must both screen duplicates AND report them: {reported_again:?}"
     );
     let (without_cold, _) =
         crate::find_cold_candidates_reporting_cold(std::slice::from_ref(&scan), 1024 * 1024, 14, None);
