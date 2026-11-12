@@ -1135,7 +1135,7 @@ pub(crate) fn already_cold_under(source: &Path, cold_root: &Path) -> Result<bool
     if src_files != twin_files || src_bytes != twin_bytes {
         return Ok(false);
     }
-    Ok(source_manifest_matches(source, &twin)?)
+    source_manifest_matches(source, &twin)
 }
 
 /// True when both trees hold the same relative paths with the same byte sizes.
