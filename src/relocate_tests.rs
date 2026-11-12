@@ -510,13 +510,50 @@ fn find_cold_candidates_collapses_nesting() {
 }
 
 #[test]
-fn relocation_state_roundtrip() {
-    // State path is home-derived; only assert load tolerance here —
-    // record/load integration is covered live, not in unit tests.
-    let records = crate::load_relocation_records();
-    let _ = serde_json::to_string(&records).unwrap();
-    let entries = crate::relocation_link_entries();
-    assert_eq!(entries.len(), records.len());
+fn relocation_state_roundtrip_is_path_injected_and_idempotent() {
+    // CHANGED 2026-11-11: this used to read the OPERATOR's real state file and
+    // assert only "serialization works", so the record/load path was never
+    // exercised and test fixtures leaked into `link status`. It now round-trips
+    // through a fixture file and pins the de-duplication that keeps the status
+    // surface from growing without bound.
+    let root = test_root("state-roundtrip");
+    cleanup(&root);
+    fs::create_dir_all(&root).unwrap();
+    let path = root.join("relocations.json");
+
+    crate::record_relocation_at(&path, "~/Dev/x", "/mnt/data/cold/x", 4096).unwrap();
+    let records = crate::load_relocation_records_at(&path);
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].link, "~/Dev/x");
+    assert_eq!(records[0].target, "/mnt/data/cold/x");
+    assert_eq!(records[0].bytes, 4096);
+
+    // Recording the same link again REPLACES its record instead of appending.
+    crate::record_relocation_at(&path, "~/Dev/x", "/mnt/data/cold/x2", 8192).unwrap();
+    let records = crate::load_relocation_records_at(&path);
+    assert_eq!(records.len(), 1, "link key must be unique: {records:?}");
+    assert_eq!(records[0].target, "/mnt/data/cold/x2");
+
+    // An unreadable/corrupt file degrades to "no records" rather than failing.
+    fs::write(&path, b"not json").unwrap();
+    assert!(crate::load_relocation_records_at(&path).is_empty());
+    cleanup(&root);
+}
+
+#[test]
+fn relocation_state_env_override_is_honoured() {
+    let path = crate::relocation_state_path_with(Some("/tmp/dracon-relocation-alt.json".into()));
+    assert_eq!(
+        path,
+        std::path::PathBuf::from("/tmp/dracon-relocation-alt.json"),
+        "an explicit override must win over the home-derived path"
+    );
+    let path = crate::relocation_state_path_with(None);
+    assert!(
+        path.ends_with(".local/state/dracon/dracon-system-relocations.json"),
+        "the default path must stay home-derived: {}",
+        path.display()
+    );
 }
 
 #[test]
@@ -1212,6 +1249,13 @@ fn auto_relocate_pass_skips_the_duplicate_tree_instead_of_moving_it() {
     fs::write(cold.join("media").join("audio").join("a.mp3"), &payload).unwrap();
     touch_aged(&live, "20 days ago");
 
+    // 2026-11-11 (test isolation): point the relocation ledger at this test's
+    // fixture dir so a passing run never writes a `/tmp/...` pseudo-link into
+    // the operator's real state file (`link status` reads that file).
+    let state_dir = root.join("state");
+    fs::create_dir_all(&state_dir).unwrap();
+    let state_path = state_dir.join("relocations.json");
+    std::env::set_var("DRACON_SYSTEM_RELOCATION_STATE", &state_path);
     let guards = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -1243,5 +1287,11 @@ fn auto_relocate_pass_skips_the_duplicate_tree_instead_of_moving_it() {
         "the duplicate must be REPORTED as already cold: {already:?}"
     );
     assert!(live.is_dir() && !live.is_symlink(), "the live tree stays put");
+    std::env::remove_var("DRACON_SYSTEM_RELOCATION_STATE");
+    let ledger = crate::load_relocation_records_at(&state_path);
+    assert!(
+        ledger.is_empty(),
+        "a skipped duplicate must not be recorded as a relocation: {ledger:?}"
+    );
     cleanup(&root);
 }
