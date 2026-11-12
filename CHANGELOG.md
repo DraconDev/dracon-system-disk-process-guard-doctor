@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > is the canonical record.
 
 ## [Unreleased]
+
+### Fixed
+
+- **`relocate` rolls back when the post-swap git check cannot answer.** The check's own contract is "cannot tell is exposure", but its error propagated with no rollback: the symlink stayed live, a full duplicate sat in staging, nothing was recorded, and the next run misreported the state as "only staging cleanup failed". It now rolls back exactly like a detected exposure.
+- **`relocate` no longer deletes writes that race the copy.** The copy was verified only against the plan's totals, so anything written to the source after its file was copied survived only in staging — which is deleted. Once the source is renamed aside (unreachable by path), staging is now compared against the copy (paths, sizes, mtimes); a mismatch restores the source, removes the copy and aborts.
+- **Relocated files keep their mtimes.** `copy_tree` stamped every copied file "now", making cold data look freshly written to anything age-based.
+- **Auto-relocate no longer blocks the guard.** The candidate scan, plan and copy (up to hundreds of GiB) ran inline on the async runtime, stalling the guard pass — memory-pressure response included — for the whole copy. They now run on the blocking pool.
+- **Sibling duplicate trees are no longer hidden.** The already-cold nesting collapse used a string prefix, so `/x/media2` was folded into `/x/media` and never reported.
 ## [0.112.51] - 2026-10-25
 
 ### Fixed

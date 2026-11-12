@@ -1295,3 +1295,150 @@ fn auto_relocate_pass_skips_the_duplicate_tree_instead_of_moving_it() {
     );
     cleanup(&root);
 }
+
+// ---------------------------------------------------------------------------
+// 2026-11-12 fixes: rollback on an unanswerable swap check, the pre-delete
+// staging check, mtime preservation, and path-aware already-cold nesting.
+// ---------------------------------------------------------------------------
+
+#[cfg(unix)]
+#[test]
+fn apply_rolls_back_when_the_swap_cannot_be_verified() {
+    // REGRESSION: `post_swap_exposure(..)?` propagated "git unavailable" with
+    // NO rollback — symlink live, a full duplicate in staging, nothing
+    // recorded. Cannot-tell must be treated as exposure.
+    let root = test_root("swap-unverifiable");
+    cleanup(&root);
+    let src = fixture_dir(&root);
+    let cold = root.join("cold");
+    fs::create_dir_all(&cold).unwrap();
+    let plan = crate::plan_relocate(&src, &cold, &[], false).unwrap();
+    assert!(plan.ready, "{:?}", plan.issues);
+
+    let err = crate::apply_relocate_with(&plan, "/nonexistent/dracon-test-git", &|| {})
+        .expect_err("an unverifiable swap must not succeed");
+    let text = format!("{err:#}");
+    assert!(text.contains("ROLLED BACK"), "must report a rollback: {text}");
+    let meta = fs::symlink_metadata(&src).unwrap();
+    assert!(meta.is_dir() && !meta.file_type().is_symlink(), "source restored as a real dir");
+    assert_eq!(fs::read(src.join("a.txt")).unwrap(), b"hello");
+    assert!(!cold.join("src").exists(), "the cold copy must be removed");
+    assert!(
+        crate::find_stale_staging_dirs(std::slice::from_ref(&root)).is_empty(),
+        "no staging dir may be left behind"
+    );
+    cleanup(&root);
+}
+
+#[cfg(unix)]
+fn assert_aborted_and_restored(root: &Path, src: &Path, cold: &Path, err: anyhow::Error) {
+    let text = format!("{err:#}");
+    assert!(text.contains("changed while it was being copied"), "{text}");
+    assert!(text.contains("ABORTED"), "{text}");
+    let meta = fs::symlink_metadata(src).unwrap();
+    assert!(meta.is_dir() && !meta.file_type().is_symlink(), "source restored as a real dir");
+    assert!(!cold.join("src").exists(), "the stale copy must be removed");
+    assert!(crate::find_stale_staging_dirs(&[root.to_path_buf()]).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_write_racing_the_copy_aborts_instead_of_being_deleted() {
+    // REGRESSION: the copy was checked only against the plan's totals, so an
+    // append landing after its file was copied survived only in staging —
+    // which is then deleted.
+    let root = test_root("racing-append");
+    cleanup(&root);
+    let src = fixture_dir(&root);
+    let cold = root.join("cold");
+    fs::create_dir_all(&cold).unwrap();
+    let plan = crate::plan_relocate(&src, &cold, &[], false).unwrap();
+
+    let target = src.join("a.txt");
+    let err = crate::apply_relocate_with(&plan, "git", &|| {
+        use std::io::Write;
+        let mut f = fs::OpenOptions::new().append(true).open(&target).unwrap();
+        f.write_all(b" + late write").unwrap();
+    })
+    .expect_err("a changed source must abort the move");
+    assert_aborted_and_restored(&root, &src, &cold, err);
+    assert_eq!(
+        fs::read(src.join("a.txt")).unwrap(),
+        b"hello + late write",
+        "the late write must survive"
+    );
+    cleanup(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_same_size_rewrite_racing_the_copy_is_caught_by_mtime() {
+    // Size-only checks cannot see an in-place rewrite of the same length.
+    let root = test_root("racing-rewrite");
+    cleanup(&root);
+    let src = fixture_dir(&root);
+    let cold = root.join("cold");
+    fs::create_dir_all(&cold).unwrap();
+    let plan = crate::plan_relocate(&src, &cold, &[], false).unwrap();
+
+    let target = src.join("a.txt");
+    let err = crate::apply_relocate_with(&plan, "git", &|| {
+        fs::write(&target, b"HELLO").unwrap();
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(10);
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&target)
+            .unwrap()
+            .set_modified(later)
+            .unwrap();
+    })
+    .expect_err("a same-size rewrite must abort the move");
+    assert_aborted_and_restored(&root, &src, &cold, err);
+    assert_eq!(fs::read(src.join("a.txt")).unwrap(), b"HELLO");
+    cleanup(&root);
+}
+
+#[cfg(unix)]
+#[test]
+fn copy_tree_preserves_file_mtimes() {
+    let root = test_root("copy-mtime");
+    cleanup(&root);
+    let src = fixture_dir(&root);
+    let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000);
+    fs::OpenOptions::new()
+        .write(true)
+        .open(src.join("a.txt"))
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    let dst = root.join("copy");
+    crate::copy_tree(&src, &dst).unwrap();
+    let got = fs::metadata(dst.join("a.txt")).unwrap().modified().unwrap();
+    assert_eq!(got, old, "a relocated file must keep its age");
+    crate::verify_staging_matches_copy(&src, &dst).expect("an idle copy verifies");
+    cleanup(&root);
+}
+
+#[test]
+fn already_cold_nesting_is_path_aware_not_string_prefix() {
+    // REGRESSION: `"/x/media2".starts_with("/x/media")` is true for strings,
+    // so a sibling duplicate was collapsed into its namesake and never shown.
+    let root = test_root("already-cold-siblings");
+    cleanup(&root);
+    let scan = root.join("scan");
+    let cold = root.join("cold");
+    for name in ["media", "media2"] {
+        fs::create_dir_all(scan.join(name)).unwrap();
+        fs::create_dir_all(cold.join(name)).unwrap();
+        fs::write(scan.join(name).join("a.bin"), vec![7u8; 1_100_000]).unwrap();
+        fs::write(cold.join(name).join("a.bin"), vec![7u8; 1_100_000]).unwrap();
+    }
+    let report = crate::find_already_cold_trees(std::slice::from_ref(&scan), 1024 * 1024, &cold);
+    let mut names: Vec<_> = report
+        .iter()
+        .map(|t| Path::new(&t.path).file_name().unwrap().to_string_lossy().to_string())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["media", "media2"], "both siblings must be reported: {report:?}");
+    cleanup(&root);
+}

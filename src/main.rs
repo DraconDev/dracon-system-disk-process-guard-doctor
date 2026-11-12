@@ -10813,12 +10813,21 @@ async fn run_auto_relocate(
     // a deletion candidate — it is a second copy of bytes that are already
     // stored where they were supposed to go, and only the operator can decide
     // which copy to drop.
-    let (candidates, already_cold) = find_cold_candidates_reporting_cold(
-        &roots,
-        min_bytes,
-        guard.relocate_min_age_days,
-        Some(&cold_root),
-    );
+    // FIXED 2026-11-12: the scan, the plan and the copy are whole-tree walks
+    // (a relocation copies up to hundreds of GiB). They ran inline on the
+    // async runtime, so one move froze the guard pass — memory-pressure
+    // response included — for the whole copy. Every blocking step now runs on
+    // the blocking pool, as the reap paths already do.
+    let (candidates, already_cold) = {
+        let roots = roots.clone();
+        let cold_root = cold_root.clone();
+        let min_age_days = guard.relocate_min_age_days;
+        tokio::task::spawn_blocking(move || {
+            find_cold_candidates_reporting_cold(&roots, min_bytes, min_age_days, Some(&cold_root))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("cold-candidate scan task failed: {e}"))?
+    };
     if candidates.is_empty() {
         return Ok((0, 0, Vec::new(), already_cold));
     }
@@ -10849,7 +10858,14 @@ async fn run_auto_relocate(
         // AUTO mode never performs a swap that would expose an ignored tree to
         // git (the 2026-11-11 gitlink trap). The scanner already filters these,
         // but the plan is recomputed here against the live tree.
-        let plan = match plan_relocate(&src, &cold_root, &guard.protected_paths, false) {
+        let planned = {
+            let (src, cold_root) = (src.clone(), cold_root.clone());
+            let protected = guard.protected_paths.clone();
+            tokio::task::spawn_blocking(move || plan_relocate(&src, &cold_root, &protected, false))
+                .await
+                .unwrap_or_else(|e| Err(anyhow::anyhow!("plan task failed: {e}")))
+        };
+        let plan = match planned {
             Ok(p) if p.ready && p.exposes_after_swap => {
                 eprintln!(
                     "⚠️ auto-relocate: {} skipped — {}",
@@ -10882,7 +10898,10 @@ async fn run_auto_relocate(
             );
             continue;
         }
-        match apply_relocate(&plan) {
+        let applied = tokio::task::spawn_blocking(move || apply_relocate(&plan))
+            .await
+            .unwrap_or_else(|e| Err(anyhow::anyhow!("relocate task failed: {e}")));
+        match applied {
             Ok(report) => {
                 moves += 1;
                 moved_bytes += report.bytes;

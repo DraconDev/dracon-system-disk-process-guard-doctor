@@ -131,6 +131,21 @@ pub(crate) fn copy_tree(src: &Path, dst: &Path) -> Result<u64> {
                 fs::create_dir_all(parent)?;
             }
             fs::copy(entry.path(), &target)?;
+            // ADDED 2026-11-12: carry the file's mtime across. `fs::copy`
+            // keeps permissions but stamps "now", which made every relocated
+            // tree look freshly written to anything age-based — and the
+            // pre-delete check (`verify_staging_matches_copy`) compares
+            // mtimes to catch a same-size rewrite during the copy.
+            let mtime = entry
+                .metadata()
+                .map_err(anyhow::Error::from)
+                .and_then(|m| m.modified().map_err(anyhow::Error::from))
+                .map_err(|e| anyhow::anyhow!("cannot read mtime of {}: {e}", entry.path().display()))?;
+            fs::OpenOptions::new()
+                .write(true)
+                .open(&target)
+                .and_then(|f| f.set_modified(mtime))
+                .map_err(|e| anyhow::anyhow!("cannot set mtime on {}: {e}", target.display()))?;
         } else {
             skipped += 1;
         }
@@ -663,6 +678,7 @@ fn stale_staging_refusal(source: &Path, dest: &Path, staging: &Path) -> String {
 /// must never be rounded to "safe" for a 160 GB tree.
 ///
 /// Outside a work tree the swap is irrelevant to git, so this is `Ok(None)`.
+#[cfg(test)]
 pub(crate) fn post_swap_exposure(after_swap: &Path) -> Result<Option<String>> {
     post_swap_exposure_with(after_swap, "git")
 }
@@ -765,6 +781,80 @@ pub(crate) fn find_stale_staging_dirs(roots: &[PathBuf]) -> Vec<PathBuf> {
 /// `setup` best-effort reports `*.dracon-relocate-staging` dirs one
 /// level under the candidate roots so the state is visible.
 pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
+    apply_relocate_with(plan, "git", &|| {})
+}
+
+/// File manifest for the pre-delete check: relative path → (bytes, mtime in
+/// whole seconds). Seconds, not nanoseconds, so a cold root on a coarser
+/// filesystem does not refuse every move; a same-size rewrite inside the same
+/// second as the copy is the residual blind spot.
+fn copy_check_manifest(root: &Path) -> Result<HashMap<PathBuf, (u64, i64)>> {
+    let mut map = HashMap::new();
+    for entry in walkdir::WalkDir::new(root).follow_links(false) {
+        let entry = entry.map_err(|e| anyhow::anyhow!("cannot walk {}: {e}", root.display()))?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let meta = entry
+            .metadata()
+            .map_err(|e| anyhow::anyhow!("cannot stat {}: {e}", entry.path().display()))?;
+        let secs = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(-1);
+        let rel = entry
+            .path()
+            .strip_prefix(root)
+            .map_err(|e| anyhow::anyhow!("cannot relativize {}: {e}", entry.path().display()))?
+            .to_path_buf();
+        map.insert(rel, (meta.len(), secs));
+    }
+    Ok(map)
+}
+
+/// ADDED 2026-11-12: the last check before the original tree is deleted.
+///
+/// The copy is verified against the PLAN's totals, which are minutes old in
+/// daemon mode. A write that lands in the source after its file was copied —
+/// an append, a new file, a same-size rewrite — used to survive only in
+/// staging, and staging is deleted. Once the source has been renamed aside no
+/// path-based writer can reach it, so comparing staging with the copy here
+/// closes that window: same paths, same sizes, same mtimes, or no delete.
+pub(crate) fn verify_staging_matches_copy(staging: &Path, dest: &Path) -> Result<()> {
+    let before = copy_check_manifest(staging)?;
+    let after = copy_check_manifest(dest)?;
+    if before == after {
+        return Ok(());
+    }
+    let mut changed: Vec<String> = before
+        .iter()
+        .filter(|(p, v)| after.get(*p) != Some(*v))
+        .map(|(p, _)| p.display().to_string())
+        .chain(
+            after
+                .keys()
+                .filter(|p| !before.contains_key(*p))
+                .map(|p| p.display().to_string()),
+        )
+        .collect();
+    changed.sort();
+    let shown = changed.iter().take(5).cloned().collect::<Vec<_>>().join(", ");
+    anyhow::bail!(
+        "the source changed while it was being copied ({} file(s) differ: {shown})",
+        changed.len()
+    )
+}
+
+/// `git_bin` is injectable for the post-swap probe; `before_stage` runs after
+/// the copy is verified and before the source is renamed aside (tests use it
+/// to model a writer racing the copy). Production passes `"git"` and a no-op.
+pub(crate) fn apply_relocate_with(
+    plan: &RelocatePlan,
+    git_bin: &str,
+    before_stage: &dyn Fn(),
+) -> Result<RelocateReport> {
     #[cfg(not(unix))]
     {
         anyhow::bail!("relocate is only supported on unix");
@@ -855,6 +945,7 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
     // (`staging` was bound + guarded pre-copy at the top of this fn,
     // R4-SYS-09 — the old guard here ran AFTER the copy and was
     // unreachable for the crash-window case.)
+    before_stage();
     fs::rename(source, &staging).map_err(|e| {
         anyhow::anyhow!(
             "cannot stage {} aside: {} — source untouched",
@@ -862,6 +953,26 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
             e
         )
     })?;
+    // ADDED 2026-11-12: the source is now unreachable by path, so this is the
+    // first moment its contents are stable. Anything written after its file
+    // was copied would otherwise be deleted with staging.
+    if let Err(mismatch) = verify_staging_matches_copy(&staging, dest) {
+        return Err(match fs::rename(&staging, source) {
+            Ok(()) => {
+                let _ = fs::remove_dir_all(dest);
+                anyhow::anyhow!(
+                    "{mismatch:#} — move ABORTED, source restored and the copy at {} removed; re-run once the tree is idle",
+                    dest.display()
+                )
+            }
+            Err(restore_err) => anyhow::anyhow!(
+                "{mismatch:#} AND restoring the source failed ({restore_err}) — the live tree is intact at {}; recover with: mv {} {}",
+                staging.display(),
+                staging.display(),
+                source.display()
+            ),
+        });
+    }
     if let Err(e) = make_symlink(dest, source) {
         fs::rename(&staging, source).map_err(|restore_err| {
             anyhow::anyhow!(
@@ -880,7 +991,15 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
     // declined": git conflation means an exposed symlink is either an
     // untracked gitlink blob (an empty directory for every cloner) or the
     // entire tree, so a silent success here is not acceptable.
-    if let Some(exposure) = post_swap_exposure(source)? {
+    // FIXED 2026-11-12: an Err ("git could not answer") used to propagate via
+    // `?` with NO rollback — symlink live, full duplicate in staging, nothing
+    // recorded, and the next run misreported it as "only staging cleanup
+    // failed". The contract above says cannot-tell is exposure; honour it.
+    let exposure = match post_swap_exposure_with(source, git_bin) {
+        Ok(found) => found,
+        Err(e) => Some(format!("the swap could not be verified ({e:#})")),
+    };
+    if let Some(exposure) = exposure {
         let restore = fs::remove_file(source)
             .map_err(|e| anyhow::anyhow!("cannot remove the exposed symlink {}: {e}", source.display()))
             .and_then(|()| {
@@ -895,12 +1014,12 @@ pub(crate) fn apply_relocate(plan: &RelocatePlan) -> Result<RelocateReport> {
             .and_then(|()| fs::remove_dir_all(dest).map_err(|e| e.into()));
         return Err(match restore {
             Ok(()) => anyhow::anyhow!(
-                "{} became visible to git after the swap — move ROLLED BACK, source restored and the copy at {} removed: {exposure}",
+                "{} is not confirmed hidden from git after the swap — move ROLLED BACK, source restored and the copy at {} removed: {exposure}",
                 source.display(),
                 dest.display()
             ),
             Err(e) => anyhow::anyhow!(
-                "{} became visible to git after the swap ({exposure}) AND the rollback failed ({e:#}) — recover with: rm {} (the symlink), mv {} {}",
+                "{} is not confirmed hidden from git after the swap ({exposure}) AND the rollback failed ({e:#}) — recover with: rm {} (the symlink), mv {} {}",
                 source.display(),
                 source.display(),
                 staging.display(),
@@ -1221,7 +1340,12 @@ pub(crate) fn find_already_cold_trees(
     found.sort_by_key(|c| Path::new(&c.path).components().count());
     let mut kept: Vec<AlreadyColdTree> = Vec::new();
     for item in found {
-        if kept.iter().any(|k| item.path.starts_with(&k.path)) {
+        // Path-component prefix, not string prefix: `/x/media2` is not inside
+        // `/x/media` (FIXED 2026-11-12 — the string check dropped it).
+        if kept
+            .iter()
+            .any(|k| Path::new(&item.path).starts_with(&k.path))
+        {
             continue;
         }
         kept.push(item);
