@@ -1351,21 +1351,44 @@ pub(crate) struct RelocationRecord {
 }
 
 pub(crate) fn relocation_state_path() -> PathBuf {
+    relocation_state_path_with(std::env::var_os("DRACON_SYSTEM_RELOCATION_STATE"))
+}
+
+/// ADDED 2026-11-11 (test isolation): tests used to write their temporary
+/// fixture relocations into the OPERATOR's state file, so `link status`
+/// reported `/tmp/dracon-relocate-test-...` entries as managed links and a
+/// fixture from a test run weeks ago looked like a live relocation. The
+/// override is the same shape as `DRACON_SYSTEM_POLICY`: an explicit env var
+/// for tests and for an alternate deployment, with the home-derived default
+/// unchanged for every real caller.
+pub(crate) fn relocation_state_path_with(override_path: Option<std::ffi::OsString>) -> PathBuf {
+    if let Some(path) = override_path {
+        if !path.is_empty() {
+            return PathBuf::from(path);
+        }
+    }
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("/home"))
         .join(".local/state/dracon/dracon-system-relocations.json")
 }
 
 pub(crate) fn load_relocation_records() -> Vec<RelocationRecord> {
-    fs::read_to_string(relocation_state_path())
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
+    load_relocation_records_at(&relocation_state_path())
 }
 
 pub(crate) fn record_relocation(link: &str, target: &str, bytes: u64) -> Result<()> {
-    let path = relocation_state_path();
-    let mut records = load_relocation_records();
+    record_relocation_at(&relocation_state_path(), link, target, bytes)
+}
+
+/// ADDED 2026-11-11: path-injected core so a test can write to a fixture file
+/// instead of the operator's real state file.
+pub(crate) fn record_relocation_at(
+    path: &Path,
+    link: &str,
+    target: &str,
+    bytes: u64,
+) -> Result<()> {
+    let mut records = load_relocation_records_at(path);
     records.retain(|r| r.link != link);
     records.push(RelocationRecord {
         link: link.to_string(),
@@ -1376,8 +1399,17 @@ pub(crate) fn record_relocation(link: &str, target: &str, bytes: u64) -> Result<
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(&path, serde_json::to_string_pretty(&records)?)?;
+    fs::write(path, serde_json::to_string_pretty(&records)?)?;
     Ok(())
+}
+
+/// ADDED 2026-11-11: path-injected reader, so tests never consult the operator's
+/// real relocation state.
+pub(crate) fn load_relocation_records_at(path: &Path) -> Vec<RelocationRecord> {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
 }
 
 /// Auto-relocation records as link entries for `link status` merging.
