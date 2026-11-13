@@ -209,6 +209,7 @@ fn guard_report_can_be_created_with_alerts() {
         zombies: Vec::new(),
         reap_candidates: Vec::new(),
         reaped: Vec::new(),
+        retired_sessions: Vec::new(),
         disk_fill_gbph: None,
         swap_issues: Vec::new(),
     };
