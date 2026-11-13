@@ -50,8 +50,26 @@ pub(crate) const DEFAULT_REAP_REPORT_MAX_CPU_SECONDS: u64 = 60;
 /// Comma-separated in the TOML. Deliberately specific: the default is
 /// narrow enough that a shell, an editor, or an agent session can never
 /// match by accident.
+///
+/// ADDED 2026-11-13: the idle agent-runtime DAEMONS. These are the
+/// service forms of the agent runtimes — the `opencode serve --service`
+/// background service and the cline hub daemon — NOT the interactive
+/// sessions (which are tty-attached and are excluded by the terminal-less
+/// rule every orphan path already applies).
+///
+/// They were the 2026-11-12 residue: a 2.7-day-old `opencode serve
+/// --service` and a 15-day-old cline hub daemon, both parent-dead
+/// (reparented to `systemd --user`), both terminal-less, both idle, and
+/// neither reclaimable because no signature matched them. They are
+/// narrow enough that the interactive forms cannot match: `opencode
+/// serve --service` only appears on the service command line, and
+/// `--cline-hub-daemon` only on the daemon's.
+///
+/// Neither qualifies for the age-gated path (`reap_stale_dev_servers`
+/// requires <= 60 s lifetime CPU, and these have thousands of seconds),
+/// so they are reclaimed ONLY under memory pressure, by orphanhood.
 pub(crate) const DEFAULT_REAP_REPORT_SIGNATURES: &str =
-    "eve web,vite,playwright,chromium,bun run,bun test,npm run test,.mjs,litestream,stub-auth-api";
+    "eve web,vite,playwright,chromium,bun run,bun test,npm run test,.mjs,litestream,stub-auth-api,opencode serve --service,--cline-hub-daemon";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReapPolicy {
