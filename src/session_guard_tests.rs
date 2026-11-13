@@ -138,7 +138,8 @@ fn observation(pid: i32, cpu_ticks: u64, last_activity: Option<SystemTime>) -> S
 #[test]
 fn no_cpu_accrual_and_stale_activity_is_idle() {
     let evidence = SessionEvidence {
-        cpu_idle_for: Duration::from_secs(2 * WINDOW),
+        cpu_accrued: 0,
+        observed_for: Duration::from_secs(2 * WINDOW),
         last_activity: Some(long_ago()),
     };
     assert_eq!(classify_evidence(&evidence, WINDOW, now()), SessionState::Idle);
@@ -149,7 +150,8 @@ fn no_cpu_accrual_and_stale_activity_is_idle() {
 #[test]
 fn recent_cpu_accrual_is_active_even_with_stale_files() {
     let evidence = SessionEvidence {
-        cpu_idle_for: Duration::from_secs(60),
+        cpu_accrued: 42,
+        observed_for: Duration::from_secs(60),
         last_activity: Some(long_ago()),
     };
     assert_eq!(
@@ -164,7 +166,8 @@ fn recent_cpu_accrual_is_active_even_with_stale_files() {
 #[test]
 fn recent_activity_write_is_active_even_with_no_cpu() {
     let evidence = SessionEvidence {
-        cpu_idle_for: Duration::from_secs(2 * WINDOW),
+        cpu_accrued: 0,
+        observed_for: Duration::from_secs(2 * WINDOW),
         last_activity: Some(now() - Duration::from_secs(60)),
     };
     assert_eq!(
@@ -178,7 +181,8 @@ fn recent_activity_write_is_active_even_with_no_cpu() {
 #[test]
 fn unmeasurable_activity_is_unknown_not_idle() {
     let evidence = SessionEvidence {
-        cpu_idle_for: Duration::from_secs(2 * WINDOW),
+        cpu_accrued: 0,
+        observed_for: Duration::from_secs(2 * WINDOW),
         last_activity: None,
     };
     assert_eq!(
@@ -187,17 +191,19 @@ fn unmeasurable_activity_is_unknown_not_idle() {
     );
 }
 
-/// A window that has not elapsed proves nothing: the session is ACTIVE
-/// until the window has actually passed.
+/// A window that has not elapsed proves nothing: the session is UNKNOWN
+/// until the window has actually passed. It is NOT reported as active —
+/// the guard has not proved it is working either.
 #[test]
 fn window_must_actually_elapse_before_idle_is_possible() {
     let evidence = SessionEvidence {
-        cpu_idle_for: Duration::from_secs(WINDOW - 1),
+        cpu_accrued: 0,
+        observed_for: Duration::from_secs(WINDOW - 1),
         last_activity: Some(long_ago()),
     };
     assert_eq!(
         classify_evidence(&evidence, WINDOW, now()),
-        SessionState::Active
+        SessionState::Unknown
     );
 }
 
