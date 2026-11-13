@@ -7100,13 +7100,13 @@ async fn check_memory_pressure(
     // measurement: the biggest swapped offender may be mostly nonresident.
     let exempt = parse_kinds(&guard.process_exempt_names);
     let (offenders, swap_samples_unavailable) =
-        memory_pressure_offenders_with_sessions(all_processes, &exempt, &state.session_exempt_pids);
+        memory_pressure_offenders_with_sessions(all_processes, &exempt, state.session_exempt_pids.as_ref());
     let top_rss: Vec<ProcSample> = offenders.into_iter().map(load_process_cmdline).collect();
     // ADDED 2026-11-08: the offenders list excludes exempt processes BY
     // POLICY, so name the exempt consumers' footprint too. Nothing may be
     // done about them, but the operator must be able to see them.
     let exempt_top =
-        exempt_consumer_footprint_with_sessions(all_processes, &exempt, &state.session_exempt_pids);
+        exempt_consumer_footprint_with_sessions(all_processes, &exempt, state.session_exempt_pids.as_ref());
     let mitigation_note = build_mitigation_note(&top_rss, &exempt_top);
 
     // ── Limiting (ADDED 2026-08-10, v0.112.36) ──────────────────
