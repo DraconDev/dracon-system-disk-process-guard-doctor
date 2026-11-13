@@ -862,6 +862,36 @@ fn memory_pressure_offenders(
     memory_pressure_offenders_with_sessions(samples, exempt, None)
 }
 
+/// Decide whether a process keeps the blanket memory-pressure exemption.
+///
+/// `session_exempt_pids` is `None` when no agent-session lifecycle is
+/// configured: the plain name-based exemption applies unchanged, so a host
+/// that never opts into the lifecycle behaves exactly as it did before.
+///
+/// `Some(pids)` means the lifecycle IS configured, and the set decides per
+/// pid. An EMPTY `Some` set therefore means "no session holds the
+/// exemption" — the sessions in an over-bound fleet of parked ones. That
+/// case must NOT be read as "not configured": doing so restores the
+/// blanket pass over the whole fleet, which is the exact failure the
+/// fleet rule exists to remove (the guard reporting a crisis it has no
+/// authority to act on).
+///
+/// Both the offender selection and the exempt-footprint report call THIS
+/// function, so the two cannot drift apart again.
+fn keeps_memory_exemption(
+    p: &ProcSample,
+    exempt: &HashSet<String>,
+    session_exempt_pids: Option<&HashSet<i32>>,
+) -> bool {
+    if !exempt.contains(&p.command) {
+        return false;
+    }
+    match session_exempt_pids {
+        None => true,
+        Some(pids) => pids.contains(&p.pid),
+    }
+}
+
 /// The fleet-aware offender selection.
 ///
 /// `session_exempt_pids` is `None` when no session lifecycle is
@@ -1363,9 +1393,14 @@ pub(crate) struct GuardRuntimeState {
     /// of inferring activity from raw age.
     pub(crate) session_tracker: SessionTracker,
     /// ADDED 2026-11-13: the pids that keep the blanket memory-pressure
-    /// exemption this pass. Recomputed every pass; empty means "the
-    /// exemption list applies unchanged".
-    pub(crate) session_exempt_pids: HashSet<i32>,
+    /// exemption this pass. Recomputed every pass.
+    ///
+    /// `None` means no agent-session lifecycle is configured, and the
+    /// name-based exemption applies unchanged. `Some(set)` means the
+    /// lifecycle IS configured; the set may be EMPTY, which means no
+    /// session holds the pass. The two are different states and must
+    /// never be conflated.
+    pub(crate) session_exempt_pids: Option<HashSet<i32>>,
     /// ADDED 2026-11-13: the agent-session fleet observed this pass.
     pub(crate) session_observations: Vec<SessionObservation>,
     /// ADDED 2026-11-13: the per-session classification this pass.
@@ -8148,7 +8183,7 @@ fn refresh_session_fleet(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
     let policy = session_policy_from_guard(guard);
     if policy.session_names.is_empty() {
         state.session_tracker = SessionTracker::default();
-        state.session_exempt_pids.clear();
+        state.session_exempt_pids = None;
         state.session_observations.clear();
         state.session_states.clear();
         return;
@@ -8168,8 +8203,9 @@ fn refresh_session_fleet(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
     state.session_tracker.retain_live(&live);
 
     let exempt_names = sorted_signatures(&guard.process_exempt_names);
-    let keep = exemption_pids(&policy, &exempt_names, &observations, &states);
-    state.session_exempt_pids = keep.into_iter().collect();
+    // The Option carries the distinction: `None` = lifecycle not
+    // configured, `Some(empty)` = configured and nobody holds the pass.
+    state.session_exempt_pids = exemption_pids(&policy, &exempt_names, &observations, &states);
 
     // The fleet summary is part of the REPORT, not just internal state:
     // the fleet-aware exemption is a policy, and the operator has to be
@@ -8192,7 +8228,7 @@ fn refresh_session_fleet(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
         unknown,
         max_active_sessions: policy.max_active_sessions,
         over_bound: observations.len() > policy.max_active_sessions,
-        exempt: state.session_exempt_pids.len(),
+        exempt: state.session_exempt_pids.as_ref().map_or(0, |pids| pids.len()),
     };
     state.session_observations = observations;
     state.session_states = states;
