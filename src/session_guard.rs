@@ -64,7 +64,7 @@
 //! like `Active` everywhere — the guard never acts on what it cannot
 //! prove.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -411,14 +411,34 @@ impl SessionTracker {
 /// ACTIVE or UNKNOWN. An IDLE session keeps it only while the fleet is
 /// within `max_active_sessions` — above that bound the idle sessions give
 /// up the blanket exemption and the guard can act on them.
+///
+/// Compute the pids that keep the blanket memory-pressure exemption.
+///
+/// The return type carries a distinction that MUST NOT be collapsed into
+/// an empty set:
+///
+/// - `None` — no agent-session lifecycle is configured. The plain
+///   name-based exemption applies unchanged, so a host that never opts
+///   into the lifecycle behaves exactly as it did before.
+/// - `Some(pids)` — the lifecycle IS configured, and `pids` are the
+///   sessions that hold the pass. The set may legitimately be EMPTY: an
+///   over-bound fleet whose sessions are all idle produces exactly that,
+///   and it means "no session holds the exemption" — NOT "the lifecycle
+///   is off". Reading the empty set as "not configured" restores the
+///   blanket pass over the whole fleet, which re-creates the incident's
+///   failure mode: the guard reports a crisis it has no authority to act
+///   on.
 pub(crate) fn exemption_pids(
     policy: &SessionPolicy,
     exempt_names: &[String],
     observations: &[SessionObservation],
     states: &HashMap<i32, SessionState>,
-) -> Vec<i32> {
+) -> Option<HashSet<i32>> {
+    if policy.session_names.is_empty() {
+        return None;
+    }
     let fleet_size = observations.len();
-    let mut out = Vec::new();
+    let mut out = HashSet::new();
     for obs in observations {
         if !exempt_names.iter().any(|n| n == &obs.comm) {
             continue;
@@ -429,10 +449,10 @@ pub(crate) fn exemption_pids(
             SessionState::Idle => fleet_size <= policy.max_active_sessions,
         };
         if keep {
-            out.push(obs.pid);
+            out.insert(obs.pid);
         }
     }
-    out
+    Some(out)
 }
 
 /// Select the sessions that may be retired.

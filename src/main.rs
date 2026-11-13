@@ -859,36 +859,32 @@ fn memory_pressure_offenders(
     samples: &[ProcSample],
     exempt: &HashSet<String>,
 ) -> (Vec<ProcSample>, usize) {
-    memory_pressure_offenders_with_sessions(samples, exempt, &HashSet::new())
+    memory_pressure_offenders_with_sessions(samples, exempt, None)
 }
 
 /// The fleet-aware offender selection.
 ///
-/// `session_exempt_pids` is the per-pid exemption set computed by the
-/// agent-session lifecycle. It is EMPTY when no session lifecycle is
+/// `session_exempt_pids` is `None` when no session lifecycle is
 /// configured, and an empty set means the plain name-based exemption
 /// applies unchanged -- so the behaviour of a host that never opts into
 /// the lifecycle is byte-identical to before.
+///
+/// The `Some` case is the fleet-aware one: the set then decides PER PID,
+/// and an EMPTY set means no session holds the pass. That distinction is
+/// load-bearing: an over-bound fleet of parked sessions produces exactly
+/// an empty set, and reading it as "not configured" would restore the
+/// blanket pass over the whole fleet.
 fn memory_pressure_offenders_with_sessions(
     samples: &[ProcSample],
     exempt: &HashSet<String>,
-    session_exempt_pids: &HashSet<i32>,
+    session_exempt_pids: Option<&HashSet<i32>>,
 ) -> (Vec<ProcSample>, usize) {
     let mut top = Vec::with_capacity(MEMORY_OFFENDER_LIMIT + 1);
     let mut unavailable = 0;
     for p in samples {
         // The fleet-aware exemption: a session keeps its pass only while
-        // it is demonstrably active (or unmeasurable). The pid set is
-        // empty when no agent-session lifecycle is configured, which
-        // preserves the plain name-based behaviour exactly.
-        let exempt_process = if session_exempt_pids.is_empty() {
-            exempt.contains(&p.command)
-        } else if exempt.contains(&p.command) {
-            session_exempt_pids.contains(&p.pid)
-        } else {
-            false
-        };
-        if exempt_process || is_kernel_process(&p.command) {
+        // it is demonstrably active (or unmeasurable).
+        if keeps_memory_exemption(p, exempt, session_exempt_pids) || is_kernel_process(&p.command) {
             continue;
         }
         unavailable += usize::from(p.swap_mb.is_none());
@@ -933,7 +929,7 @@ fn exempt_consumer_footprint(
     samples: &[ProcSample],
     exempt: &HashSet<String>,
 ) -> Vec<(String, u64)> {
-    exempt_consumer_footprint_with_sessions(samples, exempt, &HashSet::new())
+    exempt_consumer_footprint_with_sessions(samples, exempt, None)
 }
 
 /// The fleet-aware exempt-consumer footprint.
@@ -945,7 +941,7 @@ fn exempt_consumer_footprint(
 fn exempt_consumer_footprint_with_sessions(
     samples: &[ProcSample],
     exempt: &HashSet<String>,
-    session_exempt_pids: &HashSet<i32>,
+    session_exempt_pids: Option<&HashSet<i32>>,
 ) -> Vec<(String, u64)> {
     let mut by_command: HashMap<String, u64> = HashMap::new();
     for p in samples {
@@ -954,14 +950,7 @@ fn exempt_consumer_footprint_with_sessions(
         // lost its pass is no longer an "exempt consumer" — it is an
         // offender the guard CAN now act on, and reporting it as exempt
         // would hide the very thing the operator needs to see.
-        let exempt_process = if session_exempt_pids.is_empty() {
-            exempt.contains(&p.command)
-        } else if exempt.contains(&p.command) {
-            session_exempt_pids.contains(&p.pid)
-        } else {
-            false
-        };
-        if !exempt_process || is_kernel_process(&p.command) {
+        if !keeps_memory_exemption(p, exempt, session_exempt_pids) || is_kernel_process(&p.command) {
             continue;
         }
         let footprint = memory_pressure_footprint_mb(p);
