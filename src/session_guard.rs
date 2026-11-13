@@ -204,8 +204,13 @@ fn activity_files_for(policy: &SessionPolicy, pid: i32, cwd: Option<&Path>) -> V
 /// decision can be tested directly.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SessionEvidence {
-    /// How long the session has been observed without accruing CPU.
-    pub(crate) cpu_idle_for: Duration,
+    /// CPU accumulated since the baseline observation, in ticks. A
+    /// non-zero value is DEFINITIVE proof that the session is working:
+    /// the idle streak restarted at that moment.
+    pub(crate) cpu_accrued: u64,
+    /// How long the guard has been watching the session without CPU
+    /// accrual. Below the idle window this proves nothing either way.
+    pub(crate) observed_for: Duration,
     /// Newest activity-file mtime, or `None` when none could be read.
     pub(crate) last_activity: Option<SystemTime>,
 }
@@ -215,15 +220,33 @@ pub(crate) struct SessionEvidence {
 /// The two conditions are conjunctive, exactly as the retirement rule
 /// states: no CPU accrual across the idle window AND no ledger/transcript
 /// write within the idle window. Either one alone is not enough.
+///
+/// The three verdicts are:
+/// - `Active`: the session IS working (it accrued CPU, or it wrote
+///   something recently — a session waiting on a model is alive even
+///   while its CPU is idle).
+/// - `Idle`: the session is provably not working (no CPU accrual across
+///   the whole window AND no ledger/transcript write within it).
+/// - `Unknown`: the guard cannot tell yet — no baseline, a window that
+///   has not elapsed, or an activity file it could not read.
+///
+/// `Active` and `Unknown` are treated identically everywhere else (both
+/// keep the blanket exemption and neither is ever retired), so the
+/// distinction is about the REPORT being honest rather than about what
+/// the guard does.
 pub(crate) fn classify_evidence(
     evidence: &SessionEvidence,
     idle_window_secs: u64,
     now: SystemTime,
 ) -> SessionState {
-    // No CPU baseline yet, or the CPU moved recently: the session is
-    // working (or the window has not elapsed, so nothing is proven).
-    if evidence.cpu_idle_for.as_secs() < idle_window_secs {
+    // CPU accrued since the baseline: the session is working. This is
+    // definitive and needs no window.
+    if evidence.cpu_accrued > 0 {
         return SessionState::Active;
+    }
+    // No CPU yet, but the window has not elapsed: nothing is proven.
+    if evidence.observed_for.as_secs() < idle_window_secs {
+        return SessionState::Unknown;
     }
     // A missing activity file is UNKNOWN, never idle: the guard may not
     // retire a session whose activity it could not read.
@@ -234,6 +257,7 @@ pub(crate) fn classify_evidence(
         .duration_since(last_activity)
         .unwrap_or(Duration::ZERO);
     if age.as_secs() < idle_window_secs {
+        // It wrote recently: alive, even if its CPU is idle.
         return SessionState::Active;
     }
     SessionState::Idle
@@ -244,10 +268,15 @@ pub(crate) fn classify_evidence(
 pub(crate) struct TrackedSession {
     /// The PID incarnation this entry belongs to.
     starttime: u64,
-    /// The CPU total observed when the current CPU-idle streak began.
-    baseline_cpu_ticks: u64,
-    /// When the current CPU-idle streak began.
+    /// The CPU total at the PREVIOUS observation — the baseline the next
+    /// comparison is made against.
+    previous_cpu_ticks: u64,
+    /// When the current no-CPU-accrual streak began. It restarts
+    /// whenever the session accrues CPU.
     idle_since: Instant,
+    /// The CPU accrued since the previous observation, as measured by the
+    /// last pass. Non-zero is definitive proof that the session works.
+    last_accrual: u64,
     /// The most recent observation.
     observation: SessionObservation,
 }
@@ -291,21 +320,25 @@ impl SessionTracker {
             };
 
             let tracked = self.sessions.get_mut(pid);
+            let mut last_accrual = 0u64;
             match tracked {
                 // A recycled PID is a different process: the old streak
                 // says nothing about it.
                 Some(entry) if entry.starttime != *starttime => {
                     entry.starttime = *starttime;
-                    entry.baseline_cpu_ticks = *cpu_ticks;
+                    entry.previous_cpu_ticks = *cpu_ticks;
                     entry.idle_since = now_instant;
+                    entry.last_accrual = 0;
                     entry.observation = observation.clone();
                 }
                 Some(entry) => {
-                    if *cpu_ticks > entry.baseline_cpu_ticks {
-                        // The session did work: the idle streak restarts.
-                        entry.baseline_cpu_ticks = *cpu_ticks;
+                    last_accrual = cpu_ticks.saturating_sub(entry.previous_cpu_ticks);
+                    if last_accrual > 0 {
+                        // The session did work: the no-CPU streak restarts.
                         entry.idle_since = now_instant;
                     }
+                    entry.previous_cpu_ticks = *cpu_ticks;
+                    entry.last_accrual = last_accrual;
                     entry.observation = observation.clone();
                 }
                 None => {
@@ -313,8 +346,9 @@ impl SessionTracker {
                         *pid,
                         TrackedSession {
                             starttime: *starttime,
-                            baseline_cpu_ticks: *cpu_ticks,
+                            previous_cpu_ticks: *cpu_ticks,
                             idle_since: now_instant,
+                            last_accrual: 0,
                             observation: observation.clone(),
                         },
                     );
@@ -323,7 +357,8 @@ impl SessionTracker {
 
             let entry = self.sessions.get(pid).expect("inserted above");
             let evidence = SessionEvidence {
-                cpu_idle_for: now_instant.saturating_duration_since(entry.idle_since),
+                cpu_accrued: entry.last_accrual,
+                observed_for: now_instant.saturating_duration_since(entry.idle_since),
                 last_activity: observation.last_activity,
             };
             let state = classify_evidence(&evidence, policy.idle_window_secs, now);
@@ -343,7 +378,8 @@ impl SessionTracker {
         let mut out = HashMap::new();
         for (pid, entry) in &self.sessions {
             let evidence = SessionEvidence {
-                cpu_idle_for: now_instant.saturating_duration_since(entry.idle_since),
+                cpu_accrued: entry.last_accrual,
+                observed_for: now_instant.saturating_duration_since(entry.idle_since),
                 last_activity: entry.observation.last_activity,
             };
             out.insert(
