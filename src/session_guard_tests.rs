@@ -64,10 +64,15 @@ impl Fixture {
         // The stat fixture carries the CPU total in utime and zero in
         // stime, because parse_stat SUMS the two fields: splitting the
         // total across both would double every value the tracker reads.
+        //
+        // The field order after the comm is the kernel's: state, ppid,
+        // pgrp, session, tty_nr, tpgid. The session slot must be present
+        // even when it is 0, or tty_nr would be read from the wrong
+        // column.
         fs::write(
             dir.join("stat"),
             format!(
-                "42 ({comm}) S 1 {} {tty_nr} 0 -1 4194560 100 0 0 0 {cpu_ticks} 0 0 0 20 0 1 0 100 0 0 0 0 0 0 0 0 0 17 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
+                "42 ({comm}) S 1 {} 0 {tty_nr} -1 4194560 100 0 0 0 {cpu_ticks} 0 0 0 20 0 1 0 100 0 0 0 0 0 0 0 0 0 17 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
                 pid + 1
             ),
         )
