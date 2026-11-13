@@ -559,7 +559,8 @@ fn the_tracker_forgets_dead_sessions() {
 }
 
 /// A recycled PID resets the CPU baseline: the old streak says nothing
-/// about the new process.
+/// about the new process, so the new incarnation starts UNKNOWN — the
+/// guard has no baseline for it yet.
 #[test]
 fn a_recycled_pid_resets_the_cpu_baseline() {
     let fixture = Fixture::new("recycled-baseline");
@@ -579,7 +580,7 @@ fn a_recycled_pid_resets_the_cpu_baseline() {
     let facts = vec![(4242, "pi".to_string(), 900, starttime + 1)];
     tracker.observe(&policy, &fixture.root, &facts, now(), t1);
     let states = tracker.states(&policy, now(), t1);
-    assert_eq!(states.get(&4242), Some(&SessionState::Active));
+    assert_eq!(states.get(&4242), Some(&SessionState::Unknown));
 }
 
 // ---------------------------------------------------------------------------
