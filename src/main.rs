@@ -730,7 +730,7 @@ pub(crate) struct MemoryReport {
 /// a policy nobody can audit: the operator has to be able to answer "which
 /// of my sessions still holds the blanket pass, and why?" without reading
 /// the source.
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub(crate) struct SessionFleetReport {
     /// The executable names that count as agent sessions.
     pub(crate) names: Vec<String>,
@@ -12918,6 +12918,26 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
                 Cell::new(format!(
                     "{} tree(s), {ended} process(es) ended",
                     memory.forgotten_reaped.len()
+                )),
+            ]);
+        }
+        if !report.session_fleet.names.is_empty() {
+            table.add_row(vec![
+                Cell::new("🧠"),
+                Cell::new("Agent session fleet"),
+                Cell::new(format!(
+                    "{} session(s): {} active, {} idle, {} unmeasured — bound {}{}; {} keep(s) the blanket exemption",
+                    report.session_fleet.total,
+                    report.session_fleet.active,
+                    report.session_fleet.idle,
+                    report.session_fleet.unknown,
+                    report.session_fleet.max_active_sessions,
+                    if report.session_fleet.over_bound {
+                        " (OVER BOUND — exemption narrowed)"
+                    } else {
+                        ""
+                    },
+                    report.session_fleet.exempt
                 )),
             ]);
         }
