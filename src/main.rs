@@ -6043,14 +6043,20 @@ pub(crate) fn nix_env_list_generations(
 ///
 /// Returns `None` when the links are unreadable, which the caller treats as
 /// "leave the profile alone".
-pub(crate) fn system_profile_spread_plan(nix_env: &Path, keep: u32) -> Option<Vec<u32>> {
-    let _ = nix_env;
-    let profile_dir = Path::new("/nix/var/nix/profiles");
+///
+/// CHANGED 2026-11-13: the profile directory and run root are parameters
+/// (they were hardcoded, and the `nix_env` parameter was unused) so the
+/// NixOS branch can be exercised by a hermetic fixture on any host.
+pub(crate) fn system_profile_spread_plan(
+    profile_dir: &Path,
+    run_root: &Path,
+    keep: u32,
+) -> Option<Vec<u32>> {
     let generations = system_profile_generations(profile_dir)?;
     if generations.is_empty() {
         return None;
     }
-    let mut protected: Vec<u32> = match running_system_closure(Path::new("/run")) {
+    let mut protected: Vec<u32> = match running_system_closure(run_root) {
         Some(closure) => nix_generations_referenced_by_closure(profile_dir, &generations, &closure),
         None => Vec::new(),
     };
@@ -6161,6 +6167,31 @@ async fn clean_nix_garbage_with_bins(
     nix_gc: &Path,
     command_timeout_secs: u64,
 ) -> Result<(u64, Vec<String>)> {
+    clean_nix_garbage_impl(
+        keep_generations,
+        apply,
+        nix_env,
+        nix_gc,
+        command_timeout_secs,
+        Path::new("/nix/var/nix/profiles"),
+        Path::new("/run"),
+    )
+    .await
+}
+
+/// Implementation with an injectable NixOS system-profile directory and run
+/// root. ADDED 2026-11-13: the system-spread branch used to be reachable only
+/// on hosts with real `/nix/var/nix/profiles/system-*-link` entries, so its
+/// skipped-GC defect (see the FIXED note below) stayed invisible on dev hosts.
+async fn clean_nix_garbage_impl(
+    keep_generations: u32,
+    apply: bool,
+    nix_env: &Path,
+    nix_gc: &Path,
+    command_timeout_secs: u64,
+    system_profile_dir: &Path,
+    run_root: &Path,
+) -> Result<(u64, Vec<String>)> {
     let reclaimed = 0u64;
     let mut cleaned = Vec::new();
 
@@ -6266,8 +6297,9 @@ async fn clean_nix_garbage_with_bins(
         // ADDED 2026-10-22: the 2026-10-21 disk incident left the guard
         // logging that failure every cycle while 144 GiB of scratch
         // accumulated; the noise belonged in the report, not on every pass.
-        let system_profile = "/nix/var/nix/profiles/default";
-        let system_profile_needs_prune = nix_env_generation_count(nix_env, system_profile)
+        let system_profile_path = system_profile_dir.join("default");
+        let system_profile = system_profile_path.to_string_lossy();
+        let system_profile_needs_prune = nix_env_generation_count(nix_env, &system_profile)
             .map(|count| count > keep_generations as usize)
             .unwrap_or(false);
         // ADDED 2026-10-27 (audit HIGH): "always keep the currently booted
@@ -6281,9 +6313,10 @@ async fn clean_nix_garbage_with_bins(
         // with `+N`. `+N` keeps only the newest N, which is precisely the shape
         // the objective calls wrong; the spread plan now applies here too, with
         // the booted generation protected unconditionally.
-        let system_spread = system_profile_spread_plan(nix_env, keep_generations);
+        let system_spread =
+            system_profile_spread_plan(system_profile_dir, run_root, keep_generations);
         if let Some(system_delete) = system_spread.filter(|plan| !plan.is_empty()) {
-            let nix_args = nix_delete_generations_argv_with_profile(&system_delete, system_profile);
+            let nix_args = nix_delete_generations_argv_with_profile(&system_delete, &system_profile);
             match Command::new(nix_env).args(&nix_args).output().await {
                 Ok(output) if output.status.success() => {}
                 Ok(output) => eprintln!(
@@ -6296,7 +6329,13 @@ async fn clean_nix_garbage_with_bins(
                     e
                 ),
             }
-            return Ok((reclaimed, cleaned));
+            // FIXED 2026-11-13: this branch used to `return Ok(...)` here,
+            // skipping nix-collect-garbage entirely on every host where a
+            // system spread plan exists (any NixOS host above retention).
+            // The warnings above promise "user GC still runs" — now it does,
+            // whether the root-owned system prune succeeded or failed. The
+            // two fake-bin nix tests failing on NixOS were this defect, not
+            // a host-layout mismatch.
         }
         if system_profile_needs_prune {
             // The system profile's generation count is above the retention but
@@ -14210,7 +14249,11 @@ mod system_profile_spread_tests {
         else {
             return;
         };
-        let Some(plan) = system_profile_spread_plan(std::path::Path::new("nix-env"), 1) else {
+        let Some(plan) = system_profile_spread_plan(
+            std::path::Path::new("/nix/var/nix/profiles"),
+            std::path::Path::new("/run"),
+            1,
+        ) else {
             return;
         };
         // The booted generation resolves through /run/current-system.

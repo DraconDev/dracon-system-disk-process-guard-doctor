@@ -2220,6 +2220,96 @@ async fn nix_cleanup_gen_prune_failure_still_runs_gc() {
     let _ = fs::remove_dir_all(&root);
 }
 
+/// ADDED 2026-11-13 (regression): on a NixOS host the system-profile spread
+/// plan EXISTS, and the cleaner used to return right after the (root-blocked)
+/// system prune — skipping nix-collect-garbage entirely, so the guard never
+/// reclaimed store garbage on exactly the hosts that accumulate it. The two
+/// fake-bin tests above only reach that branch on hosts with real system
+/// links, which is why the defect shipped while dev-host runs stayed green.
+/// This fixture forces the branch on ANY host: store GC must run after the
+/// system prune attempt, and its results must survive the prune failure.
+#[cfg(unix)]
+#[tokio::test]
+async fn nix_store_gc_runs_after_system_profile_prune_on_nixos_layout() {
+    let _fixture_exec = fixture_exec_guard();
+    let root = unique_test_home("nix_sysgc");
+    fs::create_dir_all(&root).expect("create temp dir");
+
+    // A NixOS-style system profile: seven generation links, generation 7 is
+    // the booted one (/run/current-system resolves to the same store path).
+    let profiles = root.join("profiles");
+    fs::create_dir_all(&profiles).expect("profiles dir");
+    for generation in 1..=7u32 {
+        let store_path = root.join(format!("store-{generation}"));
+        fs::write(&store_path, b"").expect("store fixture");
+        std::os::unix::fs::symlink(
+            &store_path,
+            profiles.join(format!("system-{generation}-link")),
+        )
+        .expect("generation link");
+    }
+    let run_root = root.join("run");
+    fs::create_dir_all(&run_root).expect("run dir");
+    std::os::unix::fs::symlink(root.join("store-7"), run_root.join("current-system"))
+        .expect("current-system");
+
+    let log = root.join("calls.log");
+    let quoted_log = test_shell_quote(log.to_str().expect("log path"));
+    let nix_env = root.join("nix-env");
+    let nix_gc = root.join("nix-collect-garbage");
+    write_test_script(
+        &nix_env,
+        &format!(
+            r#"if [ "$1" = "--list-generations" ]; then
+    echo "nix-env:$*" >> {quoted_log}
+    for i in 1 2 3 4 5 6; do echo "  $i 2026-10-01"; done
+    echo "  7 2026-10-01   (current)"
+elif [ "$1" = "--delete-generations" ]; then
+    for arg in "$@"; do echo "nix-env-arg:$arg" >> {quoted_log}; done
+    # The system profile is root-owned: its prune carries -p and fails.
+    for arg in "$@"; do
+        if [ "$arg" = "-p" ]; then
+            echo 'cannot lock profile (needs root)' >&2
+            exit 1
+        fi
+    done
+fi
+exit 0"#
+        ),
+    );
+    write_test_script(
+        &nix_gc,
+        &format!(
+            r#"echo "nix-gc:$*" >> {quoted_log}
+echo 'deleting /nix/store/abc'
+exit 0"#
+        ),
+    );
+
+    let (_bytes, cleaned) =
+        clean_nix_garbage_impl(5, true, &nix_env, &nix_gc, 300, &profiles, &run_root)
+            .await
+            .expect("store GC must survive the root-blocked system prune");
+    assert_eq!(
+        cleaned.len(),
+        1,
+        "GC results must survive the system-profile prune failure"
+    );
+
+    let calls = fs::read_to_string(&log).expect("read command log");
+    let lines: Vec<&str> = calls.lines().collect();
+    assert!(
+        lines.contains(&"nix-env-arg:-p"),
+        "the fixture must actually exercise the system-profile spread branch; got {lines:?}"
+    );
+    assert_eq!(
+        lines.last().copied(),
+        Some("nix-gc:"),
+        "store GC must run AFTER the system-profile prune attempt; got {lines:?}"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn critical_tier_bypass_cleans_fresh_target() {
