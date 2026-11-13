@@ -232,7 +232,7 @@ pub(crate) fn classify_evidence(
     };
     let age = now
         .duration_since(last_activity)
-        .unwrap_or_else(|_| Duration::ZERO);
+        .unwrap_or(Duration::ZERO);
     if age.as_secs() < idle_window_secs {
         return SessionState::Active;
     }
@@ -413,7 +413,7 @@ pub(crate) fn retirement_candidates(
         };
         let age = now
             .duration_since(last_activity)
-            .unwrap_or_else(|_| Duration::ZERO);
+            .unwrap_or(Duration::ZERO);
         if age.as_secs() < idle_window_secs {
             continue;
         }
@@ -465,7 +465,7 @@ pub(crate) fn verify_retirement(
         Some(newest) => {
             let age = now
                 .duration_since(newest)
-                .unwrap_or_else(|_| Duration::ZERO);
+                .unwrap_or(Duration::ZERO);
             age.as_secs() >= idle_window_secs
         }
         // The activity files vanished between the scan and the signal.
