@@ -654,6 +654,11 @@ pub(crate) struct GuardReport {
     /// idle-retirement rule (empty unless `retire_idle_agent_sessions` is
     /// set). Each row names the evidence that qualified it.
     retired_sessions: Vec<RetiredSession>,
+    /// ADDED 2026-11-13: the agent-session fleet this pass, with the
+    /// per-session classification. The fleet-aware exemption is only
+    /// auditable if the operator can SEE which sessions kept the pass and
+    /// which gave it up.
+    session_fleet: SessionFleetReport,
     /// ADDED 2026-08-10 (v0.112.35): sustained disk fill rate (GiB/hour).
     disk_fill_gbph: Option<f64>,
     /// ADDED 2026-10-27 (wrong-swap check): human-readable wrong-swap
@@ -717,6 +722,32 @@ pub(crate) struct MemoryReport {
     /// orphan the guard is leaving alone is exactly what the operator needs
     /// to see; the old code skipped such trees SILENTLY.
     pub(crate) protected_trees: Vec<ProtectedTree>,
+}
+
+/// The agent-session fleet as the guard sees it this pass.
+///
+/// The fleet-aware exemption is a POLICY, and a policy nobody can see is
+/// a policy nobody can audit: the operator has to be able to answer "which
+/// of my sessions still holds the blanket pass, and why?" without reading
+/// the source.
+#[derive(Debug, Default, Serialize)]
+pub(crate) struct SessionFleetReport {
+    /// The executable names that count as agent sessions.
+    pub(crate) names: Vec<String>,
+    /// How many sessions were observed.
+    pub(crate) total: usize,
+    /// How many are demonstrably active.
+    pub(crate) active: usize,
+    /// How many are demonstrably idle.
+    pub(crate) idle: usize,
+    /// How many could not be measured (treated as active everywhere).
+    pub(crate) unknown: usize,
+    /// The fleet bound above which the exemption narrows.
+    pub(crate) max_active_sessions: usize,
+    /// Whether the fleet is currently over its bound.
+    pub(crate) over_bound: bool,
+    /// How many sessions still hold the blanket exemption.
+    pub(crate) exempt: usize,
 }
 
 /// A zombie (defunct) process with context useful for diagnosis.
@@ -1350,6 +1381,9 @@ pub(crate) struct GuardRuntimeState {
     pub(crate) session_observations: Vec<SessionObservation>,
     /// ADDED 2026-11-13: the per-session classification this pass.
     pub(crate) session_states: HashMap<i32, SessionState>,
+    /// ADDED 2026-11-13: the fleet summary the guard REPORT carries, so
+    /// the fleet-aware exemption is visible to the operator.
+    pub(crate) session_fleet: SessionFleetReport,
     /// ADDED 2026-08-30 (memory-leak fix): bounded retry counters for the
     /// unrenice loops. The loops used to `continue` forever on
     /// ProcessIdentityStatus::Unavailable or a failed renice, never
@@ -8147,6 +8181,30 @@ fn refresh_session_fleet(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
     let exempt_names = sorted_signatures(&guard.process_exempt_names);
     let keep = exemption_pids(&policy, &exempt_names, &observations, &states);
     state.session_exempt_pids = keep.into_iter().collect();
+
+    // The fleet summary is part of the REPORT, not just internal state:
+    // the fleet-aware exemption is a policy, and the operator has to be
+    // able to see which sessions hold the blanket pass and why.
+    let mut active = 0usize;
+    let mut idle = 0usize;
+    let mut unknown = 0usize;
+    for observation in &observations {
+        match states.get(&observation.pid).copied() {
+            Some(SessionState::Active) => active += 1,
+            Some(SessionState::Idle) => idle += 1,
+            _ => unknown += 1,
+        }
+    }
+    state.session_fleet = SessionFleetReport {
+        names: policy.session_names.clone(),
+        total: observations.len(),
+        active,
+        idle,
+        unknown,
+        max_active_sessions: policy.max_active_sessions,
+        over_bound: observations.len() > policy.max_active_sessions,
+        exempt: state.session_exempt_pids.len(),
+    };
     state.session_observations = observations;
     state.session_states = states;
 }
@@ -11504,6 +11562,7 @@ pub(crate) async fn run_guard_once(
         reap_candidates,
         reaped,
         retired_sessions,
+        session_fleet: state.session_fleet.clone(),
         disk_fill_gbph: fill_gbph,
         swap_issues,
     };
