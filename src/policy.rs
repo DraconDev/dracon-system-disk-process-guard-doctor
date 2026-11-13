@@ -144,10 +144,6 @@ pub(crate) struct GuardPolicy {
     /// naming each session's transcript). Tilde-expanded.
     #[serde(default = "default_session_registry_dir")]
     pub(crate) session_registry_dir: String,
-    /// Roots whose `.pi-glla/active.jsonl` ledger counts as session
-    /// activity. Comma-separated.
-    #[serde(default = "default_session_ledger_roots")]
-    pub(crate) session_ledger_roots: String,
     /// Destructive opt-in (default false): retire agent sessions that are
     /// demonstrably idle (no CPU accrual across the idle window and no
     /// ledger/transcript write within it). Sessions that are active, or
@@ -604,7 +600,6 @@ impl Default for GuardPolicy {
             session_idle_window_secs: default_session_idle_window_secs(),
             max_active_sessions: default_max_active_sessions(),
             session_registry_dir: default_session_registry_dir(),
-            session_ledger_roots: default_session_ledger_roots(),
             retire_idle_agent_sessions: false,
             notify: default_true(),
             notify_command: default_notify_command(),
@@ -951,12 +946,6 @@ pub(crate) fn default_max_active_sessions() -> usize {
 
 pub(crate) fn default_session_registry_dir() -> String {
     "~/.pi/agent/.session-retention-active".to_string()
-}
-
-pub(crate) fn default_session_ledger_roots() -> String {
-    // Empty by default: a host without GLLA has no ledger to read, and an
-    // unset root must not make every session look idle.
-    String::new()
 }
 
 pub(crate) fn default_process_exempt_names() -> String {
