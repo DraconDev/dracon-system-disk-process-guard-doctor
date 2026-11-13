@@ -303,13 +303,14 @@ fn an_all_idle_over_bound_fleet_gives_up_the_blanket_exemption() {
         .map(|o| (o.pid, SessionState::Idle))
         .collect();
     let keep = exemption_pids(&policy, &["pi".to_string()], &observations, &states);
+    let configured = keep.is_some();
     let keep = keep.expect("the lifecycle IS configured");
     assert!(
         keep.is_empty(),
         "an all-idle over-bound fleet holds no exemption at all"
     );
     assert!(
-        keep.is_some(),
+        configured,
         "the configured lifecycle must not collapse into the unconfigured state"
     );
 }
