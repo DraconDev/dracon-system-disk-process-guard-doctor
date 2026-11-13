@@ -228,7 +228,7 @@ fn small_fleet_keeps_the_blanket_exemption() {
         .map(|o| (o.pid, SessionState::Idle))
         .collect();
     let keep = exemption_pids(&policy, &["pi".to_string()], &observations, &states);
-    assert_eq!(keep.len(), 4, "a fleet within bounds keeps every pass");
+    assert_eq!(keep.map(|pids| pids.len()), Some(4), "a fleet within bounds keeps every pass");
 }
 
 /// Above the fleet bound, the idle sessions lose the exemption and the
@@ -252,10 +252,65 @@ fn oversized_fleet_narrows_the_exemption_to_active_sessions() {
     states.insert(103, SessionState::Idle);
     states.insert(104, SessionState::Idle);
     let keep = exemption_pids(&policy, &["pi".to_string()], &observations, &states);
+    let keep = keep.expect("the lifecycle is configured");
+    let mut keep: Vec<i32> = keep.into_iter().collect();
+    keep.sort_unstable();
     assert_eq!(
         keep,
         vec![100, 101, 102],
         "active and unmeasurable sessions keep the pass; idle ones give it up"
+    );
+}
+
+/// No lifecycle configured means the plain name-based exemption applies —
+/// and that state must be distinguishable from "configured, nobody holds
+/// the pass".
+#[test]
+fn no_lifecycle_configured_is_distinguishable_from_an_empty_pass_set() {
+    let policy = SessionPolicy {
+        session_names: vec![],
+        idle_window_secs: WINDOW,
+        max_active_sessions: 8,
+        registry_dir: PathBuf::new(),
+    };
+    let keep = exemption_pids(&policy, &["pi".to_string()], &[], &HashMap::new());
+    assert!(
+        keep.is_none(),
+        "an unconfigured lifecycle must be None, not an empty set"
+    );
+}
+
+/// REGRESSION (audit 2026-11-13, MED): an over-bound fleet whose sessions
+/// are ALL idle produces an empty pass set. That empty set means "no
+/// session holds the exemption" — it must NOT be read as "the lifecycle
+/// is not configured", which would restore the blanket per-name exemption
+/// over the whole fleet and re-create the incident's failure mode (the
+/// guard reporting a crisis it has no authority to act on).
+#[test]
+fn an_all_idle_over_bound_fleet_gives_up_the_blanket_exemption() {
+    let policy = SessionPolicy {
+        session_names: vec!["pi".to_string()],
+        idle_window_secs: WINDOW,
+        max_active_sessions: 8,
+        registry_dir: PathBuf::new(),
+    };
+    // 12 idle sessions, bound 8 -> over bound, and every one is idle.
+    let observations: Vec<SessionObservation> = (0..12)
+        .map(|i| observation(1000 + i, 10, Some(long_ago())))
+        .collect();
+    let states: HashMap<i32, SessionState> = observations
+        .iter()
+        .map(|o| (o.pid, SessionState::Idle))
+        .collect();
+    let keep = exemption_pids(&policy, &["pi".to_string()], &observations, &states);
+    let keep = keep.expect("the lifecycle IS configured");
+    assert!(
+        keep.is_empty(),
+        "an all-idle over-bound fleet holds no exemption at all"
+    );
+    assert!(
+        keep.is_some(),
+        "the configured lifecycle must not collapse into the unconfigured state"
     );
 }
 
@@ -271,7 +326,8 @@ fn unclassified_session_keeps_the_exemption() {
     };
     let observations = vec![observation(100, 10, Some(long_ago()))];
     let keep = exemption_pids(&policy, &["pi".to_string()], &observations, &HashMap::new());
-    assert_eq!(keep, vec![100]);
+    let keep = keep.expect("the lifecycle is configured");
+    assert!(keep.contains(&100));
 }
 
 // ---------------------------------------------------------------------------

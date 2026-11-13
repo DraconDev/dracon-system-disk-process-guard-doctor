@@ -646,6 +646,70 @@ fn exempt_consumer_footprint_groups_by_command() {
     );
 }
 
+/// REGRESSION (audit 2026-11-13, MED): the fleet-aware exemption must
+/// survive the "every session is idle" case.
+///
+/// Twelve parked sessions with a bound of eight is an over-bound fleet
+/// whose sessions are ALL idle, so the pass set is legitimately EMPTY.
+/// The consumer must read that empty set as "no session holds the
+/// exemption" — NOT as "no lifecycle configured". Reading it the old way
+/// restored the blanket per-name exemption over the whole fleet, which is
+/// the incident's own failure mode: the guard reports a crisis it has no
+/// authority to act on.
+#[test]
+fn an_all_idle_over_bound_fleet_is_reported_as_offenders_not_exempt_consumers() {
+    let sample = |pid: i32, command: &str, rss_mb: u64| ProcSample {
+        swap_mb: Some(0),
+        pid,
+        ppid: 1,
+        cpu_percent: 0.0,
+        rss_mb,
+        nice: 0,
+        command: command.to_string(),
+        args: String::new(),
+        starttime: pid as u64,
+    };
+    // 12 parked sessions, fleet bound 8 -> over bound, all idle.
+    let samples: Vec<ProcSample> = (0..12).map(|i| sample(1000 + i, "pi", 300)).collect();
+    let exempt: std::collections::HashSet<String> = ["pi".to_string()].into_iter().collect();
+
+    // The lifecycle IS configured and NO session holds the pass: the empty
+    // set, exactly as the producer computes it for an all-idle fleet.
+    let session_exempt_pids: std::collections::HashSet<i32> = std::collections::HashSet::new();
+
+    let (offenders, _) =
+        crate::memory_pressure_offenders_with_sessions(&samples, &exempt, Some(&session_exempt_pids));
+    assert_eq!(
+        offenders.len(),
+        12,
+        "an all-idle over-bound fleet must be mitigation candidates, not exempt"
+    );
+
+    let exempt_rows = crate::exempt_consumer_footprint_with_sessions(
+        &samples,
+        &exempt,
+        Some(&session_exempt_pids),
+    );
+    assert!(
+        exempt_rows.is_empty(),
+        "a session that gave up its pass must not be reported as an exempt consumer"
+    );
+
+    // The UNCONFIGURED lifecycle is a different state and keeps the plain
+    // name-based behaviour: the sessions stay exempt.
+    let (offenders, _) = crate::memory_pressure_offenders_with_sessions(&samples, &exempt, None);
+    assert!(
+        offenders.is_empty(),
+        "without a lifecycle the name-based exemption applies unchanged"
+    );
+    let exempt_rows = crate::exempt_consumer_footprint_with_sessions(&samples, &exempt, None);
+    assert_eq!(
+        exempt_rows.len(),
+        1,
+        "without a lifecycle the exempt consumer is still reported"
+    );
+}
+
 /// warn and critical are the same CLASS; ok is its own class.
 #[test]
 fn memory_pressure_class_collapses_warn_and_critical() {
