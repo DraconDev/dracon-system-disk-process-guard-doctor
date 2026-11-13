@@ -455,6 +455,13 @@ pub(crate) fn verify_retirement(
     if fields.starttime != candidate.starttime {
         return false;
     }
+    // A session with a controlling terminal is INTERACTIVE: the operator
+    // can see it, so it is theirs to close. Every other reap path in the
+    // guard requires tty == 0 for the same reason, and the retirement
+    // path must not be the one that forgets it.
+    if fields.tty_nr != 0 {
+        return false;
+    }
     // The session must not have accrued CPU since the scan.
     if fields.cpu_ticks > candidate.cpu_ticks {
         return false;
