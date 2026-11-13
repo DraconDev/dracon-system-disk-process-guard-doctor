@@ -320,7 +320,6 @@ impl SessionTracker {
             };
 
             let tracked = self.sessions.get_mut(pid);
-            let mut last_accrual = 0u64;
             match tracked {
                 // A recycled PID is a different process: the old streak
                 // says nothing about it.
@@ -332,13 +331,13 @@ impl SessionTracker {
                     entry.observation = observation.clone();
                 }
                 Some(entry) => {
-                    last_accrual = cpu_ticks.saturating_sub(entry.previous_cpu_ticks);
-                    if last_accrual > 0 {
+                    let accrued = cpu_ticks.saturating_sub(entry.previous_cpu_ticks);
+                    if accrued > 0 {
                         // The session did work: the no-CPU streak restarts.
                         entry.idle_since = now_instant;
                     }
                     entry.previous_cpu_ticks = *cpu_ticks;
-                    entry.last_accrual = last_accrual;
+                    entry.last_accrual = accrued;
                     entry.observation = observation.clone();
                 }
                 None => {
