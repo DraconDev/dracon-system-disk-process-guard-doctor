@@ -278,7 +278,8 @@ fn unclassified_session_keeps_the_exemption() {
 // retirement_candidates -- the selection
 // ---------------------------------------------------------------------------
 
-/// Only idle sessions are retirement candidates.
+/// Only idle sessions are retirement candidates, and only once the fleet
+/// has passed its bound.
 #[test]
 fn only_idle_sessions_are_retirement_candidates() {
     let observations = vec![
@@ -290,9 +291,24 @@ fn only_idle_sessions_are_retirement_candidates() {
     states.insert(100, SessionState::Idle);
     states.insert(101, SessionState::Active);
     states.insert(102, SessionState::Unknown);
-    let candidates = retirement_candidates(&observations, &states, WINDOW, now());
+    let candidates = retirement_candidates(&observations, &states, WINDOW, now(), true);
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0].pid, 100);
+}
+
+/// A fleet WITHIN its bound never retires anything: one parked session in
+/// a small fleet is the surprising case — the operator opens a session,
+/// leaves it overnight, and must not find it gone.
+#[test]
+fn a_fleet_within_its_bound_retires_nothing() {
+    let observations = vec![observation(100, 10, Some(long_ago()))];
+    let mut states = HashMap::new();
+    states.insert(100, SessionState::Idle);
+    let candidates = retirement_candidates(&observations, &states, WINDOW, now(), false);
+    assert!(
+        candidates.is_empty(),
+        "an individual session keeps its protection while the fleet is within bounds"
+    );
 }
 
 /// The activity window is re-applied at selection time, so a caller
@@ -302,7 +318,7 @@ fn selection_reapplies_the_activity_window() {
     let observations = vec![observation(100, 10, Some(now() - Duration::from_secs(30)))];
     let mut states = HashMap::new();
     states.insert(100, SessionState::Idle);
-    let candidates = retirement_candidates(&observations, &states, WINDOW, now());
+    let candidates = retirement_candidates(&observations, &states, WINDOW, now(), true);
     assert!(
         candidates.is_empty(),
         "a recently-written session is not retirable even if the state says idle"
@@ -448,12 +464,13 @@ fn the_guard_never_signals_itself() {
     ));
 }
 
-/// A session with a controlling terminal is INTERACTIVE — the operator can
-/// see it, so it is theirs to close. Every other reap path in the guard
-/// requires tty == 0 for the same reason, and the retirement path must
-/// not be the one that forgets it.
+/// A terminal-attached session is NOT disqualified outright. The
+/// transcript IS the terminal-activity record, so a session whose
+/// transcript has been silent for the whole idle window, while its fleet
+/// is over its bound, is retirable — that is what makes the fleet
+/// boundable at all.
 #[test]
-fn a_tty_attached_session_is_never_retired() {
+fn a_terminal_attached_session_is_retirable_when_the_fleet_is_over_bound() {
     let fixture = Fixture::new("tty");
     let transcript = fixture.transcript("transcript.jsonl", 10 * WINDOW);
     // tty_nr = 34842, as a real interactive pane reports.
@@ -466,12 +483,10 @@ fn a_tty_attached_session_is_never_retired() {
         idle_secs: 10 * WINDOW,
         activity_files: vec![transcript],
     };
-    assert!(!verify_retirement(
-        &fixture.root,
-        &candidate,
-        WINDOW,
-        now()
-    ));
+    assert!(
+        verify_retirement(&fixture.root, &candidate, WINDOW, now()),
+        "a silent, CPU-idle session is retirable when the fleet is over its bound"
+    );
 }
 
 // ---------------------------------------------------------------------------
