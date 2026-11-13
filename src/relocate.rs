@@ -140,7 +140,9 @@ pub(crate) fn copy_tree(src: &Path, dst: &Path) -> Result<u64> {
                 .metadata()
                 .map_err(anyhow::Error::from)
                 .and_then(|m| m.modified().map_err(anyhow::Error::from))
-                .map_err(|e| anyhow::anyhow!("cannot read mtime of {}: {e}", entry.path().display()))?;
+                .map_err(|e| {
+                    anyhow::anyhow!("cannot read mtime of {}: {e}", entry.path().display())
+                })?;
             fs::OpenOptions::new()
                 .write(true)
                 .open(&target)
@@ -346,19 +348,17 @@ pub(crate) fn link_safety_with(path: &Path, git_bin: &str) -> Result<LinkSafety>
         .arg(parent)
         .args(["rev-parse", "--show-toplevel"])
         .output()
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "cannot run git rev-parse for {}: {e}",
-                parent.display()
-            )
-        })?;
+        .map_err(|e| anyhow::anyhow!("cannot run git rev-parse for {}: {e}", parent.display()))?;
     // rev-parse ran and failed → not a work tree → nothing to expose.
     if !probe.status.success() {
         return Ok(LinkSafety::NotInWorkTree);
     }
     let root_text = String::from_utf8_lossy(&probe.stdout).trim().to_string();
     if root_text.is_empty() {
-        anyhow::bail!("git reported an empty work-tree root for {}", parent.display());
+        anyhow::bail!(
+            "git reported an empty work-tree root for {}",
+            parent.display()
+        );
     }
 
     // `--no-index` makes check-ignore answer for a path git does not track.
@@ -370,9 +370,7 @@ pub(crate) fn link_safety_with(path: &Path, git_bin: &str) -> Result<LinkSafety>
         .args(["check-ignore", "--no-index", "-v"])
         .arg(path)
         .output()
-        .map_err(|e| {
-            anyhow::anyhow!("cannot run git check-ignore for {}: {e}", path.display())
-        })?;
+        .map_err(|e| anyhow::anyhow!("cannot run git check-ignore for {}: {e}", path.display()))?;
     match check.status.code() {
         Some(0) => {}
         Some(1) => return Ok(LinkSafety::ExposedAsSymlink),
@@ -382,7 +380,9 @@ pub(crate) fn link_safety_with(path: &Path, git_bin: &str) -> Result<LinkSafety>
             String::from_utf8_lossy(&check.stderr).trim()
         ),
     }
-    let line = String::from_utf8_lossy(&check.stdout).trim_end().to_string();
+    let line = String::from_utf8_lossy(&check.stdout)
+        .trim_end()
+        .to_string();
     let Some(pattern) = ignore_pattern_of(&line) else {
         // Ignored, but the source line could not be parsed: unknown whether the
         // rule survives the swap, so refuse rather than guess.
@@ -441,13 +441,17 @@ fn swapped_still_ignored(git_bin: &str, repo_root: &str, target: &Path) -> Resul
             aside.display()
         );
     }
-    fs::rename(target, &aside)
-        .map_err(|e| anyhow::anyhow!("cannot stage {} for the swap probe: {e}", target.display()))?;
+    fs::rename(target, &aside).map_err(|e| {
+        anyhow::anyhow!("cannot stage {} for the swap probe: {e}", target.display())
+    })?;
     let probe_result = (|| -> Result<bool> {
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(&aside, target).map_err(|e| {
-                anyhow::anyhow!("cannot create the probe symlink for {}: {e}", target.display())
+                anyhow::anyhow!(
+                    "cannot create the probe symlink for {}: {e}",
+                    target.display()
+                )
             })?;
         }
         #[cfg(not(unix))]
@@ -688,10 +692,7 @@ pub(crate) fn post_swap_exposure(after_swap: &Path) -> Result<Option<String>> {
 /// Uses `git status --porcelain -- <path>` rather than `check-ignore`, so the
 /// verdict is the INDEX's opinion (what the daemon would actually stage) and
 /// also catches a path that is ignored-but-staged.
-pub(crate) fn post_swap_exposure_with(
-    after_swap: &Path,
-    git_bin: &str,
-) -> Result<Option<String>> {
+pub(crate) fn post_swap_exposure_with(after_swap: &Path, git_bin: &str) -> Result<Option<String>> {
     let parent = after_swap.parent().unwrap_or_else(|| Path::new("/"));
     let probe = match Command::new(git_bin)
         .arg("-C")
@@ -716,9 +717,7 @@ pub(crate) fn post_swap_exposure_with(
         .args(["--no-optional-locks", "status", "--porcelain", "--"])
         .arg(after_swap)
         .output()
-        .map_err(|e| {
-            anyhow::anyhow!("cannot run git status for {}: {e}", after_swap.display())
-        })?;
+        .map_err(|e| anyhow::anyhow!("cannot run git status for {}: {e}", after_swap.display()))?;
     if !status.status.success() {
         return Err(anyhow::anyhow!(
             "git status failed for {}: {}",
@@ -840,7 +839,12 @@ pub(crate) fn verify_staging_matches_copy(staging: &Path, dest: &Path) -> Result
         )
         .collect();
     changed.sort();
-    let shown = changed.iter().take(5).cloned().collect::<Vec<_>>().join(", ");
+    let shown = changed
+        .iter()
+        .take(5)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
     anyhow::bail!(
         "the source changed while it was being copied ({} file(s) differ: {shown})",
         changed.len()
@@ -1001,7 +1005,12 @@ pub(crate) fn apply_relocate_with(
     };
     if let Some(exposure) = exposure {
         let restore = fs::remove_file(source)
-            .map_err(|e| anyhow::anyhow!("cannot remove the exposed symlink {}: {e}", source.display()))
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "cannot remove the exposed symlink {}: {e}",
+                    source.display()
+                )
+            })
             .and_then(|()| {
                 fs::rename(&staging, source).map_err(|e| {
                     anyhow::anyhow!(
@@ -1262,8 +1271,8 @@ fn source_manifest_matches(a: &Path, b: &Path) -> Result<bool> {
     fn manifest(root: &Path) -> Result<HashMap<String, u64>> {
         let mut map = HashMap::new();
         for entry in walkdir::WalkDir::new(root).follow_links(false) {
-            let entry = entry
-                .map_err(|e| anyhow::anyhow!("cannot walk {}: {e}", root.display()))?;
+            let entry =
+                entry.map_err(|e| anyhow::anyhow!("cannot walk {}: {e}", root.display()))?;
             if !entry.file_type().is_file() {
                 continue;
             }
@@ -1318,7 +1327,10 @@ pub(crate) fn find_already_cold_trees(
             }
             // Never report a tree that is not `canonical`-comparable, and
             // never report one that is already a link (it IS the cold copy).
-            if fs::symlink_metadata(&dir).map(|m| m.file_type().is_symlink()).unwrap_or(true) {
+            if fs::symlink_metadata(&dir)
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(true)
+            {
                 continue;
             }
             if !already_cold_under(&dir, cold_root).unwrap_or(false) {

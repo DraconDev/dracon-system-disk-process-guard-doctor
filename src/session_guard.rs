@@ -262,9 +262,7 @@ pub(crate) fn classify_evidence(
     let Some(last_activity) = evidence.last_activity else {
         return SessionState::Unknown;
     };
-    let age = now
-        .duration_since(last_activity)
-        .unwrap_or(Duration::ZERO);
+    let age = now.duration_since(last_activity).unwrap_or(Duration::ZERO);
     if age.as_secs() < idle_window_secs {
         // It wrote recently: alive, even if its CPU is idle.
         return SessionState::Active;
@@ -443,7 +441,10 @@ pub(crate) fn exemption_pids(
         if !exempt_names.iter().any(|n| n == &obs.comm) {
             continue;
         }
-        let state = states.get(&obs.pid).copied().unwrap_or(SessionState::Unknown);
+        let state = states
+            .get(&obs.pid)
+            .copied()
+            .unwrap_or(SessionState::Unknown);
         let keep = match state {
             SessionState::Active | SessionState::Unknown => true,
             SessionState::Idle => fleet_size <= policy.max_active_sessions,
@@ -485,9 +486,7 @@ pub(crate) fn retirement_candidates(
         let Some(last_activity) = obs.last_activity else {
             continue;
         };
-        let age = now
-            .duration_since(last_activity)
-            .unwrap_or(Duration::ZERO);
+        let age = now.duration_since(last_activity).unwrap_or(Duration::ZERO);
         if age.as_secs() < idle_window_secs {
             continue;
         }
@@ -537,9 +536,7 @@ pub(crate) fn verify_retirement(
     // the scan means the session woke up.
     match newest_mtime(&candidate.activity_files) {
         Some(newest) => {
-            let age = now
-                .duration_since(newest)
-                .unwrap_or(Duration::ZERO);
+            let age = now.duration_since(newest).unwrap_or(Duration::ZERO);
             age.as_secs() >= idle_window_secs
         }
         // The activity files vanished between the scan and the signal.

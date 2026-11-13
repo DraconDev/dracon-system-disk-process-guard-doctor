@@ -1084,7 +1084,10 @@ fn the_executable_name_comes_from_the_exe_symlink_when_there_is_one() {
         600,
         1024,
     );
-    fx.exe_symlink(4242, "/nix/store/x/google-chrome/share/google/chrome/chrome");
+    fx.exe_symlink(
+        4242,
+        "/nix/store/x/google-chrome/share/google/chrome/chrome",
+    );
 
     let mut exempt = policy();
     exempt.exempt_names = vec!["chrome".to_string()];

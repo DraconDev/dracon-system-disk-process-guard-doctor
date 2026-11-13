@@ -524,7 +524,9 @@ fn build_tree(
     // The descendants, breadth-first, so each one knows how deep it sits.
     let mut handler_links: Vec<(i32, u32)> = Vec::new();
     for (pid, depth) in table.descendants(root_pid) {
-        let Some(entry) = table.get(pid) else { continue };
+        let Some(entry) = table.get(pid) else {
+            continue;
+        };
         if let Some(handler) = crashpad_handler_pid(&entry.args) {
             handler_links.push((handler, depth + 1));
         }
@@ -569,7 +571,8 @@ fn build_tree(
         if !parent_comm_is_systemd(proc_root, handler.ppid) {
             continue;
         }
-        if !browser_family_member(root, handler) && matches_exempt(&handler.exe, &policy.exempt_names)
+        if !browser_family_member(root, handler)
+            && matches_exempt(&handler.exe, &policy.exempt_names)
         {
             continue;
         }
@@ -689,8 +692,7 @@ pub(crate) fn scan_forgotten_orphan_trees(
         // the headless test browsers are the leak. The desktop veto
         // tells them apart exactly, so for a browser root the veto
         // decides and the name exemption does not apply.
-        if !browser_decides_by_veto(&entry.args)
-            && matches_exempt(&entry.exe, &policy.exempt_names)
+        if !browser_decides_by_veto(&entry.args) && matches_exempt(&entry.exe, &policy.exempt_names)
         {
             continue;
         }
@@ -712,7 +714,9 @@ pub(crate) fn scan_forgotten_orphan_trees(
         if claimed.contains(&root_pid) {
             continue;
         }
-        let Some(root) = table.get(root_pid) else { continue };
+        let Some(root) = table.get(root_pid) else {
+            continue;
+        };
         let verdict = classify_desktop_session(&root.args);
         let why = match verdict {
             DesktopVerdict::Test { why } => why,
@@ -739,7 +743,15 @@ pub(crate) fn scan_forgotten_orphan_trees(
                 // tree is reported only when it crosses the per-process
                 // floor. That bounds the report to genuinely heavy trees —
                 // on this host, one line for the operator's Chrome.
-                let tree = build_tree(proc_root, &table, root_pid, policy, boot_time, now, ticks_per_sec);
+                let tree = build_tree(
+                    proc_root,
+                    &table,
+                    root_pid,
+                    policy,
+                    boot_time,
+                    now,
+                    ticks_per_sec,
+                );
                 claimed.extend(tree.members.iter().map(|m| m.pid));
                 // A veto is only worth reporting when the tree is actually
                 // heavy: the operator wants to see that a heavy Chrome was
@@ -772,7 +784,15 @@ pub(crate) fn scan_forgotten_orphan_trees(
             DesktopVerdict::NotABrowser => continue,
         };
 
-        let tree = build_tree(proc_root, &table, root_pid, policy, boot_time, now, ticks_per_sec);
+        let tree = build_tree(
+            proc_root,
+            &table,
+            root_pid,
+            policy,
+            boot_time,
+            now,
+            ticks_per_sec,
+        );
         claimed.extend(tree.members.iter().map(|m| m.pid));
         if tree.aggregate_footprint_mb < tree_floor_mb
             && tree.root_footprint_mb < per_process_floor_mb

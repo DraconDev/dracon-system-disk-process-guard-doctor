@@ -447,13 +447,9 @@ pub(crate) fn resolve_entry_dir(root: &Path, name: &str) -> Result<PathBuf> {
     {
         anyhow::bail!("invalid stash entry name: {name}");
     }
-    let canon_root = root.canonicalize().map_err(|e| {
-        anyhow::anyhow!(
-            "cannot canonicalize stash root {}: {}",
-            root.display(),
-            e
-        )
-    })?;
+    let canon_root = root
+        .canonicalize()
+        .map_err(|e| anyhow::anyhow!("cannot canonicalize stash root {}: {}", root.display(), e))?;
     let entry_dir = canon_root.join(name);
     // symlink_metadata does not follow links: a smuggled symlink into an
     // entry-named path is refused here instead of being operated through.
@@ -480,11 +476,7 @@ pub(crate) fn resolve_entry_dir(root: &Path, name: &str) -> Result<PathBuf> {
 ///
 /// Dry-run unless `apply`, and it reports the size it would reclaim so the
 /// operator sees what they are about to give up before giving it up.
-pub(crate) fn stash_purge(
-    root: &Path,
-    name: &str,
-    apply: bool,
-) -> Result<(String, u64, bool)> {
+pub(crate) fn stash_purge(root: &Path, name: &str, apply: bool) -> Result<(String, u64, bool)> {
     let entry_dir = resolve_entry_dir(root, name)?;
     let (files, bytes) = walk_stats(&entry_dir);
     let pinned = read_manifest(&entry_dir).is_none();

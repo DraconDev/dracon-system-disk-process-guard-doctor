@@ -4,11 +4,7 @@ use super::*;
 use std::fs;
 
 fn test_root(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "dracon-stash-test-{}-{}",
-        std::process::id(),
-        name
-    ))
+    std::env::temp_dir().join(format!("dracon-stash-test-{}-{}", std::process::id(), name))
 }
 
 fn fixture_dir(root: &Path) -> PathBuf {
@@ -74,10 +70,7 @@ fn stash_preserves_reserved_symlinks_and_their_targets() {
         }
         symlink(&outside, src.join(".stash.json")).unwrap();
         assert!(crate::stash_move(&src, &temp.path().join("q"), &[]).is_err());
-        assert_eq!(
-            fs::read_link(src.join(".stash.json")).unwrap(),
-            outside
-        );
+        assert_eq!(fs::read_link(src.join(".stash.json")).unwrap(), outside);
         if dangling {
             assert!(!outside.exists());
         } else {

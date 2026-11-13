@@ -25,9 +25,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use crate::disk_refs::{ProcSnapshot, ReferenceCapture};
-use crate::disk_tmp::{
-    find_oversized_logs, find_temp_cruft, LOG_ROOTS, TEMP_ROOTS,
-};
+use crate::disk_tmp::{find_oversized_logs, find_temp_cruft, LOG_ROOTS, TEMP_ROOTS};
 use crate::git_temp::{
     clean_git_temp_files, find_git_temp_files, git_owner_for, live_git_owners,
     repo_root_for_git_path,
@@ -279,11 +277,7 @@ impl DiskReport {
                 out.push('\n');
             }
             if shown < class_findings.len() {
-                let rest: u64 = class_findings
-                    .iter()
-                    .skip(shown)
-                    .map(|f| f.bytes)
-                    .sum();
+                let rest: u64 = class_findings.iter().skip(shown).map(|f| f.bytes).sum();
                 out.push_str(&format!(
                     "  … {} more path(s), {} (use --detail 0, or --json for all)\n",
                     class_findings.len() - shown,
@@ -430,7 +424,9 @@ pub(crate) struct CacheUser {
 /// "active npm operation detected" with no pid. The objective requires the
 /// owning PID, which is also what a human needs to decide whether to wait or
 /// stop the process.
-pub(crate) fn cache_users(proc_root: &Path) -> std::collections::BTreeMap<CacheFamily, Vec<CacheUser>> {
+pub(crate) fn cache_users(
+    proc_root: &Path,
+) -> std::collections::BTreeMap<CacheFamily, Vec<CacheUser>> {
     let mut users: std::collections::BTreeMap<CacheFamily, Vec<CacheUser>> =
         std::collections::BTreeMap::new();
     let Ok(entries) = std::fs::read_dir(proc_root) else {
@@ -478,7 +474,10 @@ pub(crate) fn describe_cache_users(users: &[CacheUser]) -> Option<String> {
     // still shows a pid, so the owning PID is always present.
     let mut by_name: std::collections::BTreeMap<&str, Vec<u32>> = std::collections::BTreeMap::new();
     for user in users {
-        by_name.entry(user.name.as_str()).or_default().push(user.pid);
+        by_name
+            .entry(user.name.as_str())
+            .or_default()
+            .push(user.pid);
     }
     let rendered: Vec<String> = by_name
         .iter()
@@ -574,9 +573,7 @@ pub(crate) fn audit(
     // Only walk the classes actually asked for. Filtering findings AFTER a full
     // scan made `--class git` slower than the whole audit, because the three
     // skipped classes were still walked.
-    let wanted = |class: TrashClass| {
-        selection.is_none_or(|selected| selected.contains(&class))
-    };
+    let wanted = |class: TrashClass| selection.is_none_or(|selected| selected.contains(&class));
     let mut report = DiskReport::default();
     // One /proc pass for the whole run: per-finding walks took >15 minutes on
     // a host with thousands of /tmp entries.
@@ -590,8 +587,9 @@ pub(crate) fn audit(
         for candidate in find_git_temp_files(root, 4) {
             git_found += 1;
             let references = snapshot.capture(&candidate.path);
-            let owner = repo_root_for_git_path(&candidate.path)
-                .and_then(|repo| git_owner_for(&owners, &repo).map(|o| format!("{}(pid {})", o.name, o.pid)));
+            let owner = repo_root_for_git_path(&candidate.path).and_then(|repo| {
+                git_owner_for(&owners, &repo).map(|o| format!("{}(pid {})", o.name, o.pid))
+            });
             let finding = if let Some(reason) = references.blocking_reason(&candidate.path) {
                 Finding::new(
                     TrashClass::GitTemp,
@@ -666,9 +664,7 @@ pub(crate) fn audit(
     let walk_floor = if e2e_patterns.is_empty() {
         options.tmp_min_age_hours
     } else {
-        options
-            .tmp_min_age_hours
-            .min(options.tmp_e2e_min_age_hours)
+        options.tmp_min_age_hours.min(options.tmp_e2e_min_age_hours)
     };
     let tmp_entries = if wanted(TrashClass::TempAndLogs) {
         find_temp_cruft(&TEMP_ROOTS, walk_floor, now)
@@ -717,8 +713,7 @@ pub(crate) fn audit(
         // tree (`tree_has_fresh_content`); the one-shot audit must not be a
         // weaker path to deletion, so it downgrades APPLY to REPORT and says
         // why. Files are their own content, so the gate only applies to dirs.
-        let live_churn = entry.is_dir
-            && tree_is_live_churn(entry.newest_content_age_hours, floor);
+        let live_churn = entry.is_dir && tree_is_live_churn(entry.newest_content_age_hours, floor);
         let finding = if let Some(reason) = references.blocking_reason(&entry.path) {
             Finding::new(
                 TrashClass::TempAndLogs,
@@ -843,9 +838,7 @@ pub(crate) fn audit(
         let outcome = check_swap_health(&expected, &dead_reported, &config_path);
         for wrong in outcome.wrong {
             tmp_found += 1;
-            report
-                .findings
-                .push(wrong_swap_finding(wrong, &expected));
+            report.findings.push(wrong_swap_finding(wrong, &expected));
         }
         for unref in outcome.unreferenced {
             // Already reported as a dead swapfile above: one finding per
@@ -924,7 +917,9 @@ pub(crate) fn audit(
             report.findings.push(finding.with_references(references));
         }
     } else {
-        report.incomplete.push("home directory unknown; cache scan skipped".to_string());
+        report
+            .incomplete
+            .push("home directory unknown; cache scan skipped".to_string());
     }
     if cache_found == 0 {
         report.empty_classes.push(TrashClass::CachesAndNix);
@@ -1168,10 +1163,8 @@ pub(crate) fn apply_with_floors(
         // that made the finding eligible. A finding with no known floor
         // FAILS CLOSED — the tree is kept.
         if std::fs::symlink_metadata(&finding.path).is_ok_and(|m| m.is_dir()) {
-            let (_, newest) = crate::disk_tmp::directory_bytes_and_age(
-                &finding.path,
-                SystemTime::now(),
-            );
+            let (_, newest) =
+                crate::disk_tmp::directory_bytes_and_age(&finding.path, SystemTime::now());
             let churn = match finding.qualifying_floor_hours {
                 Some(floor) => tree_is_live_churn(newest, floor),
                 // No floor known: cannot prove the tree is idle, so keep it.
@@ -1182,8 +1175,10 @@ pub(crate) fn apply_with_floors(
                 skipped.disposition = Disposition::Report;
                 let content_note = match newest {
                     Some(age) => format!("newest nested content is {age}h old"),
-                    None => "nested content is unreadable (permissions) — cannot prove the tree is idle"
-                        .to_string(),
+                    None => {
+                        "nested content is unreadable (permissions) — cannot prove the tree is idle"
+                            .to_string()
+                    }
                 };
                 let floor_text = finding
                     .qualifying_floor_hours
@@ -1199,9 +1194,7 @@ pub(crate) fn apply_with_floors(
         }
         let record = DeletedRecord::from_finding(&finding).with_references(&fresh);
         let bytes = finding.bytes;
-        let result = if std::fs::symlink_metadata(&finding.path)
-            .is_ok_and(|m| m.is_dir())
-        {
+        let result = if std::fs::symlink_metadata(&finding.path).is_ok_and(|m| m.is_dir()) {
             std::fs::remove_dir_all(&finding.path)
         } else {
             std::fs::remove_file(&finding.path)
@@ -1429,8 +1422,7 @@ mod disk_tests {
 
     #[test]
     fn e2e_names_use_the_short_floor_while_plain_names_use_the_general_floor() {
-        let patterns =
-            crate::parse_tmp_e2e_patterns(&crate::policy::default_tmp_e2e_patterns());
+        let patterns = crate::parse_tmp_e2e_patterns(&crate::policy::default_tmp_e2e_patterns());
         // e2e litter between the two floors is cruft under the short floor.
         assert_eq!(
             tmp_cruft_floor("ai-tts-pro-eval-InAhom", 7, &patterns, 24, 6),
@@ -1458,23 +1450,16 @@ mod disk_tests {
         // never claim "fast path" for an entry that was actually held back.
         let patterns = crate::parse_tmp_e2e_patterns("iso-route");
         assert_eq!(tmp_cruft_floor("iso-route", 7, &patterns, 6, 24), None);
-        assert_eq!(
-            tmp_cruft_floor("iso-route", 25, &patterns, 6, 24),
-            Some(24)
-        );
+        assert_eq!(tmp_cruft_floor("iso-route", 25, &patterns, 6, 24), Some(24));
         // A non-matching name still follows the (lower) general floor.
         assert_eq!(tmp_cruft_floor("plain", 7, &patterns, 6, 24), Some(6));
         // And equal floors never render as a distinct fast path.
-        assert_eq!(
-            tmp_cruft_floor("iso-route", 7, &patterns, 6, 6),
-            Some(6)
-        );
+        assert_eq!(tmp_cruft_floor("iso-route", 7, &patterns, 6, 6), Some(6));
     }
 
     #[test]
     fn the_audit_observed_families_match_the_fast_path_patterns() {
-        let patterns =
-            crate::parse_tmp_e2e_patterns(&crate::policy::default_tmp_e2e_patterns());
+        let patterns = crate::parse_tmp_e2e_patterns(&crate::policy::default_tmp_e2e_patterns());
         // Every family the 2026-10-27 whole-system sweep found in /tmp.
         for name in [
             "ai-tts-decide-D6HJnh",
@@ -1500,18 +1485,12 @@ mod disk_tests {
 
     #[test]
     fn agent_tool_caches_are_scoped_to_cache_subdirs_never_the_dotdir() {
-        assert_eq!(
-            CacheFamily::CodexCache.relative_path(),
-            ".codex/cache"
-        );
+        assert_eq!(CacheFamily::CodexCache.relative_path(), ".codex/cache");
         assert_eq!(
             CacheFamily::CodexPluginsCache.relative_path(),
             ".codex/plugins/cache"
         );
-        assert_eq!(
-            CacheFamily::HermesCache.relative_path(),
-            ".hermes/cache"
-        );
+        assert_eq!(CacheFamily::HermesCache.relative_path(), ".hermes/cache");
         // Scoping proof: none of the new families may point at a bare
         // dotdir, which would put auth, backups, cron and hooks in range.
         for family in [
@@ -1549,8 +1528,7 @@ mod disk_tests {
         // ...but content written just now.
         std::fs::write(tree.join("fresh.bin"), b"live write").expect("write");
 
-        let (bytes, newest) =
-            crate::disk_tmp::directory_bytes_and_age(&tree, SystemTime::now());
+        let (bytes, newest) = crate::disk_tmp::directory_bytes_and_age(&tree, SystemTime::now());
         assert!(bytes > 0);
         assert_eq!(
             newest,
@@ -1572,8 +1550,7 @@ mod disk_tests {
             .expect("open")
             .set_modified(old_file)
             .expect("set mtime");
-        let (_, stale_newest) =
-            crate::disk_tmp::directory_bytes_and_age(&stale, SystemTime::now());
+        let (_, stale_newest) = crate::disk_tmp::directory_bytes_and_age(&stale, SystemTime::now());
         assert_eq!(stale_newest, Some(17));
         assert!(!tree_is_live_churn(stale_newest, 6));
     }
@@ -1585,9 +1562,15 @@ mod disk_tests {
             tree_is_live_churn(None, 6),
             "unknown content age must keep the tree, never authorize deletion"
         );
-        assert!(!tree_is_live_churn(Some(6), 6), "exactly at the floor is old");
+        assert!(
+            !tree_is_live_churn(Some(6), 6),
+            "exactly at the floor is old"
+        );
         assert!(tree_is_live_churn(Some(5), 6));
-        assert!(!tree_is_live_churn(Some(0), 0), "a zero floor disables the gate");
+        assert!(
+            !tree_is_live_churn(Some(0), 0),
+            "a zero floor disables the gate"
+        );
     }
 
     #[test]
@@ -1707,8 +1690,7 @@ mod disk_tests {
             })
             .with_qualifying_floor(24),
         );
-        let (freed_a, records_a) =
-            apply_with_floors(&mut general_report, Path::new("/proc"), 6);
+        let (freed_a, records_a) = apply_with_floors(&mut general_report, Path::new("/proc"), 6);
         assert_eq!(freed_a, 0, "24h-floor tree must not be deleted");
         assert!(records_a.is_empty());
         assert!(
@@ -1745,8 +1727,7 @@ mod disk_tests {
             })
             .with_qualifying_floor(6),
         );
-        let (freed_b, records_b) =
-            apply_with_floors(&mut e2e_report, Path::new("/proc"), 6);
+        let (freed_b, records_b) = apply_with_floors(&mut e2e_report, Path::new("/proc"), 6);
         assert_eq!(freed_b, 8, "6h-floor tree with 12h-old content is idle");
         assert_eq!(records_b.len(), 1);
         assert!(!e2e_tree.exists(), "the idle tree is removed");
@@ -1829,14 +1810,8 @@ mod disk_tests {
             .iter()
             .find(|e| e.path == general_tree)
             .expect("the tree is scanned");
-        let floor = tmp_cruft_floor(
-            "general-end-to-end",
-            entry.age_hours,
-            &patterns,
-            24,
-            6,
-        )
-        .expect("the tree clears the walk floor");
+        let floor = tmp_cruft_floor("general-end-to-end", entry.age_hours, &patterns, 24, 6)
+            .expect("the tree clears the walk floor");
         assert_eq!(floor, 24, "a non-pattern name uses the general floor");
         assert_eq!(entry.newest_content_age_hours, Some(30));
         assert!(

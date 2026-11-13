@@ -174,9 +174,7 @@ fn under_prefix(path: &Path, prefix: &str) -> bool {
     if path_str == trimmed {
         return true;
     }
-    if path_str.starts_with(trimmed)
-        && path_str.as_bytes().get(trimmed.len()) == Some(&b'/')
-    {
+    if path_str.starts_with(trimmed) && path_str.as_bytes().get(trimmed.len()) == Some(&b'/') {
         return true;
     }
     // Byte indexing above is safe: `starts_with` guarantees a char boundary.
@@ -377,19 +375,21 @@ pub(crate) fn nixos_swap_devices(config: &str) -> Vec<PathBuf> {
             i += 2;
             continue;
         }
-        if block[i..].starts_with("device")
-            && {
-                let before = block[..i].chars().next_back();
-                before.map(|c| !(c.is_alphanumeric() || c == '_' || c == '.')).unwrap_or(true)
-            }
-        {
+        if block[i..].starts_with("device") && {
+            let before = block[..i].chars().next_back();
+            before
+                .map(|c| !(c.is_alphanumeric() || c == '_' || c == '.'))
+                .unwrap_or(true)
+        } {
             let mut j = i + "device".len();
             while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t' || bytes[j] == b'\n') {
                 j += 1;
             }
             if j < bytes.len() && bytes[j] == b'=' {
                 j += 1;
-                while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t' || bytes[j] == b'\n') {
+                while j < bytes.len()
+                    && (bytes[j] == b' ' || bytes[j] == b'\t' || bytes[j] == b'\n')
+                {
                     j += 1;
                 }
                 if j < bytes.len() && bytes[j] == b'"' {
@@ -502,8 +502,7 @@ pub(crate) fn check_swap_references(
         .iter()
         .filter(|(path, _)| {
             // Device nodes are managed outside swapDevices.
-            !under_prefix(path, "/dev/")
-                && !config_devices.iter().any(|d| d == path)
+            !under_prefix(path, "/dev/") && !config_devices.iter().any(|d| d == path)
         })
         .map(|(path, bytes)| UnreferencedSwap {
             path: path.clone(),
@@ -584,9 +583,7 @@ pub(crate) fn check_swap_health(
         }
     }
     for entry in &table {
-        if !under_prefix(&entry.path, "/dev/")
-            && !on_disk.iter().any(|(p, _)| p == &entry.path)
-        {
+        if !under_prefix(&entry.path, "/dev/") && !on_disk.iter().any(|(p, _)| p == &entry.path) {
             let bytes = std::fs::metadata(&entry.path)
                 .map(|m| m.len())
                 .unwrap_or_else(|_| entry.size_kib.saturating_mul(1024));
@@ -639,7 +636,11 @@ pub(crate) fn evaluate_swap_health(
 ///
 /// `active` is the parsed `/proc/swaps` list. A file already listed there is
 /// live swap and is never reported, regardless of how it was named.
-pub(crate) fn classify_swapfile(path: &Path, bytes: u64, active: &[PathBuf]) -> Option<DeadSwapfile> {
+pub(crate) fn classify_swapfile(
+    path: &Path,
+    bytes: u64,
+    active: &[PathBuf],
+) -> Option<DeadSwapfile> {
     if active.iter().any(|a| a == path) {
         return None;
     }
@@ -718,9 +719,17 @@ fn group_in_current_groups(gid: u32) -> bool {
 ///
 /// `bytes` is the caller's already-measured allocated size, so a report can be
 /// produced from one bounded `du` walk rather than re-statting every file.
-pub(crate) fn classify_stray(path: &Path, name: &str, bytes: u64, is_dir: bool) -> Option<StrayItem> {
+pub(crate) fn classify_stray(
+    path: &Path,
+    name: &str,
+    bytes: u64,
+    is_dir: bool,
+) -> Option<StrayItem> {
     if !is_dir {
-        if BACKUP_ARCHIVE_SUFFIXES.iter().any(|suffix| name.ends_with(suffix)) {
+        if BACKUP_ARCHIVE_SUFFIXES
+            .iter()
+            .any(|suffix| name.ends_with(suffix))
+        {
             return Some(StrayItem {
                 path: path.to_path_buf(),
                 bytes,
@@ -736,7 +745,10 @@ pub(crate) fn classify_stray(path: &Path, name: &str, bytes: u64, is_dir: bool) 
             kind: StrayKind::BackupRepo,
         });
     }
-    if SCRATCH_DIR_MARKERS.iter().any(|marker| name.contains(marker)) {
+    if SCRATCH_DIR_MARKERS
+        .iter()
+        .any(|marker| name.contains(marker))
+    {
         return Some(StrayItem {
             path: path.to_path_buf(),
             bytes,
@@ -758,7 +770,10 @@ mod tests {
         let active = active_swap_paths(contents);
         assert_eq!(
             active,
-            vec![PathBuf::from("/dev/zram0"), PathBuf::from("/mnt/data/swapfile")]
+            vec![
+                PathBuf::from("/dev/zram0"),
+                PathBuf::from("/mnt/data/swapfile")
+            ]
         );
     }
 
@@ -820,7 +835,10 @@ mod tests {
     #[test]
     fn scratch_and_backup_directories_are_recognised() {
         let cases = [
-            ("hegemon-pre-filterrepo-backup-20260706.git", StrayKind::BackupRepo),
+            (
+                "hegemon-pre-filterrepo-backup-20260706.git",
+                StrayKind::BackupRepo,
+            ),
             ("dracon-platform-orphans", StrayKind::ScratchDir),
             ("dracon-lfs-proof", StrayKind::ScratchDir),
             ("eve-audit-new", StrayKind::ScratchDir),
@@ -848,7 +866,10 @@ mod tests {
         // active_swap_paths still returns just the paths.
         assert_eq!(
             active_swap_paths(contents),
-            vec![PathBuf::from("/dev/zram0"), PathBuf::from("/mnt/data/swapfile")]
+            vec![
+                PathBuf::from("/dev/zram0"),
+                PathBuf::from("/mnt/data/swapfile")
+            ]
         );
     }
 
@@ -987,7 +1008,10 @@ mod tests {
         let flagged = check_swap_references(&on_disk, &config, &active);
         assert_eq!(flagged.len(), 1);
         assert_eq!(flagged[0].path, PathBuf::from("/var/lib/swapfile"));
-        assert!(flagged[0].is_active, "active-but-unreferenced must be marked");
+        assert!(
+            flagged[0].is_active,
+            "active-but-unreferenced must be marked"
+        );
     }
 
     #[test]

@@ -10,9 +10,7 @@
 //! existed but did not.
 
 use super::forgotten::*;
-use crate::reap::{
-    cmdline_executable, matches_exempt, verify_forgotten_tree_for_reap, ReapPolicy,
-};
+use crate::reap::{cmdline_executable, matches_exempt, verify_forgotten_tree_for_reap, ReapPolicy};
 use std::fs;
 use std::path::PathBuf;
 
@@ -396,7 +394,10 @@ fn a_heavy_desktop_tree_is_vetoed_even_though_its_root_is_light() {
         4000,
         1,
         "chrome",
-        &["/nix/store/x/google-chrome/chrome", "--profile-directory=Default"],
+        &[
+            "/nix/store/x/google-chrome/chrome",
+            "--profile-directory=Default",
+        ],
         'S',
         0,
         1,
@@ -476,7 +477,10 @@ fn the_detached_crashpad_handler_is_part_of_the_tree() {
         5900,
         1,
         "chrome_crashpad_handler",
-        &["/nix/store/x/chromium/chrome_crashpad_handler", "--monitor-self"],
+        &[
+            "/nix/store/x/chromium/chrome_crashpad_handler",
+            "--monitor-self",
+        ],
         'S',
         0,
         1,

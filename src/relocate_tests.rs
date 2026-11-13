@@ -779,16 +779,10 @@ async fn node_modules_dry_run_deletes_nothing_and_leaves_the_tree_intact() {
     std::fs::create_dir_all(&stash).unwrap();
     assert!(nm.exists(), "fixture must exist before the run");
 
-    let outcome = clean_old_node_modules(
-        std::slice::from_ref(&root),
-        30,
-        false,
-        &[],
-        false,
-        &stash,
-    )
-    .await
-    .expect("dry run must not error");
+    let outcome =
+        clean_old_node_modules(std::slice::from_ref(&root), 30, false, &[], false, &stash)
+            .await
+            .expect("dry run must not error");
     let cleaned = outcome.cleaned;
 
     assert!(
@@ -807,23 +801,13 @@ async fn node_modules_stash_first_dry_run_also_deletes_nothing() {
     let stash = root.join("stash");
     std::fs::create_dir_all(&stash).unwrap();
 
-    let outcome = clean_old_node_modules(
-        std::slice::from_ref(&root),
-        30,
-        false,
-        &[],
-        true,
-        &stash,
-    )
-    .await
-    .expect("dry run must not error");
+    let outcome = clean_old_node_modules(std::slice::from_ref(&root), 30, false, &[], true, &stash)
+        .await
+        .expect("dry run must not error");
     let cleaned = outcome.cleaned;
 
     assert!(!cleaned.is_empty(), "must still report candidates");
-    assert!(
-        nm.exists(),
-        "stash-first dry run must not move anything"
-    );
+    assert!(nm.exists(), "stash-first dry run must not move anything");
     let entries: Vec<_> = std::fs::read_dir(&stash).unwrap().collect();
     assert!(
         entries.is_empty(),
@@ -982,7 +966,6 @@ async fn node_modules_absurd_max_age_does_not_overflow() {
     assert!(nm.exists(), "the tree must be left alone");
     let _ = std::fs::remove_dir_all(&root);
 }
-
 
 // ---------------------------------------------------------------------------
 // 2026-11-11 disk-full incident — link-safety and duplicate-tree regressions
@@ -1168,14 +1151,14 @@ fn second_identical_tree_is_reported_already_cold_not_as_a_candidate() {
     fs::create_dir_all(live.join("audio")).unwrap();
     fs::create_dir_all(cold.join("media").join("audio")).unwrap();
     fs::write(live.join("audio").join("a.mp3"), vec![3u8; 1_100_000]).unwrap();
-    fs::write(cold.join("media").join("audio").join("a.mp3"), vec![3u8; 1_100_000]).unwrap();
+    fs::write(
+        cold.join("media").join("audio").join("a.mp3"),
+        vec![3u8; 1_100_000],
+    )
+    .unwrap();
     touch_aged(&live, "20 days ago");
 
-    let report = crate::find_already_cold_trees(
-        std::slice::from_ref(&scan),
-        1024 * 1024,
-        &cold,
-    );
+    let report = crate::find_already_cold_trees(std::slice::from_ref(&scan), 1024 * 1024, &cold);
     assert_eq!(report.len(), 1, "exactly one duplicated tree: {report:?}");
     assert!(report[0].path.ends_with("media"));
     assert_eq!(report[0].files, 1);
@@ -1185,8 +1168,12 @@ fn second_identical_tree_is_reported_already_cold_not_as_a_candidate() {
     // With the cold root supplied the duplicate is dropped from the candidate
     // list; without it the old behaviour (a candidate) is reproduced, which is
     // what makes this a regression test rather than a tautology.
-    let (with_cold, reported_again) =
-        crate::find_cold_candidates_reporting_cold(std::slice::from_ref(&scan), 1024 * 1024, 14, Some(&cold));
+    let (with_cold, reported_again) = crate::find_cold_candidates_reporting_cold(
+        std::slice::from_ref(&scan),
+        1024 * 1024,
+        14,
+        Some(&cold),
+    );
     assert!(
         !with_cold.iter().any(|c| c.path.ends_with("media")),
         "an already-cold tree must not be reported as a candidate: {with_cold:?}"
@@ -1196,8 +1183,12 @@ fn second_identical_tree_is_reported_already_cold_not_as_a_candidate() {
         1,
         "the one pass must both screen duplicates AND report them: {reported_again:?}"
     );
-    let (without_cold, _) =
-        crate::find_cold_candidates_reporting_cold(std::slice::from_ref(&scan), 1024 * 1024, 14, None);
+    let (without_cold, _) = crate::find_cold_candidates_reporting_cold(
+        std::slice::from_ref(&scan),
+        1024 * 1024,
+        14,
+        None,
+    );
     assert!(
         without_cold.iter().any(|c| c.path.ends_with("media")),
         "sanity: without duplicate screening the tree IS a candidate: {without_cold:?}"
@@ -1225,10 +1216,11 @@ fn already_cold_requires_identical_manifests_not_just_matching_totals() {
         !crate::already_cold_under(&scan.join("pair"), &cold).expect("manifests are readable"),
         "differing per-file sizes must not read as already cold"
     );
-    assert!(crate::find_already_cold_trees(std::slice::from_ref(&scan), 1024 * 1024, &cold).is_empty());
+    assert!(
+        crate::find_already_cold_trees(std::slice::from_ref(&scan), 1024 * 1024, &cold).is_empty()
+    );
     cleanup(&root);
 }
-
 
 /// End-to-end behaviour of the real incident scenario on the LIVE policy shape:
 /// candidate trees under a scanned root, one of which is byte-identical to an
@@ -1286,7 +1278,10 @@ fn auto_relocate_pass_skips_the_duplicate_tree_instead_of_moving_it() {
         1,
         "the duplicate must be REPORTED as already cold: {already:?}"
     );
-    assert!(live.is_dir() && !live.is_symlink(), "the live tree stays put");
+    assert!(
+        live.is_dir() && !live.is_symlink(),
+        "the live tree stays put"
+    );
     std::env::remove_var("DRACON_SYSTEM_RELOCATION_STATE");
     let ledger = crate::load_relocation_records_at(&state_path);
     assert!(
@@ -1318,9 +1313,15 @@ fn apply_rolls_back_when_the_swap_cannot_be_verified() {
     let err = crate::apply_relocate_with(&plan, "/nonexistent/dracon-test-git", &|| {})
         .expect_err("an unverifiable swap must not succeed");
     let text = format!("{err:#}");
-    assert!(text.contains("ROLLED BACK"), "must report a rollback: {text}");
+    assert!(
+        text.contains("ROLLED BACK"),
+        "must report a rollback: {text}"
+    );
     let meta = fs::symlink_metadata(&src).unwrap();
-    assert!(meta.is_dir() && !meta.file_type().is_symlink(), "source restored as a real dir");
+    assert!(
+        meta.is_dir() && !meta.file_type().is_symlink(),
+        "source restored as a real dir"
+    );
     assert_eq!(fs::read(src.join("a.txt")).unwrap(), b"hello");
     assert!(!cold.join("src").exists(), "the cold copy must be removed");
     assert!(
@@ -1336,7 +1337,10 @@ fn assert_aborted_and_restored(root: &Path, src: &Path, cold: &Path, err: anyhow
     assert!(text.contains("changed while it was being copied"), "{text}");
     assert!(text.contains("ABORTED"), "{text}");
     let meta = fs::symlink_metadata(src).unwrap();
-    assert!(meta.is_dir() && !meta.file_type().is_symlink(), "source restored as a real dir");
+    assert!(
+        meta.is_dir() && !meta.file_type().is_symlink(),
+        "source restored as a real dir"
+    );
     assert!(!cold.join("src").exists(), "the stale copy must be removed");
     assert!(crate::find_stale_staging_dirs(&[root.to_path_buf()]).is_empty());
 }
@@ -1436,9 +1440,19 @@ fn already_cold_nesting_is_path_aware_not_string_prefix() {
     let report = crate::find_already_cold_trees(std::slice::from_ref(&scan), 1024 * 1024, &cold);
     let mut names: Vec<_> = report
         .iter()
-        .map(|t| Path::new(&t.path).file_name().unwrap().to_string_lossy().to_string())
+        .map(|t| {
+            Path::new(&t.path)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string()
+        })
         .collect();
     names.sort();
-    assert_eq!(names, ["media", "media2"], "both siblings must be reported: {report:?}");
+    assert_eq!(
+        names,
+        ["media", "media2"],
+        "both siblings must be reported: {report:?}"
+    );
     cleanup(&root);
 }

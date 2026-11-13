@@ -94,7 +94,11 @@ pub(crate) fn is_rotated_log_name(name: &str) -> bool {
     // app.log.1 / app.log.2.gz
     if lower.rsplit_once(".log").is_some_and(|(_, rest)| {
         let rest = rest.trim_end_matches(".gz").trim_end_matches(".xz");
-        !rest.is_empty() && rest.trim_start_matches('.').chars().all(|c| c.is_ascii_digit())
+        !rest.is_empty()
+            && rest
+                .trim_start_matches('.')
+                .chars()
+                .all(|c| c.is_ascii_digit())
     }) {
         return true;
     }
@@ -269,7 +273,6 @@ pub(crate) fn directory_bytes_and_age_parallel(
     out
 }
 
-
 /// Total allocated bytes of a directory tree, plus the age of its newest
 /// content — both from ONE walk, because a second walk over 200k entries was
 /// the single most expensive thing in the audit.
@@ -399,7 +402,13 @@ mod tmp_log_tests {
         let found = find_temp_cruft(&[root.to_str().expect("utf8")], 24, now());
         let names: Vec<String> = found
             .iter()
-            .map(|e| e.path.file_name().expect("name").to_string_lossy().into_owned())
+            .map(|e| {
+                e.path
+                    .file_name()
+                    .expect("name")
+                    .to_string_lossy()
+                    .into_owned()
+            })
             .collect();
         assert_eq!(names, vec!["old.txt".to_string()]);
         assert_eq!(found[0].bytes, 10);
@@ -416,7 +425,13 @@ mod tmp_log_tests {
         let found = find_temp_cruft(&[root.to_str().expect("utf8")], 1, now());
         let names: Vec<String> = found
             .iter()
-            .map(|e| e.path.file_name().expect("name").to_string_lossy().into_owned())
+            .map(|e| {
+                e.path
+                    .file_name()
+                    .expect("name")
+                    .to_string_lossy()
+                    .into_owned()
+            })
             .collect();
         assert_eq!(names, vec!["real.txt".to_string()]);
     }
@@ -448,7 +463,10 @@ mod tmp_log_tests {
         assert!(is_rotated_log_name("app.log.1"));
         assert!(is_rotated_log_name("app.log.2.gz"));
         assert!(is_rotated_log_name("app-20261026.log"));
-        assert!(!is_rotated_log_name("app.log"), "the live log is not rotated");
+        assert!(
+            !is_rotated_log_name("app.log"),
+            "the live log is not rotated"
+        );
         assert!(!is_rotated_log_name("notes.txt"));
     }
 
@@ -462,7 +480,13 @@ mod tmp_log_tests {
         let found = find_oversized_logs(&[root.to_str().expect("utf8")], 24, now());
         let names: Vec<String> = found
             .iter()
-            .map(|e| e.path.file_name().expect("name").to_string_lossy().into_owned())
+            .map(|e| {
+                e.path
+                    .file_name()
+                    .expect("name")
+                    .to_string_lossy()
+                    .into_owned()
+            })
             .collect();
         assert_eq!(
             names,
@@ -479,7 +503,8 @@ mod tmp_log_tests {
         let path = root.join("huge.log");
         std::fs::create_dir_all(root).expect("mkdir");
         let file = std::fs::File::create(&path).expect("create");
-        file.set_len(OVERSIZED_LOG_BYTES + 1).expect("sparse set_len");
+        file.set_len(OVERSIZED_LOG_BYTES + 1)
+            .expect("sparse set_len");
         drop(file);
 
         let found = find_oversized_logs(&[root.to_str().expect("utf8")], 24, now());

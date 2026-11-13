@@ -188,12 +188,7 @@ pub(crate) fn merged_by_pid(refs: &[ProcessRef]) -> Vec<ProcessRef> {
         .into_iter()
         .map(|(pid, (exe, cwd, mut fds))| {
             fds.sort_unstable();
-            ProcessRef {
-                pid,
-                exe,
-                cwd,
-                fds,
-            }
+            ProcessRef { pid, exe, cwd, fds }
         })
         .collect()
 }
@@ -249,12 +244,15 @@ impl ProcSnapshot {
                     });
             }
             if let Some(cwd) = &cwd {
-                index.entry(strip_deleted(cwd)).or_default().push(ProcessRef {
-                    pid,
-                    exe: exe.clone(),
-                    cwd: Some(cwd.clone()),
-                    fds: Vec::new(),
-                });
+                index
+                    .entry(strip_deleted(cwd))
+                    .or_default()
+                    .push(ProcessRef {
+                        pid,
+                        exe: exe.clone(),
+                        cwd: Some(cwd.clone()),
+                        fds: Vec::new(),
+                    });
             }
             let Ok(fd_entries) = std::fs::read_dir(dir.join("fd")) else {
                 continue;
@@ -364,12 +362,7 @@ pub(crate) fn capture_references(proc_root: &Path, target: &Path) -> ReferenceCa
                 .is_some_and(|cwd| cwd == target || cwd.starts_with(target))
             || !fds.is_empty();
         if relevant {
-            refs.push(ProcessRef {
-                pid,
-                exe,
-                cwd,
-                fds,
-            });
+            refs.push(ProcessRef { pid, exe, cwd, fds });
         }
     }
     refs.sort();
@@ -394,11 +387,7 @@ pub(crate) fn blocking_pids(capture: &ReferenceCapture, target: &Path) -> Vec<u3
 /// Render a capture as `BTreeMap`-friendly audit rows: `(pid, description)`.
 #[cfg(test)]
 pub(crate) fn audit_rows(capture: &ReferenceCapture) -> BTreeMap<u32, String> {
-    capture
-        .refs
-        .iter()
-        .map(|r| (r.pid, r.describe()))
-        .collect()
+    capture.refs.iter().map(|r| (r.pid, r.describe())).collect()
 }
 
 #[cfg(test)]

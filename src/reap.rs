@@ -488,7 +488,10 @@ pub(crate) fn scan_reap_candidates(
         if args.is_empty() {
             continue;
         }
-        if matches_exempt(&process_executable_name(&pid_dir, &cmdline_raw), &policy.exempt_names) {
+        if matches_exempt(
+            &process_executable_name(&pid_dir, &cmdline_raw),
+            &policy.exempt_names,
+        ) {
             continue;
         }
         let Some(signature) = matches_signature(&args, &policy.signatures) else {
@@ -598,7 +601,10 @@ pub(crate) fn verify_candidate_for_reap(
     if args.is_empty() {
         return false;
     }
-    if matches_exempt(&process_executable_name(&pid_dir, &cmdline_raw), &policy.exempt_names) {
+    if matches_exempt(
+        &process_executable_name(&pid_dir, &cmdline_raw),
+        &policy.exempt_names,
+    ) {
         return false;
     }
     matches_signature(&args, &policy.signatures).is_some()
@@ -817,7 +823,10 @@ pub(crate) fn verify_orphan_for_reap(
     if args.is_empty() {
         return false;
     }
-    if matches_exempt(&process_executable_name(&pid_dir, &cmdline_raw), &policy.exempt_names) {
+    if matches_exempt(
+        &process_executable_name(&pid_dir, &cmdline_raw),
+        &policy.exempt_names,
+    ) {
         return false;
     }
     matches_signature(&args, &policy.signatures).is_some()
@@ -911,8 +920,10 @@ pub(crate) fn verify_forgotten_tree_for_reap(
     if args.is_empty() {
         return None;
     }
-    if matches_exempt(&process_executable_name(&pid_dir, &cmdline_raw), &policy.exempt_names)
-        && !crate::forgotten::browser_decides_by_veto(&args)
+    if matches_exempt(
+        &process_executable_name(&pid_dir, &cmdline_raw),
+        &policy.exempt_names,
+    ) && !crate::forgotten::browser_decides_by_veto(&args)
     {
         return None;
     }
@@ -977,7 +988,8 @@ pub(crate) fn verify_forgotten_tree_for_reap(
     // members exited on their own), there is nothing to reclaim.
     let (root_footprint, aggregate) =
         crate::forgotten::measure_tree_footprint(proc_root, tree.root_pid, &members);
-    if aggregate < policy.forgotten_tree_footprint_mb && root_footprint < policy.forgotten_footprint_mb
+    if aggregate < policy.forgotten_tree_footprint_mb
+        && root_footprint < policy.forgotten_footprint_mb
     {
         return None;
     }
@@ -1371,7 +1383,10 @@ pub(crate) fn scan_pressure_orphans(
         if args.is_empty() {
             continue;
         }
-        if matches_exempt(&process_executable_name(&pid_dir, &cmdline_raw), &policy.exempt_names) {
+        if matches_exempt(
+            &process_executable_name(&pid_dir, &cmdline_raw),
+            &policy.exempt_names,
+        ) {
             continue;
         }
         let Some(signature) = matches_signature(&args, &policy.signatures) else {

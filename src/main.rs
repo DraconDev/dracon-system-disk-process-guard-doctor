@@ -60,11 +60,11 @@ pub(crate) use policy::*;
 mod stash;
 pub(crate) use stash::*;
 mod reap;
+mod session_guard;
 #[cfg(test)]
 mod session_guard_tests;
-mod session_guard;
-pub(crate) use session_guard::*;
 pub(crate) use reap::*;
+pub(crate) use session_guard::*;
 mod relocate;
 pub(crate) use relocate::*;
 mod safety;
@@ -980,7 +980,8 @@ fn exempt_consumer_footprint_with_sessions(
         // lost its pass is no longer an "exempt consumer" — it is an
         // offender the guard CAN now act on, and reporting it as exempt
         // would hide the very thing the operator needs to see.
-        if !keeps_memory_exemption(p, exempt, session_exempt_pids) || is_kernel_process(&p.command) {
+        if !keeps_memory_exemption(p, exempt, session_exempt_pids) || is_kernel_process(&p.command)
+        {
             continue;
         }
         let footprint = memory_pressure_footprint_mb(p);
@@ -1008,10 +1009,7 @@ fn exempt_consumer_description(rows: &[(String, u64)]) -> String {
 /// only lists offenders cannot tell the operator whether "critical" meant
 /// "the guard is handling it" or "the guard is not permitted to touch
 /// what is actually consuming the memory".
-pub(crate) fn build_mitigation_note(
-    offenders: &[ProcSample],
-    exempt: &[(String, u64)],
-) -> String {
+pub(crate) fn build_mitigation_note(offenders: &[ProcSample], exempt: &[(String, u64)]) -> String {
     if offenders.is_empty() && exempt.is_empty() {
         return "no process data available; no mitigation applied".to_string();
     }
@@ -6995,11 +6993,7 @@ async fn check_rapid_disk_fill(
         .report_states
         .get("disk-rapid-fill")
         .is_some_and(|entry| entry.value == "rapid");
-    let observed = disk_rapid_observed_state(
-        rate,
-        previously_rapid,
-        guard.disk_rapid_fill_gbph,
-    );
+    let observed = disk_rapid_observed_state(rate, previously_rapid, guard.disk_rapid_fill_gbph);
     let (observed_state, rate) = observed?;
     let rapid = observed_state == "rapid";
     // STABILIZED 2026-11-08: same rate estimate as the disk-trend path,
@@ -7099,14 +7093,20 @@ async fn check_memory_pressure(
     // existing process-table pass. Never discard low-RSS rows before that
     // measurement: the biggest swapped offender may be mostly nonresident.
     let exempt = parse_kinds(&guard.process_exempt_names);
-    let (offenders, swap_samples_unavailable) =
-        memory_pressure_offenders_with_sessions(all_processes, &exempt, state.session_exempt_pids.as_ref());
+    let (offenders, swap_samples_unavailable) = memory_pressure_offenders_with_sessions(
+        all_processes,
+        &exempt,
+        state.session_exempt_pids.as_ref(),
+    );
     let top_rss: Vec<ProcSample> = offenders.into_iter().map(load_process_cmdline).collect();
     // ADDED 2026-11-08: the offenders list excludes exempt processes BY
     // POLICY, so name the exempt consumers' footprint too. Nothing may be
     // done about them, but the operator must be able to see them.
-    let exempt_top =
-        exempt_consumer_footprint_with_sessions(all_processes, &exempt, state.session_exempt_pids.as_ref());
+    let exempt_top = exempt_consumer_footprint_with_sessions(
+        all_processes,
+        &exempt,
+        state.session_exempt_pids.as_ref(),
+    );
     let mitigation_note = build_mitigation_note(&top_rss, &exempt_top);
 
     // ── Limiting (ADDED 2026-08-10, v0.112.36) ──────────────────
@@ -8137,10 +8137,7 @@ fn session_policy_from_guard(guard: &GuardPolicy) -> SessionPolicy {
 /// from `/proc/<pid>/stat` — `ps`'s instantaneous percentage cannot prove
 /// "no CPU accrual across the window", which is the whole point of the
 /// idle-retirement rule.
-fn session_process_facts(
-    policy: &SessionPolicy,
-    proc_root: &Path,
-) -> Vec<(i32, String, u64, u64)> {
+fn session_process_facts(policy: &SessionPolicy, proc_root: &Path) -> Vec<(i32, String, u64, u64)> {
     if policy.session_names.is_empty() {
         return Vec::new();
     }
@@ -8228,7 +8225,10 @@ fn refresh_session_fleet(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
         unknown,
         max_active_sessions: policy.max_active_sessions,
         over_bound: observations.len() > policy.max_active_sessions,
-        exempt: state.session_exempt_pids.as_ref().map_or(0, |pids| pids.len()),
+        exempt: state
+            .session_exempt_pids
+            .as_ref()
+            .map_or(0, |pids| pids.len()),
     };
     state.session_observations = observations;
     state.session_states = states;
@@ -8245,7 +8245,10 @@ fn refresh_session_fleet(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
 /// session that woke up between the scan and the signal is left alone.
 /// The kill itself is SIGTERM with a SIGKILL escalation, the same
 /// discipline the dev-server reaper uses.
-async fn retire_idle_sessions(guard: &GuardPolicy, state: &mut GuardRuntimeState) -> Vec<RetiredSession> {
+async fn retire_idle_sessions(
+    guard: &GuardPolicy,
+    state: &mut GuardRuntimeState,
+) -> Vec<RetiredSession> {
     let policy = session_policy_from_guard(guard);
     if policy.session_names.is_empty() {
         return Vec::new();
@@ -10286,8 +10289,8 @@ fn spawn_background_cleanup(
                 tree.files,
                 tree.twin
             );
-        }        // Re-read pressure after moves so delete-based cleanup (and the
-        // critical age-gate bypass) acts on post-move reality.
+        } // Re-read pressure after moves so delete-based cleanup (and the
+          // critical age-gate bypass) acts on post-move reality.
         let mut used = used;
         if summary.relocated_count > 0 {
             if let Ok(d) = disk_details_for(&guard.disk_mount_path).await {
@@ -10743,7 +10746,11 @@ async fn check_reap_candidates(
     // assessment is what gets the sustain window; the exact membership
     // still drives the prompt "new servers appeared" notification below,
     // where a new process IS the news.
-    let assessment = if candidates.is_empty() { "none" } else { "present" };
+    let assessment = if candidates.is_empty() {
+        "none"
+    } else {
+        "present"
+    };
     let transition = report_state_transition_stabilized(
         state,
         "reap-candidates",
@@ -10758,9 +10765,7 @@ async fn check_reap_candidates(
         // EMPTY worklist is not news — there was nothing to empty. The
         // emit is gated on the same stabilized assessment, so leaving the
         // state is still one event (after the sustain window).
-        if transition.emit_event
-            && previous.as_deref().map(|p| !p.is_empty()).unwrap_or(false)
-        {
+        if transition.emit_event && previous.as_deref().map(|p| !p.is_empty()).unwrap_or(false) {
             emit_event(&DraconEvent::new(
                 "system",
                 EventSeverity::Info,

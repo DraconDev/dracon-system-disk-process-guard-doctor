@@ -3,12 +3,12 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
+use crate::policy::{default_expected_swap_prefixes, default_nixos_swap_config, expand_tilde};
+use crate::space_report::check_swap_health;
 use crate::{
     canonical_system_root, effective_system_policy_path, is_system_service_active,
     is_user_service_active, resolve_bin_for_readonly_probe,
 };
-use crate::policy::{default_expected_swap_prefixes, default_nixos_swap_config, expand_tilde};
-use crate::space_report::check_swap_health;
 
 /// The service this repo ships, and the one a `dracon-system` installation
 /// actually depends on.
@@ -70,36 +70,35 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
     // than failing the check on a host whose only problem is a missing
     // policy file — that problem already has its own REQUIRED check above.
     let loaded_policy = crate::load_system_policy().ok().map(|(_, policy)| policy);
-    let (expected_prefixes, swap_candidates, swap_config_path) =
-        match loaded_policy.as_ref() {
-            Some(policy) => (
-                policy
-                    .guard
-                    .expected_swap_prefixes
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string)
-                    .collect::<Vec<_>>(),
-                policy
-                    .guard
-                    .dead_swapfile_candidates
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(expand_tilde)
-                    .collect::<Vec<_>>(),
-                expand_tilde(&policy.guard.nixos_swap_config),
-            ),
-            None => (
-                default_expected_swap_prefixes()
-                    .split(',')
-                    .map(str::to_string)
-                    .collect::<Vec<_>>(),
-                Vec::new(),
-                expand_tilde(&default_nixos_swap_config()),
-            ),
-        };
+    let (expected_prefixes, swap_candidates, swap_config_path) = match loaded_policy.as_ref() {
+        Some(policy) => (
+            policy
+                .guard
+                .expected_swap_prefixes
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>(),
+            policy
+                .guard
+                .dead_swapfile_candidates
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(expand_tilde)
+                .collect::<Vec<_>>(),
+            expand_tilde(&policy.guard.nixos_swap_config),
+        ),
+        None => (
+            default_expected_swap_prefixes()
+                .split(',')
+                .map(str::to_string)
+                .collect::<Vec<_>>(),
+            Vec::new(),
+            expand_tilde(&default_nixos_swap_config()),
+        ),
+    };
     let swap_outcome = check_swap_health(&expected_prefixes, &swap_candidates, &swap_config_path);
 
     crate::DoctorReport {
@@ -623,7 +622,10 @@ mod tests {
         let mut r = report();
         r.swap_ok = false;
         let checks = doctor_checks(&r);
-        let swap = checks.iter().find(|c| c.label == "swap devices").expect("swap check");
+        let swap = checks
+            .iter()
+            .find(|c| c.label == "swap devices")
+            .expect("swap check");
         assert_eq!(swap.state, CheckState::Fail);
         assert!(
             !strict_ok(&checks),
@@ -638,7 +640,10 @@ mod tests {
         r.swap_probe_available = false;
         r.swap_ok = true; // vacuous: unknown is never failure
         let checks = doctor_checks(&r);
-        let swap = checks.iter().find(|c| c.label == "swap devices").expect("swap check");
+        let swap = checks
+            .iter()
+            .find(|c| c.label == "swap devices")
+            .expect("swap check");
         assert_eq!(
             swap.state,
             CheckState::Skipped,

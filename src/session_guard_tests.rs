@@ -142,7 +142,10 @@ fn no_cpu_accrual_and_stale_activity_is_idle() {
         observed_for: Duration::from_secs(2 * WINDOW),
         last_activity: Some(long_ago()),
     };
-    assert_eq!(classify_evidence(&evidence, WINDOW, now()), SessionState::Idle);
+    assert_eq!(
+        classify_evidence(&evidence, WINDOW, now()),
+        SessionState::Idle
+    );
 }
 
 /// A session that accrued CPU recently is ACTIVE, even when its files are
@@ -228,7 +231,11 @@ fn small_fleet_keeps_the_blanket_exemption() {
         .map(|o| (o.pid, SessionState::Idle))
         .collect();
     let keep = exemption_pids(&policy, &["pi".to_string()], &observations, &states);
-    assert_eq!(keep.map(|pids| pids.len()), Some(4), "a fleet within bounds keeps every pass");
+    assert_eq!(
+        keep.map(|pids| pids.len()),
+        Some(4),
+        "a fleet within bounds keeps every pass"
+    );
 }
 
 /// Above the fleet bound, the idle sessions lose the exemption and the
@@ -400,12 +407,7 @@ fn a_still_idle_candidate_verifies() {
         idle_secs: 10 * WINDOW,
         activity_files: vec![transcript],
     };
-    assert!(verify_retirement(
-        &fixture.root,
-        &candidate,
-        WINDOW,
-        now()
-    ));
+    assert!(verify_retirement(&fixture.root, &candidate, WINDOW, now()));
 }
 
 /// A candidate whose CPU advanced since the scan does NOT verify: it woke
@@ -423,12 +425,7 @@ fn a_candidate_that_accrued_cpu_does_not_verify() {
         idle_secs: 10 * WINDOW,
         activity_files: vec![transcript],
     };
-    assert!(!verify_retirement(
-        &fixture.root,
-        &candidate,
-        WINDOW,
-        now()
-    ));
+    assert!(!verify_retirement(&fixture.root, &candidate, WINDOW, now()));
 }
 
 /// A candidate whose transcript was written since the scan does NOT
@@ -446,12 +443,7 @@ fn a_candidate_with_a_fresh_write_does_not_verify() {
         idle_secs: 10 * WINDOW,
         activity_files: vec![transcript],
     };
-    assert!(!verify_retirement(
-        &fixture.root,
-        &candidate,
-        WINDOW,
-        now()
-    ));
+    assert!(!verify_retirement(&fixture.root, &candidate, WINDOW, now()));
 }
 
 /// A candidate whose activity files vanished does NOT verify: a vanished
@@ -468,12 +460,7 @@ fn a_candidate_with_missing_activity_files_does_not_verify() {
         idle_secs: 10 * WINDOW,
         activity_files: vec![fixture.root.join("gone.jsonl")],
     };
-    assert!(!verify_retirement(
-        &fixture.root,
-        &candidate,
-        WINDOW,
-        now()
-    ));
+    assert!(!verify_retirement(&fixture.root, &candidate, WINDOW, now()));
 }
 
 /// A recycled PID does not verify: the starttime no longer matches.
@@ -491,12 +478,7 @@ fn a_recycled_pid_does_not_verify() {
         idle_secs: 10 * WINDOW,
         activity_files: vec![transcript],
     };
-    assert!(!verify_retirement(
-        &fixture.root,
-        &candidate,
-        WINDOW,
-        now()
-    ));
+    assert!(!verify_retirement(&fixture.root, &candidate, WINDOW, now()));
 }
 
 /// The guard never signals itself.
@@ -513,12 +495,7 @@ fn the_guard_never_signals_itself() {
         idle_secs: 10 * WINDOW,
         activity_files: vec![transcript],
     };
-    assert!(!verify_retirement(
-        &fixture.root,
-        &candidate,
-        WINDOW,
-        now()
-    ));
+    assert!(!verify_retirement(&fixture.root, &candidate, WINDOW, now()));
 }
 
 /// A terminal-attached session is NOT disqualified outright. The
@@ -562,13 +539,7 @@ fn a_session_that_works_between_passes_stays_active() {
     let mut tracker = SessionTracker::default();
     let t0 = Instant::now();
     let facts = vec![(4242, "pi".to_string(), 100, parse_starttime(&dir))];
-    tracker.observe(
-        &policy,
-        &fixture.root,
-        &facts,
-        long_ago(),
-        t0,
-    );
+    tracker.observe(&policy, &fixture.root, &facts, long_ago(), t0);
     // Second pass: the session did work.
     let t1 = t0 + Duration::from_secs(2 * WINDOW);
     let facts = vec![(4242, "pi".to_string(), 900, parse_starttime(&dir))];

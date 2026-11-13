@@ -202,7 +202,10 @@ fn a_repeated_cap_refusal_is_logged_once_and_a_changed_reason_is_news() {
         "the same refusal repeated is the same news and must not be logged again"
     );
     assert!(
-        cap_refusal_is_new(Some(&first), "incomplete CPU lease recovered; retry next pass"),
+        cap_refusal_is_new(
+            Some(&first),
+            "incomplete CPU lease recovered; retry next pass"
+        ),
         "a refusal whose reason changed is news"
     );
 }

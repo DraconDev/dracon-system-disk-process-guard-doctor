@@ -248,8 +248,7 @@ async fn unavailable_saves_are_not_relabeled_shared() {
     let mut f = Fixture::new();
     let a = f.add(1, 10, 'S');
     let b = f.add(2, 10, 'S');
-    f.replies.get_mut(&b).unwrap().directory =
-        f.temp.path().join("save1").display().to_string();
+    f.replies.get_mut(&b).unwrap().directory = f.temp.path().join("save1").display().to_string();
     fs::remove_file(f.temp.path().join("save1/snapshot")).unwrap();
     fs::remove_file(f.temp.path().join("save1/last")).unwrap();
     let report = collect(&f.probe(), &f.roots, &[a, b], f.now, 900).await;

@@ -171,7 +171,9 @@ fn scan_flat_dir(dir: &Path, out: &mut Vec<GitTempFile>) {
 /// Age in whole hours, saturating at `u64::MAX` for clock skew in the future.
 fn age_hours(modified: Option<SystemTime>) -> Option<u64> {
     let modified = modified?;
-    let age = SystemTime::now().duration_since(modified).unwrap_or(Duration::ZERO);
+    let age = SystemTime::now()
+        .duration_since(modified)
+        .unwrap_or(Duration::ZERO);
     Some(age.as_secs() / 3600)
 }
 
@@ -233,7 +235,9 @@ pub(crate) fn argv_writes_packs(argv: &[String]) -> bool {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or(a);
-            base.starts_with("git-remote-") || base == "git-upload-pack" || base == "git-receive-pack"
+            base.starts_with("git-remote-")
+                || base == "git-upload-pack"
+                || base == "git-receive-pack"
         })
         .unwrap_or(false)
 }
@@ -305,9 +309,7 @@ pub(crate) fn git_owner_for<'a>(owners: &'a [GitOwner], repo: &Path) -> Option<&
 /// `.git` component, which means the file is not where git would put it.
 pub(crate) fn repo_root_for_git_path(path: &Path) -> Option<PathBuf> {
     let components: Vec<_> = path.components().collect();
-    let git_index = components
-        .iter()
-        .rposition(|c| c.as_os_str() == ".git")?;
+    let git_index = components.iter().rposition(|c| c.as_os_str() == ".git")?;
     if git_index == 0 {
         return None;
     }
@@ -400,7 +402,10 @@ mod tests {
             .iter()
             .map(|f| f.path.file_name().unwrap().to_string_lossy().into_owned())
             .collect();
-        assert_eq!(names, vec!["tmp_obj_bbb".to_string(), "tmp_pack_aaa".to_string()]);
+        assert_eq!(
+            names,
+            vec!["tmp_obj_bbb".to_string(), "tmp_pack_aaa".to_string()]
+        );
     }
 
     #[test]
@@ -478,8 +483,16 @@ mod tests {
         write_file(&fresh, 8);
 
         let candidates = vec![
-            GitTempFile { path: old.clone(), bytes: 8, age_hours: Some(72) },
-            GitTempFile { path: fresh.clone(), bytes: 8, age_hours: Some(0) },
+            GitTempFile {
+                path: old.clone(),
+                bytes: 8,
+                age_hours: Some(72),
+            },
+            GitTempFile {
+                path: fresh.clone(),
+                bytes: 8,
+                age_hours: Some(0),
+            },
         ];
         let outcome = clean_git_temp_files(candidates, 1, |_| None, true);
 
@@ -500,7 +513,10 @@ mod tests {
             cwd: Some(busy.join(".git")),
             writes_packs: true,
         }];
-        assert!(git_owner_for(&owners, &busy).is_some(), "git inside this repo owns it");
+        assert!(
+            git_owner_for(&owners, &busy).is_some(),
+            "git inside this repo owns it"
+        );
         assert!(
             git_owner_for(&owners, &quiet).is_none(),
             "a git process elsewhere must NOT block an unrelated repo"
@@ -521,9 +537,7 @@ mod tests {
     #[test]
     fn repo_root_is_derived_from_the_git_component() {
         assert_eq!(
-            repo_root_for_git_path(Path::new(
-                "/home/u/Dev/repo/.git/objects/pack/tmp_pack_a"
-            )),
+            repo_root_for_git_path(Path::new("/home/u/Dev/repo/.git/objects/pack/tmp_pack_a")),
             Some(PathBuf::from("/home/u/Dev/repo"))
         );
         assert_eq!(
@@ -574,12 +588,18 @@ mod ownership_tests {
         assert!(!argv_writes_packs(&argv(&["git", "add", "-A"])));
         assert!(!argv_writes_packs(&argv(&["git", "commit", "-m", "x"])));
         assert!(!argv_writes_packs(&argv(&["git", "status", "--porcelain"])));
-        assert!(!argv_writes_packs(&argv(&["git", "push", "origin", "main"])));
+        assert!(!argv_writes_packs(&argv(&[
+            "git", "push", "origin", "main"
+        ])));
     }
 
     #[test]
     fn transport_helpers_count_because_they_may_pack() {
-        assert!(argv_writes_packs(&argv(&["git-remote-https", "origin", "url"])));
+        assert!(argv_writes_packs(&argv(&[
+            "git-remote-https",
+            "origin",
+            "url"
+        ])));
         assert!(argv_writes_packs(&argv(&["git-receive-pack", "/repo"])));
     }
 

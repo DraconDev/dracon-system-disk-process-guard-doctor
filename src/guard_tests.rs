@@ -539,8 +539,14 @@ fn memory_pressure_arrival_still_emits_and_notifies() {
 
     // And it is not repeated while the condition persists.
     let sustained = crate::memory_pressure_report_decision(&mut state, "warn", 1800);
-    assert!(!sustained.emit_event, "a sustained condition must not re-emit");
-    assert!(!sustained.notify, "a sustained condition must not re-notify");
+    assert!(
+        !sustained.emit_event,
+        "a sustained condition must not re-emit"
+    );
+    assert!(
+        !sustained.notify,
+        "a sustained condition must not re-notify"
+    );
 }
 
 /// A GENUINE recovery still reports, immediately.
@@ -551,7 +557,10 @@ fn memory_pressure_recovery_still_emits() {
 
     let recovery = crate::memory_pressure_report_decision(&mut state, "ok", 1800);
     assert!(recovery.emit_event, "recovery must emit");
-    assert!(!recovery.notify, "recovery must not notify: nothing is wrong");
+    assert!(
+        !recovery.notify,
+        "recovery must not notify: nothing is wrong"
+    );
 }
 
 /// The report must say WHY nothing was mitigated when every top consumer is
@@ -574,7 +583,10 @@ fn memory_pressure_note_explains_an_exempt_only_offender_set() {
         note.contains("exempt"),
         "the note must say the consumers are exempt: {note}"
     );
-    assert!(note.contains("pi"), "the note must name the consumer: {note}");
+    assert!(
+        note.contains("pi"),
+        "the note must name the consumer: {note}"
+    );
     assert!(
         note.contains("chrome"),
         "the note must name every named consumer: {note}"
@@ -629,8 +641,9 @@ fn exempt_consumer_footprint_groups_by_command() {
         sample(12, "chrome", 400),
         sample(13, "node", 900),
     ];
-    let exempt: std::collections::HashSet<String> =
-        ["pi".to_string(), "chrome".to_string()].into_iter().collect();
+    let exempt: std::collections::HashSet<String> = ["pi".to_string(), "chrome".to_string()]
+        .into_iter()
+        .collect();
     let rows = crate::exempt_consumer_footprint(&samples, &exempt);
     assert_eq!(rows.len(), 2, "one row per exempt command: {rows:?}");
     assert_eq!(rows[0].0, "pi", "the biggest consumer is named first");
@@ -677,8 +690,11 @@ fn an_all_idle_over_bound_fleet_is_reported_as_offenders_not_exempt_consumers() 
     // set, exactly as the producer computes it for an all-idle fleet.
     let session_exempt_pids: std::collections::HashSet<i32> = std::collections::HashSet::new();
 
-    let (offenders, _) =
-        crate::memory_pressure_offenders_with_sessions(&samples, &exempt, Some(&session_exempt_pids));
+    let (offenders, _) = crate::memory_pressure_offenders_with_sessions(
+        &samples,
+        &exempt,
+        Some(&session_exempt_pids),
+    );
     assert!(
         !offenders.is_empty(),
         "an all-idle over-bound fleet must be mitigation candidates, not exempt"
@@ -780,7 +796,10 @@ fn memory_pressure_notification_text_explains_the_mitigation_outcome() {
         body.contains("no mitigation applied"),
         "the notification body must say no mitigation was applied: {body}"
     );
-    assert!(body.contains("pi"), "the notification body must name it: {body}");
+    assert!(
+        body.contains("pi"),
+        "the notification body must name it: {body}"
+    );
 }
 
 /// ADDED 2026-10-27 (wrong-swap check, falsification fix): the periodic
@@ -2261,11 +2280,8 @@ async fn disk_reclamation_rearms_the_rapid_fill_notification() {
     //    accepted state, so re-entering "rapid" is a real transition and
     //    the operator is notified again for the new episode.
     let threshold = guard.disk_rapid_fill_gbph;
-    let reclaimed = crate::disk_rapid_observed_state(
-        crate::DiskFillRate::NotFilling,
-        true,
-        threshold,
-    );
+    let reclaimed =
+        crate::disk_rapid_observed_state(crate::DiskFillRate::NotFilling, true, threshold);
     assert_eq!(
         reclaimed.map(|(state, _)| state),
         Some("ok"),
@@ -2288,7 +2304,10 @@ async fn disk_reclamation_rearms_the_rapid_fill_notification() {
         crate::REPORT_STATE_SUSTAIN_SECS,
         clock + Duration::from_secs(crate::REPORT_STATE_SUSTAIN_SECS + 1),
     );
-    assert!(settled.changed, "the reclamation is accepted after the sustain window");
+    assert!(
+        settled.changed,
+        "the reclamation is accepted after the sustain window"
+    );
 
     // 3. Rapid growth resumes: this is a NEW episode, so it re-notifies —
     //    after its own sustain window, because every accepted state change
@@ -2898,7 +2917,10 @@ fn a_transition_is_reported_once_the_sustain_window_has_passed() {
         120,
         start,
     );
-    assert!(!first.changed, "the first observation is not yet a transition");
+    assert!(
+        !first.changed,
+        "the first observation is not yet a transition"
+    );
     assert!(!first.emit_event, "the first observation emits nothing");
 
     // Still inside the window.
@@ -2923,7 +2945,10 @@ fn a_transition_is_reported_once_the_sustain_window_has_passed() {
         start + Duration::from_secs(130),
     );
     assert!(after.changed, "past the window, the transition is accepted");
-    assert!(after.emit_event, "past the window, the transition is reported");
+    assert!(
+        after.emit_event,
+        "past the window, the transition is reported"
+    );
 }
 
 /// A recovery is a transition too — the state must be able to come back.
@@ -3038,7 +3063,10 @@ fn a_rate_hovering_at_the_threshold_never_flips_state() {
 
     // The legitimate ENTRY is not a flip — it is the one transition allowed.
     rapid = crate::disk_rapid_verdict(21.0, rapid, threshold);
-    assert!(rapid, "crossing the entry threshold from below enters rapid");
+    assert!(
+        rapid,
+        "crossing the entry threshold from below enters rapid"
+    );
 
     // From here the rate wanders across the threshold and must be absorbed.
     let mut flips = 0usize;
@@ -3053,7 +3081,10 @@ fn a_rate_hovering_at_the_threshold_never_flips_state() {
         flips, 0,
         "a rate wandering across the threshold must be absorbed by the deadband, got {flips} flips"
     );
-    assert!(rapid, "having entered rapid, the verdict stays rapid inside the deadband");
+    assert!(
+        rapid,
+        "having entered rapid, the verdict stays rapid inside the deadband"
+    );
 }
 
 /// The deadband must not trap the state: a real fall exits.
@@ -3098,12 +3129,22 @@ fn an_unmeasured_rate_holds_the_report_state_instead_of_rearming() {
             start + Duration::from_secs(pass * 30),
         );
     }
-    let held = state.report_states.get("disk-rapid-fill").unwrap().value.clone();
+    let held = state
+        .report_states
+        .get("disk-rapid-fill")
+        .unwrap()
+        .value
+        .clone();
     assert_eq!(held, "rapid");
 
     // Now this is what the fixed caller does when the rate is Unmeasured:
     // it returns without touching the report state at all.
-    let still_held = state.report_states.get("disk-rapid-fill").unwrap().value.clone();
+    let still_held = state
+        .report_states
+        .get("disk-rapid-fill")
+        .unwrap()
+        .value
+        .clone();
     assert_eq!(
         still_held, "rapid",
         "an unmeasurable rate must not reset the accepted state"
