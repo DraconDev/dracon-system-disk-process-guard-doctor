@@ -437,7 +437,17 @@ pub(crate) fn retirement_candidates(
     states: &HashMap<i32, SessionState>,
     idle_window_secs: u64,
     now: SystemTime,
+    fleet_over_bound: bool,
 ) -> Vec<RetirementCandidate> {
+    // The fleet-over-bound trigger is REQUIRED as well. A single parked
+    // session in a small fleet is the surprising case — the operator opens
+    // one session, leaves it overnight, and finds it gone. The rule exists
+    // because a fleet accumulated past its bound, and it is the fleet that
+    // must be bounded: an individual session keeps its protection, and an
+    // unbounded fleet is what gives it up.
+    if !fleet_over_bound {
+        return Vec::new();
+    }
     let mut out = Vec::new();
     for obs in observations {
         if states.get(&obs.pid).copied() != Some(SessionState::Idle) {
@@ -488,13 +498,6 @@ pub(crate) fn verify_retirement(
     };
     // Same PID incarnation.
     if fields.starttime != candidate.starttime {
-        return false;
-    }
-    // A session with a controlling terminal is INTERACTIVE: the operator
-    // can see it, so it is theirs to close. Every other reap path in the
-    // guard requires tty == 0 for the same reason, and the retirement
-    // path must not be the one that forgets it.
-    if fields.tty_nr != 0 {
         return false;
     }
     // The session must not have accrued CPU since the scan.
