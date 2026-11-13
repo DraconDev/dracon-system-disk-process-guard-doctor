@@ -8226,11 +8226,15 @@ async fn retire_idle_sessions(guard: &GuardPolicy, state: &mut GuardRuntimeState
         return Vec::new();
     }
     let now = std::time::SystemTime::now();
+    // The fleet-over-bound trigger: an individual session keeps its
+    // protection; only an unbounded fleet gives it up.
+    let fleet_over_bound = state.session_fleet.over_bound;
     let candidates = retirement_candidates(
         &state.session_observations,
         &state.session_states,
         policy.idle_window_secs,
         now,
+        fleet_over_bound,
     );
     if candidates.is_empty() {
         return Vec::new();

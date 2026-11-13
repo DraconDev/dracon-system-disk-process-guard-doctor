@@ -33,7 +33,10 @@
 //!   is therefore NOT retirable.
 //! - **No ledger/terminal activity**: neither the session's transcript
 //!   (named by its registry marker) nor its working directory's GLLA
-//!   ledger has been written within `session_idle_window_secs`.
+//!   ledger has been written within `session_idle_window_secs`. The
+//!   transcript IS the terminal-activity record: it is written when the
+//!   operator works with that session, so a session that has not written
+//!   it has not been worked with.
 //!
 //! Neither condition is ever satisfied by raw age alone. A session used
 //! for three days and still in use has a recent transcript write, so it
@@ -48,6 +51,12 @@
 //! that are demonstrably active". The narrowing is what gives the guard
 //! authority again; the idle-retirement rule is what actually reclaims
 //! the memory.
+//!
+//! The fleet-over-bound trigger is also what unlocks RETIREMENT. An
+//! individual session keeps its protection: one parked session in a small
+//! fleet is never retired, because an operator who opens a session and
+//! leaves it overnight must not find it gone. It is the unbounded fleet
+//! that gives up the protection, and that is the case the rule exists for.
 //!
 //! Both rules fail CLOSED toward safety: an unmeasurable session (no
 //! activity file, unreadable state, or an observation window too short
