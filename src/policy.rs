@@ -112,48 +112,6 @@ pub(crate) struct GuardPolicy {
     /// outside the signatures/exempts are never touched.
     #[serde(default)]
     pub(crate) reap_orphans_on_pressure: bool,
-    // --- Agent-session lifecycle (fleet-aware exemption + idle retirement) --
-    //
-    // The exemption list names whole APPLICATIONS. When the operator's
-    // agent fleet ran under one name (`pi`), that single token exempted
-    // EVERY session from pressure mitigation: a fleet of 31 sessions
-    // holding 12.3 GiB was invisible to the mitigation path, and the guard
-    // could report "critical" and correctly refuse to act on the only
-    // thing causing it.
-    //
-    // These fields make the exemption fleet-aware and give the fleet a
-    // lifecycle, without weakening any boundary: an individual
-    // interactive session is still never touched, and a session that
-    // cannot be measured is still treated as active.
-    /// Comma-separated executable names that count as agent sessions.
-    /// Empty disables the session lifecycle entirely (the old blanket
-    /// behaviour).
-    #[serde(default)]
-    pub(crate) agent_session_names: String,
-    /// The idle window in seconds. A session is retirable only when it
-    /// accrued NO CPU across this window AND wrote to no ledger or
-    /// transcript within it. Raw age never retires a session.
-    #[serde(default = "default_session_idle_window_secs")]
-    pub(crate) session_idle_window_secs: u64,
-    /// How many agent sessions may hold the blanket exemption at once.
-    /// Above this count the exemption narrows to the demonstrably active
-    /// sessions, which restores the guard's authority over a runaway fleet.
-    #[serde(default = "default_max_active_sessions")]
-    pub(crate) max_active_sessions: usize,
-    /// Directory holding the session registry markers (`<pid>.json` files
-    /// naming each session's transcript). Tilde-expanded.
-    #[serde(default = "default_session_registry_dir")]
-    pub(crate) session_registry_dir: String,
-    /// Roots whose `.pi-glla/active.jsonl` ledger counts as session
-    /// activity. Comma-separated.
-    #[serde(default = "default_session_ledger_roots")]
-    pub(crate) session_ledger_roots: String,
-    /// Destructive opt-in (default false): retire agent sessions that are
-    /// demonstrably idle (no CPU accrual across the idle window and no
-    /// ledger/transcript write within it). Sessions that are active, or
-    /// that cannot be measured, are never touched.
-    #[serde(default)]
-    pub(crate) retire_idle_agent_sessions: bool,
     #[serde(default = "default_true")]
     pub(crate) notify: bool,
     #[serde(default = "default_notify_command")]
@@ -600,12 +558,6 @@ impl Default for GuardPolicy {
             reap_report_signatures: default_reap_report_signatures(),
             reap_stale_dev_servers: false,
             reap_orphans_on_pressure: false,
-            agent_session_names: String::new(),
-            session_idle_window_secs: default_session_idle_window_secs(),
-            max_active_sessions: default_max_active_sessions(),
-            session_registry_dir: default_session_registry_dir(),
-            session_ledger_roots: default_session_ledger_roots(),
-            retire_idle_agent_sessions: false,
             notify: default_true(),
             notify_command: default_notify_command(),
             notify_cooldown_secs: default_notify_cooldown_secs(),
@@ -939,24 +891,6 @@ pub(crate) fn default_reap_report_max_cpu_seconds() -> u64 {
 
 pub(crate) fn default_reap_report_signatures() -> String {
     crate::reap::DEFAULT_REAP_REPORT_SIGNATURES.to_string()
-}
-
-pub(crate) fn default_session_idle_window_secs() -> u64 {
-    crate::session_guard::DEFAULT_SESSION_IDLE_WINDOW_SECS
-}
-
-pub(crate) fn default_max_active_sessions() -> usize {
-    crate::session_guard::DEFAULT_MAX_ACTIVE_SESSIONS
-}
-
-pub(crate) fn default_session_registry_dir() -> String {
-    "~/.pi/agent/.session-retention-active".to_string()
-}
-
-pub(crate) fn default_session_ledger_roots() -> String {
-    // Empty by default: a host without GLLA has no ledger to read, and an
-    // unset root must not make every session look idle.
-    String::new()
 }
 
 pub(crate) fn default_process_exempt_names() -> String {

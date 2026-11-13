@@ -60,10 +60,6 @@ pub(crate) use policy::*;
 mod stash;
 pub(crate) use stash::*;
 mod reap;
-#[cfg(test)]
-mod session_guard_tests;
-mod session_guard;
-pub(crate) use session_guard::*;
 pub(crate) use reap::*;
 mod relocate;
 pub(crate) use relocate::*;
@@ -650,15 +646,6 @@ pub(crate) struct GuardReport {
     /// What the opt-in auto-reap pass did this cycle (empty unless
     /// `reap_stale_dev_servers` is set): kills AND skipped re-verifies.
     reaped: Vec<ReapedProcess>,
-    /// ADDED 2026-11-13: the agent sessions retired this cycle by the
-    /// idle-retirement rule (empty unless `retire_idle_agent_sessions` is
-    /// set). Each row names the evidence that qualified it.
-    retired_sessions: Vec<RetiredSession>,
-    /// ADDED 2026-11-13: the agent-session fleet this pass, with the
-    /// per-session classification. The fleet-aware exemption is only
-    /// auditable if the operator can SEE which sessions kept the pass and
-    /// which gave it up.
-    session_fleet: SessionFleetReport,
     /// ADDED 2026-08-10 (v0.112.35): sustained disk fill rate (GiB/hour).
     disk_fill_gbph: Option<f64>,
     /// ADDED 2026-10-27 (wrong-swap check): human-readable wrong-swap
@@ -724,32 +711,6 @@ pub(crate) struct MemoryReport {
     pub(crate) protected_trees: Vec<ProtectedTree>,
 }
 
-/// The agent-session fleet as the guard sees it this pass.
-///
-/// The fleet-aware exemption is a POLICY, and a policy nobody can see is
-/// a policy nobody can audit: the operator has to be able to answer "which
-/// of my sessions still holds the blanket pass, and why?" without reading
-/// the source.
-#[derive(Debug, Default, Clone, Serialize)]
-pub(crate) struct SessionFleetReport {
-    /// The executable names that count as agent sessions.
-    pub(crate) names: Vec<String>,
-    /// How many sessions were observed.
-    pub(crate) total: usize,
-    /// How many are demonstrably active.
-    pub(crate) active: usize,
-    /// How many are demonstrably idle.
-    pub(crate) idle: usize,
-    /// How many could not be measured (treated as active everywhere).
-    pub(crate) unknown: usize,
-    /// The fleet bound above which the exemption narrows.
-    pub(crate) max_active_sessions: usize,
-    /// Whether the fleet is currently over its bound.
-    pub(crate) over_bound: bool,
-    /// How many sessions still hold the blanket exemption.
-    pub(crate) exempt: usize,
-}
-
 /// A zombie (defunct) process with context useful for diagnosis.
 #[derive(Debug, Serialize)]
 pub(crate) struct ZombieInfo {
@@ -761,26 +722,6 @@ pub(crate) struct ZombieInfo {
     pub(crate) age_secs: u64,
     /// Whether the parent is still alive (dead parent => init reaps).
     pub(crate) parent_alive: bool,
-}
-
-/// One agent session retired by the idle-retirement rule, with the
-/// evidence that qualified it.
-///
-/// The evidence is part of the record on purpose: a retirement is a
-/// destructive action on somebody's working session, so the record has to
-/// say WHY it was believed idle, not merely that it was.
-#[derive(Debug, Serialize)]
-pub(crate) struct RetiredSession {
-    pub(crate) pid: i32,
-    pub(crate) comm: String,
-    /// How long the session had been without CPU accrual.
-    pub(crate) cpu_idle_secs: u64,
-    /// How long since the session's last ledger/transcript write.
-    pub(crate) activity_idle_secs: u64,
-    /// Whether the candidate still verified at kill time.
-    pub(crate) verified: bool,
-    /// The signal outcome, when the candidate was signalled.
-    pub(crate) outcome: Option<TerminateOutcome>,
 }
 
 /// `Serialize`/`Deserialize` are for the on-disk mitigation ledger
@@ -854,41 +795,14 @@ fn read_proc_swap_mb_from(root: &Path, pid: i32) -> Option<u64> {
 /// Storage is bounded to five rows; ties are PID-ordered rather than ps-order
 /// dependent. Unknown measurements retain their RSS lower bound and are counted
 /// even when the corresponding process does not make the shortlist.
-#[cfg(test)]
 fn memory_pressure_offenders(
     samples: &[ProcSample],
     exempt: &HashSet<String>,
 ) -> (Vec<ProcSample>, usize) {
-    memory_pressure_offenders_with_sessions(samples, exempt, &HashSet::new())
-}
-
-/// The fleet-aware offender selection.
-///
-/// `session_exempt_pids` is the per-pid exemption set computed by the
-/// agent-session lifecycle. It is EMPTY when no session lifecycle is
-/// configured, and an empty set means the plain name-based exemption
-/// applies unchanged -- so the behaviour of a host that never opts into
-/// the lifecycle is byte-identical to before.
-fn memory_pressure_offenders_with_sessions(
-    samples: &[ProcSample],
-    exempt: &HashSet<String>,
-    session_exempt_pids: &HashSet<i32>,
-) -> (Vec<ProcSample>, usize) {
     let mut top = Vec::with_capacity(MEMORY_OFFENDER_LIMIT + 1);
     let mut unavailable = 0;
     for p in samples {
-        // The fleet-aware exemption: a session keeps its pass only while
-        // it is demonstrably active (or unmeasurable). The pid set is
-        // empty when no agent-session lifecycle is configured, which
-        // preserves the plain name-based behaviour exactly.
-        let exempt_process = if session_exempt_pids.is_empty() {
-            exempt.contains(&p.command)
-        } else if exempt.contains(&p.command) {
-            session_exempt_pids.contains(&p.pid)
-        } else {
-            false
-        };
-        if exempt_process || is_kernel_process(&p.command) {
+        if exempt.contains(&p.command) || is_kernel_process(&p.command) {
             continue;
         }
         unavailable += usize::from(p.swap_mb.is_none());
@@ -928,40 +842,13 @@ const EXEMPT_FOOTPRINT_LIMIT: usize = 4;
 /// "critical" with no named consumer is exactly the signal shape that
 /// turns into a manual intervention under pressure
 /// (docs/design/performance-swap-thrash-2026-10-21.md).
-#[cfg(test)]
 fn exempt_consumer_footprint(
     samples: &[ProcSample],
     exempt: &HashSet<String>,
 ) -> Vec<(String, u64)> {
-    exempt_consumer_footprint_with_sessions(samples, exempt, &HashSet::new())
-}
-
-/// The fleet-aware exempt-consumer footprint.
-///
-/// It narrows with the exemption set: an idle session that lost its pass
-/// is no longer an "exempt consumer" — it is an offender the guard CAN
-/// now act on, and reporting it as exempt would hide the very thing the
-/// operator needs to see.
-fn exempt_consumer_footprint_with_sessions(
-    samples: &[ProcSample],
-    exempt: &HashSet<String>,
-    session_exempt_pids: &HashSet<i32>,
-) -> Vec<(String, u64)> {
     let mut by_command: HashMap<String, u64> = HashMap::new();
     for p in samples {
-        // The fleet-aware exemption narrows the exempt set per pid, so
-        // the footprint report must narrow with it: an idle session that
-        // lost its pass is no longer an "exempt consumer" — it is an
-        // offender the guard CAN now act on, and reporting it as exempt
-        // would hide the very thing the operator needs to see.
-        let exempt_process = if session_exempt_pids.is_empty() {
-            exempt.contains(&p.command)
-        } else if exempt.contains(&p.command) {
-            session_exempt_pids.contains(&p.pid)
-        } else {
-            false
-        };
-        if !exempt_process || is_kernel_process(&p.command) {
+        if !exempt.contains(&p.command) || is_kernel_process(&p.command) {
             continue;
         }
         let footprint = memory_pressure_footprint_mb(p);
@@ -1368,22 +1255,6 @@ pub(crate) struct GuardRuntimeState {
     /// disk and must not inherit the reclaim cadence, or an operator tuning how
     /// often cleanup runs would silently change when a TTL is enforced.
     pub(crate) last_stash_expire: Option<Instant>,
-    /// ADDED 2026-11-13: the agent-session tracker. It carries the
-    /// per-session CPU baseline across guard passes so the idle-retirement
-    /// rule can measure "no CPU accrual across the idle window" instead
-    /// of inferring activity from raw age.
-    pub(crate) session_tracker: SessionTracker,
-    /// ADDED 2026-11-13: the pids that keep the blanket memory-pressure
-    /// exemption this pass. Recomputed every pass; empty means "the
-    /// exemption list applies unchanged".
-    pub(crate) session_exempt_pids: HashSet<i32>,
-    /// ADDED 2026-11-13: the agent-session fleet observed this pass.
-    pub(crate) session_observations: Vec<SessionObservation>,
-    /// ADDED 2026-11-13: the per-session classification this pass.
-    pub(crate) session_states: HashMap<i32, SessionState>,
-    /// ADDED 2026-11-13: the fleet summary the guard REPORT carries, so
-    /// the fleet-aware exemption is visible to the operator.
-    pub(crate) session_fleet: SessionFleetReport,
     /// ADDED 2026-08-30 (memory-leak fix): bounded retry counters for the
     /// unrenice loops. The loops used to `continue` forever on
     /// ProcessIdentityStatus::Unavailable or a failed renice, never
@@ -7075,14 +6946,12 @@ async fn check_memory_pressure(
     // existing process-table pass. Never discard low-RSS rows before that
     // measurement: the biggest swapped offender may be mostly nonresident.
     let exempt = parse_kinds(&guard.process_exempt_names);
-    let (offenders, swap_samples_unavailable) =
-        memory_pressure_offenders_with_sessions(all_processes, &exempt, &state.session_exempt_pids);
+    let (offenders, swap_samples_unavailable) = memory_pressure_offenders(all_processes, &exempt);
     let top_rss: Vec<ProcSample> = offenders.into_iter().map(load_process_cmdline).collect();
     // ADDED 2026-11-08: the offenders list excludes exempt processes BY
     // POLICY, so name the exempt consumers' footprint too. Nothing may be
     // done about them, but the operator must be able to see them.
-    let exempt_top =
-        exempt_consumer_footprint_with_sessions(all_processes, &exempt, &state.session_exempt_pids);
+    let exempt_top = exempt_consumer_footprint(all_processes, &exempt);
     let mitigation_note = build_mitigation_note(&top_rss, &exempt_top);
 
     // ── Limiting (ADDED 2026-08-10, v0.112.36) ──────────────────
@@ -8095,181 +7964,6 @@ fn reap_policy_from_guard(guard: &GuardPolicy) -> ReapPolicy {
         forgotten_footprint_mb: guard.forgotten_orphan_footprint_mb,
         forgotten_tree_footprint_mb: guard.forgotten_orphan_tree_footprint_mb,
     }
-}
-
-/// Build the agent-session lifecycle policy from the guard policy.
-fn session_policy_from_guard(guard: &GuardPolicy) -> SessionPolicy {
-    SessionPolicy {
-        session_names: sorted_signatures(&guard.agent_session_names),
-        idle_window_secs: guard.session_idle_window_secs,
-        max_active_sessions: guard.max_active_sessions,
-        registry_dir: expand_tilde(&guard.session_registry_dir),
-    }
-}
-
-/// The per-process facts the session tracker needs, read from /proc.
-///
-/// The tracker's CPU baseline is the CUMULATIVE cpu time, so it must come
-/// from `/proc/<pid>/stat` — `ps`'s instantaneous percentage cannot prove
-/// "no CPU accrual across the window", which is the whole point of the
-/// idle-retirement rule.
-fn session_process_facts(
-    policy: &SessionPolicy,
-    proc_root: &Path,
-) -> Vec<(i32, String, u64, u64)> {
-    if policy.session_names.is_empty() {
-        return Vec::new();
-    }
-    let Ok(entries) = std::fs::read_dir(proc_root) else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else { continue };
-        let Ok(pid) = name.parse::<i32>() else {
-            continue;
-        };
-        let pid_dir = entry.path();
-        let Ok(comm) = std::fs::read_to_string(pid_dir.join("comm")) else {
-            continue;
-        };
-        let comm = comm.trim().to_string();
-        if !is_session_name(&comm, &policy.session_names) {
-            continue;
-        }
-        let Ok(raw) = std::fs::read_to_string(pid_dir.join("stat")) else {
-            continue;
-        };
-        let Some(fields) = crate::reap::parse_stat(&raw) else {
-            continue;
-        };
-        out.push((pid, comm, fields.cpu_ticks, fields.starttime));
-    }
-    out
-}
-
-/// Observe the agent-session fleet and recompute the exemption set.
-///
-/// This is the fleet-aware half of the exemption: a fleet of agent
-/// sessions no longer inherits a blanket pass over the memory-pressure
-/// mitigation. When the fleet is over its bound, only the demonstrably
-/// active sessions keep the exemption.
-fn refresh_session_fleet(guard: &GuardPolicy, state: &mut GuardRuntimeState) {
-    let policy = session_policy_from_guard(guard);
-    if policy.session_names.is_empty() {
-        state.session_tracker = SessionTracker::default();
-        state.session_exempt_pids.clear();
-        state.session_observations.clear();
-        state.session_states.clear();
-        return;
-    }
-    let proc_root = Path::new("/proc");
-    let now = std::time::SystemTime::now();
-    let now_instant = Instant::now();
-    let facts = session_process_facts(&policy, proc_root);
-    let observations = state
-        .session_tracker
-        .observe(&policy, proc_root, &facts, now, now_instant);
-    let states = state.session_tracker.states(&policy, now, now_instant);
-
-    // Forget the sessions that are gone, so the tracker cannot itself
-    // become the unbounded thing it is here to prevent.
-    let live: HashSet<i32> = facts.iter().map(|(pid, _, _, _)| *pid).collect();
-    state.session_tracker.retain_live(&live);
-
-    let exempt_names = sorted_signatures(&guard.process_exempt_names);
-    let keep = exemption_pids(&policy, &exempt_names, &observations, &states);
-    state.session_exempt_pids = keep.into_iter().collect();
-
-    // The fleet summary is part of the REPORT, not just internal state:
-    // the fleet-aware exemption is a policy, and the operator has to be
-    // able to see which sessions hold the blanket pass and why.
-    let mut active = 0usize;
-    let mut idle = 0usize;
-    let mut unknown = 0usize;
-    for observation in &observations {
-        match states.get(&observation.pid).copied() {
-            Some(SessionState::Active) => active += 1,
-            Some(SessionState::Idle) => idle += 1,
-            _ => unknown += 1,
-        }
-    }
-    state.session_fleet = SessionFleetReport {
-        names: policy.session_names.clone(),
-        total: observations.len(),
-        active,
-        idle,
-        unknown,
-        max_active_sessions: policy.max_active_sessions,
-        over_bound: observations.len() > policy.max_active_sessions,
-        exempt: state.session_exempt_pids.len(),
-    };
-    state.session_observations = observations;
-    state.session_states = states;
-}
-
-/// Retire the agent sessions that are demonstrably idle.
-///
-/// This is the ending half of the session lifecycle. The candidate set
-/// comes from the tracker (`SessionState::Idle`), which already encodes
-/// BOTH conditions of the rule: no CPU accrual across the idle window and
-/// no ledger/transcript write within it.
-///
-/// Every candidate is re-verified immediately before signalling, so a
-/// session that woke up between the scan and the signal is left alone.
-/// The kill itself is SIGTERM with a SIGKILL escalation, the same
-/// discipline the dev-server reaper uses.
-async fn retire_idle_sessions(guard: &GuardPolicy, state: &mut GuardRuntimeState) -> Vec<RetiredSession> {
-    let policy = session_policy_from_guard(guard);
-    if policy.session_names.is_empty() {
-        return Vec::new();
-    }
-    let now = std::time::SystemTime::now();
-    let candidates = retirement_candidates(
-        &state.session_observations,
-        &state.session_states,
-        policy.idle_window_secs,
-        now,
-    );
-    if candidates.is_empty() {
-        return Vec::new();
-    }
-
-    let mut out = Vec::with_capacity(candidates.len());
-    for candidate in &candidates {
-        let idle_window = policy.idle_window_secs;
-        let verified = verify_retirement(Path::new("/proc"), candidate, idle_window, now);
-        if !verified {
-            eprintln!(
-                "🛡️ session-retire: pid {} ({}) no longer verifies -- skipped, nothing signalled",
-                candidate.pid, candidate.comm,
-            );
-            out.push(RetiredSession {
-                pid: candidate.pid,
-                comm: candidate.comm.clone(),
-                cpu_idle_secs: policy.idle_window_secs,
-                activity_idle_secs: candidate.idle_secs,
-                verified: false,
-                outcome: None,
-            });
-            continue;
-        }
-        let outcome = terminate_process(candidate.pid);
-        eprintln!(
-            "🛡️ session-retire: pid {} ({}) idle {}s (no CPU accrual, no ledger/transcript write) -> {:?}",
-            candidate.pid, candidate.comm, candidate.idle_secs, outcome,
-        );
-        out.push(RetiredSession {
-            pid: candidate.pid,
-            comm: candidate.comm.clone(),
-            cpu_idle_secs: policy.idle_window_secs,
-            activity_idle_secs: candidate.idle_secs,
-            verified: true,
-            outcome: Some(outcome),
-        });
-    }
-    out
 }
 
 /// Scan for forgotten heavy orphan TREES: heavy, idle, orphaned, and
@@ -11450,13 +11144,6 @@ pub(crate) async fn run_guard_once(
 
     check_inode_usage(guard, state).await;
     let zombies = check_zombie_processes(guard, state).await;
-
-    // ADDED 2026-11-13: observe the agent-session fleet BEFORE the
-    // memory-pressure check, so the exemption it uses is the fleet-aware
-    // one. The tracker carries its CPU baseline across passes; this call
-    // updates it and recomputes which sessions keep the exemption.
-    refresh_session_fleet(guard, state);
-
     let reap_candidates = reap_candidates(guard);
     // ADDED 2026-10-25 (audit D11): the daemon discards the GuardReport, so
     // the worklist has to be reported from INSIDE the pass to be seen at all.
@@ -11473,24 +11160,6 @@ pub(crate) async fn run_guard_once(
         })
         .await
         .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-    // ADDED 2026-11-13: the agent-session lifecycle's ending half — retire
-    // the sessions that are demonstrably idle.
-    //
-    // A session qualifies only when it accrued NO CPU across the idle
-    // window AND wrote to neither its transcript nor its working
-    // directory's GLLA ledger within that window. Raw age never
-    // qualifies: a session used for three days and still in use has a
-    // recent write and survives.
-    //
-    // The candidates are re-verified immediately before signalling (same
-    // PID incarnation, still no CPU accrual, activity files still stale),
-    // so a session that woke up between the scan and the signal is left
-    // alone.
-    let retired_sessions = if guard.retire_idle_agent_sessions {
-        retire_idle_sessions(guard, state).await
     } else {
         Vec::new()
     };
@@ -11561,8 +11230,6 @@ pub(crate) async fn run_guard_once(
         zombies,
         reap_candidates,
         reaped,
-        retired_sessions,
-        session_fleet: state.session_fleet.clone(),
         disk_fill_gbph: fill_gbph,
         swap_issues,
     };
@@ -12918,26 +12585,6 @@ async fn cmd_guard_once(guard: &GuardPolicy, json: bool) -> Result<()> {
                 Cell::new(format!(
                     "{} tree(s), {ended} process(es) ended",
                     memory.forgotten_reaped.len()
-                )),
-            ]);
-        }
-        if !report.session_fleet.names.is_empty() {
-            table.add_row(vec![
-                Cell::new("🧠"),
-                Cell::new("Agent session fleet"),
-                Cell::new(format!(
-                    "{} session(s): {} active, {} idle, {} unmeasured — bound {}{}; {} keep(s) the blanket exemption",
-                    report.session_fleet.total,
-                    report.session_fleet.active,
-                    report.session_fleet.idle,
-                    report.session_fleet.unknown,
-                    report.session_fleet.max_active_sessions,
-                    if report.session_fleet.over_bound {
-                        " (OVER BOUND — exemption narrowed)"
-                    } else {
-                        ""
-                    },
-                    report.session_fleet.exempt
                 )),
             ]);
         }
