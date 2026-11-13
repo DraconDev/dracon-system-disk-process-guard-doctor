@@ -52,6 +52,12 @@ impl Fixture {
     }
 
     fn proc(&self, pid: i32, comm: &str, cpu_ticks: u64) -> PathBuf {
+        self.proc_with_tty(pid, comm, cpu_ticks, 0)
+    }
+
+    /// A process entry with an explicit controlling terminal. `tty_nr` 0
+    /// means "detached"; anything else is an interactive session.
+    fn proc_with_tty(&self, pid: i32, comm: &str, cpu_ticks: u64, tty_nr: i32) -> PathBuf {
         let dir = self.root.join(pid.to_string());
         fs::create_dir_all(&dir).expect("proc dir");
         fs::write(dir.join("comm"), format!("{comm}\n")).expect("comm");
@@ -61,7 +67,7 @@ impl Fixture {
         fs::write(
             dir.join("stat"),
             format!(
-                "42 ({comm}) S 1 {} 0 0 -1 4194560 100 0 0 0 {cpu_ticks} 0 0 0 20 0 1 0 100 0 0 0 0 0 0 0 0 0 17 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
+                "42 ({comm}) S 1 {} {tty_nr} 0 -1 4194560 100 0 0 0 {cpu_ticks} 0 0 0 20 0 1 0 100 0 0 0 0 0 0 0 0 0 17 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
                 pid + 1
             ),
         )
@@ -417,6 +423,32 @@ fn the_guard_never_signals_itself() {
     let dir = fixture.proc(std::process::id() as i32, "pi", 500);
     let candidate = RetirementCandidate {
         pid: std::process::id() as i32,
+        comm: "pi".to_string(),
+        starttime: parse_starttime(&dir),
+        cpu_ticks: 500,
+        idle_secs: 10 * WINDOW,
+        activity_files: vec![transcript],
+    };
+    assert!(!verify_retirement(
+        &fixture.root,
+        &candidate,
+        WINDOW,
+        now()
+    ));
+}
+
+/// A session with a controlling terminal is INTERACTIVE — the operator can
+/// see it, so it is theirs to close. Every other reap path in the guard
+/// requires tty == 0 for the same reason, and the retirement path must
+/// not be the one that forgets it.
+#[test]
+fn a_tty_attached_session_is_never_retired() {
+    let fixture = Fixture::new("tty");
+    let transcript = fixture.transcript("transcript.jsonl", 10 * WINDOW);
+    // tty_nr = 34842, as a real interactive pane reports.
+    let dir = fixture.proc_with_tty(4242, "pi", 500, 34842);
+    let candidate = RetirementCandidate {
+        pid: 4242,
         comm: "pi".to_string(),
         starttime: parse_starttime(&dir),
         cpu_ticks: 500,
