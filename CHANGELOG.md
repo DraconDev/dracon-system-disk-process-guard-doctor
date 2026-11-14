@@ -13,6 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > is the canonical record.
 
 ## [Unreleased]
+
+### Fixed
+
+- **The pressure reaper no longer kills live work.** "Parent is systemd" was the only proof that a process was abandoned, and on this host the pressure pass signalled 5,227 processes in 48h. A healthy systemd service (`wave11-micro1-sync.service`, `bun …/x.mjs`) was killed every ~30 s for days — ~3,000 kills, matched one-for-one by its `NRestarts` — because a service's main process has systemd as its parent by design. Agents' background jobs (`timeout 2400 bun run test`, `vite`) died too: the `bash -c` wrapper exits at once and the job is reparented while the agent in the same pane is still using it. Every reap path now refuses a process inside a `*.service` cgroup, and the pressure path also requires the launching session to be gone (no member of the cgroup has a live, non-init parent outside it). Both are re-checked at kill time; an unreadable cgroup fails closed.
+- **Exempt desktop processes are no longer made OOM-killer targets.** With the agent-session lifecycle configured, the per-pid exemption narrowing applied to EVERY name in `process_exempt_names`, so the user systemd manager, plasmashell and chrome were OOM-biased to 250 (and CPU-cap candidates) under critical pressure. Only `agent_session_names` are narrowed now.
+- **service-growth measures for the first time.** Its host-namespace check read `/proc/1/ns/*`, which an unprivileged user service can never read, so every observation was "unavailable" forever. When pid 1 is unreadable, host visibility is proven from the process's own facts (`NSpid:` has one entry; `self/cgroup` is a root-relative `/user.slice/…` path).
+- **Renice "cannot restore" is one diagnostic per daemon lifetime** (was per pid, ~1,000 lines/week), and its tracking set no longer grows with pid churn.
+- **Defunct OOM-descendant drops are summarised once per sweep** at `-v` (were ~2,900 lines/week). CPU-cap refusal memory is pruned to live pids.
+- **`release.sh` keeps the standalone `Cargo.lock` in sync.** In the nested-repo layout `cargo check` updated only the workspace lock, so the committed lock recorded 0.112.45 through seven releases and a standalone `--locked` build failed.
+
+### Added
+
+- `retire_idle_agent_sessions_dry_run` (default **true**): idle-session retirement logs which sessions it WOULD retire and signals nothing until set false.
+- `dracon-system guard reap-preview [--json]`: read-only view of what every kill pass would signal right now (`guard once` really kills).
+- `doctor` check "guard runs installed binary" (fails on a `(deleted)` exe); the daemon also warns + notifies once when its own binary is replaced, and every 10 min checks that its watchdog timer is armed (warns once per outage unless a maintenance hold is set).
+- `scripts/deploy-local.sh`: build, back up, atomic install, restart, and prove the running exe is the installed one. Local only — no publish.
+
+### Changed
+
+- Shipped unit: `Wants=dracon-system-guard-watchdog.timer` (starting the guard re-arms its watchdog); `MemoryMax=250M` → `MemoryHigh=256M` + `MemoryMax=1G` (measured peaks were the guard's own page cache; replaces a hidden runtime 2G override).
+- `async-executor` 1.14.0 → 1.14.1 (yanked).
+
 ## [0.112.52] - 2026-11-12
 
 ### Fixed
