@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Renice "cannot restore" is one diagnostic per daemon lifetime** (was per pid, ~1,000 lines/week), and its tracking set no longer grows with pid churn.
 - **Defunct OOM-descendant drops are summarised once per sweep** at `-v` (were ~2,900 lines/week). CPU-cap refusal memory is pruned to live pids.
 - **`release.sh` keeps the standalone `Cargo.lock` in sync.** In the nested-repo layout `cargo check` updated only the workspace lock, so the committed lock recorded 0.112.45 through seven releases and a standalone `--locked` build failed.
+- **`release.sh --abort` also resets the workspace lock.** A dry run's `cargo check` bumps the crate in the parent workspace `Cargo.lock`, outside the crate's git tree; abort left it bumped, so the next real run failed its own `cargo test --locked` gate.
 
 ### Added
 
