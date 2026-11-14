@@ -576,6 +576,11 @@ pub(crate) struct DoctorReport {
     pub(crate) sync_watchdog_timer_active: bool,
     pub(crate) freeze_watchdog_timer_active: bool,
     pub(crate) guard_watchdog_timer_active: bool,
+    /// ADDED 2026-11-14: `Some(true)` when the guard service's running
+    /// executable is the installed file, `Some(false)` when it is a replaced
+    /// (`(deleted)`) binary, `None` when it cannot be told (service down,
+    /// no systemctl, unreadable /proc).
+    pub(crate) guard_binary_current: Option<bool>,
     /// Whether systemctl could be found at all. `sync_service_active` /
     /// `guard_service_active` are `false` when it could not, and before this
     /// field existed that was indistinguishable from "the service is down":
@@ -11867,6 +11872,41 @@ async fn is_user_service_active(service: &str) -> bool {
         Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).trim() == "active",
         _ => false,
     }
+}
+
+/// MainPID of a user unit, or `None` when it has none / cannot be asked.
+async fn user_service_main_pid(service: &str) -> Option<i32> {
+    let bin = resolve_bin_for_readonly_probe("systemctl").ok()?;
+    let out = Command::new(bin)
+        .args(["--user", "show", service, "-p", "MainPID", "--value"])
+        .output()
+        .await
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .trim()
+        .parse::<i32>()
+        .ok()
+        .filter(|pid| *pid > 0)
+}
+
+/// Whether an `/proc/<pid>/exe` link target names a binary that has been
+/// replaced or removed since the process started. The kernel appends
+/// ` (deleted)` once the inode the process runs is unlinked — which is what
+/// an atomic install (`install` + `mv`) does to the old binary.
+pub(crate) fn exe_link_is_replaced(link: &str) -> bool {
+    link.ends_with(" (deleted)")
+}
+
+/// ADDED 2026-11-14: is the guard service running the binary that is
+/// installed now? A restart that raced an install left the guard on the
+/// OLD binary while every health check stayed green.
+pub(crate) async fn guard_binary_current(service: &str) -> Option<bool> {
+    let pid = user_service_main_pid(service).await?;
+    let link = std::fs::read_link(format!("/proc/{pid}/exe")).ok()?;
+    Some(!exe_link_is_replaced(&link.to_string_lossy()))
 }
 
 /// Probe a unit in the SYSTEM manager (no `--user`).

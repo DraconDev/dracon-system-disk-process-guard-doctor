@@ -114,6 +114,7 @@ pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
         sync_watchdog_timer_active: is_system_service_active(SYNC_WATCHDOG_TIMER).await,
         freeze_watchdog_timer_active: is_user_service_active(FREEZE_WATCHDOG_TIMER).await,
         guard_watchdog_timer_active: is_user_service_active(GUARD_WATCHDOG_TIMER).await,
+        guard_binary_current: crate::guard_binary_current(GUARD_SERVICE).await,
         service_probe_available,
         swap_probe_available: swap_outcome.probe_ok,
         swap_ok: !swap_outcome.has_findings(),
@@ -276,6 +277,19 @@ fn doctor_checks(report: &crate::DoctorReport) -> Vec<DoctorCheck> {
             state: service_state(report.guard_watchdog_timer_active),
             required: true,
             hint: "systemctl --user enable --now dracon-system-guard-watchdog.timer",
+        },
+        // ADDED 2026-11-14: the guard must run the INSTALLED binary. A
+        // restart that raced an install kept it on the replaced one, with
+        // every other check green.
+        DoctorCheck {
+            label: "guard runs installed binary",
+            state: match report.guard_binary_current {
+                Some(true) => yes,
+                Some(false) => no,
+                None => CheckState::Skipped,
+            },
+            required: true,
+            hint: "the guard runs a replaced binary: systemctl --user restart dracon-system-guard.service (or scripts/deploy-local.sh)",
         },
         // ADDED 2026-10-27 (wrong-swap check): every ACTIVE swap device
         // must live on an expected device (zram + /mnt/data by default)
