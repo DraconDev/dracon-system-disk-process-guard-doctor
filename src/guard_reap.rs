@@ -292,11 +292,11 @@ pub(crate) fn pressure_orphan_preview(guard: &GuardPolicy) -> Vec<ReapCandidate>
 
 #[derive(Serialize)]
 pub(crate) struct ReapPreviewPass<'a> {
-    pass: &'a str,
-    knob: &'a str,
-    enabled: bool,
-    gate: &'a str,
-    candidates: Vec<String>,
+    pub(crate) pass: &'a str,
+    pub(crate) knob: &'a str,
+    pub(crate) enabled: bool,
+    pub(crate) gate: &'a str,
+    pub(crate) candidates: Vec<String>,
 }
 
 pub(crate) fn reap_preview_row(c: &ReapCandidate) -> String {

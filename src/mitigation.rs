@@ -214,8 +214,8 @@ pub(crate) fn is_kernel_process(command: &str) -> bool {
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct OomSweepResult {
-    restored: Vec<String>,
-    deferred: usize,
+    pub(crate) restored: Vec<String>,
+    pub(crate) deferred: usize,
 }
 
 pub(crate) fn remember_oom_descendant_identity(
