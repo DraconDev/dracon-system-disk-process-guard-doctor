@@ -13423,7 +13423,35 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
     restore_runtime_adjustments(&mut runtime).await;
     persist_mitigations(&mut runtime);
     let mut binary_replaced_warned = false;
+    // ADDED 2026-11-14: is our own watchdog armed? Checked every 10 min;
+    // warned once per outage. The guard cannot restart a stopped timer
+    // without overriding a deliberate stop, but it can make the stop seen.
+    let mut watchdog_checked_at: Option<Instant> = None;
+    let mut watchdog_off_warned = false;
     while !shutdown.load(Ordering::SeqCst) {
+        if watchdog_checked_at.is_none_or(|t| t.elapsed() >= Duration::from_secs(600)) {
+            watchdog_checked_at = Some(Instant::now());
+            let hold = dirs::home_dir()
+                .map(|h| h.join(".dracon/dracon-system.maintenance-hold"))
+                .is_some_and(|p| p.exists());
+            let armed = is_user_service_active(GUARD_WATCHDOG_TIMER).await;
+            if armed || hold {
+                watchdog_off_warned = false;
+            } else if !watchdog_off_warned && resolve_bin_for_readonly_probe("systemctl").is_ok() {
+                watchdog_off_warned = true;
+                let body = format!(
+                    "{GUARD_WATCHDOG_TIMER} is not active and no maintenance hold is set — if the guard stops now nothing restarts it (systemctl --user enable --now {GUARD_WATCHDOG_TIMER})"
+                );
+                eprintln!("⚠️ {body}");
+                emit_event(&DraconEvent::new(
+                    "system",
+                    EventSeverity::Warn,
+                    "guard/watchdog-off",
+                    body.clone(),
+                ));
+                send_notification(guard, "Dracon guard: watchdog off", &body).await;
+            }
+        }
         // ADDED 2026-11-14: notice our OWN binary being replaced. A restart
         // that raced an install kept the guard on the old binary, healthy-
         // looking, with fixes "deployed" but not running. Warn once; the

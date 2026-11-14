@@ -30,7 +30,7 @@ pub(crate) const SYNC_SERVICE: &str = "dracon-sync-operator.service";
 // FIXED 2026-10-22: same rename — the watchdog follows the daemon's unit.
 pub(crate) const SYNC_WATCHDOG_TIMER: &str = "dracon-sync-operator-watchdog.timer";
 const FREEZE_WATCHDOG_TIMER: &str = "dracon-freeze-watchdog.timer";
-const GUARD_WATCHDOG_TIMER: &str = "dracon-system-guard-watchdog.timer";
+pub(crate) const GUARD_WATCHDOG_TIMER: &str = "dracon-system-guard-watchdog.timer";
 
 /// Run the diagnostic check and return a report.
 pub(crate) async fn build_doctor_report() -> crate::DoctorReport {
