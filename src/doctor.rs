@@ -454,6 +454,7 @@ mod tests {
             sync_watchdog_timer_active: true,
             freeze_watchdog_timer_active: true,
             guard_watchdog_timer_active: true,
+            guard_binary_current: Some(true),
             service_probe_available: true,
             swap_probe_available: true,
             swap_ok: true,
@@ -691,5 +692,32 @@ mod tests {
             "an unanswerable service check must not fail --strict"
         );
         assert_eq!(doctor_status(CheckState::Skipped), "n/a");
+    }
+
+    /// ADDED 2026-11-14: a guard running a replaced binary fails --strict;
+    /// an unanswerable probe is Skipped, never failed.
+    #[test]
+    fn doctor_flags_a_guard_running_a_replaced_binary() {
+        let state_of = |current: Option<bool>| {
+            let mut r = report();
+            r.guard_binary_current = current;
+            doctor_checks(&r)
+                .into_iter()
+                .find(|c| c.label == "guard runs installed binary")
+                .map(|c| (c.state, c.required))
+                .expect("check present")
+        };
+        assert_eq!(state_of(Some(true)), (CheckState::Ok, true));
+        assert_eq!(state_of(Some(false)), (CheckState::Fail, true));
+        assert_eq!(state_of(None).0, CheckState::Skipped);
+        let mut r = report();
+        r.guard_binary_current = Some(false);
+        assert!(!strict_ok(&doctor_checks(&r)));
+    }
+
+    #[test]
+    fn a_deleted_exe_link_is_a_replaced_binary() {
+        assert!(crate::exe_link_is_replaced("/home/u/.local/bin/dracon-system (deleted)"));
+        assert!(!crate::exe_link_is_replaced("/home/u/.local/bin/dracon-system"));
     }
 }
