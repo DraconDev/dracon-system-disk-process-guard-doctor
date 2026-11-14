@@ -7231,9 +7231,14 @@ async fn check_memory_pressure(
                 // mitigation was a one-way ratchet that left the operator's
                 // long-lived processes stuck at a degraded priority.
                 if !can_restore_nice_for(Path::new("/proc"), p.pid) {
-                    if state.nice_restore_skipped_pids.insert(p.pid) {
+                    // CHANGED 2026-11-14: ONE diagnostic per daemon lifetime
+                    // (the AGENTS.md contract). Per-pid logging produced
+                    // ~1000 lines/week because pids churn, and the set grew
+                    // without bound; it now holds at most the first pid.
+                    if state.nice_restore_skipped_pids.is_empty() {
+                        state.nice_restore_skipped_pids.insert(p.pid);
                         eprintln!(
-                            "⚠️ renice mitigation skipped for pid={} cmd={} — the guard cannot restore its priority in that process's user namespace, so it will not lower it",
+                            "⚠️ renice mitigation skipped for pid={} cmd={} — the guard cannot restore its priority in that process's user namespace, so it will not lower it (further skips are not logged; consider auto_renice_on_memory = false)",
                             p.pid, p.command
                         );
                     }
