@@ -7306,6 +7306,13 @@ async fn check_memory_pressure(
             }
         }
     }
+    // ADDED 2026-11-14: refusals are remembered per pid to keep the log
+    // quiet, but nothing ever forgot a dead pid — the map grew with pid
+    // churn for the life of the daemon. Keep only live pids.
+    if !state.cap_refusals.is_empty() {
+        let live: HashSet<i32> = all_processes.iter().map(|p| p.pid).collect();
+        state.cap_refusals.retain(|pid, _| live.contains(pid));
+    }
     if !state.mitigation_ledger_unavailable
         && pressure == "critical"
         && guard.cap_offenders_cpu_percent > 0
