@@ -878,18 +878,33 @@ fn memory_pressure_offenders(
 ///
 /// Both the offender selection and the exempt-footprint report call THIS
 /// function, so the two cannot drift apart again.
+///
+/// FIXED 2026-11-14: the per-pid narrowing applies ONLY to the configured
+/// agent-session names. It used to apply to EVERY exempt name, so with the
+/// lifecycle on, `systemd` (the user manager, pid 1224), `plasmashell`,
+/// `Xorg`, `chrome`, … all lost their exemption and were OOM-biased to 250
+/// and CPU-capped under critical pressure — steering the kernel's last-
+/// resort kill at the process whose death ends the whole session.
 fn keeps_memory_exemption(
     p: &ProcSample,
     exempt: &HashSet<String>,
-    session_exempt_pids: Option<&HashSet<i32>>,
+    sessions: Option<SessionExemption<'_>>,
 ) -> bool {
     if !exempt.contains(&p.command) {
         return false;
     }
-    match session_exempt_pids {
-        None => true,
-        Some(pids) => pids.contains(&p.pid),
+    match sessions {
+        Some(s) if s.names.contains(&p.command) => s.pids.contains(&p.pid),
+        _ => true,
     }
+}
+
+/// The fleet-aware half of the exemption: which names it governs, and
+/// which of their pids currently hold the pass.
+#[derive(Clone, Copy)]
+pub(crate) struct SessionExemption<'a> {
+    pub(crate) names: &'a HashSet<String>,
+    pub(crate) pids: &'a HashSet<i32>,
 }
 
 /// The fleet-aware offender selection.
@@ -907,14 +922,14 @@ fn keeps_memory_exemption(
 fn memory_pressure_offenders_with_sessions(
     samples: &[ProcSample],
     exempt: &HashSet<String>,
-    session_exempt_pids: Option<&HashSet<i32>>,
+    sessions: Option<SessionExemption<'_>>,
 ) -> (Vec<ProcSample>, usize) {
     let mut top = Vec::with_capacity(MEMORY_OFFENDER_LIMIT + 1);
     let mut unavailable = 0;
     for p in samples {
         // The fleet-aware exemption: a session keeps its pass only while
         // it is demonstrably active (or unmeasurable).
-        if keeps_memory_exemption(p, exempt, session_exempt_pids) || is_kernel_process(&p.command) {
+        if keeps_memory_exemption(p, exempt, sessions) || is_kernel_process(&p.command) {
             continue;
         }
         unavailable += usize::from(p.swap_mb.is_none());
@@ -971,7 +986,7 @@ fn exempt_consumer_footprint(
 fn exempt_consumer_footprint_with_sessions(
     samples: &[ProcSample],
     exempt: &HashSet<String>,
-    session_exempt_pids: Option<&HashSet<i32>>,
+    sessions: Option<SessionExemption<'_>>,
 ) -> Vec<(String, u64)> {
     let mut by_command: HashMap<String, u64> = HashMap::new();
     for p in samples {
@@ -980,8 +995,7 @@ fn exempt_consumer_footprint_with_sessions(
         // lost its pass is no longer an "exempt consumer" — it is an
         // offender the guard CAN now act on, and reporting it as exempt
         // would hide the very thing the operator needs to see.
-        if !keeps_memory_exemption(p, exempt, session_exempt_pids) || is_kernel_process(&p.command)
-        {
+        if !keeps_memory_exemption(p, exempt, sessions) || is_kernel_process(&p.command) {
             continue;
         }
         let footprint = memory_pressure_footprint_mb(p);
@@ -6316,7 +6330,8 @@ async fn clean_nix_garbage_impl(
         let system_spread =
             system_profile_spread_plan(system_profile_dir, run_root, keep_generations);
         if let Some(system_delete) = system_spread.filter(|plan| !plan.is_empty()) {
-            let nix_args = nix_delete_generations_argv_with_profile(&system_delete, &system_profile);
+            let nix_args =
+                nix_delete_generations_argv_with_profile(&system_delete, &system_profile);
             match Command::new(nix_env).args(&nix_args).output().await {
                 Ok(output) if output.status.success() => {}
                 Ok(output) => eprintln!(
@@ -7132,20 +7147,21 @@ async fn check_memory_pressure(
     // existing process-table pass. Never discard low-RSS rows before that
     // measurement: the biggest swapped offender may be mostly nonresident.
     let exempt = parse_kinds(&guard.process_exempt_names);
-    let (offenders, swap_samples_unavailable) = memory_pressure_offenders_with_sessions(
-        all_processes,
-        &exempt,
-        state.session_exempt_pids.as_ref(),
-    );
+    let session_names = parse_kinds(&guard.agent_session_names);
+    let sessions = state
+        .session_exempt_pids
+        .as_ref()
+        .map(|pids| SessionExemption {
+            names: &session_names,
+            pids,
+        });
+    let (offenders, swap_samples_unavailable) =
+        memory_pressure_offenders_with_sessions(all_processes, &exempt, sessions);
     let top_rss: Vec<ProcSample> = offenders.into_iter().map(load_process_cmdline).collect();
     // ADDED 2026-11-08: the offenders list excludes exempt processes BY
     // POLICY, so name the exempt consumers' footprint too. Nothing may be
     // done about them, but the operator must be able to see them.
-    let exempt_top = exempt_consumer_footprint_with_sessions(
-        all_processes,
-        &exempt,
-        state.session_exempt_pids.as_ref(),
-    );
+    let exempt_top = exempt_consumer_footprint_with_sessions(all_processes, &exempt, sessions);
     let mitigation_note = build_mitigation_note(&top_rss, &exempt_top);
 
     // ── Limiting (ADDED 2026-08-10, v0.112.36) ──────────────────

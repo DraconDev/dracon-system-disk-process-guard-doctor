@@ -13,6 +13,10 @@ use std::path::{Path, PathBuf};
 
 const TICKS: u64 = 100;
 
+/// Default cgroup for fixture processes: an abandoned tmux-pane scope.
+const TEST_SCOPE: &str =
+    "/user.slice/user-1000.slice/user@1000.service/app.slice/tmux-spawn-test.scope";
+
 /// Seconds of uptime a process must have to look abandoned at 24h idle.
 const DAY_SECS: u64 = 24 * 3600;
 
@@ -98,6 +102,9 @@ impl Fixture {
         );
         fs::write(dir.join("stat"), stat).expect("stat");
         fs::write(dir.join("comm"), format!("{comm}\n")).expect("comm");
+        // A pane-style scope: not a supervised service. Tests that need a
+        // service or a live session overwrite it.
+        fs::write(dir.join("cgroup"), format!("0::{}\n", TEST_SCOPE)).expect("cgroup");
         let mut cmdline: Vec<u8> = Vec::new();
         for arg in args {
             cmdline.extend_from_slice(arg.as_bytes());
@@ -646,6 +653,7 @@ fn a_comm_containing_spaces_and_parens_still_parses() {
     fs::write(dir.join("comm"), "weird (name) here\n").expect("comm");
     fs::write(dir.join("cmdline"), b"node\0vite\0dev\0").expect("cmdline");
     fs::write(dir.join("status"), "Name:\tweird\nVmRSS:\t1024 kB\n").expect("status");
+    fs::write(dir.join("cgroup"), format!("0::{TEST_SCOPE}\n")).expect("cgroup");
 
     let found = fx.default_scan();
     assert_eq!(found.len(), 1, "an odd comm still classifies: {found:?}");
@@ -1437,4 +1445,132 @@ fn signalled_disposition_is_reported_for_a_verified_kill() {
         "the always-verify stub must pass the gate"
     );
     assert_eq!(reaped[0].disposition, ReapDisposition::Signalled);
+}
+
+// --- 2026-11-14: orphanhood is not abandonment -------------------------------
+// The pressure pass killed `wave11-micro1-sync.service` (`bun …/x.mjs`,
+// parent = systemd because it IS the service's main process) ~3000 times,
+// and killed agents' background servers whose `bash -c` wrapper had exited
+// while the agent in the same tmux pane was still using them.
+
+const SERVICE_CGROUP: &str =
+    "/user.slice/user-1000.slice/user@1000.service/app.slice/wave11-micro1-sync.service";
+
+impl Fixture {
+    fn set_cgroup(&self, pid: i32, path: &str) {
+        let dir = self.root.join(pid.to_string());
+        fs::create_dir_all(&dir).expect("pid dir");
+        fs::write(dir.join("cgroup"), format!("0::{path}\n")).expect("cgroup");
+    }
+
+    /// A live tmux pane: the pane shell (tty-attached) sits in `TEST_SCOPE`
+    /// with the tmux server — a live, non-init parent — outside it.
+    fn live_pane_shell(&self, shell_pid: i32) {
+        self.fake_parent(7000, "tmux: server");
+        self.set_cgroup(
+            7000,
+            "/user.slice/user-1000.slice/user@1000.service/app.slice/tmux-main.service",
+        );
+        self.proc_owned(
+            shell_pid,
+            7000,
+            "zsh",
+            &["-zsh"],
+            'S',
+            34_816,
+            1,
+            3600,
+            4096,
+        );
+    }
+}
+
+#[test]
+fn a_supervised_service_main_process_is_never_a_pressure_orphan() {
+    let fx = Fixture::new("orphan-service");
+    fx.fake_parent(1224, "systemd");
+    fx.proc_owned(
+        4300,
+        1224,
+        "bun",
+        &["/home/u/.bun/bin/bun", "scripts/sync.mjs"],
+        'S',
+        0,
+        1,
+        30,
+        200_000,
+    );
+    fx.set_cgroup(4300, SERVICE_CGROUP);
+    assert!(
+        fx.orphan_scan(&policy()).is_empty(),
+        "a service's main process has a live owner: systemd"
+    );
+}
+
+#[test]
+fn a_supervised_service_is_never_reaped_on_the_age_gated_path() {
+    let fx = Fixture::new("stale-service");
+    fx.abandoned_server(4301, "litestream", &["litestream", "replicate"]);
+    fx.set_cgroup(4301, "/system.slice/litestream.service");
+    assert!(fx.default_scan().is_empty());
+}
+
+#[test]
+fn a_supervised_service_veto_holds_at_kill_time() {
+    let fx = Fixture::new("orphan-service-reverify");
+    let cand = scanned_orphan(&fx);
+    fx.set_cgroup(cand.pid, SERVICE_CGROUP);
+    assert!(!verify_orphan_for_reap(&fx.root, &cand, &policy(), TICKS));
+}
+
+#[test]
+fn an_orphan_in_a_live_session_is_active_work_not_a_leftover() {
+    // `bash -c 'vite &'` exited, so vite is parent-dead — but the pane
+    // (and the agent in it) is alive in the same scope.
+    let fx = Fixture::new("orphan-live-session");
+    fx.live_pane_shell(7100);
+    hot_orphan(&fx, 4242);
+    assert!(
+        fx.orphan_scan(&policy()).is_empty(),
+        "the launching session is alive"
+    );
+}
+
+#[test]
+fn an_orphan_whose_session_is_gone_is_still_reaped_under_pressure() {
+    // Same scope, but the pane is closed: nothing in the scope has a live
+    // outside parent. This is the shape the pass exists for.
+    let fx = Fixture::new("orphan-dead-session");
+    hot_orphan(&fx, 4242);
+    // A child of the orphan in the same scope does not anchor it.
+    fx.proc_owned(
+        4243,
+        4242,
+        "bun",
+        &["bun", "test", "worker"],
+        'S',
+        0,
+        1,
+        600,
+        1024,
+    );
+    let found = fx.orphan_scan(&policy());
+    assert_eq!(found.iter().map(|c| c.pid).collect::<Vec<_>>(), vec![4242]);
+}
+
+#[test]
+fn a_session_that_comes_back_is_rechecked_at_kill_time() {
+    let fx = Fixture::new("orphan-session-reverify");
+    let cand = scanned_orphan(&fx);
+    assert!(verify_orphan_for_reap(&fx.root, &cand, &policy(), TICKS));
+    fx.live_pane_shell(7100);
+    assert!(!verify_orphan_for_reap(&fx.root, &cand, &policy(), TICKS));
+}
+
+#[test]
+fn an_unreadable_cgroup_fails_closed() {
+    let fx = Fixture::new("orphan-no-cgroup");
+    hot_orphan(&fx, 4242);
+    fs::remove_file(fx.root.join("4242").join("cgroup")).expect("rm cgroup");
+    assert!(fx.orphan_scan(&policy()).is_empty());
 }

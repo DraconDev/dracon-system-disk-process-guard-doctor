@@ -15,6 +15,10 @@ use std::fs;
 use std::path::PathBuf;
 
 const TICKS: u64 = 100;
+
+/// Default cgroup for fixture processes: an abandoned tmux-pane scope.
+const TEST_SCOPE: &str =
+    "/user.slice/user-1000.slice/user@1000.service/app.slice/tmux-spawn-test.scope";
 const DAY_SECS: u64 = 86_400;
 
 /// A fake /proc tree, built the same way the reap tests build one: the
@@ -68,6 +72,9 @@ impl Fixture {
         );
         fs::write(dir.join("stat"), stat).expect("stat");
         fs::write(dir.join("comm"), format!("{comm}\n")).expect("comm");
+        // A pane-style scope: not a supervised service. Tests that need a
+        // service or a live session overwrite it.
+        fs::write(dir.join("cgroup"), format!("0::{}\n", TEST_SCOPE)).expect("cgroup");
         let mut cmdline: Vec<u8> = Vec::new();
         for arg in args {
             cmdline.extend_from_slice(arg.as_bytes());

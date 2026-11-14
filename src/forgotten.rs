@@ -32,7 +32,7 @@
 //! a different blast radius, and that discipline is worth keeping visible.
 
 use crate::reap::{
-    matches_exempt, parent_comm_is_systemd, read_proc_table, ProcEntry, ProcTable, ReapPolicy,
+    matches_exempt, owner_provably_dead, read_proc_table, ProcEntry, ProcTable, ReapPolicy,
 };
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -568,7 +568,7 @@ fn build_tree(
         let Some(handler) = table.get(handler_pid) else {
             continue;
         };
-        if !parent_comm_is_systemd(proc_root, handler.ppid) {
+        if !owner_provably_dead(proc_root, handler.pid, handler.ppid) {
             continue;
         }
         if !browser_family_member(root, handler)
@@ -677,7 +677,7 @@ pub(crate) fn scan_forgotten_orphan_trees(
         if entry.pid <= 1 || entry.pid == self_pid {
             continue;
         }
-        if !parent_comm_is_systemd(proc_root, entry.ppid) {
+        if !owner_provably_dead(proc_root, entry.pid, entry.ppid) {
             continue;
         }
         if entry.tty_nr != 0 {

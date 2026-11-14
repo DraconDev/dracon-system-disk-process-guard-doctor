@@ -689,12 +689,14 @@ fn an_all_idle_over_bound_fleet_is_reported_as_offenders_not_exempt_consumers() 
     // The lifecycle IS configured and NO session holds the pass: the empty
     // set, exactly as the producer computes it for an all-idle fleet.
     let session_exempt_pids: std::collections::HashSet<i32> = std::collections::HashSet::new();
+    let session_names: std::collections::HashSet<String> = ["pi".to_string()].into_iter().collect();
+    let sessions = Some(crate::SessionExemption {
+        names: &session_names,
+        pids: &session_exempt_pids,
+    });
 
-    let (offenders, _) = crate::memory_pressure_offenders_with_sessions(
-        &samples,
-        &exempt,
-        Some(&session_exempt_pids),
-    );
+    let (offenders, _) =
+        crate::memory_pressure_offenders_with_sessions(&samples, &exempt, sessions);
     assert!(
         !offenders.is_empty(),
         "an all-idle over-bound fleet must be mitigation candidates, not exempt"
@@ -708,11 +710,7 @@ fn an_all_idle_over_bound_fleet_is_reported_as_offenders_not_exempt_consumers() 
         "the report is capped, so the count is a ceiling rather than a total"
     );
 
-    let exempt_rows = crate::exempt_consumer_footprint_with_sessions(
-        &samples,
-        &exempt,
-        Some(&session_exempt_pids),
-    );
+    let exempt_rows = crate::exempt_consumer_footprint_with_sessions(&samples, &exempt, sessions);
     assert!(
         exempt_rows.is_empty(),
         "a session that gave up its pass must not be reported as an exempt consumer"
@@ -3264,4 +3262,54 @@ fn an_escalation_from_trend_to_rapid_is_one_report_not_two() {
         "the fill-rate condition must be allowed to report again after the \
          repeat interval, otherwise a worsening disk goes silent forever"
     );
+}
+
+/// FIXED 2026-11-14: the fleet rule narrows ONLY the agent-session names.
+/// With the lifecycle on, the guard OOM-biased the user systemd manager
+/// (pid 1224) and plasmashell to 250 because every exempt name was being
+/// narrowed to "active session pids".
+#[test]
+fn the_session_fleet_rule_never_strips_non_session_exemptions() {
+    let sample = |pid: i32, command: &str, rss_mb: u64| ProcSample {
+        swap_mb: Some(0),
+        pid,
+        ppid: 1,
+        cpu_percent: 0.0,
+        rss_mb,
+        nice: 0,
+        command: command.to_string(),
+        args: String::new(),
+        starttime: pid as u64,
+    };
+    let samples = vec![
+        sample(1224, "systemd", 9000),
+        sample(1300, "plasmashell", 8000),
+        sample(2000, "pi", 7000),
+        sample(2001, "pi", 6000),
+        sample(3000, "rustc", 100),
+    ];
+    let exempt: std::collections::HashSet<String> = ["systemd", "plasmashell", "pi"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let session_names: std::collections::HashSet<String> = ["pi".to_string()].into_iter().collect();
+    // pi 2000 is active and holds the pass; pi 2001 does not.
+    let pids: std::collections::HashSet<i32> = [2000].into_iter().collect();
+    let sessions = Some(crate::SessionExemption {
+        names: &session_names,
+        pids: &pids,
+    });
+    let (offenders, _) =
+        crate::memory_pressure_offenders_with_sessions(&samples, &exempt, sessions);
+    let mut got: Vec<i32> = offenders.iter().map(|p| p.pid).collect();
+    got.sort_unstable();
+    assert_eq!(
+        got,
+        vec![2001, 3000],
+        "systemd/plasmashell stay exempt; only the parked pi loses its pass"
+    );
+
+    let exempt_rows = crate::exempt_consumer_footprint_with_sessions(&samples, &exempt, sessions);
+    let names: Vec<&str> = exempt_rows.iter().map(|(n, _)| n.as_str()).collect();
+    assert!(names.contains(&"systemd") && names.contains(&"plasmashell") && names.contains(&"pi"));
 }

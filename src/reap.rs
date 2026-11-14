@@ -497,6 +497,10 @@ pub(crate) fn scan_reap_candidates(
         let Some(signature) = matches_signature(&args, &policy.signatures) else {
             continue;
         };
+        // A supervised service is systemd's, not abandoned (2026-11-14).
+        if !outside_supervised_service(proc_root, pid) {
+            continue;
+        }
 
         let cpu_seconds = fields.cpu_ticks / ticks_per_sec.max(1);
         if cpu_seconds > policy.max_cpu_seconds {
@@ -605,6 +609,9 @@ pub(crate) fn verify_candidate_for_reap(
         &process_executable_name(&pid_dir, &cmdline_raw),
         &policy.exempt_names,
     ) {
+        return false;
+    }
+    if !outside_supervised_service(proc_root, candidate.pid) {
         return false;
     }
     matches_signature(&args, &policy.signatures).is_some()
@@ -809,8 +816,13 @@ pub(crate) fn verify_orphan_for_reap(
         return false;
     }
     // Owner must STILL be dead: a PID reused under a live parent, or a
-    // process reparented by anything but init, is not our kill.
-    if !parent_comm_is_systemd(proc_root, fields.ppid) {
+    // process reparented by anything but init, is not our kill. A
+    // supervised service is never an orphan, and a process whose launching
+    // session is still alive is somebody's work (2026-11-14).
+    if !owner_provably_dead(proc_root, candidate.pid, fields.ppid) {
+        return false;
+    }
+    if session_still_anchored(proc_root, candidate.pid) {
         return false;
     }
     if fields.tty_nr != 0 {
@@ -881,7 +893,7 @@ pub(crate) fn verify_forgotten_tree_for_reap(
         return None;
     }
     // Owner must STILL be dead.
-    if !parent_comm_is_systemd(proc_root, fields.ppid) {
+    if !owner_provably_dead(proc_root, tree.root_pid, fields.ppid) {
         return None;
     }
     if fields.tty_nr != 0 || fields.state != 'S' {
@@ -1334,6 +1346,97 @@ pub(crate) fn parent_comm_is_systemd(proc_root: &Path, ppid: i32) -> bool {
         .unwrap_or(false)
 }
 
+/// The cgroup v2 path of `pid` (the `0::<path>` line of
+/// `/proc/<pid>/cgroup`). `None` when unreadable or not cgroup v2.
+pub(crate) fn process_cgroup(proc_root: &Path, pid: i32) -> Option<String> {
+    let raw = std::fs::read_to_string(proc_root.join(pid.to_string()).join("cgroup")).ok()?;
+    raw.lines()
+        .find_map(|line| line.strip_prefix("0::"))
+        .map(|path| path.trim().to_string())
+        .filter(|path| !path.is_empty())
+}
+
+/// True when a cgroup path places a process inside a systemd SERVICE unit
+/// (other than the `user@<uid>.service` manager itself, which contains
+/// every user process).
+pub(crate) fn cgroup_is_supervised_service(path: &str) -> bool {
+    path.split('/')
+        .any(|component| component.ends_with(".service") && !component.starts_with("user@"))
+}
+
+/// True only when `pid`'s cgroup is readable AND is not a systemd
+/// service unit. Unreadable fails closed (treated as supervised).
+pub(crate) fn outside_supervised_service(proc_root: &Path, pid: i32) -> bool {
+    process_cgroup(proc_root, pid).is_some_and(|path| !cgroup_is_supervised_service(&path))
+}
+
+/// The orphanhood proof every reap path shares: the parent is
+/// init/systemd AND the process is not a supervised service's member.
+///
+/// ADDED 2026-11-14: `parent_comm_is_systemd` alone is NOT an orphan
+/// proof. A systemd service's main process has systemd as its parent BY
+/// DESIGN — its owner is alive and is systemd. The pressure pass killed
+/// the healthy `wave11-micro1-sync.service` (`bun scripts/….mjs`, matched
+/// by the `.mjs` signature) every ~30 s for days: ~3000 kills, matched
+/// one-for-one by the unit's `NRestarts`. A service's cgroup is owned by
+/// its unit; systemd ends its members on stop, so nothing in one is ever
+/// abandoned. Unreadable cgroup fails closed: an unprovable orphan is not
+/// an orphan.
+pub(crate) fn owner_provably_dead(proc_root: &Path, pid: i32, ppid: i32) -> bool {
+    if !parent_comm_is_systemd(proc_root, ppid) {
+        return false;
+    }
+    outside_supervised_service(proc_root, pid)
+}
+
+/// True when the session that launched `pid` is still alive: some member
+/// of `pid`'s cgroup has a live, non-init parent OUTSIDE that cgroup (a
+/// tmux pane's shell under the tmux server, an agent under its launcher).
+///
+/// ADDED 2026-11-14 (operator: "only kill what is safe, not active
+/// work"). Reparenting to systemd only proves the IMMEDIATE parent died —
+/// an agent's `bash -c 'vite &'` wrapper exits at once, while the agent
+/// that will poll that server is alive in the same pane. A whole scope
+/// whose every root is parent-dead is what an abandoned session looks
+/// like; a scope still anchored to a live process is somebody's work.
+/// Unreadable cgroup fails closed (anchored = do not kill).
+pub(crate) fn session_still_anchored(proc_root: &Path, pid: i32) -> bool {
+    let Some(group) = process_cgroup(proc_root, pid) else {
+        return true;
+    };
+    let Ok(entries) = std::fs::read_dir(proc_root) else {
+        return true;
+    };
+    for entry in entries.flatten() {
+        let Some(member) = entry
+            .file_name()
+            .to_str()
+            .and_then(|n| n.parse::<i32>().ok())
+        else {
+            continue;
+        };
+        if process_cgroup(proc_root, member).as_deref() != Some(group.as_str()) {
+            continue;
+        }
+        let Some(fields) = std::fs::read_to_string(entry.path().join("stat"))
+            .ok()
+            .and_then(|raw| parse_stat(&raw))
+        else {
+            continue;
+        };
+        if fields.ppid <= 1 || !proc_root.join(fields.ppid.to_string()).exists() {
+            continue;
+        }
+        if parent_comm_is_systemd(proc_root, fields.ppid) {
+            continue;
+        }
+        if process_cgroup(proc_root, fields.ppid).as_deref() != Some(group.as_str()) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Find parent-dead dev-server processes. Deliberately IGNORANT of age,
 /// CPU, and run state — a hot young orphan is the exact shape this
 /// exists for. Results carry the same evidence fields as reap candidates
@@ -1367,8 +1470,9 @@ pub(crate) fn scan_pressure_orphans(
         let Some(fields) = parse_stat(&raw) else {
             continue;
         };
-        // Owner must be provably dead: reparented to init/systemd.
-        if !parent_comm_is_systemd(proc_root, fields.ppid) {
+        // Owner must be provably dead: reparented to init/systemd, and not
+        // a supervised service (whose owner IS systemd, alive).
+        if !owner_provably_dead(proc_root, pid, fields.ppid) {
             continue;
         }
         // ... and detached from any terminal: a disowned shell job is
@@ -1392,6 +1496,11 @@ pub(crate) fn scan_pressure_orphans(
         let Some(signature) = matches_signature(&args, &policy.signatures) else {
             continue;
         };
+        // The launching session (tmux pane, agent) is still alive: this is
+        // somebody's active work, not a leftover (2026-11-14).
+        if session_still_anchored(proc_root, pid) {
+            continue;
+        }
 
         // Measured, not gated: evidence for the audit trail.
         let cpu_seconds = fields.cpu_ticks / ticks_per_sec.max(1);
