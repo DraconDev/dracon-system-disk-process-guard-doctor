@@ -717,7 +717,11 @@ mod tests {
 
     #[test]
     fn a_deleted_exe_link_is_a_replaced_binary() {
-        assert!(crate::exe_link_is_replaced("/home/u/.local/bin/dracon-system (deleted)"));
-        assert!(!crate::exe_link_is_replaced("/home/u/.local/bin/dracon-system"));
+        assert!(crate::exe_link_is_replaced(
+            "/home/u/.local/bin/dracon-system (deleted)"
+        ));
+        assert!(!crate::exe_link_is_replaced(
+            "/home/u/.local/bin/dracon-system"
+        ));
     }
 }
