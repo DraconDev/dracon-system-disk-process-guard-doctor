@@ -991,7 +991,8 @@ fn the_trend_horizon_bounds_the_warning() {
 /// `dracon-system events` shows what the guard saw.
 #[test]
 fn every_monitoring_capability_records_an_event() {
-    const SOURCE: &str = include_str!("main.rs");
+    let source = guard_source();
+    let source: &str = &source;
     const CHECKS: &[(&str, &str)] = &[
         ("fn check_disk_state_change(", "disk/state-change"),
         ("fn check_disk_early_warning(", "disk/early-warning"),
@@ -1007,7 +1008,7 @@ fn every_monitoring_capability_records_an_event() {
         ("fn check_link_drift(", "links-drifted"),
     ];
     for (signature, event_path) in CHECKS {
-        let body = top_level_fn_source(SOURCE, signature);
+        let body = top_level_fn_source(source, signature);
         assert!(
             body.contains("emit_event("),
             "{} must record what it observed — a desktop popup is transient and is erased when the operator is away",
@@ -1033,11 +1034,12 @@ fn every_monitoring_capability_records_an_event() {
 /// so the guard stops reclaiming anything while the reason goes unmentioned.
 #[test]
 fn the_daemon_reports_the_secondary_mounts() {
-    const SOURCE: &str = include_str!("main.rs");
+    let source = guard_source();
+    let source: &str = &source;
 
     // The guard PASS calls the reporter — the daemon discards the report, so
     // the check has to be inside the pass to be seen at all.
-    let pass = top_level_fn_source(SOURCE, "pub(crate) async fn run_guard_once(");
+    let pass = top_level_fn_source(source, "pub(crate) async fn run_guard_once(");
     assert!(
         pass.contains("disk_details_for(&mount)"),
         "the guard pass must have been located — otherwise the assertion below would pass on an empty region"
@@ -1065,8 +1067,9 @@ fn the_daemon_reports_the_secondary_mounts() {
 /// 1–3% available memory.
 #[test]
 fn the_daemon_reports_the_abandoned_dev_server_worklist() {
-    const SOURCE: &str = include_str!("main.rs");
-    let pass = top_level_fn_source(SOURCE, "pub(crate) async fn run_guard_once(");
+    let source = guard_source();
+    let source: &str = &source;
+    let pass = top_level_fn_source(source, "pub(crate) async fn run_guard_once(");
     assert!(
         pass.contains("reap_candidates(guard)"),
         "the guard pass must have been located — otherwise the assertion below would pass on an empty region"
@@ -1770,7 +1773,7 @@ fn gated_release_markers(src: &str) -> Result<Vec<String>, String> {
 
 #[test]
 fn oom_and_cpu_releases_are_not_gated_by_the_nice_capability() {
-    let wrongly = gated_release_markers(include_str!("main.rs"))
+    let wrongly = gated_release_markers(&guard_source())
         .expect("the release block must be shaped as the fix requires");
     assert!(
         wrongly.is_empty(),
@@ -2657,6 +2660,24 @@ fn a_disabled_rust_cleanup_is_reported_once_and_a_recovery_is_confirmed() {
     assert_eq!(proactive_rust_report(Some(true), false), Some("disabled"));
 }
 
+/// ADDED 2026-11-14: main.rs was split into modules (guard_reap, mitigation,
+/// rust_targets, trash, nix_gc, memory_pressure). Source-inspection tests
+/// read the guard's code as ONE text; a boundary sentinel between files keeps
+/// `top_level_fn_source` from running one file's last function on into the
+/// next file.
+pub(crate) fn guard_source() -> String {
+    [
+        include_str!("main.rs"),
+        include_str!("guard_reap.rs"),
+        include_str!("mitigation.rs"),
+        include_str!("rust_targets.rs"),
+        include_str!("trash.rs"),
+        include_str!("nix_gc.rs"),
+        include_str!("memory_pressure.rs"),
+    ]
+    .join("\nfn __module_boundary__() {}\n")
+}
+
 /// The source text of one top-level function, from its signature to the
 /// start of the next top-level item.
 ///
@@ -2693,19 +2714,20 @@ pub(crate) fn top_level_fn_source(source: &str, signature: &str) -> String {
 /// is equally true there — and equally worth saying.
 #[test]
 fn the_disabled_rust_cleanup_report_is_not_tied_to_a_cleanup_tier() {
-    const SOURCE: &str = include_str!("main.rs");
+    let source = guard_source();
+    let source: &str = &source;
 
     // Exactly ONE call site: a second one inside a tier would reintroduce
     // the hole this test exists to close.
     let call = "report_proactive_rust_state(guard.auto_cleanup_rust)";
     assert_eq!(
-        SOURCE.matches(call).count(),
+        source.matches(call).count(),
         1,
         "the rust-cleanup report must have exactly one call site — the guard pass — so no cleanup tier can skip it"
     );
 
     // The call site is in the guard PASS.
-    let pass = top_level_fn_source(SOURCE, "pub(crate) async fn run_guard_once(");
+    let pass = top_level_fn_source(source, "pub(crate) async fn run_guard_once(");
     assert!(
         pass.contains("disk_details_for"),
         "the guard pass must have been located — otherwise the assertion below would pass on an empty region"
@@ -2716,7 +2738,7 @@ fn the_disabled_rust_cleanup_report_is_not_tied_to_a_cleanup_tier() {
     );
 
     // ... and NOT in the cleanup tier dispatch, which the action tier skips.
-    let dispatch = top_level_fn_source(SOURCE, "fn spawn_background_cleanup(");
+    let dispatch = top_level_fn_source(source, "fn spawn_background_cleanup(");
     assert!(
         dispatch.contains("CleanupMode::Proactive"),
         "the tier dispatch must have been located — otherwise the assertion below would pass on an empty region"
