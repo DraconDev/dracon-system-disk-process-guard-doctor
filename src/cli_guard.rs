@@ -461,7 +461,11 @@ pub(crate) fn rotate_guard_log_for_policy(guard: &GuardPolicy, startup: bool) {
 }
 
 #[cfg(test)]
-pub(crate) fn rotate_guard_log_for_policy_with_home(guard: &GuardPolicy, startup: bool, home: Option<&Path>) {
+pub(crate) fn rotate_guard_log_for_policy_with_home(
+    guard: &GuardPolicy,
+    startup: bool,
+    home: Option<&Path>,
+) {
     if let Some(log_path) = resolve_guard_log_path_with_home(&guard.guard_log_file, home) {
         let max_bytes = guard.guard_log_max_mb.saturating_mul(1024 * 1024);
         rotate_guard_log_if_oversized(&log_path, max_bytes, startup);

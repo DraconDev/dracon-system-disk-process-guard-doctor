@@ -2661,7 +2661,8 @@ fn a_disabled_rust_cleanup_is_reported_once_and_a_recovery_is_confirmed() {
 }
 
 /// ADDED 2026-11-14: main.rs was split into modules (guard_reap, mitigation,
-/// rust_targets, trash, nix_gc, memory_pressure). Source-inspection tests
+/// rust_targets, trash, nix_gc, memory_pressure, tmp_clean, cli_guard).
+/// Source-inspection tests
 /// read the guard's code as ONE text; a boundary sentinel between files keeps
 /// `top_level_fn_source` from running one file's last function on into the
 /// next file.
@@ -2674,6 +2675,8 @@ pub(crate) fn guard_source() -> String {
         include_str!("trash.rs"),
         include_str!("nix_gc.rs"),
         include_str!("memory_pressure.rs"),
+        include_str!("tmp_clean.rs"),
+        include_str!("cli_guard.rs"),
     ]
     .join("\nfn __module_boundary__() {}\n")
 }

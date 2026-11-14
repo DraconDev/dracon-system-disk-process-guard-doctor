@@ -134,7 +134,10 @@ pub(crate) async fn tree_has_fresh_content(dir: &Path, cutoff: SystemTime) -> bo
     false
 }
 
-pub(crate) fn path_has_open_ancestor(path: &Path, open: &std::collections::HashSet<PathBuf>) -> bool {
+pub(crate) fn path_has_open_ancestor(
+    path: &Path,
+    open: &std::collections::HashSet<PathBuf>,
+) -> bool {
     open.iter()
         .any(|o| o.starts_with(path) || path.starts_with(o))
 }
