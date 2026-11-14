@@ -150,6 +150,12 @@ pub(crate) struct GuardPolicy {
     /// that cannot be measured, are never touched.
     #[serde(default)]
     pub(crate) retire_idle_agent_sessions: bool,
+    /// ADDED 2026-11-14 (operator: report-only first): when true (the
+    /// DEFAULT), `retire_idle_agent_sessions` only logs and reports which
+    /// sessions it WOULD retire — nothing is signalled. Set false to let it
+    /// actually retire, once the reported list has earned trust.
+    #[serde(default = "default_true")]
+    pub(crate) retire_idle_agent_sessions_dry_run: bool,
     #[serde(default = "default_true")]
     pub(crate) notify: bool,
     #[serde(default = "default_notify_command")]
@@ -601,6 +607,7 @@ impl Default for GuardPolicy {
             max_active_sessions: default_max_active_sessions(),
             session_registry_dir: default_session_registry_dir(),
             retire_idle_agent_sessions: false,
+            retire_idle_agent_sessions_dry_run: true,
             notify: default_true(),
             notify_command: default_notify_command(),
             notify_cooldown_secs: default_notify_cooldown_secs(),

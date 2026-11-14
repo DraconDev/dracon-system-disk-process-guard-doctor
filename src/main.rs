@@ -781,6 +781,9 @@ pub(crate) struct RetiredSession {
     pub(crate) verified: bool,
     /// The signal outcome, when the candidate was signalled.
     pub(crate) outcome: Option<TerminateOutcome>,
+    /// ADDED 2026-11-14: verified, but NOT signalled because
+    /// `retire_idle_agent_sessions_dry_run` is on.
+    pub(crate) dry_run: bool,
 }
 
 /// `Serialize`/`Deserialize` are for the on-disk mitigation ledger
@@ -8339,6 +8342,23 @@ async fn retire_idle_sessions(
                 activity_idle_secs: candidate.idle_secs,
                 verified: false,
                 outcome: None,
+                dry_run: guard.retire_idle_agent_sessions_dry_run,
+            });
+            continue;
+        }
+        if guard.retire_idle_agent_sessions_dry_run {
+            eprintln!(
+                "🛡️ session-retire (dry run): pid {} ({}) idle {}s (no CPU accrual, no ledger/transcript write) -> WOULD retire; nothing signalled",
+                candidate.pid, candidate.comm, candidate.idle_secs,
+            );
+            out.push(RetiredSession {
+                pid: candidate.pid,
+                comm: candidate.comm.clone(),
+                cpu_idle_secs: policy.idle_window_secs,
+                activity_idle_secs: candidate.idle_secs,
+                verified: true,
+                outcome: None,
+                dry_run: true,
             });
             continue;
         }
@@ -8354,6 +8374,7 @@ async fn retire_idle_sessions(
             activity_idle_secs: candidate.idle_secs,
             verified: true,
             outcome: Some(outcome),
+            dry_run: false,
         });
     }
     out
