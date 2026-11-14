@@ -1816,3 +1816,16 @@ fn the_shipped_large_floor_default_is_usable() {
         "the shipped default must be a configuration that actually works"
     );
 }
+
+/// ADDED 2026-11-14: enabling session retirement must default to
+/// report-only. A config written before the dry-run knob existed (the live
+/// one) gets dry-run, not kills.
+#[test]
+fn session_retirement_defaults_to_dry_run() {
+    assert!(GuardPolicy::default().retire_idle_agent_sessions_dry_run);
+    let p: GuardPolicy =
+        toml::from_str("retire_idle_agent_sessions = true\nagent_session_names = \"pi\"\n")
+            .expect("parse");
+    assert!(p.retire_idle_agent_sessions);
+    assert!(p.retire_idle_agent_sessions_dry_run, "missing key must mean report-only");
+}
