@@ -215,6 +215,24 @@ refresh_workspace_lock() {
         die_pre "failed to synchronize the workspace Cargo.lock for $CRATE_NAME@$VERSION"
     fi
     [[ -s "$LOCKFILE" ]] || die_pre "workspace Cargo.lock is missing after cargo check"
+    # FIXED 2026-11-14: in the nested-repo layout $LOCKFILE is the crate's
+    # STANDALONE lock, but `cargo check` inside the parent workspace updates
+    # the WORKSPACE lock one level up — so the committed lock kept recording
+    # 0.112.45 through seven releases, and a standalone `--locked` build of
+    # the crate failed. Bump the crate's own entry here, then prove it.
+    local workspace_lock
+    workspace_lock="$(dirname "$(cargo locate-project --workspace --message-format plain)")/Cargo.lock"
+    if [[ "$workspace_lock" != "$LOCKFILE" ]]; then
+        local tmp_lock="$LOCKFILE.tmp.$$"
+        awk -v name="$CRATE_NAME" -v ver="$VERSION" '
+            $0 == "name = \"" name "\"" { hit = 1; print; next }
+            hit && /^version = / { print "version = \"" ver "\""; hit = 0; next }
+            { hit = 0; print }
+        ' "$LOCKFILE" > "$tmp_lock" || die_pre "failed to rewrite $LOCKFILE"
+        mv -f "$tmp_lock" "$LOCKFILE"
+        grep -A1 -x "name = \"$CRATE_NAME\"" "$LOCKFILE" | grep -qx "version = \"$VERSION\"" \
+            || die_pre "standalone Cargo.lock does not record $CRATE_NAME@$VERSION"
+    fi
     ok "  Cargo.lock synchronized for $CRATE_NAME@$VERSION"
 }
 
