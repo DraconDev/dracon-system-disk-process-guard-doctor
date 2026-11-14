@@ -13305,7 +13305,31 @@ async fn cmd_guard_daemon(guard: &mut GuardPolicy) -> Result<()> {
     hydrate_mitigations_from_disk(&mut runtime);
     restore_runtime_adjustments(&mut runtime).await;
     persist_mitigations(&mut runtime);
+    let mut binary_replaced_warned = false;
     while !shutdown.load(Ordering::SeqCst) {
+        // ADDED 2026-11-14: notice our OWN binary being replaced. A restart
+        // that raced an install kept the guard on the old binary, healthy-
+        // looking, with fixes "deployed" but not running. Warn once; the
+        // operator (or scripts/deploy-local.sh) restarts.
+        if !binary_replaced_warned {
+            if let Ok(link) = std::fs::read_link("/proc/self/exe") {
+                let link = link.to_string_lossy();
+                if exe_link_is_replaced(&link) {
+                    binary_replaced_warned = true;
+                    let body = format!(
+                        "the guard is running a replaced binary ({link}); restart dracon-system-guard.service to run the installed one"
+                    );
+                    eprintln!("⚠️ {body}");
+                    emit_event(&DraconEvent::new(
+                        "system",
+                        EventSeverity::Warn,
+                        "guard/binary-replaced",
+                        body.clone(),
+                    ));
+                    send_notification(guard, "Dracon guard: restart needed", &body).await;
+                }
+            }
+        }
         if runtime.mitigation_ledger_unavailable {
             hydrate_mitigations_from_disk(&mut runtime);
         }
