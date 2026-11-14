@@ -221,19 +221,30 @@ refresh_workspace_lock() {
     # 0.112.45 through seven releases, and a standalone `--locked` build of
     # the crate failed. Bump the crate's own entry here, then prove it.
     local workspace_lock
-    workspace_lock="$(dirname "$(cargo locate-project --workspace --message-format plain)")/Cargo.lock"
+    workspace_lock="$(workspace_lockfile)"
     if [[ "$workspace_lock" != "$LOCKFILE" ]]; then
-        local tmp_lock="$LOCKFILE.tmp.$$"
-        awk -v name="$CRATE_NAME" -v ver="$VERSION" '
-            $0 == "name = \"" name "\"" { hit = 1; print; next }
-            hit && /^version = / { print "version = \"" ver "\""; hit = 0; next }
-            { hit = 0; print }
-        ' "$LOCKFILE" > "$tmp_lock" || die_pre "failed to rewrite $LOCKFILE"
-        mv -f "$tmp_lock" "$LOCKFILE"
-        grep -A1 -x "name = \"$CRATE_NAME\"" "$LOCKFILE" | grep -qx "version = \"$VERSION\"" \
+        set_lock_crate_version "$LOCKFILE" "$VERSION" \
             || die_pre "standalone Cargo.lock does not record $CRATE_NAME@$VERSION"
     fi
     ok "  Cargo.lock synchronized for $CRATE_NAME@$VERSION"
+}
+
+workspace_lockfile() {
+    echo "$(dirname "$(cargo locate-project --workspace --message-format plain)")/Cargo.lock"
+}
+
+# Rewrite THIS crate's own `version` entry in a Cargo.lock and verify it.
+set_lock_crate_version() {
+    local lock="$1" ver="$2" tmp_lock
+    [[ -f "$lock" ]] || return 1
+    tmp_lock="$lock.tmp.$$"
+    awk -v name="$CRATE_NAME" -v ver="$ver" '
+        $0 == "name = \"" name "\"" { hit = 1; print; next }
+        hit && /^version = / { print "version = \"" ver "\""; hit = 0; next }
+        { hit = 0; print }
+    ' "$lock" > "$tmp_lock" || { rm -f "$tmp_lock"; return 1; }
+    mv -f "$tmp_lock" "$lock"
+    grep -A1 -x "name = \"$CRATE_NAME\"" "$lock" | grep -qx "version = \"$ver\""
 }
 
 # ----- abort path ----------------------------------------------------------
@@ -283,6 +294,18 @@ if [[ $ABORT -eq 1 ]]; then
             rm -f -- "${abort_untracked[@]}" 2>/dev/null
         fi
         set -e
+        # FIXED 2026-11-14: the dry run's `cargo check` also bumped this crate
+        # in the WORKSPACE lock (the parent repo, outside this git tree), and
+        # abort left it there — the next real run then failed its own
+        # `cargo test --locked` gate on the mismatch. Reset that entry to the
+        # restored manifest version.
+        restored_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$CRATE_TOML" | head -1)"
+        ws_lock="$(workspace_lockfile 2>/dev/null || true)"
+        if [[ -n "$restored_version" && -n "$ws_lock" && "$ws_lock" != "$LOCKFILE" && -f "$ws_lock" ]]; then
+            set_lock_crate_version "$ws_lock" "$restored_version" \
+                && ok "workspace Cargo.lock reset to $CRATE_NAME@$restored_version" \
+                || warn "could not reset $CRATE_NAME in $ws_lock — run cargo check -p $CRATE_NAME"
+        fi
         ok "local modifications reverted (${#abort_tracked[@]} tracked, ${#abort_untracked[@]} untracked)"
     else
         ok "no local modifications to revert"
