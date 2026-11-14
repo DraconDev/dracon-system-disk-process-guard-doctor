@@ -8518,7 +8518,7 @@ fn cmd_guard_reap_preview(guard: &GuardPolicy, json: bool) -> Result<()> {
         },
         ReapPreviewPass {
             pass: "forgotten browser trees",
-            knob: "(memory pressure)",
+            knob: "no knob, always on",
             enabled: true,
             gate: "only under memory pressure; orphaned headless test browser, undriven, heavy",
             candidates: forgotten,
@@ -8532,7 +8532,11 @@ fn cmd_guard_reap_preview(guard: &GuardPolicy, json: bool) -> Result<()> {
     for p in &passes {
         let state = if p.enabled { "ENABLED" } else { "disabled (report only)" };
         println!();
-        println!("■ {} [{} = {}] — {}", p.pass, p.knob, state, p.gate);
+        if p.knob.contains(' ') {
+            println!("■ {} [{}] — {}", p.pass, p.knob, p.gate);
+        } else {
+            println!("■ {} [{} = {}] — {}", p.pass, p.knob, state, p.gate);
+        }
         if p.candidates.is_empty() {
             println!("  (none)");
         }
