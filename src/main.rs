@@ -3312,6 +3312,9 @@ fn restore_pending_oom_descendants(
 ) -> OomSweepResult {
     let pending_keys: Vec<(i32, u64)> = state.oom_pending_descendants.keys().copied().collect();
     let mut result = OomSweepResult::default();
+    // CHANGED 2026-11-14: defunct drops are bookkeeping, not events —
+    // counted and summarised once per sweep (was ~2,900 lines/week).
+    let mut defunct_dropped = 0usize;
     for key in pending_keys {
         let Some(mut pending) = state.oom_pending_descendants.get(&key).cloned() else {
             continue;
@@ -3343,10 +3346,7 @@ fn restore_pending_oom_descendants(
         // anything from a process that no longer exists.
         if process_is_zombie(proc_root, key.0) {
             state.oom_pending_descendants.remove(&key);
-            eprintln!(
-                "🧹 oom-descendant-restore pid={} parent={} dropped — the process is defunct, so there is nothing to restore",
-                key.0, pending.root_pid
-            );
+            defunct_dropped += 1;
             continue;
         }
         let current_identity = match read_proc_identity(proc_root, key.0) {
@@ -3392,6 +3392,12 @@ fn restore_pending_oom_descendants(
         }
         state.oom_pending_descendants.remove(&key);
         remember_oom_descendant_identity(state, pending.root_pid, key.0, &pending.identity);
+    }
+    if defunct_dropped > 0 {
+        veprintln!(
+            1,
+            "🧹 oom-descendant-restore: dropped {defunct_dropped} defunct descendant(s) — nothing left to restore"
+        );
     }
     result
 }
