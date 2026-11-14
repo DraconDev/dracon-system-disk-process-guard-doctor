@@ -294,21 +294,21 @@ if [[ $ABORT -eq 1 ]]; then
             rm -f -- "${abort_untracked[@]}" 2>/dev/null
         fi
         set -e
-        # FIXED 2026-11-14: the dry run's `cargo check` also bumped this crate
-        # in the WORKSPACE lock (the parent repo, outside this git tree), and
-        # abort left it there — the next real run then failed its own
-        # `cargo test --locked` gate on the mismatch. Reset that entry to the
-        # restored manifest version.
-        restored_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$CRATE_TOML" | head -1)"
-        ws_lock="$(workspace_lockfile 2>/dev/null || true)"
-        if [[ -n "$restored_version" && -n "$ws_lock" && "$ws_lock" != "$LOCKFILE" && -f "$ws_lock" ]]; then
-            set_lock_crate_version "$ws_lock" "$restored_version" \
-                && ok "workspace Cargo.lock reset to $CRATE_NAME@$restored_version" \
-                || warn "could not reset $CRATE_NAME in $ws_lock — run cargo check -p $CRATE_NAME"
-        fi
         ok "local modifications reverted (${#abort_tracked[@]} tracked, ${#abort_untracked[@]} untracked)"
     else
         ok "no local modifications to revert"
+    fi
+    # FIXED 2026-11-14: the dry run's `cargo check` also bumped this crate
+    # in the WORKSPACE lock (the parent repo, outside this git tree), and
+    # abort left it there — the next real run then failed its own
+    # `cargo test --locked` gate on the mismatch. Reset that entry to the
+    # restored manifest version.
+    restored_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$CRATE_TOML" | head -1)"
+    ws_lock="$(workspace_lockfile 2>/dev/null || true)"
+    if [[ -n "$restored_version" && -n "$ws_lock" && "$ws_lock" != "$LOCKFILE" && -f "$ws_lock" ]]; then
+        set_lock_crate_version "$ws_lock" "$restored_version" \
+            && ok "workspace Cargo.lock reset to $CRATE_NAME@$restored_version" \
+            || warn "could not reset $CRATE_NAME in $ws_lock — run cargo check -p $CRATE_NAME"
     fi
     exit 0
 fi
