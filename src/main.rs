@@ -491,6 +491,18 @@ enum GuardCommands {
         #[arg(long)]
         body: Option<String>,
     },
+    /// Show what every kill pass WOULD signal right now. Read-only.
+    ///
+    /// ADDED 2026-11-14: `guard once` really kills (the reap passes are
+    /// live under their opt-ins), so there was no safe way to ask "what
+    /// would the guard end at this moment?". This runs each pass's scan
+    /// against the live /proc and signals nothing. Pressure-gated passes are
+    /// shown whatever the current pressure, with a note that they only act
+    /// under warn/critical pressure.
+    ReapPreview {
+        #[arg(long)]
+        json: bool,
+    },
     /// Prune system caches and Docker resources.
     Prune {
         #[arg(long)]
@@ -8437,6 +8449,107 @@ fn reap_candidates(guard: &GuardPolicy) -> Vec<ReapCandidate> {
     )
 }
 
+/// Pressure-orphan candidates against the live /proc (no signal).
+fn pressure_orphan_preview(guard: &GuardPolicy) -> Vec<ReapCandidate> {
+    let proc_root = Path::new("/proc");
+    let Some(boot_time) = read_boot_time(proc_root) else {
+        return Vec::new();
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(boot_time);
+    scan_pressure_orphans(
+        proc_root,
+        &reap_policy_from_guard(guard),
+        boot_time,
+        now,
+        PROC_TICKS_PER_SEC,
+    )
+}
+
+#[derive(Serialize)]
+struct ReapPreviewPass<'a> {
+    pass: &'a str,
+    knob: &'a str,
+    enabled: bool,
+    gate: &'a str,
+    candidates: Vec<String>,
+}
+
+fn reap_preview_row(c: &ReapCandidate) -> String {
+    let args: String = c.args.chars().take(140).collect();
+    format!(
+        "pid {} {} [{}] age {}h cpu {}s rss {}MiB :: {}",
+        c.pid, c.comm, c.signature, c.idle_hours, c.cpu_seconds, c.rss_mb, args
+    )
+}
+
+fn cmd_guard_reap_preview(guard: &GuardPolicy, json: bool) -> Result<()> {
+    let stale: Vec<String> = reap_candidates(guard).iter().map(reap_preview_row).collect();
+    let pressure: Vec<String> = pressure_orphan_preview(guard)
+        .iter()
+        .map(reap_preview_row)
+        .collect();
+    let forgotten: Vec<String> = forgotten_scan(guard)
+        .candidates
+        .iter()
+        .map(|t| {
+            format!(
+                "tree root {} {} — {} processes {}MiB age {}s — {}",
+                t.root_pid, t.root_comm, t.member_count, t.aggregate_footprint_mb, t.age_secs, t.why
+            )
+        })
+        .collect();
+    let passes = vec![
+        ReapPreviewPass {
+            pass: "stale dev servers",
+            knob: "reap_stale_dev_servers",
+            enabled: guard.reap_stale_dev_servers,
+            gate: "every pass; idle, sleeping, no tty, age floor, signature, not a service",
+            candidates: stale,
+        },
+        ReapPreviewPass {
+            pass: "pressure orphans",
+            knob: "reap_orphans_on_pressure",
+            enabled: guard.reap_orphans_on_pressure,
+            gate: "only under warn/critical memory pressure; owner dead, not a service, launching session gone",
+            candidates: pressure,
+        },
+        ReapPreviewPass {
+            pass: "forgotten browser trees",
+            knob: "(memory pressure)",
+            enabled: true,
+            gate: "only under memory pressure; orphaned headless test browser, undriven, heavy",
+            candidates: forgotten,
+        },
+    ];
+    if json {
+        println!("{}", serde_json::to_string_pretty(&passes)?);
+        return Ok(());
+    }
+    println!("Reap preview — read-only, nothing is signalled.");
+    for p in &passes {
+        let state = if p.enabled { "ENABLED" } else { "disabled (report only)" };
+        println!();
+        println!("■ {} [{} = {}] — {}", p.pass, p.knob, state, p.gate);
+        if p.candidates.is_empty() {
+            println!("  (none)");
+        }
+        for c in &p.candidates {
+            println!("  • {c}");
+        }
+    }
+    println!();
+    println!(
+        "■ idle agent sessions [retire_idle_agent_sessions = {}, dry_run = {}] — needs {}s of observation by the running daemon; see its journal for 'session-retire' lines",
+        guard.retire_idle_agent_sessions,
+        guard.retire_idle_agent_sessions_dry_run,
+        guard.session_idle_window_secs
+    );
+    Ok(())
+}
+
 fn zombie_details(state: &mut GuardRuntimeState) -> Vec<ZombieInfo> {
     let now = Instant::now();
     let mut zombies = Vec::new();
@@ -14008,6 +14121,7 @@ async fn cmd_guard(cmd: GuardCommands) -> Result<()> {
     match cmd {
         GuardCommands::Once { json } => cmd_guard_once(&guard, json).await,
         GuardCommands::Daemon => cmd_guard_daemon(&mut guard).await,
+        GuardCommands::ReapPreview { json } => cmd_guard_reap_preview(&guard, json),
         GuardCommands::NotifyTest { title, body } => {
             let title = title.unwrap_or_else(|| "dracon-system test".to_string());
             let body = body.unwrap_or_else(|| {
