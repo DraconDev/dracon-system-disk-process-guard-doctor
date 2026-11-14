@@ -1827,5 +1827,8 @@ fn session_retirement_defaults_to_dry_run() {
         toml::from_str("retire_idle_agent_sessions = true\nagent_session_names = \"pi\"\n")
             .expect("parse");
     assert!(p.retire_idle_agent_sessions);
-    assert!(p.retire_idle_agent_sessions_dry_run, "missing key must mean report-only");
+    assert!(
+        p.retire_idle_agent_sessions_dry_run,
+        "missing key must mean report-only"
+    );
 }
