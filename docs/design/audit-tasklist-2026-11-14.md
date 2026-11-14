@@ -132,3 +132,23 @@ Evidence: guard journal (7d/14d), live `/proc`, `cargo test`/`clippy`/`deny`.
   fixed, and `release.sh` now keeps it in sync.
 - Docs: AGENTS.md "Guard auto-reap" + renice notes; addendum in
   `docs/design/guard-auto-reap-2026-10-04.md`; CHANGELOG [Unreleased].
+
+## Follow-ups closed after the release (2026-11-14, operator decisions)
+
+- [x] **Cross-repo watchdog backstop** (operator: "do it now").
+      `dracon-sync/scripts/dracon-freeze-watchdog.sh` (user timer, every 2m)
+      now re-arms `dracon-system-guard-watchdog.timer` when it is ENABLED but
+      inactive; a maintenance hold or a deliberately disabled timer is left
+      alone. Live-tested (stopped → re-armed; hold → untouched; active →
+      silent) and installed to `~/.dracon/sync-notify/`. CHANGELOG entry in
+      dracon-sync [Unreleased].
+- [ ] **Codeberg mirror — BLOCKED by quota** (operator: "add remote + push").
+      The repo is public (eligible under the "codeberg = public-only"
+      policy) and the push was a clean fast-forward (Codeberg `main` is
+      `dfd2664`, 2026-08-11, 1,995 commits behind), but Codeberg rejected
+      it: `Forgejo: Quota exceeded` (account-wide 85 GiB, see
+      `docs/design/codeberg-quota-leak-fix-2026-07-13.md`). The remote was
+      removed again so the daemon does not retry it every cycle and land
+      the repo in the stuck-push ledger. Unblocking needs Codeberg quota
+      freed — a destructive, operator-only Codeberg-side action. The
+      dracon-sync and dracon-warden repos have no Codeberg remote either.
