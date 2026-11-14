@@ -46,7 +46,14 @@ WorkingDirectory=%h
 # Group=dracon-guard
 
 # Resource limits
-MemoryMax=250M
+# CHANGED 2026-11-14: MemoryMax=250M (silently raised to 2G by a runtime
+# set-property drop-in on 2026-10-03) -> MemoryHigh=256M + MemoryMax=1G.
+# Measured: steady state ~1 MiB anon / ~15 MiB file; the 2G peaks were the
+# guard's own page cache from scanning ~/Dev (memory.events max=0, never
+# OOM-killed). MemoryHigh makes the kernel reclaim that cache early (and
+# throttles, never kills, a genuine spike); MemoryMax is the hard ceiling.
+MemoryHigh=256M
+MemoryMax=1G
 CPUQuota=20%
 TasksMax=64
 
