@@ -34,7 +34,10 @@ pub(crate) fn session_policy_from_guard(guard: &GuardPolicy) -> SessionPolicy {
 /// from `/proc/<pid>/stat` — `ps`'s instantaneous percentage cannot prove
 /// "no CPU accrual across the window", which is the whole point of the
 /// idle-retirement rule.
-pub(crate) fn session_process_facts(policy: &SessionPolicy, proc_root: &Path) -> Vec<(i32, String, u64, u64)> {
+pub(crate) fn session_process_facts(
+    policy: &SessionPolicy,
+    proc_root: &Path,
+) -> Vec<(i32, String, u64, u64)> {
     if policy.session_names.is_empty() {
         return Vec::new();
     }

@@ -3082,7 +3082,6 @@ fn guard_owns_sync_freeze_marker(marker: &Path) -> bool {
         && prefix.as_slice() == GUARD_FREEZE_MARKER_PREFIX.as_bytes()
 }
 
-
 /// Apply a manager-owned lease to an existing isolated workload scope.
 /// Returns (durable lease key, generation). No process is moved or signalled;
 /// an independent timer restores quota without terminating the workload.
