@@ -666,72 +666,87 @@ async fn malformed_overflow_and_directory_symlink_metrics_are_explicitly_unavail
     assert!(rows[0].generation.is_none());
 }
 
-// ADDED 2026-11-14: an unprivileged guard cannot read /proc/1/ns/*, which
-// made every service-growth measurement "unavailable" forever.
+// ADDED 2026-11-14: an unprivileged guard cannot read /proc/1/ns/* (nor
+// its own systemd manager's), which made every service-growth measurement
+// "unavailable" forever. The fallback proves host visibility from facts
+// about the process itself.
 fn ns_fixture(
     name: &str,
-    init: Option<&str>,
-    parent_comm: &str,
-    parent_ns: &str,
-    ours: &str,
+    nspid: &str,
+    cgroup: &str,
+    init: Option<(&str, &str)>,
 ) -> std::path::PathBuf {
     use std::os::unix::fs::symlink;
     let root = std::env::temp_dir().join(format!("dracon-nsfix-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("self/ns")).unwrap();
     std::fs::write(
-        root.join("self/stat"),
-        "4242 (dracon-system) S 1224 4242 4242 0 -1\n",
+        root.join("self/status"),
+        format!("Name:\tdracon-system\nNSpid:\t{nspid}\n"),
     )
     .unwrap();
-    for ns in ["pid", "cgroup"] {
-        symlink(format!("{ns}:[{ours}]"), root.join(format!("self/ns/{ns}"))).unwrap();
-    }
-    std::fs::create_dir_all(root.join("1224/ns")).unwrap();
-    std::fs::write(root.join("1224/comm"), format!("{parent_comm}\n")).unwrap();
-    for ns in ["pid", "cgroup"] {
-        symlink(
-            format!("{ns}:[{parent_ns}]"),
-            root.join(format!("1224/ns/{ns}")),
-        )
-        .unwrap();
-    }
-    if let Some(init) = init {
+    std::fs::write(root.join("self/cgroup"), format!("0::{cgroup}\n")).unwrap();
+    if let Some((ours, theirs)) = init {
         std::fs::create_dir_all(root.join("1/ns")).unwrap();
         for ns in ["pid", "cgroup"] {
-            symlink(format!("{ns}:[{init}]"), root.join(format!("1/ns/{ns}"))).unwrap();
+            symlink(format!("{ns}:[{ours}]"), root.join(format!("self/ns/{ns}"))).unwrap();
+            symlink(format!("{ns}:[{theirs}]"), root.join(format!("1/ns/{ns}"))).unwrap();
         }
     }
     root
 }
 
-#[test]
-fn unreadable_init_falls_back_to_the_owning_systemd_manager() {
-    let root = ns_fixture("fallback-ok", None, "systemd", "1", "1");
-    assert!(crate::service_growth::shares_host_namespaces(&root));
+const GUARD_CG: &str =
+    "/user.slice/user-1000.slice/user@1000.service/app.slice/dracon-system-guard.service";
+
+fn host_visible(root: std::path::PathBuf) -> bool {
+    let v = crate::service_growth::shares_host_namespaces(&root);
     let _ = std::fs::remove_dir_all(&root);
+    v
 }
 
 #[test]
-fn a_different_namespace_than_the_manager_is_not_host_visibility() {
-    let root = ns_fixture("fallback-differs", None, "systemd", "1", "2");
-    assert!(!crate::service_growth::shares_host_namespaces(&root));
-    let _ = std::fs::remove_dir_all(&root);
+fn an_unprivileged_guard_on_the_host_is_visible_without_reading_pid_1() {
+    assert!(host_visible(ns_fixture(
+        "self-host",
+        "4242",
+        GUARD_CG,
+        None
+    )));
 }
 
 #[test]
-fn a_non_systemd_parent_is_never_the_reference() {
-    let root = ns_fixture("fallback-not-systemd", None, "bash", "1", "1");
-    assert!(!crate::service_growth::shares_host_namespaces(&root));
-    let _ = std::fs::remove_dir_all(&root);
+fn a_nested_pid_namespace_is_not_host_visibility() {
+    assert!(!host_visible(ns_fixture(
+        "self-nested-pid",
+        "4242 7",
+        GUARD_CG,
+        None
+    )));
+}
+
+#[test]
+fn a_nested_cgroup_namespace_is_not_host_visibility() {
+    assert!(!host_visible(ns_fixture(
+        "self-nested-cg",
+        "4242",
+        "/",
+        None
+    )));
 }
 
 #[test]
 fn a_readable_init_is_still_the_reference() {
-    let root = ns_fixture("init-readable", Some("9"), "systemd", "1", "1");
-    assert!(
-        !crate::service_growth::shares_host_namespaces(&root),
-        "init wins when readable"
-    );
-    let _ = std::fs::remove_dir_all(&root);
+    assert!(host_visible(ns_fixture(
+        "init-same",
+        "4242",
+        GUARD_CG,
+        Some(("1", "1"))
+    )));
+    assert!(!host_visible(ns_fixture(
+        "init-differs",
+        "4242",
+        GUARD_CG,
+        Some(("2", "1"))
+    )));
 }

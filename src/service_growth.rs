@@ -645,42 +645,53 @@ async fn properties(
 }
 /// Whether this process sees the host's PID and cgroup namespaces.
 ///
-/// FIXED 2026-11-14: the check compared against `/proc/1/ns/*` only, and
-/// reading another user's namespace links needs ptrace access — so for the
-/// guard (an UNPRIVILEGED user service) pid 1 is always unreadable and every
-/// measurement was "unavailable", forever. When pid 1 cannot be read, the
-/// reference is the systemd manager that owns us (our parent, same uid,
-/// readable): the guard measures that manager's units, so sharing ITS
-/// namespaces is the property that matters. Anything else unreadable still
-/// fails closed.
+/// FIXED 2026-11-14: the check compared `self/ns/*` with `/proc/1/ns/*`
+/// only. Reading another process's namespace links needs ptrace access,
+/// which the guard (an unprivileged user service whose bounding set is only
+/// CAP_SYS_NICE) has for neither pid 1 nor its own systemd manager (which
+/// holds CAP_WAKE_ALARM) — so every measurement was "unavailable", forever.
+///
+/// When pid 1 cannot be read, the proof comes from facts about OURSELVES,
+/// which are always readable:
+/// - PID: `NSpid:` in `self/status` has exactly one entry only in the
+///   initial PID namespace (one pid per nesting level otherwise);
+/// - cgroup: in the host cgroup namespace `self/cgroup` shows the full
+///   path from the root (`/user.slice/…`, `/system.slice/…`,
+///   `/init.scope`); inside a nested one it is relative (`/`, `/sub`).
+///
+/// Anything unreadable or unrecognised still fails closed.
 pub(crate) fn shares_host_namespaces(proc_root: &Path) -> bool {
-    let reference = |ns: &str| -> Option<std::path::PathBuf> {
-        if let Ok(link) = fs::read_link(proc_root.join(format!("1/ns/{ns}"))) {
-            return Some(link);
-        }
-        let stat = fs::read_to_string(proc_root.join("self/stat")).ok()?;
-        let ppid: i32 = stat
-            .rsplit_once(')')?
-            .1
-            .split_whitespace()
-            .nth(1)?
-            .parse()
-            .ok()?;
-        let comm = fs::read_to_string(proc_root.join(format!("{ppid}/comm"))).ok()?;
-        if comm.trim() != "systemd" {
-            return None;
-        }
-        fs::read_link(proc_root.join(format!("{ppid}/ns/{ns}"))).ok()
-    };
-    ["pid", "cgroup"].iter().all(|ns| {
-        match (
-            fs::read_link(proc_root.join(format!("self/ns/{ns}"))),
-            reference(ns),
-        ) {
-            (Ok(ours), Some(theirs)) => ours == theirs,
-            _ => false,
-        }
-    })
+    let init_readable = ["pid", "cgroup"]
+        .iter()
+        .all(|ns| fs::read_link(proc_root.join(format!("1/ns/{ns}"))).is_ok());
+    if init_readable {
+        return ["pid", "cgroup"].iter().all(|ns| {
+            let ours = fs::read_link(proc_root.join(format!("self/ns/{ns}")));
+            let init = fs::read_link(proc_root.join(format!("1/ns/{ns}")));
+            matches!((ours, init), (Ok(a), Ok(b)) if a == b)
+        });
+    }
+    let initial_pid_ns = fs::read_to_string(proc_root.join("self/status"))
+        .ok()
+        .and_then(|status| {
+            status
+                .lines()
+                .find_map(|l| l.strip_prefix("NSpid:"))
+                .map(|v| v.split_whitespace().count() == 1)
+        })
+        .unwrap_or(false);
+    let host_cgroup_ns = fs::read_to_string(proc_root.join("self/cgroup"))
+        .ok()
+        .and_then(|raw| {
+            raw.lines().find_map(|l| l.strip_prefix("0::")).map(|path| {
+                let path = path.trim();
+                path.starts_with("/user.slice/")
+                    || path.starts_with("/system.slice/")
+                    || path == "/init.scope"
+            })
+        })
+        .unwrap_or(false);
+    initial_pid_ns && host_cgroup_ns
 }
 
 async fn collect(probe: &impl Probe, roots: &Roots, names: &[String]) -> Vec<Observation> {
