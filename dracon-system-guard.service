@@ -2,6 +2,11 @@
 Description=Dracon System Guard - Proactive disk space monitoring and cleanup
 Documentation=https://github.com/DraconDev/dracon-utilities
 After=network.target
+# ADDED 2026-11-14: starting the guard always re-arms its watchdog. On
+# 2026-11-14 the guard AND this timer were stopped together and nothing
+# could bring either back (15 min unguarded); a later start of the guard
+# alone would have left the backstop off.
+Wants=dracon-system-guard-watchdog.timer
 
 [Service]
 Type=simple
