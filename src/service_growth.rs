@@ -643,6 +643,46 @@ async fn properties(
     }
     result
 }
+/// Whether this process sees the host's PID and cgroup namespaces.
+///
+/// FIXED 2026-11-14: the check compared against `/proc/1/ns/*` only, and
+/// reading another user's namespace links needs ptrace access — so for the
+/// guard (an UNPRIVILEGED user service) pid 1 is always unreadable and every
+/// measurement was "unavailable", forever. When pid 1 cannot be read, the
+/// reference is the systemd manager that owns us (our parent, same uid,
+/// readable): the guard measures that manager's units, so sharing ITS
+/// namespaces is the property that matters. Anything else unreadable still
+/// fails closed.
+pub(crate) fn shares_host_namespaces(proc_root: &Path) -> bool {
+    let reference = |ns: &str| -> Option<std::path::PathBuf> {
+        if let Ok(link) = fs::read_link(proc_root.join(format!("1/ns/{ns}"))) {
+            return Some(link);
+        }
+        let stat = fs::read_to_string(proc_root.join("self/stat")).ok()?;
+        let ppid: i32 = stat
+            .rsplit_once(')')?
+            .1
+            .split_whitespace()
+            .nth(1)?
+            .parse()
+            .ok()?;
+        let comm = fs::read_to_string(proc_root.join(format!("{ppid}/comm"))).ok()?;
+        if comm.trim() != "systemd" {
+            return None;
+        }
+        fs::read_link(proc_root.join(format!("{ppid}/ns/{ns}"))).ok()
+    };
+    ["pid", "cgroup"].iter().all(|ns| {
+        match (
+            fs::read_link(proc_root.join(format!("self/ns/{ns}"))),
+            reference(ns),
+        ) {
+            (Ok(ours), Some(theirs)) => ours == theirs,
+            _ => false,
+        }
+    })
+}
+
 async fn collect(probe: &impl Probe, roots: &Roots, names: &[String]) -> Vec<Observation> {
     if names.is_empty() {
         return Vec::new();
@@ -658,14 +698,8 @@ async fn collect(probe: &impl Probe, roots: &Roots, names: &[String]) -> Vec<Obs
         Ok(b) if crate::oom_job::valid_id(b.trim()) => b.trim().to_string(),
         _ => return unavailable("boot identity unavailable"),
     };
-    if roots.verify_host {
-        for ns in ["pid", "cgroup"] {
-            let ours = fs::read_link(roots.proc.join(format!("self/ns/{ns}")));
-            let init = fs::read_link(roots.proc.join(format!("1/ns/{ns}")));
-            if ours.is_err() || ours.ok() != init.ok() {
-                return unavailable("host PID/cgroup namespace visibility unavailable");
-            }
-        }
+    if roots.verify_host && !shares_host_namespaces(&roots.proc) {
+        return unavailable("host PID/cgroup namespace visibility unavailable");
     }
     let targets: Vec<_> = names
         .iter()

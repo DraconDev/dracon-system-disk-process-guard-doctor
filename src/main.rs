@@ -8504,7 +8504,10 @@ fn reap_preview_row(c: &ReapCandidate) -> String {
 }
 
 fn cmd_guard_reap_preview(guard: &GuardPolicy, json: bool) -> Result<()> {
-    let stale: Vec<String> = reap_candidates(guard).iter().map(reap_preview_row).collect();
+    let stale: Vec<String> = reap_candidates(guard)
+        .iter()
+        .map(reap_preview_row)
+        .collect();
     let pressure: Vec<String> = pressure_orphan_preview(guard)
         .iter()
         .map(reap_preview_row)
@@ -8515,7 +8518,12 @@ fn cmd_guard_reap_preview(guard: &GuardPolicy, json: bool) -> Result<()> {
         .map(|t| {
             format!(
                 "tree root {} {} — {} processes {}MiB age {}s — {}",
-                t.root_pid, t.root_comm, t.member_count, t.aggregate_footprint_mb, t.age_secs, t.why
+                t.root_pid,
+                t.root_comm,
+                t.member_count,
+                t.aggregate_footprint_mb,
+                t.age_secs,
+                t.why
             )
         })
         .collect();
@@ -8548,7 +8556,11 @@ fn cmd_guard_reap_preview(guard: &GuardPolicy, json: bool) -> Result<()> {
     }
     println!("Reap preview — read-only, nothing is signalled.");
     for p in &passes {
-        let state = if p.enabled { "ENABLED" } else { "disabled (report only)" };
+        let state = if p.enabled {
+            "ENABLED"
+        } else {
+            "disabled (report only)"
+        };
         println!();
         if p.knob.contains(' ') {
             println!("■ {} [{}] — {}", p.pass, p.knob, p.gate);
