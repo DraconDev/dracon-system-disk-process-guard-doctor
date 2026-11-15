@@ -142,7 +142,9 @@ Evidence: guard journal (7d/14d), live `/proc`, `cargo test`/`clippy`/`deny`.
       alone. Live-tested (stopped → re-armed; hold → untouched; active →
       silent) and installed to `~/.dracon/sync-notify/`. CHANGELOG entry in
       dracon-sync [Unreleased].
-- [ ] **Codeberg mirror — BLOCKED by quota** (operator: "add remote + push").
+- [x] **Codeberg mirror — CLOSED: Codeberg is abandoned** (operator, 2026-11-15:
+      "we earlier decided to abandon codeberg"; daemon disabled it 2026-08-13).
+      Recorded in AGENTS.md and the daemon config. Original attempt, for the record — (operator: "add remote + push").
       The repo is public (eligible under the "codeberg = public-only"
       policy) and the push was a clean fast-forward (Codeberg `main` is
       `dfd2664`, 2026-08-11, 1,995 commits behind), but Codeberg rejected
