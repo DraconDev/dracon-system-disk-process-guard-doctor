@@ -7,6 +7,7 @@ use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 // Keep one active segment and one rotated segment. The record cap also keeps a
 // single unusually large error message from defeating the storage bound.
@@ -54,7 +55,9 @@ impl DraconEvent {
             severity,
             path: path.to_string(),
             message: message.to_string(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: OffsetDateTime::now_utc()
+                .format(&Rfc3339)
+                .expect("current UTC time fits RFC 3339"),
         }
     }
 }
@@ -566,24 +569,23 @@ pub(crate) fn cmd_events(
 
 /// Format an RFC 3339 timestamp as a human-readable relative time.
 pub(crate) fn shorten_event_time(ts: &str) -> String {
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
-        let now = chrono::Utc::now();
-        let diff = now.signed_duration_since(dt);
-        if diff.num_seconds() < 0 {
+    if let Ok(dt) = OffsetDateTime::parse(ts, &Rfc3339) {
+        let diff = OffsetDateTime::now_utc() - dt;
+        if diff.whole_seconds() < 0 {
             return "just now".to_string();
         }
-        let mins = diff.num_minutes();
+        let mins = diff.whole_minutes();
         if mins < 1 {
-            return format!("{}s", diff.num_seconds());
+            return format!("{}s", diff.whole_seconds());
         }
         if mins < 60 {
             return format!("{mins}m");
         }
-        let hours = diff.num_hours();
+        let hours = diff.whole_hours();
         if hours < 24 {
             return format!("{hours}h");
         }
-        let days = diff.num_days();
+        let days = diff.whole_days();
         if days < 30 {
             return format!("{days}d");
         }

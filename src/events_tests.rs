@@ -2,6 +2,8 @@
 //!
 //! These tests verify the event components after extraction from main.rs.
 
+use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
+
 #[test]
 fn event_severity_debug() {
     use crate::EventSeverity;
@@ -18,7 +20,7 @@ fn dracon_event_debug() {
         severity: EventSeverity::Warn,
         path: "/tmp/test".to_string(),
         message: "test warning".to_string(),
-        timestamp: chrono::Utc::now().to_rfc3339(),
+        timestamp: OffsetDateTime::now_utc().format(&Rfc3339).unwrap(),
     };
     let debug = format!("{:?}", event);
     assert!(debug.contains("guard"));
@@ -43,7 +45,7 @@ fn dracon_event_with_empty_path() {
         severity: EventSeverity::Info,
         path: String::new(),
         message: "no path event".to_string(),
-        timestamp: chrono::Utc::now().to_rfc3339(),
+        timestamp: OffsetDateTime::now_utc().format(&Rfc3339).unwrap(),
     };
     assert!(event.path.is_empty());
     assert_eq!(event.message, "no path event");
@@ -93,20 +95,20 @@ fn the_test_suite_never_writes_to_the_operators_event_stream() {
 #[test]
 fn shorten_event_time_relative() {
     use crate::shorten_event_time;
-    let now = chrono::Utc::now();
-    let ts_30s = (now - chrono::Duration::seconds(30)).to_rfc3339();
+    let now = OffsetDateTime::now_utc();
+    let ts_30s = (now - Duration::seconds(30)).format(&Rfc3339).unwrap();
     assert_eq!(shorten_event_time(&ts_30s), "30s");
 
-    let ts_5m = (now - chrono::Duration::minutes(5)).to_rfc3339();
+    let ts_5m = (now - Duration::minutes(5)).format(&Rfc3339).unwrap();
     assert_eq!(shorten_event_time(&ts_5m), "5m");
 
-    let ts_2h = (now - chrono::Duration::hours(2)).to_rfc3339();
+    let ts_2h = (now - Duration::hours(2)).format(&Rfc3339).unwrap();
     assert_eq!(shorten_event_time(&ts_2h), "2h");
 
-    let ts_3d = (now - chrono::Duration::days(3)).to_rfc3339();
+    let ts_3d = (now - Duration::days(3)).format(&Rfc3339).unwrap();
     assert_eq!(shorten_event_time(&ts_3d), "3d");
 
-    let ts_60d = (now - chrono::Duration::days(60)).to_rfc3339();
+    let ts_60d = (now - Duration::days(60)).format(&Rfc3339).unwrap();
     assert_eq!(shorten_event_time(&ts_60d), "2mo");
 }
 
